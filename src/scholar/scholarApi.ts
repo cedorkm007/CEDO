@@ -111,3 +111,26 @@ export async function fetchQuestScores(scholarIdNumber: string): Promise<QuestSc
     remarks: String(r.remarks ?? ""),
   }));
 }
+
+/** Scholar self-service: update ONLY civil status + contact number on their own row. */
+export async function updateOwnContactInfo(civilStatus: string, contactNo: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("update_own_scholar_contact", {
+    p_civil_status: civilStatus,
+    p_contact_no: contactNo,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/** Scholar self-service password change — re-verifies the current password first. */
+export async function changeOwnPassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) return { ok: false, error: "Not signed in." };
+
+  const { error: verifyError } = await supabase.auth.signInWithPassword({ email: user.email, password: currentPassword });
+  if (verifyError) return { ok: false, error: "Current password is incorrect." };
+
+  const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+  if (updateError) return { ok: false, error: updateError.message };
+  return { ok: true };
+}

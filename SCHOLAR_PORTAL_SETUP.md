@@ -1,96 +1,84 @@
-# Scholar Portal — Setup Guide
+# Scholar Portal — Setup Guide (Phase 1 + Phase 2)
 
-This adds the public CEDO site + Scholar Portal at `/scholars` on the SAME
-Vercel deployment and Supabase project as the existing staff/admin app.
-The staff app at `/` is untouched.
+Adds the public CEDO site + full Scholar Portal dashboard at `/CEDO`
+on the SAME Vercel deployment and Supabase project as the existing
+staff/admin app. The staff app at `/` is untouched.
 
 ## 1. Copy these files into your repo
-Unzip this package into the root of your existing project (paths match
-exactly, so files land in the right place):
-
+Paths match your repo exactly:
 ```
-supabase_migration_scholar_portal.sql   (new, root)
+supabase_migration_scholar_portal.sql   (new, root — RE-RUN if you already ran an older version)
 vercel.json                             (new, root)
-scripts/create-scholar-accounts.mjs     (new)
+scripts/                                (new: create-scholar-accounts.mjs, import-scholars-from-csv.mjs, reset-scholar-password.mjs)
 src/main.tsx                            (REPLACES the existing one)
-src/scholar/                            (new folder — pages, components, api)
-src/imports/scholar/                    (new folder — logos, hero photo)
+src/scholar/                            (new folder)
+src/imports/scholar/                    (new folder)
 ```
+
+If you already applied an earlier version of `supabase_migration_scholar_portal.sql`,
+re-run the new copy — it adds one new function
+(`update_own_scholar_contact`) and is safe to re-run in full.
 
 ## 2. Run the database migration
-In Supabase → SQL Editor → New query, paste and run
-`supabase_migration_scholar_portal.sql`. It creates:
-- `scholars` (profile), `scholar_subjects_grades`, `scholar_quest_scores`,
-  `scholar_sdp` (placeholder), `scholar_services` (placeholder)
-- Row Level Security so staff see everything, scholars see only their own row
-- A `resolve_scholar_login_email` RPC that the login screen uses to look up
-  a scholar's email from their name+birthday or Scholar ID number
+Supabase → SQL Editor → paste `supabase_migration_scholar_portal.sql` → Run.
 
-## 3. Create scholar accounts (staff-provisioned, no self-registration)
-Scholars log in with **Scholar ID + password** or **name + birthday +
-password** — never an email. Each account still needs an email internally
-(Supabase Auth requires one), so these scripts auto-generate a synthetic
-one like `20180000@scholars.cedo.local` that's never shown or used.
-
-1. Make sure `.env.scripts` has `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
-   (service role — never put this in `.env.local` / VITE_ vars).
-
-**Bulk import from your CSV** (Scholar ID Number, First Name, Last Name,
-Middle Name, Birthday, Address — headers are matched loosely, order doesn't
-matter):
-```
-node scripts/import-scholars-from-csv.mjs path/to/scholars.csv
-```
-This writes `scholar-credentials-<timestamp>.csv` next to your input file
-with each scholar's ID + generated password — the only copy. Distribute
-securely (hand-deliver / encrypted drive), then delete the file.
-
-**One-off / manual entries** — edit `SCHOLAR_ACCOUNTS` in
-`scripts/create-scholar-accounts.mjs` and run it the same way.
-
-**Resetting a scholar's password later** — since there's no real email to
-send a reset link to, it's staff-run:
-```
-node scripts/reset-scholar-password.mjs 20180000
-```
+## 3. Create scholar accounts
+See the CSV import instructions from before —
+`node scripts/import-scholars-from-csv.mjs path/to/scholars.csv`.
 
 ## 4. Deploy
-Push to GitHub as usual — Vercel will redeploy automatically. Once live:
-- Staff/admin app: `https://yourapp.vercel.app/`
-- Scholar portal:  `https://yourapp.vercel.app/scholars`
+Push to GitHub, Vercel redeploys. Staff app at `/`, scholar portal at `/CEDO`.
 
-`vercel.json` adds the rewrite Vercel needs so refreshing `/scholars` (or
-any sub-page) doesn't 404 — this didn't exist before because the app only
-ever had one route.
+---
 
-## What's built (Phase 1)
-- CEDO home page matching your mockup (nav, hero, "About Us")
-- Home / Articles / Programs / Statistics → "Under Development" pages
-- Scholar Log In dropdown (Existing Scholar / New Applicant — College /
-  New Applicant — Law and Medical)
-- Scholar Login page — matches your design exactly: name+birthday OR
-  Scholar ID + password, Remember Me, Reset Password link
-- Reset Password flow
-- Scholar Portal shell after login: reuses the same top nav, shows the
-  scholar's real profile pulled from Supabase, plus Subjects & Grades and
-  Quest Scores sections wired to live data. SDP and Services are marked as
-  placeholders (tables exist, UI is "coming soon"), matching what you said
-  is still under development.
+## What's built now (Phase 1 + Phase 2)
 
-## What's next (Phase 2)
-Your `City_Scholarship_Office_Scholar_profile.zip` mockup (probation
-banner, detailed info grid, etc.) is a great reference for the fuller
-dashboard — happy to convert that into the React portal on top of this
-foundation whenever you're ready.
+**Public site:** CEDO home page, Articles/Programs/Statistics placeholders,
+Scholar Log In dropdown, Scholar Login screen, staff-mediated password
+reset.
 
-## Notes / assumptions made
-- Scholars are provisioned by staff (via the script above), not
-  self-registered — matches "accounts of the scholars are made [by] the
-  staff of the office."
-- Birthday is stored on `scholars` even though it wasn't in your original
-  field list, because the login screen needs it as an alternative to
-  Scholar ID.
-- Scholars can currently only *view* their own data (grades/scores/profile
-  are read-only for them) — staff enters everything. Say the word if you
-  want scholars to be able to edit specific fields themselves (e.g. contact
-  number, address) and I'll add that.
+**Scholar Portal (after login)** — a full dashboard modeled on your
+`City_Scholarship_Office_Scholar_profile.zip` reference:
+- **Profile banner** — avatar, name, Scholar ID, Change Password button
+- **Widget-launcher home** — 6 sections: Profile, Subjects & Grades,
+  Services, SDP, Calendar, Quests — with a compact pill nav once you're
+  inside a section
+- **Profile panel** — status badge (Active/Probation/Inactive/Graduated),
+  a probation banner if applicable, an info grid of the scholar's real
+  data, and an **editable Civil Status / Contact Number form** that
+  scholars can update themselves (new — see below)
+- **Subjects & Grades panel** — real data from `scholar_subjects_grades`,
+  grouped into collapsible School Year / Semester sections
+- **Quests panel** — real score history from `scholar_quest_scores`, plus
+  a subject grid marked "Under Development" for quests not built yet
+  (actual quiz-taking is a separate future feature — no spec for it yet)
+- **Services panel** — the 6 service buttons from your reference
+  (Renewal, Consultation, Guarantee Letter, Certification, ATM
+  Application, ATM Concerns) — each currently shows an "under
+  development" note, ready to wire up once `scholar_services` is designed
+- **SDP and Calendar panels** — "Under Development" placeholders. Calendar
+  specifically: your reference site has a fully interactive one, but it
+  needs a real events data source (there's no `scholar_calendar_events`
+  table yet) — say the word if you want that built as Phase 3
+- **Change Password modal** — scholar re-verifies their current password,
+  then sets a new one, fully functional
+
+### New: self-service profile editing
+The reference mockup's "Editable Information" section (Civil Status +
+Contact Number) is wired up for real. This required one addition to the
+database: a narrowly-scoped `update_own_scholar_contact` function that
+lets a scholar update ONLY those two fields on their own row — everything
+else (name, Scholar ID, school, status, etc.) stays staff-only, same as
+before.
+
+## Notes / what's intentionally left out
+- **Email field removed from the profile display** — since scholar emails
+  are synthetic/internal-only (see earlier CSV import discussion), it's
+  no longer shown anywhere in the portal UI.
+- **QR code / My CSR download** — present in your reference mockup but
+  tied to systems (CSR generation, QR-based ID) not in your original spec.
+  Skipped for now; straightforward to add later if wanted.
+- **Quest-taking mechanic** (timed quiz, question bank, scoring) — the
+  reference site has this fully built for one subject; there's no spec or
+  data model for it yet here. The panel is ready to plug into once that's
+  defined.

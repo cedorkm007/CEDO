@@ -161,7 +161,32 @@ drop policy if exists "scholar reads own services" on public.scholar_services;
 create policy "scholar reads own services" on public.scholar_services for select
   using (scholar_id_number in (select s.scholar_id_number from public.scholars s where s.id = auth.uid()));
 
--- ── 8. Login-lookup RPC ─────────────────────────────────────
+-- ── 8. Self-service profile update (Civil Status + Contact Number only) ──
+-- Scholars are read-only on their own row (Step 7) except for these two
+-- fields, matching the "Editable Information" section of the portal UI.
+-- A dedicated SECURITY DEFINER function — instead of a broader UPDATE RLS
+-- policy — keeps this narrowly scoped so a scholar can never touch their
+-- own name, Scholar ID, status, school, etc. from the browser console.
+create or replace function public.update_own_scholar_contact(
+  p_civil_status text,
+  p_contact_no text
+)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  update public.scholars
+  set civil_status = coalesce(p_civil_status, civil_status),
+      contact_no = coalesce(p_contact_no, contact_no),
+      updated_at = now()
+  where id = auth.uid();
+end;
+$$;
+
+grant execute on function public.update_own_scholar_contact(text, text) to authenticated;
+
+-- ── 9. Login-lookup RPC ─────────────────────────────────────
 -- The Scholar Log In screen lets a scholar identify themselves either by
 -- (first name + last name + middle initial + birthday) OR by Scholar ID
 -- number, then a single password field. Supabase Auth signs in by EMAIL,
@@ -207,7 +232,7 @@ $$;
 grant execute on function public.resolve_scholar_login_email(text, text, text, date, text) to anon, authenticated;
 grant execute on function public.is_cedo_staff() to anon, authenticated;
 
--- ── 9. Storage bucket note ──────────────────────────────────
+-- ── 10. Storage bucket note ──────────────────────────────────
 -- Reuses the existing "evidence" bucket / storage helpers in src/lib/supabase.ts
 -- if scholars ever need to upload files (e.g. requirements). No new bucket
 -- required for this phase.
