@@ -12,7 +12,7 @@ import {
   Plus, Edit2, Check, Eye, Camera, Upload, FileText, ChevronDown, ChevronUp,
   X, Users, Trash2, Clock, CheckCircle2, Circle, AlertCircle,
   Printer, Calendar as CalendarIcon, Sparkles, Bell, RotateCcw,
-  ClipboardCheck, Plane, MessageCircle, Send, Lock,
+  ClipboardCheck, Plane, MessageCircle, Send, Lock, GraduationCap,
 } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import LITMLogo from "@/imports/LITM_Logo_Circular.png";
@@ -20,6 +20,7 @@ import EPDPMLogo from "@/imports/EPDPM_Logo_Circular.png";
 import SEADLogo from "@/imports/SEAD_Logo_Circular.png";
 import AFLogo from "@/imports/AF_Logo_Circular.png";
 import CEDOSeal from "@/imports/CEDO_Seal.png";
+import { ScholarManagementToolsPage } from "@/sead/ScholarManagementToolsPage";
 
 // ─────────────────────────────────────────────────────────────
 // DIVISIONS — CEDO has 4 divisions. Every account belongs to exactly
@@ -43,7 +44,14 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
-type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin";
+type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement";
+
+/** "Scholar Management Tools" (question bank + scholar accounts) is a single-account
+ *  feature — visible and usable only by whichever staff account has this exact
+ *  username, checked case-insensitively. Nothing to do with role/division otherwise;
+ *  real enforcement of the underlying database writes still happens via the
+ *  is_sead_staff flag + RLS policies from supabase_migration_sead_staff.sql. */
+const SCHOLAR_MANAGEMENT_USERNAME = "sead.sma1";
 type DailyStatus = "pending" | "submitted" | "approved" | "returned" | "finished";
 
 /** staff = regular employee. division_admin = admin scoped to their own division.
@@ -489,8 +497,11 @@ function TopNav({ user, page, setPage, onSignOut, unreadCount }: { user: UserPro
   const primaryItems: { key: Page; label: string; icon: React.ReactNode }[] = [
     { key:"home", label:"Home", icon:<Home size={14}/> },
     { key:"tasks", label:"My Tasks", icon:<CheckSquare size={14}/> },
-    { key:"notifications", label:"Notifications", icon:<Bell size={14}/> },
   ];
+  if (user.username.toLowerCase() === SCHOLAR_MANAGEMENT_USERNAME) {
+    primaryItems.push({ key:"scholarManagement", label:"Scholar Management Tools", icon:<GraduationCap size={14}/> });
+  }
+  primaryItems.push({ key:"notifications", label:"Notifications", icon:<Bell size={14}/> });
   const menuItems: { key: Page; label: string; icon: React.ReactNode }[] = [
     { key:"profile", label:"Profile", icon:<User size={14}/> },
     { key:"accomplishments", label:"My Accomplishments", icon:<Award size={14}/> },
@@ -3383,6 +3394,9 @@ export default function App() {
         )}
         {page==="admin" && currentUser.role==="super_admin" && (
           <AdminManagementPage users={users} currentUser={currentUser} onChangeRole={handleChangeUserRole}/>
+        )}
+        {page==="scholarManagement" && currentUser.username.toLowerCase()===SCHOLAR_MANAGEMENT_USERNAME && (
+          <ScholarManagementToolsPage/>
         )}
       </main>
       <FloatingChatWidget currentUser={currentUser} allUsers={users}/>
