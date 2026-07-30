@@ -5,16 +5,22 @@ import type { QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, Scholar
 export async function fetchSubjects(): Promise<QuestSubject[]> {
   const { data, error } = await supabase.from("quest_subjects").select("*").order("name");
   if (error || !data) return [];
-  return data.map(r => ({ id: r.id, name: r.name }));
+  return data.map(r => ({ id: r.id, name: r.name, maxAttemptsPerDay: Number(r.max_attempts_per_day ?? 1) }));
 }
 
-export async function createSubject(name: string): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("quest_subjects").insert({ name });
+export async function createSubject(name: string, maxAttemptsPerDay: number): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("quest_subjects").insert({ name, max_attempts_per_day: maxAttemptsPerDay });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 export async function renameSubject(id: string, name: string): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.from("quest_subjects").update({ name, updated_at: new Date().toISOString() }).eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function updateSubjectMaxAttempts(id: string, maxAttemptsPerDay: number): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("quest_subjects")
+    .update({ max_attempts_per_day: maxAttemptsPerDay, updated_at: new Date().toISOString() }).eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 

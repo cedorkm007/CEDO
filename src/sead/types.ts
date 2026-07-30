@@ -1,6 +1,7 @@
 export interface QuestSubject {
   id: string;
   name: string;
+  maxAttemptsPerDay: number;
 }
 
 export interface QuestTopic {
