@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { Search, UserPlus, KeyRound } from "lucide-react";
-import { fetchScholars, resetScholarPassword } from "../seadApi";
+import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight } from "lucide-react";
+import { fetchScholars, resetScholarPassword, SCHOLARS_PAGE_SIZE } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
 import type { ScholarListItem } from "../types";
 
 export function ScholarsTab() {
   const [scholars, setScholars] = useState<ScholarListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -13,18 +15,33 @@ export function ScholarsTab() {
   const [resetBusyId, setResetBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  async function load() {
+  const totalPages = Math.max(1, Math.ceil(total / SCHOLARS_PAGE_SIZE));
+
+  async function load(pageToLoad: number) {
     setLoading(true);
-    setScholars(await fetchScholars(search));
+    const result = await fetchScholars(search, pageToLoad);
+    setScholars(result.items);
+    setTotal(result.total);
     setLoading(false);
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  // Initial load.
+  useEffect(() => { load(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  // Search changes: debounce, and always jump back to page 1 (a stale page
+  // number from a previous search could be past the end of a new, smaller
+  // result set).
   useEffect(() => {
-    const t = setTimeout(load, 350);
+    const t = setTimeout(() => { setPage(1); load(1); }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
+
+  function goToPage(p: number) {
+    const clamped = Math.min(Math.max(1, p), totalPages);
+    setPage(clamped);
+    load(clamped);
+  }
 
   async function handleResetPassword(scholarIdNumber: string) {
     setResetBusyId(scholarIdNumber);
@@ -34,6 +51,9 @@ export function ScholarsTab() {
     setToast(result.ok ? `Password reset to 123456 for ${result.name}.` : (result.error || "Failed to reset password."));
     setTimeout(() => setToast(null), 4000);
   }
+
+  const rangeStart = total === 0 ? 0 : (page - 1) * SCHOLARS_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * SCHOLARS_PAGE_SIZE, total);
 
   return (
     <div>
@@ -50,6 +70,13 @@ export function ScholarsTab() {
       </div>
 
       {toast && <div className="mb-4 bg-[#062444] text-white text-[13.5px] rounded-lg px-4 py-2.5">{toast}</div>}
+
+      <div className="flex items-center justify-between mb-2 px-1">
+        <p className="text-[12.5px] text-slate-500">
+          {loading ? "Loading…" : total === 0 ? "No scholars found." : `Showing ${rangeStart}–${rangeEnd} of ${total.toLocaleString()}`}
+        </p>
+        <PaginationControls page={page} totalPages={totalPages} onGoTo={goToPage} disabled={loading} />
+      </div>
 
       <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden">
         <table className="w-full text-sm">
@@ -102,7 +129,29 @@ export function ScholarsTab() {
         </table>
       </div>
 
-      {showAdd && <AddScholarModal onClose={() => setShowAdd(false)} onCreated={load} />}
+      <div className="flex justify-end mt-3">
+        <PaginationControls page={page} totalPages={totalPages} onGoTo={goToPage} disabled={loading} />
+      </div>
+
+      {showAdd && <AddScholarModal onClose={() => setShowAdd(false)} onCreated={() => load(page)} />}
+    </div>
+  );
+}
+
+function PaginationControls({ page, totalPages, onGoTo, disabled }: {
+  page: number; totalPages: number; onGoTo: (p: number) => void; disabled: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <button onClick={() => onGoTo(page - 1)} disabled={disabled || page <= 1}
+        className="flex items-center gap-1 text-[12.5px] font-semibold text-[#062444] disabled:text-slate-300 disabled:cursor-not-allowed">
+        <ChevronLeft size={14} /> Prev
+      </button>
+      <span className="text-[12.5px] text-slate-500 min-w-[90px] text-center">Page {page} of {totalPages}</span>
+      <button onClick={() => onGoTo(page + 1)} disabled={disabled || page >= totalPages}
+        className="flex items-center gap-1 text-[12.5px] font-semibold text-[#062444] disabled:text-slate-300 disabled:cursor-not-allowed">
+        Next <ChevronRight size={14} />
+      </button>
     </div>
   );
 }

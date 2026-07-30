@@ -52,9 +52,9 @@ export function QuestionBankTab() {
         subjects={subjects}
         selected={selectedSubject}
         onSelect={selectSubject}
-        onCreate={async name => { await createSubject(name); loadSubjects(); }}
-        onRename={async (id, name) => { await renameSubject(id, name); loadSubjects(); }}
-        onDelete={async id => { await deleteSubject(id); setSelectedSubject(null); setSelectedTopic(null); loadSubjects(); }}
+        onCreate={async name => { const r = await createSubject(name); loadSubjects(); return r; }}
+        onRename={async (id, name) => { const r = await renameSubject(id, name); loadSubjects(); return r; }}
+        onDelete={async id => { const r = await deleteSubject(id); if (r.ok) { setSelectedSubject(null); setSelectedTopic(null); } loadSubjects(); return r; }}
       />
 
       <TopicColumn
@@ -62,9 +62,9 @@ export function QuestionBankTab() {
         topics={topics}
         selected={selectedTopic}
         onSelect={selectTopic}
-        onCreate={async name => { if (selectedSubject) { await createTopic(selectedSubject.id, name); reloadTopics(); } }}
-        onRename={async (id, name) => { await renameTopic(id, name); reloadTopics(); }}
-        onDelete={async id => { await deleteTopic(id); setSelectedTopic(null); reloadTopics(); }}
+        onCreate={async name => { if (!selectedSubject) return { ok: false, error: "Select a subject first." }; const r = await createTopic(selectedSubject.id, name); reloadTopics(); return r; }}
+        onRename={async (id, name) => { const r = await renameTopic(id, name); reloadTopics(); return r; }}
+        onDelete={async id => { const r = await deleteTopic(id); if (r.ok) setSelectedTopic(null); reloadTopics(); return r; }}
       />
 
       <QuestionColumn
@@ -91,7 +91,9 @@ export function QuestionBankTab() {
 // ── Column: Subjects ────────────────────────────────────────
 function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onDelete }: {
   subjects: QuestSubject[]; selected: QuestSubject | null; onSelect: (s: QuestSubject) => void;
-  onCreate: (name: string) => void; onRename: (id: string, name: string) => void; onDelete: (id: string) => void;
+  onCreate: (name: string) => Promise<{ ok: boolean; error?: string }>;
+  onRename: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
+  onDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
   return (
     <ListColumn
@@ -110,7 +112,9 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onDel
 // ── Column: Topics ──────────────────────────────────────────
 function TopicColumn({ subject, topics, selected, onSelect, onCreate, onRename, onDelete }: {
   subject: QuestSubject | null; topics: QuestTopic[]; selected: QuestTopic | null; onSelect: (t: QuestTopic) => void;
-  onCreate: (name: string) => void; onRename: (id: string, name: string) => void; onDelete: (id: string) => void;
+  onCreate: (name: string) => Promise<{ ok: boolean; error?: string }>;
+  onRename: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
+  onDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
   if (!subject) {
     return <EmptyColumn title="Topics" message="Select a subject to see its topics." />;
@@ -174,18 +178,40 @@ function QuestionColumn({ topic, questions, onAdd, onEdit, onDelete, onToggleAct
 // ── Shared reusable list column (subjects / topics use this) ──
 function ListColumn({ title, items, selectedId, onSelect, onCreate, onRename, onDelete, createPlaceholder }: {
   title: string; items: { id: string; label: string }[]; selectedId: string | null;
-  onSelect: (id: string) => void; onCreate: (name: string) => void; onRename: (id: string, name: string) => void;
-  onDelete: (id: string) => void; createPlaceholder: string;
+  onSelect: (id: string) => void;
+  onCreate: (name: string) => Promise<{ ok: boolean; error?: string }>;
+  onRename: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
+  onDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  createPlaceholder: string;
 }) {
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  function submitCreate(e: React.FormEvent) {
+  async function submitCreate(e: React.FormEvent) {
     e.preventDefault();
+    setError("");
     if (!newName.trim()) return;
-    onCreate(newName.trim());
-    setNewName("");
+    setBusy(true);
+    const result = await onCreate(newName.trim());
+    setBusy(false);
+    if (!result.ok) { setError(result.error || "Failed to save — check that this account is authorized."); return; }
+    setNewName(""); // only clear on confirmed success
+  }
+
+  async function submitRename(id: string) {
+    setError("");
+    const result = await onRename(id, editValue);
+    if (!result.ok) { setError(result.error || "Failed to rename."); return; }
+    setEditingId(null);
+  }
+
+  async function handleDelete(id: string) {
+    setError("");
+    const result = await onDelete(id);
+    if (!result.ok) setError(result.error || "Failed to delete.");
   }
 
   return (
@@ -208,22 +234,24 @@ function ListColumn({ title, items, selectedId, onSelect, onCreate, onRename, on
                   <input value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus
                     onClick={e => e.stopPropagation()}
                     className="flex-1 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
-                  <button onClick={e => { e.stopPropagation(); onRename(item.id, editValue); setEditingId(null); }} className="text-green-600"><Check size={15} /></button>
-                  <button onClick={e => { e.stopPropagation(); setEditingId(null); }} className="text-slate-400"><XIcon size={15} /></button>
+                  <button onClick={e => { e.stopPropagation(); submitRename(item.id); }} className="text-green-600"><Check size={15} /></button>
+                  <button onClick={e => { e.stopPropagation(); setEditingId(null); setError(""); }} className="text-slate-400"><XIcon size={15} /></button>
                 </>
               ) : (
                 <>
                   <span className="flex-1 text-[13.5px] text-[#062444] font-medium">{item.label}</span>
-                  <button onClick={e => { e.stopPropagation(); setEditingId(item.id); setEditValue(item.label); }} className="text-slate-300 hover:text-[#0088cc]"><Pencil size={13} /></button>
-                  <button onClick={e => { e.stopPropagation(); onDelete(item.id); }} className="text-slate-300 hover:text-red-500"><Trash2 size={13} /></button>
+                  <button onClick={e => { e.stopPropagation(); setEditingId(item.id); setEditValue(item.label); setError(""); }} className="text-slate-300 hover:text-[#0088cc]"><Pencil size={13} /></button>
+                  <button onClick={e => { e.stopPropagation(); handleDelete(item.id); }} className="text-slate-300 hover:text-red-500"><Trash2 size={13} /></button>
                 </>
               )}
             </div>
           ))
         )}
       </div>
+      {error && <p className="text-[12px] text-red-600 px-4 py-2 border-t border-red-100 bg-red-50">{error}</p>}
       <form onSubmit={submitCreate} className="flex items-center gap-2 px-3 py-2.5 border-t border-[#e6ecf5]">
-        <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={createPlaceholder}
+        <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={createPlaceholder} disabled={busy}
+
           className="flex-1 text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
         <button type="submit" className="shrink-0 bg-[#062444] text-[#F3BC00] rounded-lg p-2"><Plus size={15} /></button>
       </form>

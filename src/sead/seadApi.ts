@@ -116,19 +116,35 @@ export async function toggleQuestionActive(id: string, isActive: boolean): Promi
 }
 
 // ── Scholars ──────────────────────────────────────────────────
-export async function fetchScholars(search: string): Promise<ScholarListItem[]> {
-  let query = supabase.from("scholars").select("id, scholar_id_number, first_name, last_name, middle_name, school, status").order("last_name");
+export interface ScholarPage {
+  items: ScholarListItem[];
+  total: number;
+}
+
+const SCHOLARS_PAGE_SIZE = 100;
+
+export async function fetchScholars(search: string, page: number = 1): Promise<ScholarPage> {
+  let query = supabase.from("scholars")
+    .select("id, scholar_id_number, first_name, last_name, middle_name, school, status", { count: "exact" })
+    .order("last_name");
   if (search.trim()) {
     const s = search.trim();
     query = query.or(`scholar_id_number.ilike.%${s}%,first_name.ilike.%${s}%,last_name.ilike.%${s}%`);
   }
-  const { data, error } = await query.limit(200);
-  if (error || !data) return [];
-  return data.map(r => ({
-    id: r.id, scholarIdNumber: r.scholar_id_number, firstName: r.first_name, lastName: r.last_name,
-    middleName: r.middle_name ?? "", school: r.school ?? "", status: r.status,
-  }));
+  const from = (page - 1) * SCHOLARS_PAGE_SIZE;
+  const to = from + SCHOLARS_PAGE_SIZE - 1;
+  const { data, error, count } = await query.range(from, to);
+  if (error || !data) return { items: [], total: 0 };
+  return {
+    items: data.map(r => ({
+      id: r.id, scholarIdNumber: r.scholar_id_number, firstName: r.first_name, lastName: r.last_name,
+      middleName: r.middle_name ?? "", school: r.school ?? "", status: r.status,
+    })),
+    total: count ?? data.length,
+  };
 }
+
+export { SCHOLARS_PAGE_SIZE };
 
 export interface NewScholarInput {
   scholarIdNumber: string; firstName: string; lastName: string; middleName: string;
