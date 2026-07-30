@@ -21,6 +21,7 @@ import SEADLogo from "@/imports/SEAD_Logo_Circular.png";
 import AFLogo from "@/imports/AF_Logo_Circular.png";
 import CEDOSeal from "@/imports/CEDO_Seal.png";
 import { ScholarManagementToolsPage } from "@/sead/ScholarManagementToolsPage";
+import { StaffAccountsPage } from "@/itadmin/StaffAccountsPage";
 
 // ─────────────────────────────────────────────────────────────
 // DIVISIONS — CEDO has 4 divisions. Every account belongs to exactly
@@ -44,7 +45,7 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
-type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement";
+type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "staffAccounts";
 
 /** "Scholar Management Tools" (question bank + scholar accounts) is a single-account
  *  feature — visible and usable only by whichever staff account has this exact
@@ -52,11 +53,18 @@ type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "n
  *  real enforcement of the underlying database writes still happens via the
  *  is_sead_staff flag + RLS policies from supabase_migration_sead_staff.sql. */
 const SCHOLAR_MANAGEMENT_USERNAME = "sead.sma1";
+
+/** "Staff Accounts" (creating new staff logins) is likewise gated to one specific
+ *  dedicated IT account — NOT tied to the super_admin role. Self-registration has
+ *  been retired entirely (see: removed RegisterPage); this is now the only way new
+ *  staff accounts get created. CHANGE THIS to whatever username you actually
+ *  register for your IT admin account. */
+const IT_ADMIN_USERNAME = "it.admin1";
 type DailyStatus = "pending" | "submitted" | "approved" | "returned" | "finished";
 
 /** staff = regular employee. division_admin = admin scoped to their own division.
  *  super_admin = department-wide admin (sees/manages every division). */
-type UserRole = "staff" | "division_admin" | "super_admin";
+export type UserRole = "staff" | "division_admin" | "super_admin";
 
 interface UserProfile {
   id: string; username: string; lastName: string; firstName: string;
@@ -332,7 +340,7 @@ function leaveDisplayStatus(status: string): string {
 // ─────────────────────────────────────────────────────────────
 // SIGN-IN PAGE
 // ─────────────────────────────────────────────────────────────
-function SignInPage({ users, onSignIn, onGoRegister }: { users: UserProfile[]; onSignIn: (u: UserProfile) => void; onGoRegister: () => void }) {
+function SignInPage({ users, onSignIn }: { users: UserProfile[]; onSignIn: (u: UserProfile) => void }) {
   const [username, setUsername] = useState(""); const [password, setPassword] = useState(""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
   async function handleSignIn() {
     if (!username || !password) { setError("Please enter your username/email and password."); return; }
@@ -373,106 +381,10 @@ function SignInPage({ users, onSignIn, onGoRegister }: { users: UserProfile[]; o
             </div>
             <div className="flex flex-col gap-3 mt-6">
               <button type="submit" disabled={busy} className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-all disabled:opacity-60">{busy ? "Signing in…" : "Sign In"}</button>
-              <button type="button" onClick={onGoRegister} className="w-full py-2.5 rounded-xl border border-border text-foreground text-sm font-medium hover:bg-muted transition-all">Create New Account</button>
+              <p className="text-center text-xs text-muted-foreground">Need an account? Contact your IT administrator.</p>
             </div>
           </form>
 
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// REGISTER PAGE
-// ─────────────────────────────────────────────────────────────
-function RegisterPage({ users, onRegister, onBack }: { users: UserProfile[]; onRegister: (u: UserProfile) => void; onBack: () => void }) {
-  const [lastName, setLastName] = useState(""); const [firstName, setFirstName] = useState(""); const [middleName, setMiddleName] = useState(""); const [suffix, setSuffix] = useState(""); const [nickname, setNickname] = useState(""); const [username, setUsername] = useState(""); const [designation, setDesignation] = useState(""); const [position, setPosition] = useState(""); const [natureOfWork, setNatureOfWork] = useState(""); const [mobilePhone, setMobilePhone] = useState(""); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [confirmPassword, setConfirmPassword] = useState(""); const [division, setDivision] = useState<DivisionCode | "">(""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
-  async function handleRegister() {
-    if (!lastName||!firstName||!middleName||!nickname||!username||!designation||!position||!natureOfWork||!mobilePhone||!email||!password) { setError("Please fill in all required fields."); return; }
-    if (!division) { setError("Please select your Division."); return; }
-    if (users.some(u => u.username === username)) { setError("Username already taken."); return; }
-    if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) { setError("An account with this email already exists."); return; }
-    if (password !== confirmPassword) { setError("Passwords do not match."); return; }
-    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
-    setError(""); setBusy(true);
-    try {
-      // Supabase Auth handles hashing + storage of the password server-side.
-      // Nothing password-related is ever written to the `users` profile table.
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email, password,
-        options: { data: { username, division, role: "staff" } },
-      });
-      if (signUpError || !data.user) {
-        setError(signUpError?.message || "Could not create account. Please try again.");
-        setBusy(false);
-        return;
-      }
-      const newUser = makeUser({ id: data.user.id, username, lastName, firstName, middleName, suffix, nickname, designation, position, natureOfWork, mobilePhone, email, division, role: "staff", profilePicture: "" });
-      if (!data.session) {
-        // Project has email confirmation enabled: no session yet, so we can't sign
-        // the person in immediately. Still create their profile row so it's ready
-        // the moment they confirm their email and sign in.
-        setError("");
-        setBusy(false);
-        onRegister(newUser); // parent still inserts the profile row + shows a "check your email" state
-        return;
-      }
-      onRegister(newUser);
-    } catch {
-      setError("Something went wrong while creating your account. Please try again.");
-      setBusy(false);
-    }
-  }
-  const previewLogo = division ? DIVISIONS[division].logo : CEDOSeal;
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4 py-8">
-      <div className="w-full max-w-xl">
-        <div className="text-center mb-5">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full overflow-hidden bg-white shadow border-2 border-accent mb-2 mx-auto"><ImageWithFallback src={previewLogo} alt="Division" className={`w-full h-full ${division ? "object-cover" : "object-contain p-1.5"}`} /></div>
-          <h1 className="text-xl font-bold text-foreground">Create Account</h1>
-          <p className="text-sm text-muted-foreground">CEDO Task Tracker — New Staff Registration</p>
-        </div>
-        <div className="bg-card rounded-2xl shadow-lg border border-border p-7">
-          {error && <div className="flex items-center gap-2 text-sm text-destructive bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 mb-5"><AlertCircle size={14} className="flex-shrink-0" /> {error}</div>}
-
-          <div className="mb-5">
-            <label className="block text-sm font-medium text-foreground mb-2">Division <span className="text-red-500">*</span></label>
-            <div className="grid grid-cols-2 gap-3">
-              {DIVISION_LIST.map(d => (
-                <button key={d.code} type="button" onClick={() => setDivision(d.code)}
-                  className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border-2 text-left transition-all ${division===d.code ? "border-accent bg-secondary" : "border-border hover:border-accent/40"}`}>
-                  <span className={`flex-shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center ${division===d.code ? "bg-accent border-accent" : "border-muted-foreground/40"}`}>
-                    {division===d.code && <Check size={13} className="text-accent-foreground" />}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-foreground">{d.shortName}</span>
-                    <span className="block text-[11px] text-muted-foreground truncate">{d.fullName}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <FormField label="Last Name" value={lastName} onChange={setLastName} autoComplete="family-name" />
-            <FormField label="First Name" value={firstName} onChange={setFirstName} autoComplete="given-name" />
-            <FormField label="Middle Name" value={middleName} onChange={setMiddleName} />
-            <FormField label="Suffix" value={suffix} onChange={setSuffix} optional />
-            <FormField label="Nickname" value={nickname} onChange={setNickname} />
-            <FormField label="Username" value={username} onChange={setUsername} placeholder="e.g., jdelacruz" autoComplete="username" />
-            <FormField label="Designation" value={designation} onChange={setDesignation} />
-            <FormField label="Position" value={position} onChange={setPosition} />
-            <FormField label="Nature of Work" value={natureOfWork} onChange={setNatureOfWork} />
-            <FormField label="Mobile Phone Number" value={mobilePhone} onChange={setMobilePhone} type="tel" autoComplete="tel" />
-            <FormField label="Email Address" value={email} onChange={setEmail} type="email" autoComplete="email" />
-            <FormField label="Password" value={password} onChange={setPassword} type="password" autoComplete="new-password" />
-            <FormField label="Confirm Password" value={confirmPassword} onChange={setConfirmPassword} type="password" autoComplete="new-password" />
-          </div>
-          <div className="flex gap-3 mt-6">
-            <button onClick={onBack} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-all">Back to Sign In</button>
-            <button onClick={handleRegister} disabled={busy} className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-all disabled:opacity-60">{busy ? "Creating account…" : "Register"}</button>
-          </div>
         </div>
       </div>
     </div>
@@ -500,6 +412,9 @@ function TopNav({ user, page, setPage, onSignOut, unreadCount }: { user: UserPro
   ];
   if (user.username.toLowerCase() === SCHOLAR_MANAGEMENT_USERNAME) {
     primaryItems.push({ key:"scholarManagement", label:"Scholar Management Tools", icon:<GraduationCap size={14}/> });
+  }
+  if (user.username.toLowerCase() === IT_ADMIN_USERNAME) {
+    primaryItems.push({ key:"staffAccounts", label:"Staff Accounts", icon:<Lock size={14}/> });
   }
   primaryItems.push({ key:"notifications", label:"Notifications", icon:<Bell size={14}/> });
   const menuItems: { key: Page; label: string; icon: React.ReactNode }[] = [
@@ -2843,7 +2758,8 @@ function chatMessageToRow(m: ChatMessage): Record<string, unknown> {
 // ROOT APP
 // ─────────────────────────────────────────────────────────────
 export default function App() {
-  const [authPage, setAuthPage] = useState<"signin"|"register">("signin");
+  // Self-registration was retired — staff accounts are now created only by the
+  // authorized IT admin account (see IT_ADMIN_USERNAME). Sign-in only from here.
   // Only a non-sensitive cache of the profile is kept in localStorage, purely so the
   // UI can render instantly on refresh instead of flashing a blank sign-in screen.
   // It is NOT the source of truth for whether someone is authenticated — that's
@@ -2898,7 +2814,6 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
         setCurrentUser(null);
-        setAuthPage("signin");
         try { localStorage.removeItem("litm_current_user"); } catch { /* ignore */ }
       }
     });
@@ -3157,7 +3072,7 @@ export default function App() {
   }, [currentUser]);
   function handleSignIn(u: UserProfile){setCurrentUser(u);setPage("home");try{localStorage.setItem("litm_current_user",JSON.stringify(u));}catch{/* ignore */}}
   function handleSignOut(){
-    setCurrentUser(null);setAuthPage("signin");
+    setCurrentUser(null);
     try{localStorage.removeItem("litm_current_user");}catch{/* ignore */}
     // Also end the real Supabase Auth session (clears its own storage + revokes the
     // refresh token server-side), not just this app's local UI state.
@@ -3345,8 +3260,7 @@ export default function App() {
   }
 
   if(!currentUser){
-    if(authPage==="register") return <RegisterPage users={users} onRegister={handleRegister} onBack={()=>setAuthPage("signin")}/>;
-    return <SignInPage users={users} onSignIn={handleSignIn} onGoRegister={()=>setAuthPage("register")}/>;
+    return <SignInPage users={users} onSignIn={handleSignIn}/>;
   }
 
 
@@ -3397,6 +3311,9 @@ export default function App() {
         )}
         {page==="scholarManagement" && currentUser.username.toLowerCase()===SCHOLAR_MANAGEMENT_USERNAME && (
           <ScholarManagementToolsPage/>
+        )}
+        {page==="staffAccounts" && currentUser.username.toLowerCase()===IT_ADMIN_USERNAME && (
+          <StaffAccountsPage/>
         )}
       </main>
       <FloatingChatWidget currentUser={currentUser} allUsers={users}/>
