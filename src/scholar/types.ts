@@ -49,3 +49,45 @@ export type ScholarLoginTarget =
   | "existing"
   | "new-college"
   | "new-law-medical";
+
+// ── Quiz flow ────────────────────────────────────────────────
+export interface QuizSubject {
+  id: string;
+  name: string;
+  maxAttemptsPerDay: number;
+  attemptsUsedToday: number;
+}
+
+export interface QuizTopic {
+  id: string;
+  subjectId: string;
+  name: string;
+}
+
+export interface QuizChoice {
+  id: string;
+  choiceText: string;
+}
+
+export interface QuizQuestion {
+  id: string;
+  questionText: string;
+  points: number;
+  choices: QuizChoice[];
+}
+
+export interface QuizResultItem {
+  questionId: string;
+  chosenChoiceId: string | null;
+  isCorrect: boolean;
+  correctChoiceId: string;
+  correctChoiceText: string;
+}
+
+export interface QuizSubmitResult {
+  score: number;
+  maxScore: number;
+  results: QuizResultItem[];
+  attemptsUsedToday: number;
+  maxAttemptsPerDay: number;
+}

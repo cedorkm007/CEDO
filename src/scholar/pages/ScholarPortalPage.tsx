@@ -78,7 +78,13 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
             {panel === "profile" && <ProfilePanel profile={profile} onProfileUpdated={setProfile} />}
             {panel === "subjects-grades" && <SubjectsGradesPanel grades={grades} />}
             {panel === "services" && <ServicesPanel />}
-            {panel === "quests" && <QuestsPanel scores={scores} />}
+            {panel === "quests" && (
+              <QuestsPanel
+                scores={scores}
+                scholarIdNumber={profile.scholarIdNumber}
+                onScoreSubmitted={() => { fetchQuestScores(profile.scholarIdNumber).then(setScores); }}
+              />
+            )}
             {panel === "sdp" && (
               <SectionCard icon={<Lightbulb size={14} />} title="Scholars' Development Program (SDP)">
                 <UnderDevPanelCard label="Under Development" />
