@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Check, X as XIcon, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud } from "lucide-react";
 import {
   fetchSubjects, createSubject, renameSubject, deleteSubject, updateSubjectMaxAttempts,
   fetchTopics, createTopic, renameTopic, deleteTopic,
   fetchQuestions, deleteQuestion, toggleQuestionActive,
 } from "../seadApi";
 import { QuestionEditorModal } from "../components/QuestionEditorModal";
+import { BulkQuestionUploadModal } from "../components/BulkQuestionUploadModal";
 import type { QuestSubject, QuestTopic, QuestQuestion } from "../types";
 
 export function QuestionBankTab() {
@@ -15,6 +16,7 @@ export function QuestionBankTab() {
   const [selectedSubject, setSelectedSubject] = useState<QuestSubject | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<QuestTopic | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<QuestQuestion | "new" | null>(null);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
 
   useEffect(() => { loadSubjects(); }, []);
 
@@ -72,6 +74,7 @@ export function QuestionBankTab() {
         topic={selectedTopic}
         questions={questions}
         onAdd={() => setEditingQuestion("new")}
+        onBulkUpload={() => setShowBulkUpload(true)}
         onEdit={q => setEditingQuestion(q)}
         onDelete={async id => { await deleteQuestion(id); reloadQuestions(); }}
         onToggleActive={async (id, active) => { await toggleQuestionActive(id, active); reloadQuestions(); }}
@@ -83,6 +86,15 @@ export function QuestionBankTab() {
           existing={editingQuestion === "new" ? null : editingQuestion}
           onClose={() => setEditingQuestion(null)}
           onSaved={() => { setEditingQuestion(null); reloadQuestions(); }}
+        />
+      )}
+
+      {showBulkUpload && selectedTopic && (
+        <BulkQuestionUploadModal
+          topicId={selectedTopic.id}
+          topicName={selectedTopic.name}
+          onClose={() => setShowBulkUpload(false)}
+          onDone={reloadQuestions}
         />
       )}
     </div>
@@ -223,8 +235,8 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onRename, 
 }
 
 // ── Column: Questions ───────────────────────────────────────
-function QuestionColumn({ topic, questions, onAdd, onEdit, onDelete, onToggleActive }: {
-  topic: QuestTopic | null; questions: QuestQuestion[]; onAdd: () => void; onEdit: (q: QuestQuestion) => void;
+function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelete, onToggleActive }: {
+  topic: QuestTopic | null; questions: QuestQuestion[]; onAdd: () => void; onBulkUpload: () => void; onEdit: (q: QuestQuestion) => void;
   onDelete: (id: string) => void; onToggleActive: (id: string, active: boolean) => void;
 }) {
   if (!topic) {
@@ -234,9 +246,14 @@ function QuestionColumn({ topic, questions, onAdd, onEdit, onDelete, onToggleAct
     <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[600px]">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#e6ecf5]">
         <h3 className="text-[12.5px] font-bold text-[#062444]">Questions — {topic.name}</h3>
-        <button onClick={onAdd} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc]">
-          <Plus size={14} /> Add
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={onBulkUpload} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc]">
+            <UploadCloud size={14} /> Bulk Upload
+          </button>
+          <button onClick={onAdd} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc]">
+            <Plus size={14} /> Add
+          </button>
+        </div>
       </div>
       <div className="overflow-y-auto flex-1">
         {questions.length === 0 ? (

@@ -111,6 +111,59 @@ export async function saveQuestion(input: {
   return { ok: true };
 }
 
+export interface BulkQuestionInput {
+  questionText: string;
+  points: number;
+  choices: QuestChoiceDraft[];
+}
+
+export interface BulkQuestionRowResult {
+  index: number; // 0-based index into the array passed in, matches the CSV row order
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Creates many questions (with their choices) under one topic, one at a
+ * time. Sequential rather than a single batch insert so that one bad row
+ * doesn't sink the whole file — every other valid row still gets created,
+ * and the caller finds out exactly which row(s) failed and why.
+ */
+export async function bulkCreateQuestions(
+  topicId: string,
+  questions: BulkQuestionInput[]
+): Promise<{ created: number; results: BulkQuestionRowResult[] }> {
+  const results: BulkQuestionRowResult[] = [];
+  let created = 0;
+
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    const { data, error } = await supabase.from("quest_questions")
+      .insert({ topic_id: topicId, question_text: q.questionText, points: q.points })
+      .select("id").single();
+    if (error || !data) {
+      results.push({ index: i, ok: false, error: error?.message ?? "Failed to create question." });
+      continue;
+    }
+
+    const { error: choicesError } = await supabase.from("quest_choices").insert(
+      q.choices.map((c, ci) => ({ question_id: data.id, choice_text: c.choiceText, is_correct: c.isCorrect, sort_order: ci }))
+    );
+    if (choicesError) {
+      // Roll back the orphaned question so a retry doesn't leave a
+      // choice-less duplicate sitting in the bank.
+      await supabase.from("quest_questions").delete().eq("id", data.id);
+      results.push({ index: i, ok: false, error: choicesError.message });
+      continue;
+    }
+
+    created++;
+    results.push({ index: i, ok: true });
+  }
+
+  return { created, results };
+}
+
 export async function deleteQuestion(id: string): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.from("quest_questions").delete().eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
@@ -162,6 +215,30 @@ export async function createScholarAccount(input: NewScholarInput): Promise<{ ok
   if (error) return { ok: false, error: error.message };
   if (data?.error) return { ok: false, error: data.error };
   return { ok: true, defaultPassword: data?.defaultPassword };
+}
+
+export interface BulkScholarRowResult {
+  index: number; // 0-based index into the array passed in, matches the CSV row order
+  scholarIdNumber: string;
+  ok: boolean;
+  password?: string;
+  error?: string;
+}
+
+/**
+ * Creates many scholar accounts at once. Runs server-side (Edge Function,
+ * service-role) since it needs Supabase Auth admin access the same way the
+ * single-scholar flow does — just looped over every row in the CSV. Unlike
+ * the single-add flow's shared default password, each scholar here gets a
+ * unique random password (returned per-row) since handing the same
+ * password to a whole freshly-created batch is a bigger exposure than one
+ * manually-created account.
+ */
+export async function bulkCreateScholars(rows: NewScholarInput[]): Promise<{ ok: boolean; error?: string; results?: BulkScholarRowResult[] }> {
+  const { data, error } = await supabase.functions.invoke("sead-bulk-create-scholars", { body: { scholars: rows } });
+  if (error) return { ok: false, error: error.message };
+  if (data?.error) return { ok: false, error: data.error };
+  return { ok: true, results: data?.results ?? [] };
 }
 
 export async function resetScholarPassword(scholarIdNumber: string): Promise<{ ok: boolean; error?: string; name?: string }> {
