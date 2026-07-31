@@ -47,12 +47,15 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 
 type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "staffAccounts";
 
-/** "Scholar Management Tools" (question bank + scholar accounts) is a single-account
- *  feature — visible and usable only by whichever staff account has this exact
- *  username, checked case-insensitively. Nothing to do with role/division otherwise;
- *  real enforcement of the underlying database writes still happens via the
- *  is_sead_staff flag + RLS policies from supabase_migration_sead_staff.sql. */
-const SCHOLAR_MANAGEMENT_USERNAME = "sead.sma1";
+/** "Scholar Management Tools" (question bank + scholar accounts) is a fixed-account
+ *  feature — visible and usable only by whichever staff accounts are listed here,
+ *  matched case-insensitively. To add another account, add its username to this set
+ *  AND set is_sead_staff = true for it in the database (see supabase_migration_sead_staff.sql)
+ *  — the UI list alone does not grant real database write access; that's the
+ *  is_sead_staff flag + RLS policies. */
+const SCHOLAR_MANAGEMENT_USERNAMES = new Set([
+  "sead.sma1", "sead.sma2", "sead.sma3", "sead.sma4", "sead.sma5", "sead.admin1",
+]);
 
 /** "Staff Accounts" (creating new staff logins) is likewise gated to one specific
  *  dedicated IT account — NOT tied to the super_admin role. Self-registration has
@@ -410,7 +413,7 @@ function TopNav({ user, page, setPage, onSignOut, unreadCount }: { user: UserPro
     { key:"home", label:"Home", icon:<Home size={14}/> },
     { key:"tasks", label:"My Tasks", icon:<CheckSquare size={14}/> },
   ];
-  if (user.username.toLowerCase() === SCHOLAR_MANAGEMENT_USERNAME) {
+  if (SCHOLAR_MANAGEMENT_USERNAMES.has(user.username.toLowerCase())) {
     primaryItems.push({ key:"scholarManagement", label:"Scholar Management Tools", icon:<GraduationCap size={14}/> });
   }
   if (user.username.toLowerCase() === IT_ADMIN_USERNAME) {
@@ -3309,7 +3312,7 @@ export default function App() {
         {page==="admin" && currentUser.role==="super_admin" && (
           <AdminManagementPage users={users} currentUser={currentUser} onChangeRole={handleChangeUserRole}/>
         )}
-        {page==="scholarManagement" && currentUser.username.toLowerCase()===SCHOLAR_MANAGEMENT_USERNAME && (
+        {page==="scholarManagement" && SCHOLAR_MANAGEMENT_USERNAMES.has(currentUser.username.toLowerCase()) && (
           <ScholarManagementToolsPage/>
         )}
         {page==="staffAccounts" && currentUser.username.toLowerCase()===IT_ADMIN_USERNAME && (
