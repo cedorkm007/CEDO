@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud, Youtube } from "lucide-react";
 import {
   fetchSubjects, createSubject, renameSubject, deleteSubject, updateSubjectMaxAttempts,
-  fetchTopics, createTopic, renameTopic, deleteTopic,
+  fetchTopics, createTopic, updateTopic, deleteTopic,
   fetchQuestions, deleteQuestion, toggleQuestionActive,
 } from "../seadApi";
 import { QuestionEditorModal } from "../components/QuestionEditorModal";
@@ -65,8 +65,13 @@ export function QuestionBankTab() {
         topics={topics}
         selected={selectedTopic}
         onSelect={selectTopic}
-        onCreate={async name => { if (!selectedSubject) return { ok: false, error: "Select a subject first." }; const r = await createTopic(selectedSubject.id, name); reloadTopics(); return r; }}
-        onRename={async (id, name) => { const r = await renameTopic(id, name); reloadTopics(); return r; }}
+        onCreate={async (name, maxAttemptsPerDay, youtubeUrl) => {
+          if (!selectedSubject) return { ok: false, error: "Select a subject first." };
+          const r = await createTopic(selectedSubject.id, name, maxAttemptsPerDay, youtubeUrl);
+          reloadTopics();
+          return r;
+        }}
+        onUpdate={async (id, fields) => { const r = await updateTopic(id, fields); reloadTopics(); return r; }}
         onDelete={async id => { const r = await deleteTopic(id); if (r.ok) setSelectedTopic(null); reloadTopics(); return r; }}
       />
 
@@ -211,26 +216,132 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
 }
 
 // ── Column: Topics ──────────────────────────────────────────
-function TopicColumn({ subject, topics, selected, onSelect, onCreate, onRename, onDelete }: {
+function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, onDelete }: {
   subject: QuestSubject | null; topics: QuestTopic[]; selected: QuestTopic | null; onSelect: (t: QuestTopic) => void;
-  onCreate: (name: string) => Promise<{ ok: boolean; error?: string }>;
-  onRename: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
+  onCreate: (name: string, maxAttemptsPerDay: number | null, youtubeUrl: string) => Promise<{ ok: boolean; error?: string }>;
+  onUpdate: (id: string, fields: { name: string; maxAttemptsPerDay: number | null; youtubeUrl: string }) => Promise<{ ok: boolean; error?: string }>;
   onDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
+  const [newName, setNewName] = useState("");
+  const [newMaxAttempts, setNewMaxAttempts] = useState(""); // blank = inherit subject default
+  const [newYoutubeUrl, setNewYoutubeUrl] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editMaxAttempts, setEditMaxAttempts] = useState("");
+  const [editYoutubeUrl, setEditYoutubeUrl] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
   if (!subject) {
     return <EmptyColumn title="Topics" message="Select a subject to see its topics." />;
   }
+
+  function parseAttempts(raw: string): { ok: true; value: number | null } | { ok: false } {
+    if (raw.trim() === "") return { ok: true, value: null }; // inherit subject default
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 1) return { ok: false };
+    return { ok: true, value: n };
+  }
+
+  async function submitCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!newName.trim()) return;
+    const attempts = parseAttempts(newMaxAttempts);
+    if (!attempts.ok) { setError("Attempts override must be at least 1, or left blank to use the subject's default."); return; }
+    setBusy(true);
+    const result = await onCreate(newName.trim(), attempts.value, newYoutubeUrl.trim());
+    setBusy(false);
+    if (!result.ok) { setError(result.error || "Failed to save — check that this account is authorized."); return; }
+    setNewName(""); setNewMaxAttempts(""); setNewYoutubeUrl("");
+  }
+
+  async function submitEdit(id: string) {
+    setError("");
+    const attempts = parseAttempts(editMaxAttempts);
+    if (!attempts.ok) { setError("Attempts override must be at least 1, or left blank to use the subject's default."); return; }
+    const result = await onUpdate(id, { name: editName.trim(), maxAttemptsPerDay: attempts.value, youtubeUrl: editYoutubeUrl.trim() });
+    if (!result.ok) { setError(result.error || "Failed to save."); return; }
+    setEditingId(null);
+  }
+
+  async function handleDelete(id: string) {
+    setError("");
+    const result = await onDelete(id);
+    if (!result.ok) setError(result.error || "Failed to delete.");
+  }
+
   return (
-    <ListColumn
-      title={`Topics — ${subject.name}`}
-      items={topics.map(t => ({ id: t.id, label: t.name }))}
-      selectedId={selected?.id ?? null}
-      onSelect={id => { const t = topics.find(x => x.id === id); if (t) onSelect(t); }}
-      onCreate={onCreate}
-      onRename={onRename}
-      onDelete={onDelete}
-      createPlaceholder="New topic (e.g. Algebra)"
-    />
+    <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[600px]">
+      <div className="px-4 py-3 border-b border-[#e6ecf5]">
+        <h3 className="text-[12.5px] font-bold text-[#062444]">Topics — {subject.name}</h3>
+      </div>
+      <div className="overflow-y-auto flex-1">
+        {topics.length === 0 ? (
+          <p className="text-sm text-slate-400 px-4 py-6 text-center">None yet.</p>
+        ) : (
+          topics.map(t => (
+            <div key={t.id}
+              className={`px-4 py-2.5 border-b border-[#f0f3f8] cursor-pointer ${selected?.id === t.id ? "bg-[#eef3fb]" : "hover:bg-[#f8fafd]"}`}
+              onClick={() => editingId !== t.id && onSelect(t)}
+            >
+              {editingId === t.id ? (
+                <div className="space-y-1.5" onClick={e => e.stopPropagation()}>
+                  <input value={editName} onChange={e => setEditName(e.target.value)} autoFocus
+                    className="w-full text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-slate-400 whitespace-nowrap">Attempts/day:</span>
+                    <input type="number" min={1} value={editMaxAttempts} onChange={e => setEditMaxAttempts(e.target.value)}
+                      placeholder={`${subject.maxAttemptsPerDay} (default)`}
+                      className="w-24 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
+                  </div>
+                  <input value={editYoutubeUrl} onChange={e => setEditYoutubeUrl(e.target.value)} placeholder="YouTube lecture URL (optional)"
+                    className="w-full text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => submitEdit(t.id)} className="text-green-600"><Check size={15} /></button>
+                    <button onClick={() => { setEditingId(null); setError(""); }} className="text-slate-400"><XIcon size={15} /></button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <GripVertical size={13} className="text-slate-300 shrink-0" />
+                  <div className="flex-1">
+                    <span className="text-[13.5px] text-[#062444] font-medium">{t.name}</span>
+                    <span className="ml-2 text-[10.5px] font-semibold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">
+                      {t.maxAttemptsPerDay ?? subject.maxAttemptsPerDay}/day{t.maxAttemptsPerDay === null ? " (default)" : ""}
+                    </span>
+                    {t.youtubeUrl && <Youtube size={12} className="inline-block ml-1.5 text-red-500 align-text-bottom" />}
+                  </div>
+                  <button onClick={e => {
+                    e.stopPropagation();
+                    setEditingId(t.id); setEditName(t.name);
+                    setEditMaxAttempts(t.maxAttemptsPerDay === null ? "" : String(t.maxAttemptsPerDay));
+                    setEditYoutubeUrl(t.youtubeUrl); setError("");
+                  }} className="text-slate-300 hover:text-[#0088cc]"><Pencil size={13} /></button>
+                  <button onClick={e => { e.stopPropagation(); handleDelete(t.id); }} className="text-slate-300 hover:text-red-500"><Trash2 size={13} /></button>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+      {error && <p className="text-[12px] text-red-600 px-4 py-2 border-t border-red-100 bg-red-50">{error}</p>}
+      <form onSubmit={submitCreate} className="px-3 py-2.5 border-t border-[#e6ecf5] space-y-1.5">
+        <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="New topic (e.g. Algebra)" disabled={busy}
+          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
+        <div className="flex items-center gap-2">
+          <span className="text-[11.5px] text-slate-500 whitespace-nowrap">Attempts/day override:</span>
+          <input type="number" min={1} value={newMaxAttempts} onChange={e => setNewMaxAttempts(e.target.value)} disabled={busy}
+            placeholder={`${subject.maxAttemptsPerDay} (default)`}
+            className="w-28 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
+        </div>
+        <input value={newYoutubeUrl} onChange={e => setNewYoutubeUrl(e.target.value)} placeholder="YouTube lecture URL (optional)" disabled={busy}
+          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
+        <button type="submit" disabled={busy} className="w-full flex items-center justify-center gap-1.5 bg-[#062444] text-[#F3BC00] rounded-lg p-2 disabled:opacity-50">
+          <Plus size={15} /> Add Topic
+        </button>
+      </form>
+    </div>
   );
 }
 
@@ -277,90 +388,6 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelet
           ))
         )}
       </div>
-    </div>
-  );
-}
-
-// ── Shared reusable list column (subjects / topics use this) ──
-function ListColumn({ title, items, selectedId, onSelect, onCreate, onRename, onDelete, createPlaceholder }: {
-  title: string; items: { id: string; label: string }[]; selectedId: string | null;
-  onSelect: (id: string) => void;
-  onCreate: (name: string) => Promise<{ ok: boolean; error?: string }>;
-  onRename: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
-  onDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
-  createPlaceholder: string;
-}) {
-  const [newName, setNewName] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function submitCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    if (!newName.trim()) return;
-    setBusy(true);
-    const result = await onCreate(newName.trim());
-    setBusy(false);
-    if (!result.ok) { setError(result.error || "Failed to save — check that this account is authorized."); return; }
-    setNewName(""); // only clear on confirmed success
-  }
-
-  async function submitRename(id: string) {
-    setError("");
-    const result = await onRename(id, editValue);
-    if (!result.ok) { setError(result.error || "Failed to rename."); return; }
-    setEditingId(null);
-  }
-
-  async function handleDelete(id: string) {
-    setError("");
-    const result = await onDelete(id);
-    if (!result.ok) setError(result.error || "Failed to delete.");
-  }
-
-  return (
-    <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[600px]">
-      <div className="px-4 py-3 border-b border-[#e6ecf5]">
-        <h3 className="text-[12.5px] font-bold text-[#062444]">{title}</h3>
-      </div>
-      <div className="overflow-y-auto flex-1">
-        {items.length === 0 ? (
-          <p className="text-sm text-slate-400 px-4 py-6 text-center">None yet.</p>
-        ) : (
-          items.map(item => (
-            <div key={item.id}
-              className={`flex items-center gap-2 px-4 py-2.5 border-b border-[#f0f3f8] cursor-pointer ${selectedId === item.id ? "bg-[#eef3fb]" : "hover:bg-[#f8fafd]"}`}
-              onClick={() => editingId !== item.id && onSelect(item.id)}
-            >
-              <GripVertical size={13} className="text-slate-300 shrink-0" />
-              {editingId === item.id ? (
-                <>
-                  <input value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus
-                    onClick={e => e.stopPropagation()}
-                    className="flex-1 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
-                  <button onClick={e => { e.stopPropagation(); submitRename(item.id); }} className="text-green-600"><Check size={15} /></button>
-                  <button onClick={e => { e.stopPropagation(); setEditingId(null); setError(""); }} className="text-slate-400"><XIcon size={15} /></button>
-                </>
-              ) : (
-                <>
-                  <span className="flex-1 text-[13.5px] text-[#062444] font-medium">{item.label}</span>
-                  <button onClick={e => { e.stopPropagation(); setEditingId(item.id); setEditValue(item.label); setError(""); }} className="text-slate-300 hover:text-[#0088cc]"><Pencil size={13} /></button>
-                  <button onClick={e => { e.stopPropagation(); handleDelete(item.id); }} className="text-slate-300 hover:text-red-500"><Trash2 size={13} /></button>
-                </>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-      {error && <p className="text-[12px] text-red-600 px-4 py-2 border-t border-red-100 bg-red-50">{error}</p>}
-      <form onSubmit={submitCreate} className="flex items-center gap-2 px-3 py-2.5 border-t border-[#e6ecf5]">
-        <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={createPlaceholder} disabled={busy}
-
-          className="flex-1 text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
-        <button type="submit" className="shrink-0 bg-[#062444] text-[#F3BC00] rounded-lg p-2"><Plus size={15} /></button>
-      </form>
     </div>
   );
 }
