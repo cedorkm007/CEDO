@@ -14,9 +14,9 @@ import type { QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, Scholar
  * one generic string.
  */
 async function invokeEdgeFunction<T = Record<string, unknown>>(
-  name: string, body: unknown
+  name: string, body: object
 ): Promise<{ ok: boolean; error?: string; data?: T }> {
-  const { data, error } = await supabase.functions.invoke(name, { body });
+  const { data, error } = await supabase.functions.invoke(name, { body: body as Record<string, unknown> });
   if (error) {
     let message = error.message;
     const context = (error as { context?: Response }).context;
