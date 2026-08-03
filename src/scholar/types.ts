@@ -54,14 +54,15 @@ export type ScholarLoginTarget =
 export interface QuizSubject {
   id: string;
   name: string;
-  maxAttemptsPerDay: number;
-  attemptsUsedToday: number;
 }
 
 export interface QuizTopic {
   id: string;
   subjectId: string;
   name: string;
+  youtubeUrl: string; // "" if no lecture attached
+  maxAttemptsPerDay: number; // effective limit — topic override, else the subject's default
+  attemptsUsedToday: number;
 }
 
 export interface QuizChoice {
@@ -76,12 +77,19 @@ export interface QuizQuestion {
   choices: QuizChoice[];
 }
 
+export interface QuizResultChoice {
+  id: string;
+  choiceText: string;
+  isCorrect: boolean;
+}
+
 export interface QuizResultItem {
   questionId: string;
-  chosenChoiceId: string | null;
+  questionText: string;
+  explanation: string;
+  choices: QuizResultChoice[];
+  selectedChoiceId: string | null;
   isCorrect: boolean;
-  correctChoiceId: string;
-  correctChoiceText: string;
 }
 
 export interface QuizSubmitResult {

@@ -8,6 +8,8 @@ export interface QuestTopic {
   id: string;
   subjectId: string;
   name: string;
+  maxAttemptsPerDay: number | null; // null = inherit the subject's default
+  youtubeUrl: string; // "" if none set
 }
 
 export interface QuestChoiceDraft {
@@ -22,6 +24,7 @@ export interface QuestQuestion {
   questionText: string;
   points: number;
   isActive: boolean;
+  explanation: string;
   choices: QuestChoiceDraft[];
 }
 

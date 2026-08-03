@@ -5,12 +5,12 @@ import { parseCsv, toCsv, downloadCsv, normalizeHeader, findColumn, cell } from 
 import type { QuestChoiceDraft } from "../types";
 
 const TEMPLATE_HEADERS = [
-  "Question", "Points", "Choice 1", "Choice 2", "Choice 3", "Choice 4", "Choice 5", "Choice 6", "Correct Choice (1-6)",
+  "Question", "Points", "Choice 1", "Choice 2", "Choice 3", "Choice 4", "Choice 5", "Choice 6", "Correct Choice (1-6)", "Explanation",
 ];
 
 const TEMPLATE_SAMPLE_ROWS = [
-  ["What is the capital of the Philippines?", "1", "Manila", "Cebu", "Davao", "Quezon City", "", "", "1"],
-  ["Which planet is known as the Red Planet?", "1", "Venus", "Mars", "Jupiter", "", "", "", "2"],
+  ["What is the capital of the Philippines?", "1", "Manila", "Cebu", "Davao", "Quezon City", "", "", "1", "Manila has been the capital since the Spanish colonial period."],
+  ["Which planet is known as the Red Planet?", "1", "Venus", "Mars", "Jupiter", "", "", "", "2", "Mars appears red due to iron oxide (rust) on its surface."],
 ];
 
 interface ParsedRow {
@@ -40,6 +40,7 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
     c5: findColumn(headers, ["choice 5", "choice5"]),
     c6: findColumn(headers, ["choice 6", "choice6"]),
     correct: findColumn(headers, ["correct choice (1-6)", "correct choice", "correct", "correct answer", "answer"]),
+    explanation: findColumn(headers, ["explanation"]),
   };
 
   if (idx.question === -1) return { rows: [], headerError: 'Missing a "Question" column.' };
@@ -76,7 +77,8 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
     }
 
     const choices: QuestChoiceDraft[] = choiceTexts.map((choiceText, ci) => ({ choiceText, isCorrect: ci === correctIndex }));
-    return { rowNumber, ok: true, preview, question: { questionText, points, choices } };
+    const explanation = cell(r, idx.explanation);
+    return { rowNumber, ok: true, preview, question: { questionText, points, explanation, choices } };
   });
 
   return { rows: parsed };

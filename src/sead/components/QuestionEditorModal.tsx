@@ -8,6 +8,7 @@ export function QuestionEditorModal({
 }: { topicId: string; existing: QuestQuestion | null; onClose: () => void; onSaved: () => void }) {
   const [questionText, setQuestionText] = useState(existing?.questionText ?? "");
   const [points, setPoints] = useState(existing?.points ?? 1);
+  const [explanation, setExplanation] = useState(existing?.explanation ?? "");
   const [choices, setChoices] = useState<QuestChoiceDraft[]>(
     existing?.choices ?? [{ choiceText: "", isCorrect: true }, { choiceText: "", isCorrect: false }]
   );
@@ -40,7 +41,7 @@ export function QuestionEditorModal({
     if (choices.some(c => !c.choiceText.trim())) { setError("Fill in every choice, or remove empty ones."); return; }
 
     setBusy(true);
-    const result = await saveQuestion({ id: existing?.id, topicId, questionText: questionText.trim(), points, choices });
+    const result = await saveQuestion({ id: existing?.id, topicId, questionText: questionText.trim(), points, explanation: explanation.trim(), choices });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save question."); return; }
     onSaved();
@@ -88,6 +89,10 @@ export function QuestionEditorModal({
             ))}
           </div>
           <p className="text-[12px] text-slate-400 mb-5">Choice order is randomized automatically for each scholar — no need to shuffle them here.</p>
+
+          <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Explanation (optional)</label>
+          <textarea value={explanation} onChange={e => setExplanation(e.target.value)} rows={2} placeholder="Shown to the scholar after they finish the quiz, next to this question."
+            className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc] mb-5" />
 
           {error && <p className="text-[13px] text-red-600 mb-3">{error}</p>}
 

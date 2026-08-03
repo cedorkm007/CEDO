@@ -1,35 +1,46 @@
 import { supabase } from "@/lib/supabase";
-import type { QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "./types";
+import type { QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult, QuizResultItem } from "./types";
 
-/** Subjects with today's attempt count computed client-side from the
- *  scholar's own scores (already readable under existing RLS — "scholar
- *  reads own quest scores"), so no extra RPC is needed just for this. */
-export async function fetchQuizSubjects(scholarIdNumber: string): Promise<QuizSubject[]> {
-  const [{ data: subjects, error: subjectsError }, { data: todayScores }] = await Promise.all([
-    supabase.from("quest_subjects").select("id, name, max_attempts_per_day").order("name"),
-    supabase.from("scholar_quest_scores")
-      .select("subject_id")
-      .eq("scholar_id_number", scholarIdNumber)
-      .eq("date_taken", new Date().toISOString().slice(0, 10)),
-  ]);
-  if (subjectsError || !subjects) return [];
-
-  const usedTodayBySubject = new Map<string, number>();
-  for (const row of todayScores ?? []) {
-    if (!row.subject_id) continue;
-    usedTodayBySubject.set(row.subject_id, (usedTodayBySubject.get(row.subject_id) ?? 0) + 1);
-  }
-
-  return subjects.map(s => ({
-    id: s.id, name: s.name, maxAttemptsPerDay: Number(s.max_attempts_per_day ?? 1),
-    attemptsUsedToday: usedTodayBySubject.get(s.id) ?? 0,
-  }));
+export async function fetchQuizSubjects(): Promise<QuizSubject[]> {
+  const { data, error } = await supabase.from("quest_subjects").select("id, name").order("name");
+  if (error || !data) return [];
+  return data.map(s => ({ id: s.id, name: s.name }));
 }
 
-export async function fetchQuizTopics(subjectId: string): Promise<QuizTopic[]> {
-  const { data, error } = await supabase.from("quest_topics").select("id, subject_id, name").eq("subject_id", subjectId).order("name");
-  if (error || !data) return [];
-  return data.map(t => ({ id: t.id, subjectId: t.subject_id, name: t.name }));
+/**
+ * Attempts are tracked and capped PER TOPIC (not aggregated across a whole
+ * subject) — that's what lets each topic have its own daily attempt limit.
+ * attemptsUsedToday/maxAttemptsPerDay are computed here client-side from
+ * the scholar's own scores (already readable under existing RLS — "scholar
+ * reads own quest scores"), same approach the old subject-level version
+ * used, just grouped by topic_id instead of subject_id.
+ */
+export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string): Promise<QuizTopic[]> {
+  const [{ data: subject }, { data: topics, error: topicsError }, { data: todayScores }] = await Promise.all([
+    supabase.from("quest_subjects").select("max_attempts_per_day").eq("id", subjectId).maybeSingle(),
+    supabase.from("quest_topics").select("id, subject_id, name, max_attempts_per_day, youtube_url").eq("subject_id", subjectId).order("name"),
+    supabase.from("scholar_quest_scores")
+      .select("topic_id")
+      .eq("scholar_id_number", scholarIdNumber)
+      .eq("subject_id", subjectId)
+      .eq("date_taken", new Date().toISOString().slice(0, 10)),
+  ]);
+  if (topicsError || !topics) return [];
+
+  const usedTodayByTopic = new Map<string, number>();
+  for (const row of todayScores ?? []) {
+    if (!row.topic_id) continue;
+    usedTodayByTopic.set(row.topic_id, (usedTodayByTopic.get(row.topic_id) ?? 0) + 1);
+  }
+
+  const subjectDefault = Number(subject?.max_attempts_per_day ?? 1);
+
+  return topics.map(t => ({
+    id: t.id, subjectId: t.subject_id, name: t.name,
+    youtubeUrl: t.youtube_url ?? "",
+    maxAttemptsPerDay: t.max_attempts_per_day === null || t.max_attempts_per_day === undefined ? subjectDefault : Number(t.max_attempts_per_day),
+    attemptsUsedToday: usedTodayByTopic.get(t.id) ?? 0,
+  }));
 }
 
 export async function startQuizAttempt(topicId: string): Promise<
@@ -57,11 +68,47 @@ export async function submitQuizAttempt(
   });
   if (error) return { ok: false, error: error.message };
   if (!data?.ok) return { ok: false, error: data?.error ?? "Couldn't submit the quiz." };
+
+  const results: QuizResultItem[] = (data.results ?? []).map((r: Record<string, unknown>) => ({
+    questionId: String(r.questionId),
+    questionText: String(r.questionText),
+    explanation: String(r.explanation ?? ""),
+    isCorrect: !!r.isCorrect,
+    selectedChoiceId: r.selectedChoiceId ? String(r.selectedChoiceId) : null,
+    choices: (r.choices as Record<string, unknown>[] ?? []).map(c => ({
+      id: String(c.id), choiceText: String(c.choiceText), isCorrect: !!c.isCorrect,
+    })),
+  }));
+
   return {
     ok: true,
     result: {
       score: Number(data.score), maxScore: Number(data.maxScore),
-      results: data.results ?? [], attemptsUsedToday: data.attemptsUsedToday, maxAttemptsPerDay: data.maxAttemptsPerDay,
+      results, attemptsUsedToday: data.attemptsUsedToday, maxAttemptsPerDay: data.maxAttemptsPerDay,
     },
   };
+}
+
+/**
+ * Pulls a YouTube video ID out of any of the common URL shapes a staff
+ * member might paste in (watch?v=, youtu.be/, embed/, shorts/), so the
+ * scholar-facing player can build a same-page embed instead of a link that
+ * would send them to youtube.com.
+ */
+export function extractYouTubeId(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=)([\w-]{11})/,
+    /(?:youtu\.be\/)([\w-]{11})/,
+    /(?:youtube\.com\/embed\/)([\w-]{11})/,
+    /(?:youtube\.com\/shorts\/)([\w-]{11})/,
+  ];
+  for (const p of patterns) {
+    const m = trimmed.match(p);
+    if (m) return m[1];
+  }
+  // Bare 11-character video ID pasted with nothing else around it.
+  if (/^[\w-]{11}$/.test(trimmed)) return trimmed;
+  return null;
 }

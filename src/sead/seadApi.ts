@@ -67,16 +67,32 @@ export async function deleteSubject(id: string): Promise<{ ok: boolean; error?: 
 export async function fetchTopics(subjectId: string): Promise<QuestTopic[]> {
   const { data, error } = await supabase.from("quest_topics").select("*").eq("subject_id", subjectId).order("name");
   if (error || !data) return [];
-  return data.map(r => ({ id: r.id, subjectId: r.subject_id, name: r.name }));
+  return data.map(r => ({
+    id: r.id, subjectId: r.subject_id, name: r.name,
+    maxAttemptsPerDay: r.max_attempts_per_day === null || r.max_attempts_per_day === undefined ? null : Number(r.max_attempts_per_day),
+    youtubeUrl: r.youtube_url ?? "",
+  }));
 }
 
-export async function createTopic(subjectId: string, name: string): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("quest_topics").insert({ subject_id: subjectId, name });
+export async function createTopic(
+  subjectId: string, name: string, maxAttemptsPerDay: number | null, youtubeUrl: string
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("quest_topics")
+    .insert({ subject_id: subjectId, name, max_attempts_per_day: maxAttemptsPerDay, youtube_url: youtubeUrl || null });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
-export async function renameTopic(id: string, name: string): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("quest_topics").update({ name, updated_at: new Date().toISOString() }).eq("id", id);
+export async function updateTopic(
+  id: string, fields: { name: string; maxAttemptsPerDay: number | null; youtubeUrl: string }
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("quest_topics")
+    .update({
+      name: fields.name,
+      max_attempts_per_day: fields.maxAttemptsPerDay,
+      youtube_url: fields.youtubeUrl || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
@@ -102,6 +118,7 @@ export async function fetchQuestions(topicId: string): Promise<QuestQuestion[]> 
     questionText: q.question_text,
     points: Number(q.points),
     isActive: q.is_active,
+    explanation: q.explanation ?? "",
     choices: (choices ?? [])
       .filter((c: Record<string, unknown>) => c.question_id === q.id)
       .map((c: Record<string, unknown>) => ({ id: String(c.id), choiceText: String(c.choice_text), isCorrect: !!c.is_correct })),
@@ -114,6 +131,7 @@ export async function saveQuestion(input: {
   topicId: string;
   questionText: string;
   points: number;
+  explanation: string;
   choices: QuestChoiceDraft[];
 }): Promise<{ ok: boolean; error?: string }> {
   if (!input.choices.some(c => c.isCorrect)) {
@@ -126,13 +144,13 @@ export async function saveQuestion(input: {
   let questionId = input.id;
   if (questionId) {
     const { error } = await supabase.from("quest_questions")
-      .update({ question_text: input.questionText, points: input.points, updated_at: new Date().toISOString() })
+      .update({ question_text: input.questionText, points: input.points, explanation: input.explanation, updated_at: new Date().toISOString() })
       .eq("id", questionId);
     if (error) return { ok: false, error: error.message };
     await supabase.from("quest_choices").delete().eq("question_id", questionId);
   } else {
     const { data, error } = await supabase.from("quest_questions")
-      .insert({ topic_id: input.topicId, question_text: input.questionText, points: input.points })
+      .insert({ topic_id: input.topicId, question_text: input.questionText, points: input.points, explanation: input.explanation })
       .select("id").single();
     if (error || !data) return { ok: false, error: error?.message ?? "Failed to create question." };
     questionId = data.id;
@@ -148,6 +166,7 @@ export async function saveQuestion(input: {
 export interface BulkQuestionInput {
   questionText: string;
   points: number;
+  explanation: string;
   choices: QuestChoiceDraft[];
 }
 
@@ -173,7 +192,7 @@ export async function bulkCreateQuestions(
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
     const { data, error } = await supabase.from("quest_questions")
-      .insert({ topic_id: topicId, question_text: q.questionText, points: q.points })
+      .insert({ topic_id: topicId, question_text: q.questionText, points: q.points, explanation: q.explanation })
       .select("id").single();
     if (error || !data) {
       results.push({ index: i, ok: false, error: error?.message ?? "Failed to create question." });
