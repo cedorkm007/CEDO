@@ -1,5 +1,39 @@
 import { supabase } from "@/lib/supabase";
-import type { QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, ScholarListItem, ScoreRow } from "./types";
+import type { QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, ScholarListItem, ScholarAccountLogEntry, ScoreRow } from "./types";
+
+/**
+ * Calls a Supabase Edge Function and returns its parsed JSON body.
+ *
+ * supabase-js's `functions.invoke` only gives a generic message on the
+ * `error` it returns for a non-2xx response — literally "Edge Function
+ * returned a non-2xx status code" — no matter what the function itself
+ * actually sent back. The real reason lives in the raw HTTP response body
+ * (`error.context`), which has to be read separately. Every sead-* function
+ * call goes through here so that real server-side error messages (missing
+ * fields, "already exists", etc.) actually reach the user instead of that
+ * one generic string.
+ */
+async function invokeEdgeFunction<T = Record<string, unknown>>(
+  name: string, body: unknown
+): Promise<{ ok: boolean; error?: string; data?: T }> {
+  const { data, error } = await supabase.functions.invoke(name, { body });
+  if (error) {
+    let message = error.message;
+    const context = (error as { context?: Response }).context;
+    if (context && typeof context.json === "function") {
+      try {
+        const parsed = await context.clone().json();
+        if (parsed?.error) message = parsed.error;
+      } catch {
+        // Response body wasn't JSON (or was already consumed) — fall back to the generic message.
+      }
+    }
+    return { ok: false, error: message };
+  }
+  const payload = data as (T & { error?: string }) | null;
+  if (payload?.error) return { ok: false, error: payload.error };
+  return { ok: true, data: data as T };
+}
 
 // ── Question bank: Subjects ──────────────────────────────────
 export async function fetchSubjects(): Promise<QuestSubject[]> {
@@ -211,10 +245,9 @@ export interface NewScholarInput {
 }
 
 export async function createScholarAccount(input: NewScholarInput): Promise<{ ok: boolean; error?: string; defaultPassword?: string }> {
-  const { data, error } = await supabase.functions.invoke("sead-create-scholar-account", { body: input });
-  if (error) return { ok: false, error: error.message };
-  if (data?.error) return { ok: false, error: data.error };
-  return { ok: true, defaultPassword: data?.defaultPassword };
+  const result = await invokeEdgeFunction<{ defaultPassword?: string }>("sead-create-scholar-account", input);
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, defaultPassword: result.data?.defaultPassword };
 }
 
 export interface BulkScholarRowResult {
@@ -234,18 +267,74 @@ export interface BulkScholarRowResult {
  * password to a whole freshly-created batch is a bigger exposure than one
  * manually-created account.
  */
-export async function bulkCreateScholars(rows: NewScholarInput[]): Promise<{ ok: boolean; error?: string; results?: BulkScholarRowResult[] }> {
-  const { data, error } = await supabase.functions.invoke("sead-bulk-create-scholars", { body: { scholars: rows } });
-  if (error) return { ok: false, error: error.message };
-  if (data?.error) return { ok: false, error: data.error };
-  return { ok: true, results: data?.results ?? [] };
+export async function bulkCreateScholars(rows: NewScholarInput[]): Promise<{ ok: boolean; error?: string; results?: BulkScholarRowResult[]; batchId?: string }> {
+  const result = await invokeEdgeFunction<{ batchId?: string; results?: BulkScholarRowResult[] }>(
+    "sead-bulk-create-scholars", { scholars: rows }
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, results: result.data?.results ?? [], batchId: result.data?.batchId };
+}
+
+export async function deleteScholarAccount(id: string): Promise<{ ok: boolean; error?: string; name?: string }> {
+  const result = await invokeEdgeFunction<{ name?: string }>("sead-delete-scholar-account", { id });
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, name: result.data?.name };
+}
+
+export interface UndoBulkResult {
+  scholarIdNumber: string;
+  ok: boolean;
+  error?: string;
+}
+
+export async function undoBulkScholarUpload(batchId: string): Promise<{ ok: boolean; error?: string; removedCount?: number; results?: UndoBulkResult[] }> {
+  const result = await invokeEdgeFunction<{ removedCount?: number; results?: UndoBulkResult[] }>(
+    "sead-undo-bulk-scholars", { batchId }
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, removedCount: result.data?.removedCount, results: result.data?.results };
 }
 
 export async function resetScholarPassword(scholarIdNumber: string): Promise<{ ok: boolean; error?: string; name?: string }> {
-  const { data, error } = await supabase.functions.invoke("sead-reset-scholar-password", { body: { scholarIdNumber } });
-  if (error) return { ok: false, error: error.message };
-  if (data?.error) return { ok: false, error: data.error };
-  return { ok: true, name: data?.name };
+  const result = await invokeEdgeFunction<{ name?: string }>("sead-reset-scholar-password", { scholarIdNumber });
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, name: result.data?.name };
+}
+
+// ── Scholar account history (audit log) ──────────────────────
+export interface ScholarLogFilters {
+  search?: string;      // matches scholar id number or name
+  action?: "added" | "removed";
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export async function fetchScholarAccountLog(filters: ScholarLogFilters = {}): Promise<ScholarAccountLogEntry[]> {
+  let query = supabase.from("sead_scholar_account_log")
+    .select("id, created_at, action, scholar_id_number, scholar_name, performed_by_name, batch_id, source")
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  if (filters.action) query = query.eq("action", filters.action);
+  if (filters.dateFrom) query = query.gte("created_at", filters.dateFrom);
+  if (filters.dateTo) query = query.lte("created_at", filters.dateTo);
+  if (filters.search?.trim()) {
+    const s = filters.search.trim();
+    query = query.or(`scholar_id_number.ilike.%${s}%,scholar_name.ilike.%${s}%`);
+  }
+
+  const { data, error } = await query;
+  if (error || !data) return [];
+  return data.map(r => ({
+    id: r.id,
+    createdAt: r.created_at,
+    action: r.action,
+    scholarIdNumber: r.scholar_id_number,
+    scholarName: r.scholar_name,
+    performedByName: r.performed_by_name,
+    batchId: r.batch_id,
+    source: r.source,
+  }));
 }
 
 // ── Scores & progress monitoring ─────────────────────────────

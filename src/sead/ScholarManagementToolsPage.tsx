@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { Users, BookOpen, BarChart3 } from "lucide-react";
+import { Users, BookOpen, BarChart3, History } from "lucide-react";
 import { ScholarsTab } from "./pages/ScholarsTab";
 import { QuestionBankTab } from "./pages/QuestionBankTab";
 import { ScoresTab } from "./pages/ScoresTab";
+import { ScholarAccountHistoryTab } from "./pages/ScholarAccountHistoryTab";
 import type { SeadTab } from "./types";
 
 /**
  * Embedded directly in the main staff app (src/app/App.tsx) as the
  * "Scholar Management Tools" page — not a separate site/login. Visibility
- * is gated in App.tsx to a single account (username "sead.sma1"); the
- * underlying database writes are separately enforced by the
+ * is gated in App.tsx to a set of accounts (SCHOLAR_MANAGEMENT_USERNAMES);
+ * the underlying database writes are separately enforced by the
  * is_sead_staff flag + RLS policies (supabase_migration_sead_staff.sql),
  * so the real security boundary doesn't depend on this UI gate alone.
  */
@@ -20,6 +21,7 @@ export function ScholarManagementToolsPage() {
     { key: "scholars", label: "Scholars", icon: <Users size={14} /> },
     { key: "question-bank", label: "Question Bank", icon: <BookOpen size={14} /> },
     { key: "scores", label: "Scores & Progress", icon: <BarChart3 size={14} /> },
+    { key: "history", label: "Account History", icon: <History size={14} /> },
   ];
 
   return (
@@ -44,6 +46,7 @@ export function ScholarManagementToolsPage() {
       {tab === "scholars" && <ScholarsTab />}
       {tab === "question-bank" && <QuestionBankTab />}
       {tab === "scores" && <ScoresTab />}
+      {tab === "history" && <ScholarAccountHistoryTab />}
     </div>
   );
 }

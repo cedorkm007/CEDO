@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { X, Download, Upload, AlertTriangle, CheckCircle2, UploadCloud } from "lucide-react";
-import { bulkCreateScholars, type NewScholarInput, type BulkScholarRowResult } from "../seadApi";
+import { X, Download, Upload, AlertTriangle, CheckCircle2, UploadCloud, Undo2 } from "lucide-react";
+import { bulkCreateScholars, undoBulkScholarUpload, type NewScholarInput, type BulkScholarRowResult } from "../seadApi";
 import { parseCsv, toCsv, downloadCsv, normalizeHeader, findColumn, cell } from "../csvUtils";
 
 const TEMPLATE_HEADERS = [
@@ -101,6 +101,10 @@ export function BulkScholarUploadModal({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [results, setResults] = useState<BulkScholarRowResult[] | null>(null);
   const [rowLookup, setRowLookup] = useState<ParsedRow[]>([]);
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [undoing, setUndoing] = useState(false);
+  const [undoResult, setUndoResult] = useState<{ removedCount: number } | { error: string } | null>(null);
+  const [confirmUndo, setConfirmUndo] = useState(false);
 
   const validRows = rows.filter(r => r.ok);
   const invalidRows = rows.filter(r => !r.ok);
@@ -109,6 +113,9 @@ export function BulkScholarUploadModal({
     setFileName(file.name);
     setResults(null);
     setSubmitError(null);
+    setBatchId(null);
+    setUndoResult(null);
+    setConfirmUndo(false);
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result ?? "");
@@ -129,6 +136,18 @@ export function BulkScholarUploadModal({
     if (!result.ok) { setSubmitError(result.error || "Failed to upload."); return; }
     setResults(result.results ?? []);
     setRowLookup(validRows);
+    setBatchId(result.batchId ?? null);
+    onDone();
+  }
+
+  async function handleUndo() {
+    if (!batchId) return;
+    setUndoing(true);
+    setUndoResult(null);
+    const result = await undoBulkScholarUpload(batchId);
+    setUndoing(false);
+    if (!result.ok) { setUndoResult({ error: result.error || "Failed to undo this upload." }); return; }
+    setUndoResult({ removedCount: result.removedCount ?? 0 });
     onDone();
   }
 
@@ -138,6 +157,8 @@ export function BulkScholarUploadModal({
     setHeaderError(null);
     setResults(null);
     setSubmitError(null);
+    setBatchId(null);
+    setUndoResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -189,6 +210,34 @@ export function BulkScholarUploadModal({
                   ))}
                 </div>
               )}
+
+              {successCount > 0 && batchId && !undoResult && (
+                <div className="mt-4 border-t border-[#f0f3f8] pt-4">
+                  {confirmUndo ? (
+                    <div className="flex items-center justify-center gap-3">
+                      <span className="text-[12.5px] text-slate-500">Remove all {successCount} scholar account{successCount === 1 ? "" : "s"} just created?</span>
+                      <button onClick={handleUndo} disabled={undoing} className="text-[12.5px] font-bold text-red-600 hover:underline">
+                        {undoing ? "…" : "Confirm"}
+                      </button>
+                      <button onClick={() => setConfirmUndo(false)} className="text-[12.5px] text-slate-400 hover:underline">Cancel</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setConfirmUndo(true)}
+                      className="flex items-center gap-2 mx-auto text-[12.5px] font-semibold text-red-600 hover:underline">
+                      <Undo2 size={14} /> Undo this upload
+                    </button>
+                  )}
+                </div>
+              )}
+              {undoResult && "removedCount" in undoResult && (
+                <p className="text-[12.5px] font-semibold text-green-700 mt-4">
+                  Undo complete — {undoResult.removedCount} account{undoResult.removedCount === 1 ? "" : "s"} removed.
+                </p>
+              )}
+              {undoResult && "error" in undoResult && (
+                <p className="text-[12.5px] font-semibold text-red-600 mt-4">{undoResult.error}</p>
+              )}
+
               <div className="flex justify-center gap-3 mt-5">
                 {failCount > 0 && (
                   <button onClick={reset} className="text-[13px] font-semibold text-[#0088cc]">Upload another file</button>

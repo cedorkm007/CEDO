@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud } from "lucide-react";
-import { fetchScholars, resetScholarPassword, SCHOLARS_PAGE_SIZE } from "../seadApi";
+import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2 } from "lucide-react";
+import { fetchScholars, resetScholarPassword, deleteScholarAccount, SCHOLARS_PAGE_SIZE } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
 import { BulkScholarUploadModal } from "../components/BulkScholarUploadModal";
 import type { ScholarListItem } from "../types";
@@ -15,6 +15,8 @@ export function ScholarsTab() {
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
   const [resetBusyId, setResetBusyId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / SCHOLARS_PAGE_SIZE));
@@ -52,6 +54,16 @@ export function ScholarsTab() {
     setConfirmResetId(null);
     setToast(result.ok ? `Password reset to 123456 for ${result.name}.` : (result.error || "Failed to reset password."));
     setTimeout(() => setToast(null), 4000);
+  }
+
+  async function handleDeleteScholar(id: string) {
+    setDeleteBusyId(id);
+    const result = await deleteScholarAccount(id);
+    setDeleteBusyId(null);
+    setConfirmDeleteId(null);
+    setToast(result.ok ? `Removed ${result.name}'s account.` : (result.error || "Failed to remove account."));
+    setTimeout(() => setToast(null), 4000);
+    if (result.ok) load(page);
   }
 
   const rangeStart = total === 0 ? 0 : (page - 1) * SCHOLARS_PAGE_SIZE + 1;
@@ -114,7 +126,16 @@ export function ScholarsTab() {
                     }`}>{s.status}</span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {confirmResetId === s.scholarIdNumber ? (
+                    {confirmDeleteId === s.id ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="text-[12px] text-slate-500">Remove this account?</span>
+                        <button onClick={() => handleDeleteScholar(s.id)} disabled={deleteBusyId === s.id}
+                          className="text-[12px] font-bold text-red-600 hover:underline">
+                          {deleteBusyId === s.id ? "…" : "Confirm"}
+                        </button>
+                        <button onClick={() => setConfirmDeleteId(null)} className="text-[12px] text-slate-400 hover:underline">Cancel</button>
+                      </span>
+                    ) : confirmResetId === s.scholarIdNumber ? (
                       <span className="inline-flex items-center gap-2">
                         <span className="text-[12px] text-slate-500">Reset to 123456?</span>
                         <button onClick={() => handleResetPassword(s.scholarIdNumber)} disabled={resetBusyId === s.scholarIdNumber}
@@ -124,10 +145,16 @@ export function ScholarsTab() {
                         <button onClick={() => setConfirmResetId(null)} className="text-[12px] text-slate-400 hover:underline">Cancel</button>
                       </span>
                     ) : (
-                      <button onClick={() => setConfirmResetId(s.scholarIdNumber)}
-                        className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#0088cc] hover:underline ml-auto">
-                        <KeyRound size={13} /> Reset Password
-                      </button>
+                      <span className="inline-flex items-center gap-3">
+                        <button onClick={() => setConfirmResetId(s.scholarIdNumber)}
+                          className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
+                          <KeyRound size={13} /> Reset Password
+                        </button>
+                        <button onClick={() => setConfirmDeleteId(s.id)}
+                          className="flex items-center gap-1.5 text-[12.5px] font-semibold text-red-500 hover:underline">
+                          <Trash2 size={13} /> Remove
+                        </button>
+                      </span>
                     )}
                   </td>
                 </tr>

@@ -47,4 +47,15 @@ export interface ScoreRow {
   dateTaken: string | null;
 }
 
-export type SeadTab = "scholars" | "question-bank" | "scores";
+export interface ScholarAccountLogEntry {
+  id: string;
+  createdAt: string;
+  action: "added" | "removed";
+  scholarIdNumber: string;
+  scholarName: string;
+  performedByName: string;
+  batchId: string | null;
+  source: "single" | "bulk" | "undo";
+}
+
+export type SeadTab = "scholars" | "question-bank" | "scores" | "history";
