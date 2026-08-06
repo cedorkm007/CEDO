@@ -409,10 +409,10 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
           <List className={`w-6 h-6 ${listView === "mine" ? "text-[#F3BC00]" : "text-[#062444]"}`} />
           <span className={`font-bold text-[11px] text-center leading-tight ${listView === "mine" ? "text-[#F3BC00]" : "text-[#062444]"}`}>My SDP Activity</span>
         </motion.button>
-        <motion.button whileTap={{ scale: 0.97 }} onClick={() => setShowProposal(true)}
-          className="bg-[#062444] rounded-xl p-3 flex flex-col items-center gap-1.5 border-2 border-[#F3BC00]">
-          <FileText className="w-6 h-6 text-[#F3BC00]" />
-          <span className="text-white font-bold text-[11px] text-center leading-tight">Submit Proposal</span>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={() => setShowProposal(true)}
+          className="bg-[#F3BC00] hover:bg-[#e0ac00] rounded-xl p-3 flex flex-col items-center gap-1.5 shadow-md transition-colors">
+          <FileText className="w-6 h-6 text-[#062444]" />
+          <span className="text-[#062444] font-bold text-[11px] text-center leading-tight">Submit Proposal</span>
         </motion.button>
       </div>
 
