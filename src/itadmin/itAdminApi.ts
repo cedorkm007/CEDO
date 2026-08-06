@@ -28,6 +28,29 @@ export async function fetchStaffList(): Promise<StaffListItem[]> {
   }));
 }
 
+// ── Staff tool tags ───────────────────────────────────────────
+// Returns a map of staffId -> array of tag keys, for every staff account
+// at once (used to render the tag column in the Staff Accounts table).
+export async function fetchAllStaffTags(): Promise<Record<string, string[]>> {
+  const { data, error } = await supabase.from("staff_account_tags").select("staff_id, tag_key");
+  if (error || !data) return {};
+  const map: Record<string, string[]> = {};
+  for (const row of data) {
+    (map[row.staff_id] ??= []).push(row.tag_key);
+  }
+  return map;
+}
+
+/** Fully replaces one staff account's tag set with `tagKeys`. */
+export async function setStaffTags(staffId: string, tagKeys: string[]): Promise<{ ok: boolean; error?: string }> {
+  const { error: deleteError } = await supabase.from("staff_account_tags").delete().eq("staff_id", staffId);
+  if (deleteError) return { ok: false, error: deleteError.message };
+  if (tagKeys.length === 0) return { ok: true };
+  const { error: insertError } = await supabase.from("staff_account_tags")
+    .insert(tagKeys.map(tag_key => ({ staff_id: staffId, tag_key })));
+  return insertError ? { ok: false, error: insertError.message } : { ok: true };
+}
+
 export async function deleteStaffAccount(id: string): Promise<{ ok: boolean; error?: string; name?: string }> {
   const { data, error } = await supabase.functions.invoke("it-delete-staff-account", { body: { id } });
   if (error) return { ok: false, error: error.message };

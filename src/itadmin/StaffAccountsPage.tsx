@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Users, KeyRound, Trash2 } from "lucide-react";
+import { UserPlus, Users, KeyRound, Trash2, Tag } from "lucide-react";
 import { DIVISION_LIST, type DivisionCode, type UserRole } from "@/app/App";
-import { createStaffAccount, fetchStaffList, deleteStaffAccount, resetStaffPassword, type NewStaffInput, type StaffListItem } from "./itAdminApi";
+import { STAFF_TOOL_TAGS } from "@/app/staffToolTags";
+import { createStaffAccount, fetchStaffList, deleteStaffAccount, resetStaffPassword, fetchAllStaffTags, setStaffTags, type NewStaffInput, type StaffListItem } from "./itAdminApi";
 
 const EMPTY_FORM: NewStaffInput = {
   lastName: "", firstName: "", middleName: "", suffix: "", nickname: "",
@@ -25,13 +26,37 @@ export function StaffAccountsPage() {
   const [confirmAction, setConfirmAction] = useState<{ id: string; kind: "reset" | "delete" } | null>(null);
   const [rowBusyId, setRowBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [staffTags, setStaffTagsState] = useState<Record<string, string[]>>({});
+  const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
+  const [tagDraft, setTagDraft] = useState<string[]>([]);
+  const [tagBusy, setTagBusy] = useState(false);
 
   async function loadStaff() {
     setLoadingStaff(true);
-    setStaff(await fetchStaffList());
+    const [list, tags] = await Promise.all([fetchStaffList(), fetchAllStaffTags()]);
+    setStaff(list);
+    setStaffTagsState(tags);
     setLoadingStaff(false);
   }
   useEffect(() => { loadStaff(); }, []);
+
+  function openTagEditor(s: StaffListItem) {
+    setEditingTagsId(s.id);
+    setTagDraft(staffTags[s.id] ?? []);
+  }
+
+  function toggleTagDraft(key: string) {
+    setTagDraft(d => d.includes(key) ? d.filter(k => k !== key) : [...d, key]);
+  }
+
+  async function saveTagDraft(staffId: string) {
+    setTagBusy(true);
+    const result = await setStaffTags(staffId, tagDraft);
+    setTagBusy(false);
+    if (!result.ok) { setToast(result.error || "Failed to update tags."); setTimeout(() => setToast(null), 4000); return; }
+    setStaffTagsState(m => ({ ...m, [staffId]: tagDraft }));
+    setEditingTagsId(null);
+  }
 
   function set<K extends keyof NewStaffInput>(key: K, value: NewStaffInput[K]) {
     setForm(f => ({ ...f, [key]: value }));
@@ -158,6 +183,44 @@ export function StaffAccountsPage() {
                     </div>
                     <span className="text-[10px] font-bold uppercase tracking-wide bg-muted text-muted-foreground rounded-full px-2.5 py-1">{s.role.replace("_", " ")}</span>
                   </div>
+
+                  {editingTagsId === s.id ? (
+                    <div className="mb-2 bg-muted/50 rounded-lg p-3">
+                      <p className="text-[11px] font-semibold text-muted-foreground mb-2">Tools this account can see:</p>
+                      <div className="space-y-1.5 mb-3">
+                        {STAFF_TOOL_TAGS.map(tag => (
+                          <label key={tag.key} className="flex items-start gap-2 cursor-pointer">
+                            <input type="checkbox" checked={tagDraft.includes(tag.key)} onChange={() => toggleTagDraft(tag.key)} className="mt-0.5" />
+                            <span>
+                              <span className="text-xs font-semibold text-foreground block">{tag.label}</span>
+                              <span className="text-[11px] text-muted-foreground">{tag.description}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => saveTagDraft(s.id)} disabled={tagBusy} className="text-xs font-bold text-accent hover:underline">
+                          {tagBusy ? "Saving…" : "Save"}
+                        </button>
+                        <button onClick={() => setEditingTagsId(null)} className="text-xs text-muted-foreground hover:underline">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                      {(staffTags[s.id] ?? []).length === 0 ? (
+                        <span className="text-[11px] text-muted-foreground italic">No tools tagged</span>
+                      ) : (
+                        (staffTags[s.id] ?? []).map(key => (
+                          <span key={key} className="text-[10.5px] font-semibold text-accent bg-accent/10 rounded-full px-2 py-0.5">
+                            {STAFF_TOOL_TAGS.find(t => t.key === key)?.label ?? key}
+                          </span>
+                        ))
+                      )}
+                      <button onClick={() => openTagEditor(s)} className="flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline ml-auto">
+                        <Tag size={11} /> Edit Tags
+                      </button>
+                    </div>
+                  )}
 
                   {confirmAction?.id === s.id ? (
                     <div className="flex items-center gap-2 text-xs">
