@@ -28,6 +28,48 @@ export async function fetchStaffList(): Promise<StaffListItem[]> {
   }));
 }
 
+// ── Division reassignment ───────────────────────────────────
+// Staff get reshuffled between CEDO divisions often; this is the "division
+// tag" — changeable any time from the Staff Accounts page, logged so
+// there's a record of who moved where and when.
+export async function changeStaffDivision(staffId: string, oldDivision: string, newDivision: string): Promise<{ ok: boolean; error?: string }> {
+  const { data: auth } = await supabase.auth.getUser();
+  const { data: caller } = auth.user
+    ? await supabase.from("users").select("first_name, last_name").eq("id", auth.user.id).maybeSingle()
+    : { data: null };
+  const changedByName = caller ? `${caller.first_name} ${caller.last_name}`.trim() : "Unknown staff";
+
+  const { error: updateError } = await supabase.from("users").update({ division: newDivision }).eq("id", staffId);
+  if (updateError) return { ok: false, error: updateError.message };
+
+  const { error: logError } = await supabase.from("division_change_log").insert({
+    staff_id: staffId, old_division: oldDivision, new_division: newDivision,
+    changed_by: auth.user?.id ?? null, changed_by_name: changedByName,
+  });
+  if (logError) console.error("Failed to log division change:", logError.message);
+
+  return { ok: true };
+}
+
+export interface DivisionChangeEntry {
+  id: string;
+  oldDivision: string | null;
+  newDivision: string;
+  changedByName: string;
+  changedAt: string;
+}
+
+export async function fetchDivisionChangeLog(staffId: string): Promise<DivisionChangeEntry[]> {
+  const { data, error } = await supabase.from("division_change_log")
+    .select("id, old_division, new_division, changed_by_name, changed_at")
+    .eq("staff_id", staffId).order("changed_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map(r => ({
+    id: r.id, oldDivision: r.old_division, newDivision: r.new_division,
+    changedByName: r.changed_by_name, changedAt: r.changed_at,
+  }));
+}
+
 // ── Staff tool tags ───────────────────────────────────────────
 // Returns a map of staffId -> array of tag keys, for every staff account
 // at once (used to render the tag column in the Staff Accounts table).

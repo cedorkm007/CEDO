@@ -180,6 +180,26 @@ function nowISO() { return new Date().toISOString(); }
 function formatDisplay(iso: string) { const [y,m,d] = iso.split("-"); return `${MONTHS[parseInt(m)-1]} ${parseInt(d)}, ${y}`; }
 function formatDateWithDay(iso: string) { const d = new Date(iso + "T00:00:00"); return `${DAYS_LONG[d.getDay()]}, ${formatDisplay(iso)}`; }
 function formatTimestamp(iso: string) { const d = new Date(iso); return d.toLocaleString("en-PH",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}); }
+
+// ── Chat archiving (daily, Asia/Manila) ──────────────────────
+// "Archiving" here just means the live chat view only ever queries the
+// current Manila calendar day — nothing has to physically move at 11:59pm,
+// the day just rolls over and the query window rolls with it. Everything
+// stays in chat_messages forever; History picks a different day's window
+// out of the same table.
+function todayManilaDateString(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }); // en-CA => "YYYY-MM-DD"
+}
+function addDaysToDateString(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+/** UTC instant corresponding to 00:00 Asia/Manila on the given calendar date. */
+function manilaMidnightUtcISO(dateStr: string): string {
+  return new Date(`${dateStr}T00:00:00+08:00`).toISOString();
+}
 function getFullName(u: UserProfile) { const mi = u.middleName ? ` ${u.middleName.charAt(0)}.` : ""; const sfx = u.suffix ? `, ${u.suffix}` : ""; return `${u.firstName}${mi} ${u.lastName}${sfx}`; }
 function cleanTitle(t: string) { return t.replace(/^\[(AM|PM)\]\s*/i, ""); }
 // A Submission's review status ("pending" = awaiting admin review, "approved",
@@ -2448,18 +2468,38 @@ function FloatingChatWidget({ currentUser, allUsers }: { currentUser: UserProfil
   const canSwitchDivision = currentUser.role === "super_admin";
   const activeDivision = canSwitchDivision ? viewDivision : currentUser.division;
 
+  // Chat "archives" daily: the live view only ever loads today's (Asia/Manila)
+  // messages — nothing needs to physically move at 11:59pm, the query window
+  // just rolls to a new day automatically. History picks a past day out of
+  // the same table (read-only — you can't post into a past day).
+  const [showHistoryPicker, setShowHistoryPicker] = useState(false);
+  const [historyDate, setHistoryDate] = useState<string | null>(null); // null = live "today" view
+  const [historyMessages, setHistoryMessages] = useState<ChatMessage[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const todayStr = todayManilaDateString();
+
   // Merge confirmed server messages with any still-optimistic local ones,
   // so a message never visually "disappears" while its insert is in flight.
-  const messages: PendingChatMessage[] = [
+  const liveMessages: PendingChatMessage[] = [
     ...serverMessages,
     ...pending.filter(p => !serverMessages.some(s => s.id === p.id)),
   ].filter(m => m.division === activeDivision)
    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
+  const messages: PendingChatMessage[] = historyDate ? historyMessages.filter(m => m.division === activeDivision) : liveMessages;
+
+  async function fetchMessagesForDay(dateStr: string): Promise<ChatMessage[]> {
+    const { data, error } = await supabase.from(TABLES.CHAT_MESSAGES).select("*")
+      .gte("created_at", manilaMidnightUtcISO(dateStr))
+      .lt("created_at", manilaMidnightUtcISO(addDaysToDateString(dateStr, 1)))
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(rowToChatMessage);
+  }
+
   async function loadMessages() {
     try {
-      const rows = await getAll<Record<string, unknown>>(TABLES.CHAT_MESSAGES);
-      const msgs = rows.map(rowToChatMessage).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const msgs = await fetchMessagesForDay(todayStr);
       setServerMessages(msgs);
       setConnectionError(null);
       // Drop any pending messages that are now confirmed on the server.
@@ -2476,6 +2516,28 @@ function FloatingChatWidget({ currentUser, allUsers }: { currentUser: UserProfil
     }
   }
 
+  async function loadHistory(dateStr: string) {
+    setHistoryLoading(true);
+    try {
+      setHistoryMessages(await fetchMessagesForDay(dateStr));
+    } catch (err) {
+      console.error("Failed to load chat history:", err);
+      setHistoryMessages([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  function openHistoryDate(dateStr: string) {
+    setShowHistoryPicker(false);
+    setHistoryDate(dateStr);
+    loadHistory(dateStr);
+  }
+
+  function backToToday() {
+    setHistoryDate(null);
+  }
+
   useEffect(() => {
     loadMessages();
     const unsub = subscribeToTable(TABLES.CHAT_MESSAGES, loadMessages);
@@ -2485,12 +2547,12 @@ function FloatingChatWidget({ currentUser, allUsers }: { currentUser: UserProfil
   }, []);
 
   useEffect(() => {
-    if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, open]);
+    if (open && !historyDate) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length, open, historyDate]);
 
   useEffect(() => {
-    if (open) setLastSeenCount(messages.length);
-  }, [open, messages.length]);
+    if (open) setLastSeenCount(liveMessages.length);
+  }, [open, liveMessages.length]);
 
   async function sendMessage(msg: PendingChatMessage) {
     setPending(prev => prev.map(p => p.id === msg.id ? { ...p, sending: true, failed: false } : p));
@@ -2509,7 +2571,7 @@ function FloatingChatWidget({ currentUser, allUsers }: { currentUser: UserProfil
 
   function handleSend() {
     const text = draft.trim();
-    if (!text) return;
+    if (!text || historyDate) return;
     const msg: PendingChatMessage = {
       id: genId(), senderId: currentUser.id, senderName: getFullName(currentUser),
       senderPicture: currentUser.profilePicture || undefined,
@@ -2529,38 +2591,66 @@ function FloatingChatWidget({ currentUser, allUsers }: { currentUser: UserProfil
     return ((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase();
   }
 
-  const unread = !open ? Math.max(0, messages.length - lastSeenCount) : 0;
+  const unread = !open ? Math.max(0, liveMessages.length - lastSeenCount) : 0;
 
   return (
     <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-3">
       {open && (
         <div className="w-[92vw] max-w-sm bg-card rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden" style={{ height: "70vh", maxHeight: 560 }}>
           <div className="flex items-center justify-between px-4 py-3 bg-primary text-white flex-shrink-0 gap-2">
-            <div className="flex items-center gap-2 min-w-0"><MessageCircle size={16} className="flex-shrink-0"/><span className="text-sm font-semibold truncate">{DIVISIONS[activeDivision].shortName} Staff Chat</span></div>
-            <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <MessageCircle size={16} className="flex-shrink-0"/>
+              <span className="text-sm font-semibold truncate">
+                {DIVISIONS[activeDivision].shortName} Staff Chat{historyDate && <span className="font-normal text-white/70"> · {new Date(historyDate + "T00:00:00").toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}</span>}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0 relative">
               {canSwitchDivision && (
                 <select value={viewDivision} onChange={e => setViewDivision(e.target.value as DivisionCode)}
                   className="text-xs bg-white/10 border border-white/20 rounded-lg px-1.5 py-1 text-white focus:outline-none">
                   {DIVISION_LIST.map(d => <option key={d.code} value={d.code} className="text-foreground">{d.shortName}</option>)}
                 </select>
               )}
+              <button onClick={() => setShowHistoryPicker(s => !s)} title="Chat history"
+                className={`p-1 rounded-lg transition-all ${showHistoryPicker || historyDate ? "bg-white/20" : "hover:bg-white/10"}`}>
+                <Clock size={16}/>
+              </button>
               <button onClick={() => setOpen(false)} className="p-1 rounded-lg hover:bg-white/10 transition-all"><X size={16}/></button>
+
+              {showHistoryPicker && (
+                <div className="absolute top-full right-0 mt-2 bg-white text-foreground rounded-xl shadow-xl border border-border p-3 w-56 z-10" onClick={e => e.stopPropagation()}>
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-2">View chat history for:</p>
+                  <input type="date" max={addDaysToDateString(todayStr, -1)}
+                    onChange={e => { if (e.target.value) openHistoryDate(e.target.value); }}
+                    className="w-full text-sm border border-border rounded-lg px-2 py-1.5 outline-none focus:border-accent" />
+                  <p className="text-[10px] text-muted-foreground mt-1.5">Today's chat is always the live view above — pick an earlier date to see that day's archive.</p>
+                </div>
+              )}
             </div>
           </div>
 
-          {connectionError && (
+          {historyDate && (
+            <div className="px-3 py-2 bg-accent/10 border-b border-accent/20 flex items-center justify-between flex-shrink-0">
+              <span className="text-[11px] font-semibold text-foreground">Read-only archive</span>
+              <button onClick={backToToday} className="flex items-center gap-1 text-[11px] font-bold text-accent hover:underline">
+                <ChevronLeft size={12}/> Back to Today
+              </button>
+            </div>
+          )}
+
+          {connectionError && !historyDate && (
             <div className="px-3 py-2 bg-amber-50 border-b border-amber-200 text-[11px] text-amber-800 flex items-start gap-1.5 flex-shrink-0">
               <AlertCircle size={12} className="flex-shrink-0 mt-0.5"/><span>{connectionError}</span>
             </div>
           )}
 
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 bg-muted/20">
-            {loading ? (
+            {(historyDate ? historyLoading : loading) ? (
               <div className="h-full flex items-center justify-center text-sm text-muted-foreground">Loading messages…</div>
             ) : messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center gap-2 text-muted-foreground">
                 <MessageCircle size={28} className="opacity-40"/>
-                <p className="text-sm">No messages yet. Say hello to your team!</p>
+                <p className="text-sm">{historyDate ? "No messages were sent on this day." : "No messages yet. Say hello to your team!"}</p>
               </div>
             ) : (
               messages.map((m, i) => {
@@ -2603,19 +2693,21 @@ function FloatingChatWidget({ currentUser, allUsers }: { currentUser: UserProfil
             )}
             <div ref={bottomRef}/>
           </div>
-          <div className="border-t border-border p-2.5 flex items-end gap-2 bg-card flex-shrink-0">
-            <textarea
-              value={draft}
-              onChange={e=>setDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-              rows={1}
-              placeholder="Type a message…"
-              className="flex-1 resize-none px-3 py-2 rounded-2xl border border-border bg-input-background text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 transition-all max-h-24"
-            />
-            <button onClick={handleSend} disabled={!draft.trim()} className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all ${draft.trim() ? "bg-accent text-accent-foreground hover:bg-accent/80" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
-              <Send size={15}/>
-            </button>
-          </div>
+          {historyDate ? null : (
+            <div className="border-t border-border p-2.5 flex items-end gap-2 bg-card flex-shrink-0">
+              <textarea
+                value={draft}
+                onChange={e=>setDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                rows={1}
+                placeholder="Type a message…"
+                className="flex-1 resize-none px-3 py-2 rounded-2xl border border-border bg-input-background text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 transition-all max-h-24"
+              />
+              <button onClick={handleSend} disabled={!draft.trim()} className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all ${draft.trim() ? "bg-accent text-accent-foreground hover:bg-accent/80" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
+                <Send size={15}/>
+              </button>
+            </div>
+          )}
         </div>
       )}
       <button onClick={() => setOpen(o=>!o)} className="relative w-14 h-14 rounded-full bg-accent text-accent-foreground shadow-xl flex items-center justify-center hover:bg-accent/90 transition-all">

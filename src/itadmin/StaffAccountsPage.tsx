@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Users, KeyRound, Trash2, Tag } from "lucide-react";
-import { DIVISION_LIST, type DivisionCode, type UserRole } from "@/app/App";
+import { UserPlus, Users, KeyRound, Trash2, Tag, Building2, History } from "lucide-react";
+import { DIVISION_LIST, DIVISIONS, type DivisionCode, type UserRole } from "@/app/App";
 import { STAFF_TOOL_TAGS } from "@/app/staffToolTags";
-import { createStaffAccount, fetchStaffList, deleteStaffAccount, resetStaffPassword, fetchAllStaffTags, setStaffTags, type NewStaffInput, type StaffListItem } from "./itAdminApi";
+import {
+  createStaffAccount, fetchStaffList, deleteStaffAccount, resetStaffPassword, fetchAllStaffTags, setStaffTags,
+  changeStaffDivision, fetchDivisionChangeLog,
+  type NewStaffInput, type StaffListItem, type DivisionChangeEntry,
+} from "./itAdminApi";
 
 const EMPTY_FORM: NewStaffInput = {
   lastName: "", firstName: "", middleName: "", suffix: "", nickname: "",
@@ -30,6 +34,12 @@ export function StaffAccountsPage() {
   const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
   const [tagDraft, setTagDraft] = useState<string[]>([]);
   const [tagBusy, setTagBusy] = useState(false);
+  const [editingDivisionId, setEditingDivisionId] = useState<string | null>(null);
+  const [divisionDraft, setDivisionDraft] = useState<DivisionCode>("LITM");
+  const [divisionBusy, setDivisionBusy] = useState(false);
+  const [historyStaffId, setHistoryStaffId] = useState<string | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<DivisionChangeEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   async function loadStaff() {
     setLoadingStaff(true);
@@ -60,6 +70,27 @@ export function StaffAccountsPage() {
 
   function set<K extends keyof NewStaffInput>(key: K, value: NewStaffInput[K]) {
     setForm(f => ({ ...f, [key]: value }));
+  }
+
+  function openDivisionEditor(s: StaffListItem) {
+    setEditingDivisionId(s.id);
+    setDivisionDraft((s.division as DivisionCode) in DIVISIONS ? (s.division as DivisionCode) : "LITM");
+  }
+
+  async function saveDivisionDraft(s: StaffListItem) {
+    setDivisionBusy(true);
+    const result = await changeStaffDivision(s.id, s.division, divisionDraft);
+    setDivisionBusy(false);
+    if (!result.ok) { setToast(result.error || "Failed to change division."); setTimeout(() => setToast(null), 4000); return; }
+    setStaff(prev => prev.map(x => x.id === s.id ? { ...x, division: divisionDraft } : x));
+    setEditingDivisionId(null);
+  }
+
+  async function openHistory(staffId: string) {
+    setHistoryStaffId(staffId);
+    setHistoryLoading(true);
+    setHistoryEntries(await fetchDivisionChangeLog(staffId));
+    setHistoryLoading(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -179,10 +210,35 @@ export function StaffAccountsPage() {
                   <div className="flex items-center justify-between mb-1.5">
                     <div>
                       <p className="text-sm font-medium text-foreground">{s.lastName}, {s.firstName}</p>
-                      <p className="text-xs text-muted-foreground">@{s.username} · {s.division}</p>
+                      <p className="text-xs text-muted-foreground">@{s.username}</p>
                     </div>
                     <span className="text-[10px] font-bold uppercase tracking-wide bg-muted text-muted-foreground rounded-full px-2.5 py-1">{s.role.replace("_", " ")}</span>
                   </div>
+
+                  {editingDivisionId === s.id ? (
+                    <div className="flex items-center gap-2 mb-2 bg-muted/50 rounded-lg p-2.5">
+                      <Building2 size={13} className="text-accent shrink-0" />
+                      <select value={divisionDraft} onChange={e => setDivisionDraft(e.target.value as DivisionCode)}
+                        className="flex-1 text-xs border border-border rounded-lg px-2 py-1.5 bg-input-background">
+                        {DIVISION_LIST.map(d => <option key={d.code} value={d.code}>{d.fullName}</option>)}
+                      </select>
+                      <button onClick={() => saveDivisionDraft(s)} disabled={divisionBusy} className="text-xs font-bold text-accent hover:underline shrink-0">
+                        {divisionBusy ? "…" : "Save"}
+                      </button>
+                      <button onClick={() => setEditingDivisionId(null)} className="text-xs text-muted-foreground hover:underline shrink-0">Cancel</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mb-2">
+                      <Building2 size={12} className="text-muted-foreground shrink-0" />
+                      <span className="text-xs font-semibold text-foreground">
+                        {(s.division as DivisionCode) in DIVISIONS ? DIVISIONS[s.division as DivisionCode].fullName : s.division}
+                      </span>
+                      <button onClick={() => openDivisionEditor(s)} className="text-[11px] font-semibold text-accent hover:underline">Change</button>
+                      <button onClick={() => openHistory(s.id)} className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:underline ml-auto">
+                        <History size={11} /> History
+                      </button>
+                    </div>
+                  )}
 
                   {editingTagsId === s.id ? (
                     <div className="mb-2 bg-muted/50 rounded-lg p-3">
@@ -252,6 +308,40 @@ export function StaffAccountsPage() {
           </div>
         </div>
       </div>
+
+      {historyStaffId && (
+        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8" onClick={() => setHistoryStaffId(null)}>
+          <div className="w-full max-w-sm bg-card rounded-2xl shadow-2xl border border-border" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
+              <History size={15} className="text-accent" />
+              <h3 className="text-sm font-bold text-foreground">Division Change History</h3>
+            </div>
+            <div className="p-5 max-h-80 overflow-y-auto">
+              {historyLoading ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Loading…</p>
+              ) : historyEntries.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">No division changes recorded yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {historyEntries.map(e => (
+                    <div key={e.id} className="text-xs">
+                      <p className="font-semibold text-foreground">
+                        {e.oldDivision ? (DIVISIONS[e.oldDivision as DivisionCode]?.shortName ?? e.oldDivision) : "—"}
+                        {" → "}
+                        {DIVISIONS[e.newDivision as DivisionCode]?.shortName ?? e.newDivision}
+                      </p>
+                      <p className="text-muted-foreground">{new Date(e.changedAt).toLocaleString()} · by {e.changedByName}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-5 pb-5">
+              <button onClick={() => setHistoryStaffId(null)} className="w-full bg-muted text-muted-foreground py-2.5 rounded-xl font-bold text-sm">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
