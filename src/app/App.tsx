@@ -12,7 +12,7 @@ import {
   Plus, Edit2, Check, Eye, Camera, Upload, FileText, ChevronDown, ChevronUp,
   X, Users, Trash2, Clock, CheckCircle2, Circle, AlertCircle,
   Printer, Calendar as CalendarIcon, Sparkles, Bell, RotateCcw,
-  ClipboardCheck, Plane, MessageCircle, Send, Lock, GraduationCap,
+  ClipboardCheck, Plane, MessageCircle, Send, Lock, GraduationCap, Lightbulb,
 } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import LITMLogo from "@/imports/LITM_Logo_Circular.png";
@@ -21,6 +21,7 @@ import SEADLogo from "@/imports/SEAD_Logo_Circular.png";
 import AFLogo from "@/imports/AF_Logo_Circular.png";
 import CEDOSeal from "@/imports/CEDO_Seal.png";
 import { ScholarManagementToolsPage } from "@/sead/ScholarManagementToolsPage";
+import { SDPMonitoringTab } from "@/sead/pages/SDPMonitoringTab";
 import { StaffAccountsPage } from "@/itadmin/StaffAccountsPage";
 
 // ─────────────────────────────────────────────────────────────
@@ -45,17 +46,14 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
-type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "staffAccounts";
+type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "sdpMonitoring" | "staffAccounts";
 
-/** "Scholar Management Tools" (question bank + scholar accounts) is a fixed-account
- *  feature — visible and usable only by whichever staff accounts are listed here,
- *  matched case-insensitively. To add another account, add its username to this set
- *  AND set is_sead_staff = true for it in the database (see supabase_migration_sead_staff.sql)
- *  — the UI list alone does not grant real database write access; that's the
- *  is_sead_staff flag + RLS policies. */
-const SCHOLAR_MANAGEMENT_USERNAMES = new Set([
-  "sead.sma1", "sead.sma2", "sead.sma3", "sead.sma4", "sead.sma5", "sead.admin1",
-]);
+/** "Scholar Management Tools" (question bank + scholar accounts) is now gated by
+ *  the "scholar_management" tag (see src/app/staffToolTags.ts) instead of a fixed
+ *  username list — it.admin1 assigns it per-account from the Staff Accounts page.
+ *  The underlying database writes are separately enforced by the is_sead_staff flag
+ *  + RLS policies (supabase_migration_sead_staff.sql), so the real security
+ *  boundary doesn't depend on this UI gate alone. */
 
 /** "Staff Accounts" (creating new staff logins) is likewise gated to one specific
  *  dedicated IT account — NOT tied to the super_admin role. Self-registration has
@@ -81,9 +79,12 @@ interface UserProfile {
   /** Derived convenience flag: true for division_admin AND super_admin. Kept so existing
    *  admin-gated UI ("if (user.isAdmin)") continues to work without a rewrite. */
   isAdmin: boolean; profilePicture: string;
+  /** Which gated tools/tabs this account can see — assigned by it.admin1 on the Staff
+   *  Accounts page (see src/app/staffToolTags.ts for the registry of possible tags). */
+  tags: string[];
 }
-function makeUser(u: Omit<UserProfile, "isAdmin">): UserProfile {
-  return { ...u, isAdmin: u.role === "division_admin" || u.role === "super_admin" };
+function makeUser(u: Omit<UserProfile, "isAdmin" | "tags"> & { tags?: string[] }): UserProfile {
+  return { ...u, isAdmin: u.role === "division_admin" || u.role === "super_admin", tags: u.tags ?? [] };
 }
 interface Deliverable { id: string; title: string; status: "pending" | "done"; }
 interface DailyTask {
@@ -413,8 +414,11 @@ function TopNav({ user, page, setPage, onSignOut, unreadCount }: { user: UserPro
     { key:"home", label:"Home", icon:<Home size={14}/> },
     { key:"tasks", label:"My Tasks", icon:<CheckSquare size={14}/> },
   ];
-  if (SCHOLAR_MANAGEMENT_USERNAMES.has(user.username.toLowerCase())) {
+  if (user.tags.includes("scholar_management")) {
     primaryItems.push({ key:"scholarManagement", label:"Scholar Management Tools", icon:<GraduationCap size={14}/> });
+  }
+  if (user.tags.includes("sdp_monitoring")) {
+    primaryItems.push({ key:"sdpMonitoring", label:"SDP Monitoring", icon:<Lightbulb size={14}/> });
   }
   if (user.username.toLowerCase() === IT_ADMIN_USERNAME) {
     primaryItems.push({ key:"staffAccounts", label:"Staff Accounts", icon:<Lock size={14}/> });
@@ -2641,7 +2645,7 @@ function userToRow(u: UserProfile): Record<string, unknown> {
 }
 
 /** Converts a Supabase row back to a UserProfile. */
-function rowToUser(r: Record<string, unknown>): UserProfile {
+function rowToUser(r: Record<string, unknown>, tags: string[] = []): UserProfile {
   const division = (String(r.division ?? "LITM") as DivisionCode);
   // Back-compat: rows written before the `role` column existed only had `is_admin`.
   const role = (r.role ? String(r.role) : (r.is_admin ? "division_admin" : "staff")) as UserRole;
@@ -2655,14 +2659,19 @@ function rowToUser(r: Record<string, unknown>): UserProfile {
     division: DIVISIONS[division] ? division : "LITM", role,
     isAdmin: role === "division_admin" || role === "super_admin",
     profilePicture: String(r.profile_picture ?? ""),
+    tags,
   };
 }
 
-/** Fetches a single profile row by its Supabase Auth user id (auth.uid()). */
+/** Fetches a single profile row by its Supabase Auth user id (auth.uid()), along with
+ *  which tool tags it.admin1 has assigned to this account (see staffToolTags.ts). */
 async function fetchUserProfile(authUserId: string): Promise<UserProfile | null> {
-  const { data, error } = await supabase.from(TABLES.USERS).select("*").eq("id", authUserId).maybeSingle();
+  const [{ data, error }, { data: tagRows }] = await Promise.all([
+    supabase.from(TABLES.USERS).select("*").eq("id", authUserId).maybeSingle(),
+    supabase.from("staff_account_tags").select("tag_key").eq("staff_id", authUserId),
+  ]);
   if (error || !data) return null;
-  return rowToUser(data as Record<string, unknown>);
+  return rowToUser(data as Record<string, unknown>, (tagRows ?? []).map(t => t.tag_key as string));
 }
 
 /** Converts a Supabase notification row back to AppNotification. */
@@ -2771,7 +2780,11 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile|null>(() => {
     try {
       const saved = localStorage.getItem("litm_current_user");
-      return saved ? JSON.parse(saved) as UserProfile : null;
+      if (!saved) return null;
+      const parsed = JSON.parse(saved) as UserProfile;
+      // Guard against a profile cached before the `tags` field existed — the real
+      // fetch below (with tags) supersedes this within a tick anyway.
+      return { ...parsed, tags: parsed.tags ?? [] };
     } catch { return null; }
   });
   const [page, setPage] = useState<Page>("home");
@@ -2841,7 +2854,7 @@ export default function App() {
 
         // Users
         if (dbUsers.length > 0) {
-          const liveUsers = dbUsers.map(rowToUser);
+          const liveUsers = dbUsers.map(r => rowToUser(r));
           // One-time cleanup: remove any legacy trial/test account left over from a previous version.
           const trial = liveUsers.find(u => u.username === "testuser" || u.id === "u-test");
           if (trial) {
@@ -3312,8 +3325,11 @@ export default function App() {
         {page==="admin" && currentUser.role==="super_admin" && (
           <AdminManagementPage users={users} currentUser={currentUser} onChangeRole={handleChangeUserRole}/>
         )}
-        {page==="scholarManagement" && SCHOLAR_MANAGEMENT_USERNAMES.has(currentUser.username.toLowerCase()) && (
+        {page==="scholarManagement" && currentUser.tags.includes("scholar_management") && (
           <ScholarManagementToolsPage/>
+        )}
+        {page==="sdpMonitoring" && currentUser.tags.includes("sdp_monitoring") && (
+          <SDPMonitoringTab/>
         )}
         {page==="staffAccounts" && currentUser.username.toLowerCase()===IT_ADMIN_USERNAME && (
           <StaffAccountsPage/>

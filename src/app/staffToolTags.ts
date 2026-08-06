@@ -1,0 +1,31 @@
+/**
+ * Every "tool tag" a CEDO staff account can be assigned. A tag gates
+ * visibility of one nav item/tab — it.admin1 assigns tags to staff
+ * accounts (Staff Accounts page), and a staff member only sees a tool
+ * once their account has been tagged for it.
+ *
+ * To add a new gated tab in the future:
+ *   1. Add its tag here.
+ *   2. In App.tsx, check `currentUser.tags.includes("your_new_key")`
+ *      wherever that tab's nav item and page are rendered.
+ * That's it — it.admin1 can then grant it to whichever accounts need it
+ * from the Staff Accounts page, no other code changes required.
+ */
+export interface StaffToolTag {
+  key: string;
+  label: string;
+  description: string;
+}
+
+export const STAFF_TOOL_TAGS: StaffToolTag[] = [
+  {
+    key: "scholar_management",
+    label: "Scholar Management Tools",
+    description: "Question bank, scholar accounts, quest scores, and account history.",
+  },
+  {
+    key: "sdp_monitoring",
+    label: "SDP Monitoring",
+    description: "Review and approve scholars' SDP activity proposals — needed for scholarship renewal tracking.",
+  },
+];

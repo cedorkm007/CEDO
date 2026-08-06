@@ -4,16 +4,18 @@ import { fetchCurrentScholarProfile, fetchSubjectsAndGrades, fetchQuestScores, s
 import { ProfileBanner } from "../components/dashboard/ProfileBanner";
 import { DashboardHome } from "../components/dashboard/DashboardHome";
 import { CompactNav } from "../components/dashboard/CompactNav";
+import { BottomNav } from "../components/dashboard/BottomNav";
 import { ProfilePanel } from "../components/dashboard/ProfilePanel";
 import { SubjectsGradesPanel } from "../components/dashboard/SubjectsGradesPanel";
 import { ServicesPanel } from "../components/dashboard/ServicesPanel";
 import { QuestsPanel } from "../components/dashboard/QuestsPanel";
+import { SDPPanel } from "../components/dashboard/SDPPanel";
 import { UnderDevPanelCard } from "../components/dashboard/UnderDevPanelCard";
 import { SectionCard } from "../components/dashboard/SectionCard";
 import { ChangePasswordModal } from "../components/dashboard/ChangePasswordModal";
 import type { DashPanelKey } from "../components/dashboard/types";
 import type { ScholarProfile, SubjectGrade, QuestScore } from "../types";
-import { Lightbulb, Calendar as CalendarIcon } from "lucide-react";
+import { Calendar as CalendarIcon } from "lucide-react";
 
 interface ScholarPortalPageProps {
   onSignOut: () => void;
@@ -58,7 +60,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
   }
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-[#F5F7FA] px-4 md:px-8 py-8">
+    <div className="min-h-[calc(100vh-64px)] bg-[#F5F7FA] px-4 md:px-8 py-8 pb-24 md:pb-8">
       <div className="max-w-[1100px] mx-auto">
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm text-slate-500">Scholar Portal</p>
@@ -85,11 +87,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
                 onScoreSubmitted={() => { fetchQuestScores(profile.scholarIdNumber).then(setScores); }}
               />
             )}
-            {panel === "sdp" && (
-              <SectionCard icon={<Lightbulb size={14} />} title="Scholars' Development Program (SDP)">
-                <UnderDevPanelCard label="Under Development" />
-              </SectionCard>
-            )}
+            {panel === "sdp" && <SDPPanel scholarIdNumber={profile.scholarIdNumber} />}
             {panel === "calendar" && (
               <SectionCard icon={<CalendarIcon size={14} />} title="Calendar">
                 <UnderDevPanelCard label="Under Development" />
@@ -100,6 +98,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
       </div>
 
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+      <BottomNav active={panel} onSelect={setPanel} />
     </div>
   );
 }
