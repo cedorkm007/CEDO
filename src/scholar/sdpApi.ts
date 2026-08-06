@@ -18,6 +18,7 @@ export interface SDPActivity {
   projectHead: string;
   headCluster: string;
   status: SDPStatus;
+  sdpPoints: number;
   budgetaryRequirement: string;
   sourceOfFund: string[];
   sourceOfFundOther: string;
@@ -68,6 +69,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     projectHead: String(r.project_head ?? ""),
     headCluster: String(r.head_cluster ?? ""),
     status: r.status as SDPStatus,
+    sdpPoints: Number(r.sdp_points ?? 0),
     budgetaryRequirement: String(r.budgetary_requirement ?? ""),
     sourceOfFund: (r.source_of_fund as string[]) ?? [],
     sourceOfFundOther: String(r.source_of_fund_other ?? ""),
@@ -123,6 +125,13 @@ export interface SDPProposalInput {
   workPlan: WorkPlanRow[];
   programFlow: ProgramFlowRow[];
   budgetItems: BudgetRow[];
+}
+
+/** Sum of this scholar's own credited SDP points (readable under their own RLS). */
+export async function fetchScholarSDPPoints(scholarIdNumber: string): Promise<number> {
+  const { data, error } = await supabase.from("sdp_attendance").select("points_credited").eq("scholar_id_number", scholarIdNumber);
+  if (error || !data) return 0;
+  return data.reduce((sum, r) => sum + Number(r.points_credited ?? 0), 0);
 }
 
 export async function submitSDPProposal(
