@@ -1,26 +1,25 @@
 import { motion } from "motion/react";
-import { Home, User, Trophy, Briefcase, Lightbulb } from "lucide-react";
+import { BookMarked, Trophy, Briefcase, Lightbulb, Calendar as CalendarIcon } from "lucide-react";
 import type { DashPanelKey } from "./types";
 
 interface BottomNavProps {
-  active: DashPanelKey | null; // null = Home
-  onSelect: (panel: DashPanelKey | null) => void;
+  active: DashPanelKey | null;
+  onSelect: (panel: DashPanelKey) => void;
 }
 
-const NAV_ITEMS: { key: DashPanelKey | null; label: string; icon: React.ReactNode }[] = [
-  { key: null, label: "Home", icon: <Home className="w-5 h-5" /> },
+const NAV_ITEMS: { key: DashPanelKey; label: string; icon: React.ReactNode }[] = [
   { key: "quests", label: "Quests", icon: <Trophy className="w-5 h-5" /> },
+  { key: "subjects-grades", label: "Grades", icon: <BookMarked className="w-5 h-5" /> },
   { key: "services", label: "Services", icon: <Briefcase className="w-5 h-5" /> },
   { key: "sdp", label: "SDP", icon: <Lightbulb className="w-5 h-5" /> },
-  { key: "profile", label: "Profile", icon: <User className="w-5 h-5" /> },
+  { key: "calendar", label: "Calendar", icon: <CalendarIcon className="w-5 h-5" /> },
 ];
 
 /**
- * Persistent mobile tab bar (matches the reference app's BottomNav: fixed
- * bottom, gold active pill, scale-on-hover/tap). Desktop/tablet keeps using
- * CompactNav instead — this only renders below the `md` breakpoint. Only
- * the 5 most-used destinations get a permanent tab, same as the reference
- * app; Subjects & Grades and Calendar stay reachable from the Home grid.
+ * Persistent mobile tab bar. Home and Profile live in MobilePortalHeader
+ * instead (top-left button / top-right popup), so this only covers the
+ * remaining 5 panels — matches the reference app's tap/hover interactivity
+ * (gold active pill, scale on hover/tap). Desktop keeps using CompactNav.
  */
 export function BottomNav({ active, onSelect }: BottomNavProps) {
   return (
@@ -30,7 +29,7 @@ export function BottomNav({ active, onSelect }: BottomNavProps) {
           const isActive = active === item.key;
           return (
             <motion.button
-              key={item.label}
+              key={item.key}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => onSelect(item.key)}

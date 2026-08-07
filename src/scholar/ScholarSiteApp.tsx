@@ -47,12 +47,14 @@ export function ScholarSiteApp() {
 
   return (
     <div className="min-h-screen bg-white">
-      <PublicNav
-        page={navPage}
-        onNavigate={(p) => setView(p)}
-        onExistingScholar={() => setView("scholar-login")}
-        onNewApplicant={(kind) => setView(kind === "college" ? "new-college" : "new-law-medical")}
-      />
+      <div className={view === "portal" ? "hidden md:block" : ""}>
+        <PublicNav
+          page={navPage}
+          onNavigate={(p) => setView(p)}
+          onExistingScholar={() => setView("scholar-login")}
+          onNewApplicant={(kind) => setView(kind === "college" ? "new-college" : "new-law-medical")}
+        />
+      </div>
 
       {view === "home" && <CEDOHomePage />}
       {view === "articles" && <UnderDevelopmentPage title="Articles" />}
