@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb } from "lucide-react";
+import { motion } from "motion/react";
+import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, extractYouTubeId } from "../../quizApi";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
@@ -25,6 +26,8 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
   const [answers, setAnswers] = useState<Record<string, string>>({}); // questionId -> choiceId
   const [submitting, setSubmitting] = useState(false);
   const [expandedVideoTopicId, setExpandedVideoTopicId] = useState<string | null>(null);
+  const [browseTab, setBrowseTab] = useState<"subject" | "history">("subject");
+  const [historyDateFilter, setHistoryDateFilter] = useState("");
 
   useEffect(() => { loadSubjects(); }, []);
 
@@ -90,47 +93,49 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
     <SectionCard icon={<Trophy size={14} />} title="Academic Quests">
       {step.view === "browse" && (
         <>
-          {scores.length > 0 && (
-            <div className="mb-7">
-              <p className="text-[10.5px] font-bold uppercase tracking-[1.2px] text-[#0088cc] mb-3">Your Quest History</p>
-              <div className="space-y-2">
-                {scores.map(s => (
-                  <div key={s.id} className="flex items-center justify-between bg-[#f8fafd] border border-[#e8edf2] rounded-lg px-4 py-3">
-                    <div>
-                      <p className="text-sm font-semibold text-[#062444]">{s.questName}</p>
-                      <p className="text-xs text-slate-400">{s.dateTaken ?? "—"}</p>
-                    </div>
-                    <span className="text-sm font-bold text-[#062444]">{s.score ?? "—"}{s.maxScore ? ` / ${s.maxScore}` : ""}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-2.5 mb-6">
+            <motion.button whileTap={{ scale: 0.97 }} onClick={() => setBrowseTab("subject")}
+              className={`rounded-xl p-3 flex flex-col items-center gap-1.5 border-2 transition-all ${browseTab === "subject" ? "bg-[#062444] border-[#F3BC00]" : "bg-[#f7f9fc] border-transparent hover:border-[#e6ecf5]"}`}>
+              <Trophy className={`w-6 h-6 ${browseTab === "subject" ? "text-[#F3BC00]" : "text-[#062444]"}`} />
+              <span className={`font-bold text-[11px] text-center leading-tight ${browseTab === "subject" ? "text-[#F3BC00]" : "text-[#062444]"}`}>Choose a Subject</span>
+            </motion.button>
+            <motion.button whileTap={{ scale: 0.97 }} onClick={() => setBrowseTab("history")}
+              className={`rounded-xl p-3 flex flex-col items-center gap-1.5 border-2 transition-all ${browseTab === "history" ? "bg-[#062444] border-[#F3BC00]" : "bg-[#f7f9fc] border-transparent hover:border-[#e6ecf5]"}`}>
+              <List className={`w-6 h-6 ${browseTab === "history" ? "text-[#F3BC00]" : "text-[#062444]"}`} />
+              <span className={`font-bold text-[11px] text-center leading-tight ${browseTab === "history" ? "text-[#F3BC00]" : "text-[#062444]"}`}>Quest History</span>
+            </motion.button>
+          </div>
 
-          <h4 className="text-[15px] font-extrabold text-[#062444] mb-1">Choose a subject</h4>
-          <p className="text-sm text-slate-400 mb-5">Test your academic knowledge and track your progress.</p>
+          {browseTab === "subject" ? (
+            <>
+              <h4 className="text-[15px] font-extrabold text-[#062444] mb-1">Choose a subject</h4>
+              <p className="text-sm text-slate-400 mb-5">Test your academic knowledge and track your progress.</p>
 
-          {loading ? (
-            <p className="text-sm text-slate-400">Loading…</p>
-          ) : subjects.length === 0 ? (
-            <p className="text-[13px] text-slate-400 italic flex items-center gap-1.5">
-              <Info size={13} /> No quest subjects have been set up yet — check back soon.
-            </p>
+              {loading ? (
+                <p className="text-sm text-slate-400">Loading…</p>
+              ) : subjects.length === 0 ? (
+                <p className="text-[13px] text-slate-400 italic flex items-center gap-1.5">
+                  <Info size={13} /> No quest subjects have been set up yet — check back soon.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {subjects.map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => openSubject(s)}
+                      className="flex flex-col items-center justify-center gap-2 aspect-[1/0.85] rounded-2xl border border-[#e6ecf5] bg-white hover:border-[#0088cc]/40 hover:shadow-[0_4px_14px_rgba(6,36,68,0.08)] px-3 text-center transition-all"
+                    >
+                      <span className="w-12 h-12 rounded-xl bg-[#eef3fb] flex items-center justify-center text-[#062444]">
+                        <Trophy size={20} />
+                      </span>
+                      <span className="text-[13px] font-bold text-[#062444]">{s.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {subjects.map(s => (
-                <button
-                  key={s.id}
-                  onClick={() => openSubject(s)}
-                  className="flex flex-col items-center justify-center gap-2 aspect-[1/0.85] rounded-2xl border border-[#e6ecf5] bg-white hover:border-[#0088cc]/40 hover:shadow-[0_4px_14px_rgba(6,36,68,0.08)] px-3 text-center transition-all"
-                >
-                  <span className="w-12 h-12 rounded-xl bg-[#eef3fb] flex items-center justify-center text-[#062444]">
-                    <Trophy size={20} />
-                  </span>
-                  <span className="text-[13px] font-bold text-[#062444]">{s.name}</span>
-                </button>
-              ))}
-            </div>
+            <QuestHistoryTab scores={scores} dateFilter={historyDateFilter} onDateFilterChange={setHistoryDateFilter} />
           )}
         </>
       )}
@@ -306,6 +311,54 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
         </div>
       )}
     </SectionCard>
+  );
+}
+
+function QuestHistoryTab({ scores, dateFilter, onDateFilterChange }: {
+  scores: QuestScore[]; dateFilter: string; onDateFilterChange: (v: string) => void;
+}) {
+  const filtered = dateFilter ? scores.filter(s => s.dateTaken === dateFilter) : scores;
+  const sorted = [...filtered].sort((a, b) => (b.dateTaken ?? "").localeCompare(a.dateTaken ?? ""));
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <h4 className="text-[15px] font-extrabold text-[#062444]">Quest History</h4>
+        <span className="text-slate-400 text-xs">{sorted.length} entr{sorted.length === 1 ? "y" : "ies"}</span>
+      </div>
+      <p className="text-sm text-slate-400 mb-4">Every quest you've completed, with your score.</p>
+
+      <div className="flex items-center gap-2 mb-5">
+        <div className="flex items-center gap-2 flex-1 border border-[#e6ecf5] rounded-lg px-3 py-2">
+          <CalendarDays size={14} className="text-slate-400 shrink-0" />
+          <input type="date" value={dateFilter} onChange={e => onDateFilterChange(e.target.value)}
+            className="w-full text-sm outline-none text-[#062444]" />
+        </div>
+        {dateFilter && (
+          <button onClick={() => onDateFilterChange("")} className="flex items-center gap-1 text-[12.5px] font-semibold text-slate-400 hover:text-[#062444]">
+            <XIcon size={13} /> Clear
+          </button>
+        )}
+      </div>
+
+      {sorted.length === 0 ? (
+        <p className="text-[13px] text-slate-400 italic flex items-center gap-1.5">
+          <Info size={13} /> {dateFilter ? "No quests were taken on this date." : "No quest history yet — take a quiz to get started."}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {sorted.map(s => (
+            <div key={s.id} className="flex items-center justify-between bg-[#f8fafd] border border-[#e8edf2] rounded-lg px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-[#062444]">{s.questName}</p>
+                <p className="text-xs text-slate-400">{s.dateTaken ?? "—"}</p>
+              </div>
+              <span className="text-sm font-bold text-[#062444]">{s.score ?? "—"}{s.maxScore ? ` / ${s.maxScore}` : ""}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
