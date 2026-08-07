@@ -25,9 +25,19 @@ export function PublicNav({ page, onNavigate, onExistingScholar, onNewApplicant 
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setDropdownOpen(false);
-      if (mobileWrapRef.current && !mobileWrapRef.current.contains(e.target as Node)) setDropdownOpen(false);
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) setMobileMenuOpen(false);
+      const target = e.target as Node;
+      // dropdownOpen is shared between the desktop pill dropdown (wrapRef) and the
+      // mobile square dropdown (mobileWrapRef) — both refs stay mounted at all
+      // times (just CSS-hidden per breakpoint), so a click has to be outside BOTH
+      // before it counts as "outside." Checking each ref independently was the
+      // bug: on mobile, wrapRef never contains the click, so that check alone
+      // closed the dropdown on every tap — including taps on its own buttons,
+      // before the click could register.
+      const insideDesktop = wrapRef.current?.contains(target) ?? false;
+      const insideMobile = mobileWrapRef.current?.contains(target) ?? false;
+      if (!insideDesktop && !insideMobile) setDropdownOpen(false);
+
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(target)) setMobileMenuOpen(false);
     }
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
