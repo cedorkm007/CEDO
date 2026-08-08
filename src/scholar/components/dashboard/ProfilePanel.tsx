@@ -6,9 +6,21 @@ import type { ScholarProfile } from "../../types";
 
 const CIVIL_STATUS_OPTIONS = ["Single", "Single Parent", "Married", "Widow", "Separated"];
 
+function formatAddress(p: ScholarProfile): string {
+  const parts = [p.houseUnitNo, p.street, p.barangay, p.cityMunicipality, p.provinceRegion, p.country, p.zipCode].filter(s => s.trim());
+  return parts.length ? parts.join(", ") : "—";
+}
+
 export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarProfile; onProfileUpdated: (p: ScholarProfile) => void }) {
   const [civilStatus, setCivilStatus] = useState(profile.civilStatus || "");
   const [contactNo, setContactNo] = useState(profile.contactNo || "");
+  const [houseUnitNo, setHouseUnitNo] = useState(profile.houseUnitNo || "");
+  const [street, setStreet] = useState(profile.street || "");
+  const [barangay, setBarangay] = useState(profile.barangay || "");
+  const [cityMunicipality, setCityMunicipality] = useState(profile.cityMunicipality || "");
+  const [provinceRegion, setProvinceRegion] = useState(profile.provinceRegion || "");
+  const [country, setCountry] = useState(profile.country || "");
+  const [zipCode, setZipCode] = useState(profile.zipCode || "");
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
@@ -16,11 +28,12 @@ export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarPr
     e.preventDefault();
     setSaving(true);
     setSaveMessage(null);
-    const result = await updateOwnContactInfo(civilStatus, contactNo);
+    const fields = { civilStatus, contactNo, houseUnitNo, street, barangay, cityMunicipality, provinceRegion, country, zipCode };
+    const result = await updateOwnContactInfo(fields);
     setSaving(false);
     if (result.ok) {
       setSaveMessage({ kind: "ok", text: "Saved." });
-      onProfileUpdated({ ...profile, civilStatus, contactNo });
+      onProfileUpdated({ ...profile, ...fields });
     } else {
       setSaveMessage({ kind: "error", text: result.error || "Couldn't save changes." });
     }
@@ -63,7 +76,7 @@ export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarPr
         <InfoItem icon={<BookOpen size={11} />} label="Course" value={profile.course || "—"} full />
         <InfoItem icon={<Heart size={11} />} label="Civil Status" value={profile.civilStatus || "—"} />
         <InfoItem icon={<Phone size={11} />} label="Contact No." value={profile.contactNo || "—"} />
-        <InfoItem icon={<MapPin size={11} />} label="Address" value={profile.address || "—"} full />
+        <InfoItem icon={<MapPin size={11} />} label="Address" value={formatAddress(profile)} full />
       </div>
 
       <hr className="border-t border-[#e6ecf5] my-6" />
@@ -90,6 +103,45 @@ export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarPr
               placeholder="09XXXXXXXXX"
               className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]"
             />
+          </div>
+        </div>
+
+        <p className="text-[10.5px] font-bold uppercase tracking-[1.2px] text-[#0088cc] mb-4 flex items-center gap-1.5"><MapPin size={12} /> Address</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">House/Unit No.</label>
+            <input value={houseUnitNo} onChange={e => setHouseUnitNo(e.target.value)}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Street</label>
+            <input value={street} onChange={e => setStreet(e.target.value)}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Barangay</label>
+            <input value={barangay} onChange={e => setBarangay(e.target.value)}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">City/Municipality</label>
+            <input value={cityMunicipality} onChange={e => setCityMunicipality(e.target.value)}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Province/Region</label>
+            <input value={provinceRegion} onChange={e => setProvinceRegion(e.target.value)}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Country</label>
+            <input value={country} onChange={e => setCountry(e.target.value)}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Zip Code</label>
+            <input value={zipCode} onChange={e => setZipCode(e.target.value)}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
           </div>
         </div>
 

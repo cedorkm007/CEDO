@@ -63,6 +63,13 @@ function rowToProfile(r: Record<string, unknown>): ScholarProfile {
     course: String(r.course ?? ""),
     civilStatus: String(r.civil_status ?? ""),
     address: String(r.address ?? ""),
+    houseUnitNo: String(r.house_unit_no ?? ""),
+    street: String(r.street ?? ""),
+    barangay: String(r.barangay ?? ""),
+    cityMunicipality: String(r.city_municipality ?? ""),
+    provinceRegion: String(r.province_region ?? ""),
+    country: String(r.country ?? ""),
+    zipCode: String(r.zip_code ?? ""),
     status: (r.status as ScholarProfile["status"]) ?? "active",
   };
 }
@@ -113,10 +120,29 @@ export async function fetchQuestScores(scholarIdNumber: string): Promise<QuestSc
 }
 
 /** Scholar self-service: update ONLY civil status + contact number on their own row. */
-export async function updateOwnContactInfo(civilStatus: string, contactNo: string): Promise<{ ok: boolean; error?: string }> {
+export interface OwnProfileEditableFields {
+  civilStatus: string;
+  contactNo: string;
+  houseUnitNo: string;
+  street: string;
+  barangay: string;
+  cityMunicipality: string;
+  provinceRegion: string;
+  country: string;
+  zipCode: string;
+}
+
+export async function updateOwnContactInfo(fields: OwnProfileEditableFields): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.rpc("update_own_scholar_contact", {
-    p_civil_status: civilStatus,
-    p_contact_no: contactNo,
+    p_civil_status: fields.civilStatus,
+    p_contact_no: fields.contactNo,
+    p_house_unit_no: fields.houseUnitNo,
+    p_street: fields.street,
+    p_barangay: fields.barangay,
+    p_city_municipality: fields.cityMunicipality,
+    p_province_region: fields.provinceRegion,
+    p_country: fields.country,
+    p_zip_code: fields.zipCode,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };

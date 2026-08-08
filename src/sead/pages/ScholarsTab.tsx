@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2 } from "lucide-react";
+import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine } from "lucide-react";
 import { fetchScholars, resetScholarPassword, deleteScholarAccount, SCHOLARS_PAGE_SIZE } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
 import { BulkScholarUploadModal } from "../components/BulkScholarUploadModal";
+import { BulkScholarUpdateModal } from "../components/BulkScholarUpdateModal";
 import type { ScholarListItem } from "../types";
 
 export function ScholarsTab() {
@@ -13,6 +14,7 @@ export function ScholarsTab() {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
+  const [showBulkUpdate, setShowBulkUpdate] = useState(false);
   const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
   const [resetBusyId, setResetBusyId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -81,6 +83,10 @@ export function ScholarsTab() {
           <button onClick={() => setShowBulkUpload(true)}
             className="flex items-center gap-2 bg-white border border-[#062444]/15 text-[#062444] text-[13px] font-semibold rounded-lg px-4 py-2.5 hover:bg-[#f8fafd]">
             <UploadCloud size={15} className="text-[#0088cc]" /> Bulk Upload
+          </button>
+          <button onClick={() => setShowBulkUpdate(true)}
+            className="flex items-center gap-2 bg-white border border-[#062444]/15 text-[#062444] text-[13px] font-semibold rounded-lg px-4 py-2.5 hover:bg-[#f8fafd]">
+            <FilePenLine size={15} className="text-[#0088cc]" /> Bulk Update
           </button>
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 bg-gradient-to-br from-[#062444] to-[#0a3a6b] text-white text-[13px] font-semibold rounded-lg px-4 py-2.5">
@@ -170,6 +176,7 @@ export function ScholarsTab() {
 
       {showAdd && <AddScholarModal onClose={() => setShowAdd(false)} onCreated={() => load(page)} />}
       {showBulkUpload && <BulkScholarUploadModal onClose={() => setShowBulkUpload(false)} onDone={() => load(page)} />}
+      {showBulkUpdate && <BulkScholarUpdateModal onClose={() => setShowBulkUpdate(false)} onDone={() => load(page)} />}
     </div>
   );
 }

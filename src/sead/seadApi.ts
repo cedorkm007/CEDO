@@ -314,6 +314,70 @@ export async function undoBulkScholarUpload(batchId: string): Promise<{ ok: bool
   return { ok: true, removedCount: result.data?.removedCount, results: result.data?.results };
 }
 
+export interface BulkScholarUpdateInput {
+  scholarIdNumber: string; // key — must already exist
+  firstName?: string; lastName?: string; middleName?: string; birthday?: string;
+  school?: string; course?: string; civilStatus?: string; contactNo?: string;
+  houseUnitNo?: string; street?: string; barangay?: string; cityMunicipality?: string;
+  provinceRegion?: string; country?: string; zipCode?: string;
+}
+
+export interface BulkScholarUpdateRowResult {
+  index: number; // 0-based index into the array passed in, matches the CSV row order
+  scholarIdNumber: string;
+  ok: boolean;
+  fieldsChanged: number;
+  error?: string;
+}
+
+const BULK_UPDATE_FIELD_MAP: Record<keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">, string> = {
+  firstName: "first_name", lastName: "last_name", middleName: "middle_name", birthday: "birthday",
+  school: "school", course: "course", civilStatus: "civil_status", contactNo: "contact_no",
+  houseUnitNo: "house_unit_no", street: "street", barangay: "barangay", cityMunicipality: "city_municipality",
+  provinceRegion: "province_region", country: "country", zipCode: "zip_code",
+};
+
+/**
+ * Updates many existing scholars at once, matched by Scholar ID Number.
+ * Only fields present on each input row are touched — a field the CSV
+ * left blank simply isn't included in that row's object, so it's never
+ * sent in the update and the scholar's existing value is left alone.
+ */
+export async function bulkUpdateScholars(rows: BulkScholarUpdateInput[]): Promise<{ updated: number; results: BulkScholarUpdateRowResult[] }> {
+  const results: BulkScholarUpdateRowResult[] = [];
+  let updated = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const patch: Record<string, string> = {};
+    for (const [key, column] of Object.entries(BULK_UPDATE_FIELD_MAP) as [keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">, string][]) {
+      const value = r[key];
+      if (value !== undefined) patch[column] = value;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: true, fieldsChanged: 0 });
+      continue;
+    }
+
+    patch.updated_at = new Date().toISOString();
+    const { data, error } = await supabase.from("scholars").update(patch).eq("scholar_id_number", r.scholarIdNumber).select("id");
+    if (error) {
+      results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: false, fieldsChanged: 0, error: error.message });
+      continue;
+    }
+    if (!data || data.length === 0) {
+      results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: false, fieldsChanged: 0, error: `Scholar ID ${r.scholarIdNumber} not found.` });
+      continue;
+    }
+
+    updated++;
+    results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: true, fieldsChanged: Object.keys(patch).length - 1 });
+  }
+
+  return { updated, results };
+}
+
 export async function resetScholarPassword(scholarIdNumber: string): Promise<{ ok: boolean; error?: string; name?: string }> {
   const result = await invokeEdgeFunction<{ name?: string }>("sead-reset-scholar-password", { scholarIdNumber });
   if (!result.ok) return { ok: false, error: result.error };

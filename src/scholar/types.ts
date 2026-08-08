@@ -17,7 +17,14 @@ export interface ScholarProfile {
   school: string;
   course: string;
   civilStatus: string;
-  address: string;
+  address: string; // legacy free-text field, superseded by the structured fields below
+  houseUnitNo: string;
+  street: string;
+  barangay: string;
+  cityMunicipality: string;
+  provinceRegion: string;
+  country: string;
+  zipCode: string;
   status: "active" | "probation" | "inactive" | "graduated";
 }
 
