@@ -27,7 +27,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
   const [submitting, setSubmitting] = useState(false);
   const [expandedVideoTopicId, setExpandedVideoTopicId] = useState<string | null>(null);
   const [browseTab, setBrowseTab] = useState<"subject" | "history">("subject");
-  const [historyDateFilter, setHistoryDateFilter] = useState("");
+  const [historyDateFilter, setHistoryDateFilter] = useState(() => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }));
 
   useEffect(() => { loadSubjects(); }, []);
 
@@ -336,7 +336,7 @@ function QuestHistoryTab({ scores, dateFilter, onDateFilterChange }: {
         </div>
         {dateFilter && (
           <button onClick={() => onDateFilterChange("")} className="flex items-center gap-1 text-[12.5px] font-semibold text-slate-400 hover:text-[#062444]">
-            <XIcon size={13} /> Clear
+            <XIcon size={13} /> Show All
           </button>
         )}
       </div>

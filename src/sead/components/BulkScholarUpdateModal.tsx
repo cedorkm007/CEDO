@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { X, Download, Upload, AlertTriangle, CheckCircle2, UploadCloud } from "lucide-react";
 import { bulkUpdateScholars, type BulkScholarUpdateInput, type BulkScholarUpdateRowResult } from "../seadApi";
 import { parseCsv, toCsv, downloadCsv, normalizeHeader, findColumn, cell } from "../csvUtils";
+import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
 
 const TEMPLATE_HEADERS = [
   "Scholar ID Number", "First Name", "Last Name", "Middle Name", "Birthday (YYYY-MM-DD)",
@@ -38,7 +39,7 @@ function normalizeBirthday(raw: string): string | null {
   return null;
 }
 
-const FIELD_DEFS: { key: keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">; label: string; aliases: string[]; isBirthday?: boolean }[] = [
+const FIELD_DEFS: { key: keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">; label: string; aliases: string[]; isBirthday?: boolean; isBarangay?: boolean }[] = [
   { key: "firstName", label: "First Name", aliases: ["first name", "firstname"] },
   { key: "lastName", label: "Last Name", aliases: ["last name", "lastname"] },
   { key: "middleName", label: "Middle Name", aliases: ["middle name", "middlename"] },
@@ -49,7 +50,7 @@ const FIELD_DEFS: { key: keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">; 
   { key: "contactNo", label: "Contact No.", aliases: ["contact no.", "contact no", "contact number", "contact"] },
   { key: "houseUnitNo", label: "House/Unit No.", aliases: ["house/unit no.", "house/unit no", "house unit no", "house no"] },
   { key: "street", label: "Street", aliases: ["street"] },
-  { key: "barangay", label: "Barangay", aliases: ["barangay"] },
+  { key: "barangay", label: "Barangay", aliases: ["barangay"], isBarangay: true },
   { key: "cityMunicipality", label: "City/Municipality", aliases: ["city/municipality", "city municipality", "city"] },
   { key: "provinceRegion", label: "Province/Region", aliases: ["province/region", "province region", "province"] },
   { key: "country", label: "Country", aliases: ["country"] },
@@ -84,6 +85,10 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
         const normalized = normalizeBirthday(raw);
         if (!normalized) return { rowNumber, ok: false, error: `Unrecognized birthday format: "${raw}". Use YYYY-MM-DD or MM/DD/YYYY, or leave blank.`, preview: scholarIdNumber, changedFieldLabels: [] };
         update.birthday = normalized;
+      } else if (f.isBarangay) {
+        const match = ALL_BARANGAYS.find(b => b.toLowerCase() === raw.toLowerCase());
+        if (!match) return { rowNumber, ok: false, error: `"${raw}" isn't a recognized Barangay — check spelling against the official list, or leave blank.`, preview: scholarIdNumber, changedFieldLabels: [] };
+        update.barangay = match;
       } else {
         (update[f.key] as string) = raw;
       }

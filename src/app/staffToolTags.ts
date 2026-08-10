@@ -28,4 +28,9 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     label: "SDP Monitoring",
     description: "Review and approve scholars' SDP activity proposals — needed for scholarship renewal tracking.",
   },
+  {
+    key: "scholars_formation",
+    label: "Scholars' Formation Tools",
+    description: "Tag scholars with leadership positions across School-based, Community-based, and VIP organizations.",
+  },
 ];

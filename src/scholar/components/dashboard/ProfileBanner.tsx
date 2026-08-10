@@ -1,4 +1,5 @@
-import { GraduationCap, ShieldCheck, Award } from "lucide-react";
+import { GraduationCap, ShieldCheck, Award, MapPinned } from "lucide-react";
+import { clusterForBarangay, clusterLabel } from "@/lib/cdoBarangays";
 import type { ScholarProfile } from "../../types";
 
 interface ProfileBannerProps {
@@ -8,6 +9,8 @@ interface ProfileBannerProps {
 }
 
 export function ProfileBanner({ profile, sdpPoints, onChangePassword }: ProfileBannerProps) {
+  const cluster = profile.barangay ? clusterForBarangay(profile.barangay) : null;
+
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#062444] via-[#0a3a6b] to-[#0d4d8a] p-6 md:p-8 mb-6 shadow-[0_8px_32px_rgba(6,36,68,0.25)]">
       <div className="absolute w-[280px] h-[280px] rounded-full bg-white/5 -top-24 -right-14 pointer-events-none" />
@@ -28,8 +31,9 @@ export function ProfileBanner({ profile, sdpPoints, onChangePassword }: ProfileB
             {profile.lastName.toUpperCase()}, {profile.firstName.toUpperCase()}{profile.middleName ? ` ${profile.middleName[0].toUpperCase()}` : ""}
           </div>
           <div className="text-[13px] font-semibold text-[#F3BC00] tracking-wide mb-1">{profile.scholarIdNumber}</div>
-          <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-white/70 mb-2">
-            <Award size={13} className="text-[#F3BC00]" /> {sdpPoints} SDP Point{sdpPoints === 1 ? "" : "s"}
+          <div className="flex items-center gap-3 flex-wrap text-[12.5px] font-semibold text-white/70 mb-2">
+            <span className="flex items-center gap-1.5"><Award size={13} className="text-[#F3BC00]" /> {sdpPoints} SDP Point{sdpPoints === 1 ? "" : "s"}</span>
+            {cluster && <span className="flex items-center gap-1.5"><MapPinned size={13} className="text-[#F3BC00]" /> {clusterLabel(cluster)}</span>}
           </div>
           <span className="inline-flex items-center gap-1.5 bg-[#F3BC00]/15 border border-[#F3BC00]/30 text-[#F3BC00] text-[11px] font-bold uppercase tracking-wider rounded-full px-3 py-1">
             City Scholar

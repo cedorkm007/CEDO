@@ -1,5 +1,6 @@
-import { X, ShieldCheck, Award, GraduationCap, LogOut } from "lucide-react";
+import { X, ShieldCheck, Award, GraduationCap, LogOut, MapPinned } from "lucide-react";
 import { ProfilePanel } from "./ProfilePanel";
+import { clusterForBarangay, clusterLabel } from "@/lib/cdoBarangays";
 import type { ScholarProfile } from "../../types";
 
 interface ProfilePopupModalProps {
@@ -17,6 +18,8 @@ interface ProfilePopupModalProps {
  * full profile page content below (same ProfilePanel used elsewhere).
  */
 export function ProfilePopupModal({ profile, sdpPoints, onClose, onChangePassword, onProfileUpdated, onSignOut }: ProfilePopupModalProps) {
+  const cluster = profile.barangay ? clusterForBarangay(profile.barangay) : null;
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-end justify-center md:hidden" onClick={onClose}>
       <div className="bg-[#F5F7FA] rounded-t-3xl shadow-2xl w-full max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -33,8 +36,9 @@ export function ProfilePopupModal({ profile, sdpPoints, onClose, onChangePasswor
                 {profile.lastName.toUpperCase()}, {profile.firstName.toUpperCase()}{profile.middleName ? ` ${profile.middleName[0].toUpperCase()}` : ""}
               </p>
               <p className="text-[#F3BC00] text-[12.5px] font-semibold mt-0.5">{profile.scholarIdNumber}</p>
-              <p className="flex items-center gap-1.5 text-[12px] font-semibold text-white/70 mt-1">
-                <Award size={12} className="text-[#F3BC00]" /> {sdpPoints} SDP Point{sdpPoints === 1 ? "" : "s"}
+              <p className="flex items-center gap-3 flex-wrap text-[12px] font-semibold text-white/70 mt-1">
+                <span className="flex items-center gap-1.5"><Award size={12} className="text-[#F3BC00]" /> {sdpPoints} SDP Point{sdpPoints === 1 ? "" : "s"}</span>
+                {cluster && <span className="flex items-center gap-1.5"><MapPinned size={12} className="text-[#F3BC00]" /> {clusterLabel(cluster)}</span>}
               </p>
             </div>
           </div>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CheckCircle2, AlertTriangle, IdCard, User, Building2, BookOpen, Heart, Phone, MapPin, Save } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { updateOwnContactInfo } from "../../scholarApi";
+import { ALL_BARANGAYS, clusterForBarangay, clusterLabel } from "@/lib/cdoBarangays";
 import type { ScholarProfile } from "../../types";
 
 const CIVIL_STATUS_OPTIONS = ["Single", "Single Parent", "Married", "Widow", "Separated"];
@@ -120,8 +121,14 @@ export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarPr
           </div>
           <div>
             <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Barangay</label>
-            <input value={barangay} onChange={e => setBarangay(e.target.value)}
-              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+            <select value={barangay} onChange={e => setBarangay(e.target.value)}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc] bg-white">
+              <option value="">-- Select Barangay --</option>
+              {ALL_BARANGAYS.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            {barangay && (
+              <p className="text-[11px] text-slate-400 mt-1">{clusterLabel(clusterForBarangay(barangay))}</p>
+            )}
           </div>
           <div>
             <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">City/Municipality</label>
