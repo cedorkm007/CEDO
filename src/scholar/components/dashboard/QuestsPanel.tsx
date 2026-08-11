@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon } from "lucide-react";
+import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download } from "lucide-react";
 import { SectionCard } from "./SectionCard";
-import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, extractYouTubeId } from "../../quizApi";
+import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, extractYouTubeId, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
 
 type Step =
@@ -28,6 +28,9 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
   const [expandedVideoTopicId, setExpandedVideoTopicId] = useState<string | null>(null);
   const [browseTab, setBrowseTab] = useState<"subject" | "history">("subject");
   const [historyDateFilter, setHistoryDateFilter] = useState(() => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }));
+  const [subjectProgress, setSubjectProgress] = useState<{ percentage: number; topicCount: number } | null>(null);
+  const [certBusy, setCertBusy] = useState(false);
+  const [certError, setCertError] = useState("");
 
   useEffect(() => { loadSubjects(); }, []);
 
@@ -41,13 +44,33 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
     setError("");
     setLoading(true);
     setExpandedVideoTopicId(null);
-    setTopics(await fetchQuizTopics(subject.id, scholarIdNumber));
+    setCertError("");
+    const [topicsResult, progressResult] = await Promise.all([
+      fetchQuizTopics(subject.id, scholarIdNumber),
+      fetchOwnSubjectProgress(subject.id, scholarIdNumber),
+    ]);
+    setTopics(topicsResult);
+    setSubjectProgress(progressResult);
     setLoading(false);
     setStep({ view: "topics", subject });
   }
 
   async function reloadTopics(subject: QuizSubject) {
-    setTopics(await fetchQuizTopics(subject.id, scholarIdNumber));
+    const [topicsResult, progressResult] = await Promise.all([
+      fetchQuizTopics(subject.id, scholarIdNumber),
+      fetchOwnSubjectProgress(subject.id, scholarIdNumber),
+    ]);
+    setTopics(topicsResult);
+    setSubjectProgress(progressResult);
+  }
+
+  async function handleDownloadCertificate(subject: QuizSubject) {
+    setCertBusy(true);
+    setCertError("");
+    const result = await fetchOwnCertificateUrl(subject.id);
+    setCertBusy(false);
+    if (!result.ok || !result.url) { setCertError(result.error || "Couldn't get the certificate right now."); return; }
+    window.open(result.url, "_blank", "noopener,noreferrer");
   }
 
   async function beginQuiz(subject: QuizSubject, topic: QuizTopic) {
@@ -145,6 +168,35 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
           <BackButton label="Back to subjects" onClick={() => setStep({ view: "browse" })} />
           <h4 className="text-[15px] font-extrabold text-[#062444] mb-1">{step.subject.name}</h4>
           <p className="text-sm text-slate-400 mb-2">Each topic has its own daily attempt limit.</p>
+
+          {(subjectProgress || step.subject.certificateFilename) && (() => {
+            const pct = subjectProgress?.percentage ?? 0;
+            const passed = pct >= step.subject.passingRateMin && pct <= step.subject.passingRateMax;
+            return (
+              <div className="bg-[#f8fafd] border border-[#e8edf2] rounded-xl px-4 py-3.5 mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[12.5px] font-bold text-[#062444] flex items-center gap-1.5"><Award size={14} className="text-[#F3BC00]" /> Subject Progress</span>
+                  <span className="text-[13px] font-extrabold text-[#062444]">{pct.toFixed(1)}%</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mb-2">Passing rate: {step.subject.passingRateMin}%–{step.subject.passingRateMax}%, averaged across every topic's best attempt.</p>
+                <div className="h-1.5 bg-[#e6ecf5] rounded-full overflow-hidden mb-2">
+                  <div className={`h-full rounded-full ${passed ? "bg-green-500" : "bg-[#0088cc]"}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                </div>
+                {step.subject.certificateFilename && (
+                  passed ? (
+                    <button onClick={() => handleDownloadCertificate(step.subject)} disabled={certBusy}
+                      className="flex items-center gap-1.5 text-[12.5px] font-bold text-green-700 hover:underline disabled:opacity-50">
+                      <Download size={13} /> {certBusy ? "Preparing…" : "Download Certificate"}
+                    </button>
+                  ) : (
+                    <p className="text-[11.5px] text-slate-400 italic">Reach the passing rate to unlock this subject's certificate.</p>
+                  )
+                )}
+                {certError && <p className="text-[11.5px] text-red-500 mt-1">{certError}</p>}
+              </div>
+            );
+          })()}
+
           {error && <ErrorBox message={error} />}
           {loading ? (
             <p className="text-sm text-slate-400 mt-3">Loading…</p>

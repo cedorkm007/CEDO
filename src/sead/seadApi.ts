@@ -39,11 +39,18 @@ async function invokeEdgeFunction<T = Record<string, unknown>>(
 export async function fetchSubjects(): Promise<QuestSubject[]> {
   const { data, error } = await supabase.from("quest_subjects").select("*").order("name");
   if (error || !data) return [];
-  return data.map(r => ({ id: r.id, name: r.name, maxAttemptsPerDay: Number(r.max_attempts_per_day ?? 1) }));
+  return data.map(r => ({
+    id: r.id, name: r.name, maxAttemptsPerDay: Number(r.max_attempts_per_day ?? 1),
+    passingRateMin: Number(r.passing_rate_min ?? 75), passingRateMax: Number(r.passing_rate_max ?? 100),
+    certificateFilename: r.certificate_filename ?? "",
+  }));
 }
 
-export async function createSubject(name: string, maxAttemptsPerDay: number): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("quest_subjects").insert({ name, max_attempts_per_day: maxAttemptsPerDay });
+export async function createSubject(
+  name: string, maxAttemptsPerDay: number, passingRateMin = 75, passingRateMax = 100
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("quest_subjects")
+    .insert({ name, max_attempts_per_day: maxAttemptsPerDay, passing_rate_min: passingRateMin, passing_rate_max: passingRateMax });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
@@ -56,6 +63,80 @@ export async function updateSubjectMaxAttempts(id: string, maxAttemptsPerDay: nu
   const { error } = await supabase.from("quest_subjects")
     .update({ max_attempts_per_day: maxAttemptsPerDay, updated_at: new Date().toISOString() }).eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function updateSubjectPassingRate(id: string, passingRateMin: number, passingRateMax: number): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("quest_subjects")
+    .update({ passing_rate_min: passingRateMin, passing_rate_max: passingRateMax, updated_at: new Date().toISOString() }).eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+const CERTIFICATE_BUCKET = "subject-certificates";
+
+/** Uploads (or replaces) a subject's certificate PDF. Path is deterministic — {subjectId}/certificate.pdf — so re-uploading overwrites the previous file. */
+export async function uploadSubjectCertificate(subjectId: string, file: File): Promise<{ ok: boolean; error?: string }> {
+  if (file.type !== "application/pdf") return { ok: false, error: "Only PDF files are supported." };
+  const path = `${subjectId}/certificate.pdf`;
+  const { error: uploadError } = await supabase.storage.from(CERTIFICATE_BUCKET).upload(path, file, { contentType: "application/pdf", upsert: true });
+  if (uploadError) return { ok: false, error: uploadError.message };
+
+  const { error: updateError } = await supabase.from("quest_subjects")
+    .update({ certificate_filename: file.name, updated_at: new Date().toISOString() }).eq("id", subjectId);
+  if (updateError) return { ok: false, error: updateError.message };
+  return { ok: true };
+}
+
+export async function removeSubjectCertificate(subjectId: string): Promise<{ ok: boolean; error?: string }> {
+  const { error: removeError } = await supabase.storage.from(CERTIFICATE_BUCKET).remove([`${subjectId}/certificate.pdf`]);
+  if (removeError) return { ok: false, error: removeError.message };
+  const { error: updateError } = await supabase.from("quest_subjects")
+    .update({ certificate_filename: "", updated_at: new Date().toISOString() }).eq("id", subjectId);
+  if (updateError) return { ok: false, error: updateError.message };
+  return { ok: true };
+}
+
+/** Staff-side preview link — staff have their own "manage certificates" storage policy, so this always works regardless of passing rate. */
+export async function fetchCertificatePreviewUrl(subjectId: string): Promise<string | null> {
+  const { data, error } = await supabase.storage.from(CERTIFICATE_BUCKET).createSignedUrl(`${subjectId}/certificate.pdf`, 300);
+  if (error || !data) return null;
+  return data.signedUrl;
+}
+
+export interface SubjectProgressRow {
+  scholarIdNumber: string;
+  scholarName: string;
+  topicCount: number;
+  subjectPercentage: number;
+  passed: boolean;
+}
+
+/** Every scholar's aggregate percentage for one subject — backs the Scores & Progress tab's passing-rate section. */
+export async function fetchSubjectProgress(subjectId: string): Promise<SubjectProgressRow[]> {
+  const [{ data: subject }, { data: progress }] = await Promise.all([
+    supabase.from("quest_subjects").select("passing_rate_min, passing_rate_max").eq("id", subjectId).maybeSingle(),
+    supabase.from("scholar_subject_progress").select("scholar_id_number, topic_count, subject_percentage").eq("subject_id", subjectId).gt("topic_count", 0),
+  ]);
+  if (!progress || progress.length === 0) return [];
+
+  const min = Number(subject?.passing_rate_min ?? 75);
+  const max = Number(subject?.passing_rate_max ?? 100);
+
+  const scholarIds = progress.map(p => p.scholar_id_number);
+  const { data: scholars } = await supabase.from("scholars").select("scholar_id_number, first_name, last_name").in("scholar_id_number", scholarIds);
+  const nameByScholarId = new Map((scholars ?? []).map(s => [s.scholar_id_number, `${s.first_name} ${s.last_name}`]));
+
+  return progress
+    .map(p => {
+      const pct = Number(p.subject_percentage ?? 0);
+      return {
+        scholarIdNumber: p.scholar_id_number,
+        scholarName: nameByScholarId.get(p.scholar_id_number) ?? p.scholar_id_number,
+        topicCount: Number(p.topic_count ?? 0),
+        subjectPercentage: pct,
+        passed: pct >= min && pct <= max,
+      };
+    })
+    .sort((a, b) => b.subjectPercentage - a.subjectPercentage);
 }
 
 export async function deleteSubject(id: string): Promise<{ ok: boolean; error?: string }> {

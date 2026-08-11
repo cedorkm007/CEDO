@@ -6,6 +6,7 @@ import type { ScholarProfile } from "../../types";
 interface ProfilePopupModalProps {
   profile: ScholarProfile;
   sdpPoints: number;
+  positions: string[];
   onClose: () => void;
   onChangePassword: () => void;
   onProfileUpdated: (p: ScholarProfile) => void;
@@ -17,7 +18,7 @@ interface ProfilePopupModalProps {
  * button — shows name/ID/SDP points + Change Password up top, then the
  * full profile page content below (same ProfilePanel used elsewhere).
  */
-export function ProfilePopupModal({ profile, sdpPoints, onClose, onChangePassword, onProfileUpdated, onSignOut }: ProfilePopupModalProps) {
+export function ProfilePopupModal({ profile, sdpPoints, positions, onClose, onChangePassword, onProfileUpdated, onSignOut }: ProfilePopupModalProps) {
   const cluster = profile.barangay ? clusterForBarangay(profile.barangay) : null;
 
   return (
@@ -35,7 +36,16 @@ export function ProfilePopupModal({ profile, sdpPoints, onClose, onChangePasswor
               <p className="text-white font-bold text-[15px] leading-tight truncate">
                 {profile.lastName.toUpperCase()}, {profile.firstName.toUpperCase()}{profile.middleName ? ` ${profile.middleName[0].toUpperCase()}` : ""}
               </p>
-              <p className="text-[#F3BC00] text-[12.5px] font-semibold mt-0.5">{profile.scholarIdNumber}</p>
+              {positions.length > 0 && (
+                <div className="flex items-center gap-1 flex-wrap mt-1">
+                  {positions.map(p => (
+                    <span key={p} className="inline-flex items-center bg-[#F3BC00] text-[#062444] text-[10px] font-bold rounded-full px-2 py-0.5">
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="text-[#F3BC00] text-[12.5px] font-semibold mt-1">{profile.scholarIdNumber}</p>
               <p className="flex items-center gap-3 flex-wrap text-[12px] font-semibold text-white/70 mt-1">
                 <span className="flex items-center gap-1.5"><Award size={12} className="text-[#F3BC00]" /> {sdpPoints} SDP Point{sdpPoints === 1 ? "" : "s"}</span>
                 {cluster && <span className="flex items-center gap-1.5"><MapPinned size={12} className="text-[#F3BC00]" /> {clusterLabel(cluster)}</span>}

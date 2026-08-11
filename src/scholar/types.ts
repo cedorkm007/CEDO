@@ -61,6 +61,9 @@ export type ScholarLoginTarget =
 export interface QuizSubject {
   id: string;
   name: string;
+  passingRateMin: number;
+  passingRateMax: number;
+  certificateFilename: string; // "" = no certificate attached to this subject
 }
 
 export interface QuizTopic {

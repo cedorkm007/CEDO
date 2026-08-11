@@ -2,9 +2,33 @@ import { supabase } from "@/lib/supabase";
 import type { QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult, QuizResultItem } from "./types";
 
 export async function fetchQuizSubjects(): Promise<QuizSubject[]> {
-  const { data, error } = await supabase.from("quest_subjects").select("id, name").order("name");
+  const { data, error } = await supabase.from("quest_subjects").select("id, name, passing_rate_min, passing_rate_max, certificate_filename").order("name");
   if (error || !data) return [];
-  return data.map(s => ({ id: s.id, name: s.name }));
+  return data.map(s => ({
+    id: s.id, name: s.name,
+    passingRateMin: Number(s.passing_rate_min ?? 75), passingRateMax: Number(s.passing_rate_max ?? 100),
+    certificateFilename: s.certificate_filename ?? "",
+  }));
+}
+
+/** The scholar's own aggregate percentage for a subject (best attempt per topic, averaged). */
+export async function fetchOwnSubjectProgress(subjectId: string, scholarIdNumber: string): Promise<{ percentage: number; topicCount: number } | null> {
+  const { data, error } = await supabase.from("scholar_subject_progress")
+    .select("subject_percentage, topic_count").eq("subject_id", subjectId).eq("scholar_id_number", scholarIdNumber).maybeSingle();
+  if (error || !data) return null;
+  return { percentage: Number(data.subject_percentage ?? 0), topicCount: Number(data.topic_count ?? 0) };
+}
+
+/**
+ * Storage RLS (not this function) is what actually decides whether this
+ * succeeds — it only returns a signed URL if the scholar's own computed
+ * percentage for the subject is within its passing_rate range. If they
+ * haven't reached it yet, createSignedUrl simply fails.
+ */
+export async function fetchOwnCertificateUrl(subjectId: string): Promise<{ ok: boolean; url?: string; error?: string }> {
+  const { data, error } = await supabase.storage.from("subject-certificates").createSignedUrl(`${subjectId}/certificate.pdf`, 300);
+  if (error || !data) return { ok: false, error: "You haven't reached the passing rate for this subject yet." };
+  return { ok: true, url: data.signedUrl };
 }
 
 /**

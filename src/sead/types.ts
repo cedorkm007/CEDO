@@ -2,6 +2,9 @@ export interface QuestSubject {
   id: string;
   name: string;
   maxAttemptsPerDay: number;
+  passingRateMin: number;
+  passingRateMax: number;
+  certificateFilename: string; // "" = no certificate attached
 }
 
 export interface QuestTopic {

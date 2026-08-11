@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Search, X, UserCircle2 } from "lucide-react";
-import { searchScholars, type ScholarSearchResult } from "../formationApi";
+import { searchScholars, type ScholarSearchResult, type ScholarSearchFilter } from "../formationApi";
 
 interface ScholarPickerProps {
   currentScholarIdNumber: string | null;
@@ -8,10 +8,13 @@ interface ScholarPickerProps {
   onAssign: (scholarIdNumber: string) => void;
   onClear: () => void;
   placeholder?: string;
+  /** Restricts search results to scholars in this school/cluster/barangay — e.g. appointing a
+   *  School President should never surface a scholar from a different school. */
+  filter?: ScholarSearchFilter;
 }
 
 /** Inline "vacant / assign someone" control — type a name or Scholar ID, pick from the dropdown. */
-export function ScholarPicker({ currentScholarIdNumber, currentName, onAssign, onClear, placeholder }: ScholarPickerProps) {
+export function ScholarPicker({ currentScholarIdNumber, currentName, onAssign, onClear, placeholder, filter }: ScholarPickerProps) {
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ScholarSearchResult[]>([]);
@@ -31,10 +34,11 @@ export function ScholarPicker({ currentScholarIdNumber, currentName, onAssign, o
     if (!editing) return;
     const t = setTimeout(async () => {
       setSearching(true);
-      setResults(await searchScholars(query));
+      setResults(await searchScholars(query, filter));
       setSearching(false);
     }, 250);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, editing]);
 
   if (editing) {

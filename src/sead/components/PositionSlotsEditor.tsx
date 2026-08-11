@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus, X, Users } from "lucide-react";
-import { fetchPositions, saveSlot, deleteSlot, fetchScholarNames, type FormationPosition, type FormationOrgType } from "../formationApi";
+import { fetchPositions, saveSlot, deleteSlot, fetchScholarNames, type FormationPosition, type FormationOrgType, type ScholarSearchFilter } from "../formationApi";
 import { ScholarPicker } from "./ScholarPicker";
 
 export interface FixedRoleDef { roleKey: string; label: string }
@@ -11,6 +11,8 @@ interface PositionSlotsEditorProps {
   orgKey: string;
   fixedRoles: FixedRoleDef[];
   expandableGroups?: ExpandableGroupDef[];
+  /** Restricts every scholar-assignment search in this editor to the relevant school/cluster/barangay. */
+  scholarFilter?: ScholarSearchFilter;
 }
 
 /**
@@ -21,7 +23,7 @@ interface PositionSlotsEditorProps {
  * (College Directors, Committee Staff, advocacy committees...) — each new
  * seat gets a staff-typed label (a year level, a committee name, etc).
  */
-export function PositionSlotsEditor({ orgType, orgKey, fixedRoles, expandableGroups = [] }: PositionSlotsEditorProps) {
+export function PositionSlotsEditor({ orgType, orgKey, fixedRoles, expandableGroups = [], scholarFilter }: PositionSlotsEditorProps) {
   const [positions, setPositions] = useState<FormationPosition[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -78,6 +80,7 @@ export function PositionSlotsEditor({ orgType, orgKey, fixedRoles, expandableGro
                 currentName={slot?.scholarIdNumber ? names[slot.scholarIdNumber] : undefined}
                 onAssign={sid => assign(fr.roleKey, 0, fr.label, sid)}
                 onClear={() => clear(fr.roleKey, 0, fr.label)}
+                filter={scholarFilter}
               />
             </div>
           );
@@ -106,6 +109,7 @@ export function PositionSlotsEditor({ orgType, orgKey, fixedRoles, expandableGro
                         currentName={s.scholarIdNumber ? names[s.scholarIdNumber] : undefined}
                         onAssign={sid => assign(group.roleKey, s.slotOrder, s.roleLabel, sid)}
                         onClear={() => clear(group.roleKey, s.slotOrder, s.roleLabel)}
+                        filter={scholarFilter}
                       />
                     </div>
                     <button onClick={() => removeExpandableSlot(s.id)} className="text-slate-300 hover:text-red-500 shrink-0"><X size={14} /></button>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Search, Filter } from "lucide-react";
-import { fetchSubjects, fetchTopics, fetchScores } from "../seadApi";
+import { Search, Filter, Award, CheckCircle2, XCircle } from "lucide-react";
+import { fetchSubjects, fetchTopics, fetchScores, fetchSubjectProgress, type SubjectProgressRow } from "../seadApi";
 import type { QuestSubject, QuestTopic, ScoreRow } from "../types";
 
 export function ScoresTab() {
@@ -13,11 +13,20 @@ export function ScoresTab() {
   const [dateTo, setDateTo] = useState("");
   const [rows, setRows] = useState<ScoreRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState<SubjectProgressRow[]>([]);
+  const [progressLoading, setProgressLoading] = useState(false);
 
   useEffect(() => { fetchSubjects().then(setSubjects); }, []);
   useEffect(() => {
     setTopicId("");
     if (subjectId) fetchTopics(subjectId).then(setTopics); else setTopics([]);
+
+    if (subjectId) {
+      setProgressLoading(true);
+      fetchSubjectProgress(subjectId).then(p => { setProgress(p); setProgressLoading(false); });
+    } else {
+      setProgress([]);
+    }
   }, [subjectId]);
 
   async function runFilter() {
@@ -59,6 +68,53 @@ export function ScoresTab() {
           </button>
         </div>
       </div>
+
+      {subjectId && (() => {
+        const subject = subjects.find(s => s.id === subjectId);
+        const passedCount = progress.filter(p => p.passed).length;
+        return (
+          <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2 text-[#062444] font-bold text-[12.5px]">
+                <Award size={14} className="text-[#F3BC00]" /> Passing Rate Progress
+                {subject && <span className="font-normal text-slate-400">— {subject.name} ({subject.passingRateMin}%–{subject.passingRateMax}%)</span>}
+              </div>
+              {progress.length > 0 && (
+                <span className="text-[12px] font-semibold text-slate-500">{passedCount} of {progress.length} scholar{progress.length === 1 ? "" : "s"} passed</span>
+              )}
+              {subject?.certificateFilename && (
+                <span className="text-[11px] font-semibold text-green-700 bg-green-100 rounded-full px-2.5 py-1 flex items-center gap-1">Certificate attached</span>
+              )}
+            </div>
+
+            {progressLoading ? (
+              <p className="text-sm text-slate-400 text-center py-4">Loading…</p>
+            ) : progress.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-4">No scholar has attempted any topic in this subject yet.</p>
+            ) : (
+              <div className="max-h-52 overflow-y-auto border border-[#f0f3f8] rounded-lg divide-y divide-[#f0f3f8]">
+                {progress.map(p => (
+                  <div key={p.scholarIdNumber} className="flex items-center justify-between px-3 py-2 text-[12.5px]">
+                    <div>
+                      <span className="font-semibold text-[#062444]">{p.scholarName}</span>
+                      <span className="text-slate-400 ml-1.5">({p.scholarIdNumber})</span>
+                      <span className="text-slate-400 ml-1.5">· {p.topicCount} topic{p.topicCount === 1 ? "" : "s"} taken</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-[#062444]">{p.subjectPercentage.toFixed(1)}%</span>
+                      {p.passed ? (
+                        <span className="flex items-center gap-1 text-green-600 font-semibold"><CheckCircle2 size={13} /> Passed</span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-slate-400"><XCircle size={13} /> Not yet</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-3 gap-3 mb-4">
         <StatCard label="Results" value={String(rows.length)} />

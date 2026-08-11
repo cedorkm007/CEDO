@@ -4,19 +4,12 @@ import { fetchDistinctSchools } from "../formationApi";
 import { PositionSlotsEditor } from "../components/PositionSlotsEditor";
 import { MembersListEditor } from "../components/MembersListEditor";
 import { CLUSTERS, namedBarangaysInCluster, NUMBERED_BARANGAYS, type ClusterCode } from "@/lib/cdoBarangays";
+import { VIP_DEPARTMENTS } from "@/lib/formationLabels";
 
 const ADVOCACY_SUGGESTIONS = [
   "Committee on External Affairs", "Committee on Advocacy Programs", "Advocacy for Education", "Advocacy for Environment",
   "Advocacy for Health", "Advocacy for Sports", "Committee on Budget and Finance", "Committee on Events and Management",
   "Committee on Communication and Management", "Committee on Volunteer Development",
-];
-
-const VIP_DEPARTMENTS: { key: string; label: string }[] = [
-  { key: "events_communication", label: "Events and Communication" },
-  { key: "advocacy_programs", label: "Advocacy Programs" },
-  { key: "volunteer_support", label: "Volunteer Support" },
-  { key: "partner_management", label: "Partner Management" },
-  { key: "members", label: "Members" },
 ];
 
 type Section = "school" | "community" | "vip";
@@ -60,6 +53,7 @@ function SchoolSection() {
         <h3 className="text-[15px] font-extrabold text-[#062444] mb-4">{selected}</h3>
         <PositionSlotsEditor
           orgType="school" orgKey={selected}
+          scholarFilter={{ school: selected }}
           fixedRoles={[
             { roleKey: "president", label: "President" },
             { roleKey: "vice_president", label: "Vice President" },
@@ -102,6 +96,7 @@ function CommunitySection() {
         <h3 className="text-[15px] font-extrabold text-[#062444] mb-4">{view.barangay}</h3>
         <PositionSlotsEditor
           orgType="community_barangay" orgKey={view.barangay}
+          scholarFilter={{ barangay: view.barangay }}
           fixedRoles={[
             { roleKey: "chairperson", label: "Chairperson" },
             { roleKey: "vice_chairperson", label: "Vice Chairperson" },
@@ -126,6 +121,7 @@ function CommunitySection() {
         <p className="text-sm text-slate-500 mb-4">Cluster-level officers</p>
         <PositionSlotsEditor
           orgType="community_cluster" orgKey={view.cluster}
+          scholarFilter={{ barangayIn: barangays }}
           fixedRoles={[
             { roleKey: "cluster_head", label: "Cluster Head" },
             { roleKey: "deputy_head", label: "Deputy Head" },

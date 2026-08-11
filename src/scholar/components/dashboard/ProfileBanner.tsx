@@ -5,10 +5,11 @@ import type { ScholarProfile } from "../../types";
 interface ProfileBannerProps {
   profile: ScholarProfile;
   sdpPoints: number;
+  positions: string[];
   onChangePassword: () => void;
 }
 
-export function ProfileBanner({ profile, sdpPoints, onChangePassword }: ProfileBannerProps) {
+export function ProfileBanner({ profile, sdpPoints, positions, onChangePassword }: ProfileBannerProps) {
   const cluster = profile.barangay ? clusterForBarangay(profile.barangay) : null;
 
   return (
@@ -30,6 +31,15 @@ export function ProfileBanner({ profile, sdpPoints, onChangePassword }: ProfileB
           <div className="text-lg md:text-xl font-bold text-white tracking-wide mb-1">
             {profile.lastName.toUpperCase()}, {profile.firstName.toUpperCase()}{profile.middleName ? ` ${profile.middleName[0].toUpperCase()}` : ""}
           </div>
+          {positions.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+              {positions.map(p => (
+                <span key={p} className="inline-flex items-center bg-[#F3BC00] text-[#062444] text-[10.5px] font-bold rounded-full px-2.5 py-0.5">
+                  {p}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="text-[13px] font-semibold text-[#F3BC00] tracking-wide mb-1">{profile.scholarIdNumber}</div>
           <div className="flex items-center gap-3 flex-wrap text-[12.5px] font-semibold text-white/70 mb-2">
             <span className="flex items-center gap-1.5"><Award size={13} className="text-[#F3BC00]" /> {sdpPoints} SDP Point{sdpPoints === 1 ? "" : "s"}</span>

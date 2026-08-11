@@ -13,6 +13,7 @@ import { ServicesPanel } from "../components/dashboard/ServicesPanel";
 import { QuestsPanel } from "../components/dashboard/QuestsPanel";
 import { SDPPanel } from "../components/dashboard/SDPPanel";
 import { fetchScholarSDPPoints } from "../sdpApi";
+import { fetchOwnPositionLabels } from "../formationApi";
 import { UnderDevPanelCard } from "../components/dashboard/UnderDevPanelCard";
 import { SectionCard } from "../components/dashboard/SectionCard";
 import { ChangePasswordModal } from "../components/dashboard/ChangePasswordModal";
@@ -29,6 +30,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
   const [grades, setGrades] = useState<SubjectGrade[]>([]);
   const [scores, setScores] = useState<QuestScore[]>([]);
   const [sdpPoints, setSdpPoints] = useState(0);
+  const [positions, setPositions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [panel, setPanel] = useState<DashPanelKey | null>(null); // null = home
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -39,12 +41,14 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
       const p = await fetchCurrentScholarProfile();
       setProfile(p);
       if (p) {
-        const [g, s, points] = await Promise.all([
+        const [g, s, points, pos] = await Promise.all([
           fetchSubjectsAndGrades(p.scholarIdNumber), fetchQuestScores(p.scholarIdNumber), fetchScholarSDPPoints(p.scholarIdNumber),
+          fetchOwnPositionLabels(p.scholarIdNumber),
         ]);
         setGrades(g);
         setScores(s);
         setSdpPoints(points);
+        setPositions(pos);
       }
       setLoading(false);
     })();
@@ -86,7 +90,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
               home screen goes straight to the widget grid (matches the reference app's simpler
               icon-grid home screen). */}
           <div className="hidden md:block">
-            <ProfileBanner profile={profile} sdpPoints={sdpPoints} onChangePassword={() => setShowChangePassword(true)} />
+            <ProfileBanner profile={profile} sdpPoints={sdpPoints} positions={positions} onChangePassword={() => setShowChangePassword(true)} />
           </div>
 
           {panel === null ? (
@@ -125,6 +129,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
         <ProfilePopupModal
           profile={profile}
           sdpPoints={sdpPoints}
+          positions={positions}
           onClose={() => setShowProfilePopup(false)}
           onChangePassword={() => { setShowProfilePopup(false); setShowChangePassword(true); }}
           onProfileUpdated={setProfile}

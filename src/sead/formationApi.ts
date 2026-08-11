@@ -69,14 +69,26 @@ export interface ScholarSearchResult {
   school: string;
 }
 
-/** Lightweight search-as-you-type lookup for assigning a scholar to a position. */
-export async function searchScholars(query: string): Promise<ScholarSearchResult[]> {
+export interface ScholarSearchFilter {
+  school?: string;
+  barangay?: string;
+  barangayIn?: string[]; // used for cluster-level filtering (every barangay in that cluster)
+}
+
+/** Lightweight search-as-you-type lookup for assigning a scholar to a position. Scoped to the
+ *  relevant school/cluster/barangay when provided, so results can't include scholars who don't
+ *  actually belong to the organizational unit being edited. */
+export async function searchScholars(query: string, filter?: ScholarSearchFilter): Promise<ScholarSearchResult[]> {
   const q = query.trim();
   if (!q) return [];
-  const { data, error } = await supabase.from("scholars")
+  let request = supabase.from("scholars")
     .select("scholar_id_number, first_name, last_name, school")
     .or(`scholar_id_number.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`)
     .limit(8);
+  if (filter?.school) request = request.eq("school", filter.school);
+  if (filter?.barangay) request = request.eq("barangay", filter.barangay);
+  if (filter?.barangayIn) request = request.in("barangay", filter.barangayIn);
+  const { data, error } = await request;
   if (error || !data) return [];
   return data.map(r => ({ scholarIdNumber: r.scholar_id_number, name: `${r.first_name} ${r.last_name}`, school: r.school ?? "" }));
 }

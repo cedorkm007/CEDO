@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud, Youtube } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud, Youtube, FileCheck2, FileUp, Eye } from "lucide-react";
 import {
   fetchSubjects, createSubject, renameSubject, deleteSubject, updateSubjectMaxAttempts,
+  updateSubjectPassingRate, uploadSubjectCertificate, removeSubjectCertificate, fetchCertificatePreviewUrl,
   fetchTopics, createTopic, updateTopic, deleteTopic,
   fetchQuestions, deleteQuestion, toggleQuestionActive,
 } from "../seadApi";
@@ -54,9 +55,15 @@ export function QuestionBankTab() {
         subjects={subjects}
         selected={selectedSubject}
         onSelect={selectSubject}
-        onCreate={async (name, maxAttemptsPerDay) => { const r = await createSubject(name, maxAttemptsPerDay); loadSubjects(); return r; }}
+        onCreate={async (name, maxAttemptsPerDay, passingRateMin, passingRateMax) => {
+          const r = await createSubject(name, maxAttemptsPerDay, passingRateMin, passingRateMax); loadSubjects(); return r;
+        }}
         onRename={async (id, name) => { const r = await renameSubject(id, name); loadSubjects(); return r; }}
         onUpdateMaxAttempts={async (id, maxAttemptsPerDay) => { const r = await updateSubjectMaxAttempts(id, maxAttemptsPerDay); loadSubjects(); return r; }}
+        onUpdatePassingRate={async (id, min, max) => { const r = await updateSubjectPassingRate(id, min, max); loadSubjects(); return r; }}
+        onUploadCertificate={async (id, file) => { const r = await uploadSubjectCertificate(id, file); loadSubjects(); return r; }}
+        onRemoveCertificate={async id => { const r = await removeSubjectCertificate(id); loadSubjects(); return r; }}
+        onPreviewCertificate={fetchCertificatePreviewUrl}
         onDelete={async id => { const r = await deleteSubject(id); if (r.ok) { setSelectedSubject(null); setSelectedTopic(null); } loadSubjects(); return r; }}
       />
 
@@ -107,20 +114,35 @@ export function QuestionBankTab() {
 }
 
 // ── Column: Subjects ────────────────────────────────────────
-function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpdateMaxAttempts, onDelete }: {
+function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpdateMaxAttempts, onUpdatePassingRate, onUploadCertificate, onRemoveCertificate, onPreviewCertificate, onDelete }: {
   subjects: QuestSubject[]; selected: QuestSubject | null; onSelect: (s: QuestSubject) => void;
-  onCreate: (name: string, maxAttemptsPerDay: number) => Promise<{ ok: boolean; error?: string }>;
+  onCreate: (name: string, maxAttemptsPerDay: number, passingRateMin: number, passingRateMax: number) => Promise<{ ok: boolean; error?: string }>;
   onRename: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
   onUpdateMaxAttempts: (id: string, maxAttemptsPerDay: number) => Promise<{ ok: boolean; error?: string }>;
+  onUpdatePassingRate: (id: string, min: number, max: number) => Promise<{ ok: boolean; error?: string }>;
+  onUploadCertificate: (id: string, file: File) => Promise<{ ok: boolean; error?: string }>;
+  onRemoveCertificate: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  onPreviewCertificate: (id: string) => Promise<string | null>;
   onDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [newName, setNewName] = useState("");
   const [newMaxAttempts, setNewMaxAttempts] = useState("3");
+  const [newPassingMin, setNewPassingMin] = useState("75");
+  const [newPassingMax, setNewPassingMax] = useState("100");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editMaxAttempts, setEditMaxAttempts] = useState("");
+  const [editPassingMin, setEditPassingMin] = useState("");
+  const [editPassingMax, setEditPassingMax] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [certBusyId, setCertBusyId] = useState<string | null>(null);
+
+  function validatePassingRate(minRaw: string, maxRaw: string): { ok: true; min: number; max: number } | { ok: false } {
+    const min = Number(minRaw), max = Number(maxRaw);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 100 || min > max) return { ok: false };
+    return { ok: true, min, max };
+  }
 
   async function submitCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -128,23 +150,30 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
     if (!newName.trim()) return;
     const attempts = Number(newMaxAttempts);
     if (!Number.isFinite(attempts) || attempts < 1) { setError("Allowable attempts per day must be at least 1."); return; }
+    const rate = validatePassingRate(newPassingMin, newPassingMax);
+    if (!rate.ok) { setError("Passing rate must be 0–100%, with the minimum not exceeding the maximum."); return; }
     setBusy(true);
-    const result = await onCreate(newName.trim(), attempts);
+    const result = await onCreate(newName.trim(), attempts, rate.min, rate.max);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save — check that this account is authorized."); return; }
-    setNewName("");
-    setNewMaxAttempts("3");
+    setNewName(""); setNewMaxAttempts("3"); setNewPassingMin("75"); setNewPassingMax("100");
   }
 
   async function submitEdit(id: string) {
     setError("");
     const attempts = Number(editMaxAttempts);
     if (!Number.isFinite(attempts) || attempts < 1) { setError("Allowable attempts per day must be at least 1."); return; }
+    const rate = validatePassingRate(editPassingMin, editPassingMax);
+    if (!rate.ok) { setError("Passing rate must be 0–100%, with the minimum not exceeding the maximum."); return; }
+
     const original = subjects.find(s => s.id === id);
     const renameResult = original && original.name !== editName ? await onRename(id, editName) : { ok: true as const };
     if (!renameResult.ok) { setError(renameResult.error || "Failed to rename."); return; }
     const attemptsResult = !original || original.maxAttemptsPerDay !== attempts ? await onUpdateMaxAttempts(id, attempts) : { ok: true as const };
     if (!attemptsResult.ok) { setError(attemptsResult.error || "Failed to update attempts limit."); return; }
+    const rateResult = !original || original.passingRateMin !== rate.min || original.passingRateMax !== rate.max
+      ? await onUpdatePassingRate(id, rate.min, rate.max) : { ok: true as const };
+    if (!rateResult.ok) { setError(rateResult.error || "Failed to update passing rate."); return; }
     setEditingId(null);
   }
 
@@ -152,6 +181,24 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
     setError("");
     const result = await onDelete(id);
     if (!result.ok) setError(result.error || "Failed to delete.");
+  }
+
+  async function handleCertificateFile(id: string, file: File) {
+    setCertBusyId(id);
+    const result = await onUploadCertificate(id, file);
+    setCertBusyId(null);
+    if (!result.ok) setError(result.error || "Failed to upload certificate.");
+  }
+  async function handleRemoveCertificate(id: string) {
+    setCertBusyId(id);
+    const result = await onRemoveCertificate(id);
+    setCertBusyId(null);
+    if (!result.ok) setError(result.error || "Failed to remove certificate.");
+  }
+  async function handlePreviewCertificate(id: string) {
+    const url = await onPreviewCertificate(id);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+    else setError("Couldn't generate a preview link.");
   }
 
   return (
@@ -169,30 +216,75 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
               onClick={() => editingId !== s.id && onSelect(s)}
             >
               {editingId === s.id ? (
-                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                  <div className="flex-1 space-y-1.5">
-                    <input value={editName} onChange={e => setEditName(e.target.value)} autoFocus
-                      className="w-full text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-slate-400">Attempts/day:</span>
-                      <input type="number" min={1} value={editMaxAttempts} onChange={e => setEditMaxAttempts(e.target.value)}
-                        className="w-16 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
-                    </div>
+                <div className="space-y-1.5" onClick={e => e.stopPropagation()}>
+                  <input value={editName} onChange={e => setEditName(e.target.value)} autoFocus
+                    className="w-full text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-slate-400 whitespace-nowrap">Attempts/day:</span>
+                    <input type="number" min={1} value={editMaxAttempts} onChange={e => setEditMaxAttempts(e.target.value)}
+                      className="w-16 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
                   </div>
-                  <button onClick={() => submitEdit(s.id)} className="text-green-600"><Check size={15} /></button>
-                  <button onClick={() => { setEditingId(null); setError(""); }} className="text-slate-400"><XIcon size={15} /></button>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-slate-400 whitespace-nowrap">Passing rate:</span>
+                    <input type="number" min={0} max={100} value={editPassingMin} onChange={e => setEditPassingMin(e.target.value)}
+                      className="w-14 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
+                    <span className="text-[11px] text-slate-400">% –</span>
+                    <input type="number" min={0} max={100} value={editPassingMax} onChange={e => setEditPassingMax(e.target.value)}
+                      className="w-14 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
+                    <span className="text-[11px] text-slate-400">%</span>
+                  </div>
+
+                  <div className="pt-1 border-t border-[#f0f3f8]">
+                    <span className="text-[11px] text-slate-400 block mb-1">Certificate (PDF):</span>
+                    {s.certificateFilename ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <FileCheck2 size={13} className="text-green-600 shrink-0" />
+                        <span className="text-[11.5px] text-[#062444] truncate max-w-[120px]">{s.certificateFilename}</span>
+                        <button onClick={() => handlePreviewCertificate(s.id)} className="text-[11px] font-semibold text-[#0088cc] hover:underline flex items-center gap-0.5">
+                          <Eye size={11} /> Preview
+                        </button>
+                        <button onClick={() => handleRemoveCertificate(s.id)} disabled={certBusyId === s.id} className="text-[11px] font-semibold text-red-500 hover:underline">
+                          {certBusyId === s.id ? "…" : "Remove"}
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-[#0088cc] cursor-pointer hover:underline w-fit">
+                        <FileUp size={12} /> {certBusyId === s.id ? "Uploading…" : "Upload PDF"}
+                        <input type="file" accept="application/pdf" className="hidden" disabled={certBusyId === s.id}
+                          onChange={e => { const f = e.target.files?.[0]; if (f) handleCertificateFile(s.id, f); }} />
+                      </label>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button onClick={() => submitEdit(s.id)} className="text-green-600"><Check size={15} /></button>
+                    <button onClick={() => { setEditingId(null); setError(""); }} className="text-slate-400"><XIcon size={15} /></button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
                   <GripVertical size={13} className="text-slate-300 shrink-0" />
                   <div className="flex-1">
                     <span className="text-[13.5px] text-[#062444] font-medium">{s.name}</span>
-                    <span className="ml-2 text-[10.5px] font-semibold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">
-                      {s.maxAttemptsPerDay}/day
-                    </span>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-[10.5px] font-semibold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">
+                        {s.maxAttemptsPerDay}/day
+                      </span>
+                      <span className="text-[10.5px] font-semibold text-[#F3BC00] bg-[#F3BC00]/15 rounded-full px-2 py-0.5">
+                        Pass: {s.passingRateMin}%–{s.passingRateMax}%
+                      </span>
+                      {s.certificateFilename && (
+                        <span className="text-[10.5px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5 flex items-center gap-1">
+                          <FileCheck2 size={10} /> Certificate
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <button onClick={e => { e.stopPropagation(); setEditingId(s.id); setEditName(s.name); setEditMaxAttempts(String(s.maxAttemptsPerDay)); setError(""); }}
-                    className="text-slate-300 hover:text-[#0088cc]"><Pencil size={13} /></button>
+                  <button onClick={e => {
+                    e.stopPropagation();
+                    setEditingId(s.id); setEditName(s.name); setEditMaxAttempts(String(s.maxAttemptsPerDay));
+                    setEditPassingMin(String(s.passingRateMin)); setEditPassingMax(String(s.passingRateMax)); setError("");
+                  }} className="text-slate-300 hover:text-[#0088cc]"><Pencil size={13} /></button>
                   <button onClick={e => { e.stopPropagation(); handleDelete(s.id); }} className="text-slate-300 hover:text-red-500"><Trash2 size={13} /></button>
                 </div>
               )}
@@ -208,8 +300,20 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
           <span className="text-[11.5px] text-slate-500 whitespace-nowrap">Allowable attempts/day:</span>
           <input type="number" min={1} value={newMaxAttempts} onChange={e => setNewMaxAttempts(e.target.value)} disabled={busy}
             className="w-16 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
-          <button type="submit" disabled={busy} className="ml-auto shrink-0 bg-[#062444] text-[#F3BC00] rounded-lg p-2 disabled:opacity-50"><Plus size={15} /></button>
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[11.5px] text-slate-500 whitespace-nowrap">Passing rate:</span>
+          <input type="number" min={0} max={100} value={newPassingMin} onChange={e => setNewPassingMin(e.target.value)} disabled={busy}
+            className="w-14 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
+          <span className="text-[11.5px] text-slate-500">% –</span>
+          <input type="number" min={0} max={100} value={newPassingMax} onChange={e => setNewPassingMax(e.target.value)} disabled={busy}
+            className="w-14 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
+          <span className="text-[11.5px] text-slate-500">%</span>
+        </div>
+        <p className="text-[10.5px] text-slate-400">Certificate upload is available after creating the subject (edit it to attach one).</p>
+        <button type="submit" disabled={busy} className="w-full flex items-center justify-center gap-1.5 bg-[#062444] text-[#F3BC00] rounded-lg p-2 disabled:opacity-50">
+          <Plus size={15} /> Add Subject
+        </button>
       </form>
     </div>
   );
