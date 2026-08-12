@@ -1,4 +1,4 @@
-# Task Management Application
+# CEDO Website
 
 A Figma Make–exported React + TypeScript task management app backed by Google Sheets and Google Drive.
 
