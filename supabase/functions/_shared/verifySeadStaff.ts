@@ -34,13 +34,14 @@ export async function requireSeadStaff(req: Request): Promise<{ admin: SupabaseC
   // the specific privileged action, never to trust client-supplied data.
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-  const { data: profile, error: profileError } = await admin
-    .from("users")
-    .select("is_sead_staff")
-    .eq("id", user.id)
-    .maybeSingle();
+  const { data: tagRow, error: tagError } = await admin
+  .from("staff_account_tags")
+  .select("tag_key")
+  .eq("staff_id", user.id)
+  .eq("tag_key", "scholar_management")
+  .maybeSingle();
 
-  if (profileError || !profile?.is_sead_staff) {
+if (tagError || !tagRow) {
     throw new Response(JSON.stringify({ error: "This account is not authorized for SEAD staff tools." }), { status: 403 });
   }
 
