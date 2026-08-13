@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { UserPlus, Users, KeyRound, Trash2, Tag, Building2, History } from "lucide-react";
 import { DIVISION_LIST, DIVISIONS, type DivisionCode, type UserRole } from "@/app/App";
 import { STAFF_TOOL_TAGS } from "@/app/staffToolTags";
+import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
 import {
   createStaffAccount, fetchStaffList, deleteStaffAccount, resetStaffPassword, fetchAllStaffTags, setStaffTags,
   changeStaffDivision, fetchDivisionChangeLog,
@@ -128,6 +129,9 @@ export function StaffAccountsPage() {
     if (result.ok) loadStaff();
   }
 
+  const { paged, search, setSearch, page, setPage, totalPages, filteredCount, pageSize } =
+    usePaginatedList(staff, { searchKeys: ["username", "lastName", "firstName", "email"] });
+
   return (
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Staff Accounts</h1>
@@ -199,13 +203,20 @@ export function StaffAccountsPage() {
             <Users size={15} className="text-accent" />
             <h2 className="text-sm font-bold text-foreground">Current Staff ({staff.length})</h2>
           </div>
+          {staff.length > 0 && (
+            <div className="px-5 py-3 border-b border-border">
+              <ListSearchBox value={search} onChange={setSearch} placeholder="Search by name, username, or email…" />
+            </div>
+          )}
           <div className="max-h-[560px] overflow-y-auto">
             {loadingStaff ? (
               <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>
             ) : staff.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">No staff accounts yet.</p>
+            ) : filteredCount === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No staff match your search.</p>
             ) : (
-              staff.map(s => (
+              paged.map(s => (
                 <div key={s.id} className="px-5 py-3 border-b border-border/50">
                   <div className="flex items-center justify-between mb-1.5">
                     <div>
@@ -306,6 +317,11 @@ export function StaffAccountsPage() {
               ))
             )}
           </div>
+          {filteredCount > 0 && (
+            <div className="px-5 border-t border-border">
+              <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} filteredCount={filteredCount} pageSize={pageSize} />
+            </div>
+          )}
         </div>
       </div>
 

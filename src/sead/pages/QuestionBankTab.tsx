@@ -9,6 +9,7 @@ import {
 import { QuestionEditorModal } from "../components/QuestionEditorModal";
 import { BulkQuestionUploadModal } from "../components/BulkQuestionUploadModal";
 import type { QuestSubject, QuestTopic, QuestQuestion } from "../types";
+import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
 
 export function QuestionBankTab() {
   const [subjects, setSubjects] = useState<QuestSubject[]>([]);
@@ -457,11 +458,13 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelet
   if (!topic) {
     return <EmptyColumn title="Questions" message="Select a topic to manage its questions." />;
   }
+  const { paged, search, setSearch, page, setPage, totalPages, filteredCount, pageSize } =
+    usePaginatedList(questions, { searchKeys: ["questionText"] });
   return (
     <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[600px]">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#e6ecf5]">
-        <h3 className="text-[12.5px] font-bold text-[#062444]">Questions — {topic.name}</h3>
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#e6ecf5] gap-2">
+        <h3 className="text-[12.5px] font-bold text-[#062444] shrink-0">Questions — {topic.name}</h3>
+        <div className="flex items-center gap-3 shrink-0">
           <button onClick={onBulkUpload} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc]">
             <UploadCloud size={14} /> Bulk Upload
           </button>
@@ -470,11 +473,18 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelet
           </button>
         </div>
       </div>
+      {questions.length > 0 && (
+        <div className="px-4 py-2 border-b border-[#f0f3f8]">
+          <ListSearchBox value={search} onChange={setSearch} placeholder="Search questions…" />
+        </div>
+      )}
       <div className="overflow-y-auto flex-1">
         {questions.length === 0 ? (
           <p className="text-sm text-slate-400 px-4 py-6 text-center">No questions yet.</p>
+        ) : filteredCount === 0 ? (
+          <p className="text-sm text-slate-400 px-4 py-6 text-center">No questions match your search.</p>
         ) : (
-          questions.map(q => (
+          paged.map(q => (
             <div key={q.id} className="px-4 py-3 border-b border-[#f0f3f8]">
               <div className="flex items-start justify-between gap-2 mb-1.5">
                 <p className={`text-[13.5px] font-medium ${q.isActive ? "text-[#062444]" : "text-slate-400 line-through"}`}>{q.questionText}</p>
@@ -492,6 +502,11 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelet
           ))
         )}
       </div>
+      {filteredCount > 0 && (
+        <div className="px-2 border-t border-[#f0f3f8]">
+          <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} filteredCount={filteredCount} pageSize={pageSize} />
+        </div>
+      )}
     </div>
   );
 }

@@ -374,7 +374,7 @@ export interface ScholarPage {
   total: number;
 }
 
-const SCHOLARS_PAGE_SIZE = 100;
+const SCHOLARS_PAGE_SIZE = 50;
 
 export async function fetchScholars(search: string, page: number = 1): Promise<ScholarPage> {
   let query = supabase.from("scholars")

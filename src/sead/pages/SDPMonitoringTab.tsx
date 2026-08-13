@@ -8,6 +8,7 @@ import {
 } from "../sdpMonitorApi";
 import { SDP_CATEGORIES } from "@/scholar/sdpApi";
 import { SDPHistoryModal } from "../components/SDPHistoryModal";
+import { ListPagination } from "@/app/components/PaginatedList";
 
 const STATUS_OPTIONS: SDPStatus[] = ["pending", "approved", "ongoing", "finished", "canceled", "rescheduled"];
 
@@ -310,6 +311,13 @@ function ActivitiesSection() {
     return true;
   });
 
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  useEffect(() => { setPage(1); }, [search, statusFilter]);
+
   const pendingCount = activities.filter(a => a.status === "pending").length;
 
   return (
@@ -350,7 +358,7 @@ function ActivitiesSection() {
           </div>
         ) : (
           <div className="divide-y divide-[#f0f3f8]">
-            {filtered.map(a => (
+            {paged.map(a => (
               <button key={a.id} onClick={() => setSelected(a)}
                 className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-[#f8fafd] transition-colors">
                 <div className="min-w-0">
@@ -365,6 +373,7 @@ function ActivitiesSection() {
           </div>
         )}
       </div>
+      <ListPagination page={safePage} totalPages={totalPages} onPageChange={setPage} filteredCount={filtered.length} pageSize={pageSize} />
 
       {selected && <DetailModal activity={selected} onClose={() => setSelected(null)} onChanged={load} />}
       {showNew && <NewActivityModal onClose={() => setShowNew(false)} onCreated={load} />}
@@ -399,6 +408,13 @@ function ChecklistSection() {
     return s.name.toLowerCase().includes(q) || s.scholarIdNumber.toLowerCase().includes(q);
   });
 
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  useEffect(() => { setPage(1); }, [search]);
+
   return (
     <div>
       <p className="text-sm text-muted-foreground mb-4">Each scholar's completion of the 3 required SDP categories, and their attended vs. available activities.</p>
@@ -427,7 +443,7 @@ function ChecklistSection() {
             ) : filtered.length === 0 ? (
               <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">No scholars found.</td></tr>
             ) : (
-              filtered.map(s => (
+              paged.map(s => (
                 <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
                   <td className="px-5 py-3 text-slate-500 whitespace-nowrap">{s.scholarIdNumber}</td>
                   <td className="px-5 py-3 font-medium text-[#062444] whitespace-nowrap">{s.name}</td>
@@ -443,6 +459,7 @@ function ChecklistSection() {
           </tbody>
         </table>
       </div>
+      <ListPagination page={safePage} totalPages={totalPages} onPageChange={setPage} filteredCount={filtered.length} pageSize={pageSize} />
 
       {viewingScholar && (
         <SDPHistoryModal scholarIdNumber={viewingScholar.scholarIdNumber} scholarName={viewingScholar.name} onClose={() => setViewingScholar(null)} />

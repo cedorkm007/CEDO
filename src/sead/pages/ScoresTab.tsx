@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Search, Filter, Award, CheckCircle2, XCircle } from "lucide-react";
 import { fetchSubjects, fetchTopics, fetchScores, fetchSubjectProgress, type SubjectProgressRow } from "../seadApi";
 import type { QuestSubject, QuestTopic, ScoreRow } from "../types";
+import { ListPagination } from "@/app/components/PaginatedList";
 
 export function ScoresTab() {
   const [subjects, setSubjects] = useState<QuestSubject[]>([]);
@@ -40,6 +41,13 @@ export function ScoresTab() {
   const avgPct = rows.length
     ? Math.round((rows.reduce((sum, r) => sum + (r.maxScore ? (r.score ?? 0) / r.maxScore : 0), 0) / rows.filter(r => r.maxScore).length) * 100) || 0
     : 0;
+
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pagedRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+  useEffect(() => { setPage(1); }, [rows]);
 
   return (
     <div>
@@ -140,7 +148,7 @@ export function ScoresTab() {
             ) : rows.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No results for these filters.</td></tr>
             ) : (
-              rows.map(r => (
+              pagedRows.map(r => (
                 <tr key={r.id} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
                   <td className="px-4 py-3">
                     <div className="font-medium text-[#062444]">{r.scholarName}</div>
@@ -157,6 +165,7 @@ export function ScoresTab() {
           </tbody>
         </table>
       </div>
+      <ListPagination page={safePage} totalPages={totalPages} onPageChange={setPage} filteredCount={rows.length} pageSize={pageSize} />
     </div>
   );
 }

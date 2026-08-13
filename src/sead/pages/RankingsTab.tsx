@@ -4,6 +4,7 @@ import { fetchSubjects, fetchSubjectRankings, fetchDistinctYearLevels, type Rank
 import { fetchDistinctSchools } from "../formationApi";
 import { CLUSTERS, namedBarangaysInCluster, NUMBERED_BARANGAYS, type ClusterCode } from "@/lib/cdoBarangays";
 import type { QuestSubject } from "../types";
+import { ListPagination } from "@/app/components/PaginatedList";
 
 const TOP_N_OPTIONS = [10, 50, 100];
 
@@ -61,6 +62,13 @@ export function RankingsTab() {
     if (selected) loadRankings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, topN, yearLevel, school, locationMode, cluster, barangay]);
+
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pagedRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+  useEffect(() => { setPage(1); }, [rows]);
 
   if (selected) {
     return (
@@ -135,7 +143,7 @@ export function RankingsTab() {
               ) : rows.length === 0 ? (
                 <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">No scorers match this filter yet.</td></tr>
               ) : (
-                rows.map(r => (
+                pagedRows.map(r => (
                   <tr key={r.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
                     <td className="px-4 py-3">
                       <span className={`flex items-center gap-1 font-bold ${medalColor(r.rank)}`}>
@@ -152,6 +160,7 @@ export function RankingsTab() {
             </tbody>
           </table>
         </div>
+        <ListPagination page={safePage} totalPages={totalPages} onPageChange={setPage} filteredCount={rows.length} pageSize={pageSize} />
       </div>
     );
   }
