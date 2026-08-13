@@ -74,7 +74,8 @@ export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarPr
         <InfoItem icon={<User size={11} />} label="Last Name" value={profile.lastName} />
         <InfoItem icon={<User size={11} />} label="Middle Name" value={profile.middleName || "—"} />
         <InfoItem icon={<Building2 size={11} />} label="School" value={profile.school || "—"} />
-        <InfoItem icon={<BookOpen size={11} />} label="Course" value={profile.course || "—"} full />
+        <InfoItem icon={<BookOpen size={11} />} label="Course" value={profile.course || "—"} />
+        <InfoItem icon={<BookOpen size={11} />} label="Year Level" value={profile.yearLevel || "—"} full />
         <InfoItem icon={<Heart size={11} />} label="Civil Status" value={profile.civilStatus || "—"} />
         <InfoItem icon={<Phone size={11} />} label="Contact No." value={profile.contactNo || "—"} />
         <InfoItem icon={<MapPin size={11} />} label="Address" value={formatAddress(profile)} full />

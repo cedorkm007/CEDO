@@ -64,4 +64,4 @@ export interface ScholarAccountLogEntry {
   source: "single" | "bulk" | "undo";
 }
 
-export type SeadTab = "scholars" | "question-bank" | "scores" | "history";
+export type SeadTab = "scholars" | "question-bank" | "scores" | "rankings" | "history";

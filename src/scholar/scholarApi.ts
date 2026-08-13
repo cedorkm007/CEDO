@@ -61,6 +61,7 @@ function rowToProfile(r: Record<string, unknown>): ScholarProfile {
     contactNo: String(r.contact_no ?? ""),
     school: String(r.school ?? ""),
     course: String(r.course ?? ""),
+    yearLevel: String(r.year_level ?? ""),
     civilStatus: String(r.civil_status ?? ""),
     address: String(r.address ?? ""),
     houseUnitNo: String(r.house_unit_no ?? ""),

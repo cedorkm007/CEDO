@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
-import { X, Award, Clock } from "lucide-react";
+import { X, ClipboardCheck, Clock } from "lucide-react";
 import { fetchScholarSDPHistory, type SDPHistoryRow } from "../sdpMonitorApi";
+import { SDP_CATEGORIES } from "@/scholar/sdpApi";
 
 interface SDPHistoryModalProps {
   scholarIdNumber: string;
   scholarName: string;
   onClose: () => void;
+}
+
+function categoryLabel(category: SDPHistoryRow["category"]): string {
+  return SDP_CATEGORIES.find(c => c.key === category)?.label ?? "No category set";
 }
 
 function HistoryTable({ rows, emptyLabel }: { rows: SDPHistoryRow[]; emptyLabel: string }) {
@@ -18,7 +23,7 @@ function HistoryTable({ rows, emptyLabel }: { rows: SDPHistoryRow[]; emptyLabel:
         <thead>
           <tr className="bg-[#f8fafd] text-left text-[10.5px] uppercase tracking-wide text-[#0088cc]">
             <th className="px-3 py-2">Name of Activity</th>
-            <th className="px-3 py-2">SDP Point(s) Credited</th>
+            <th className="px-3 py-2">SDP Category</th>
             <th className="px-3 py-2">Date of Activity</th>
           </tr>
         </thead>
@@ -26,7 +31,7 @@ function HistoryTable({ rows, emptyLabel }: { rows: SDPHistoryRow[]; emptyLabel:
           {rows.map(r => (
             <tr key={r.activityId} className="border-t border-[#f0f3f8]">
               <td className="px-3 py-2 text-[#062444] font-medium">{r.activityName}</td>
-              <td className="px-3 py-2 text-[#062444] font-bold">{r.points}</td>
+              <td className="px-3 py-2 text-[#062444] font-bold">{categoryLabel(r.category)}</td>
               <td className="px-3 py-2 text-slate-500">{r.date ? new Date(r.date).toLocaleDateString() : "—"}</td>
             </tr>
           ))}
@@ -36,7 +41,7 @@ function HistoryTable({ rows, emptyLabel }: { rows: SDPHistoryRow[]; emptyLabel:
   );
 }
 
-/** Shown from the "SDP Points" section of SDP Monitoring — one scholar's full point history. */
+/** Shown from the "SDP Checklist" section of SDP Monitoring — one scholar's full activity history. */
 export function SDPHistoryModal({ scholarIdNumber, scholarName, onClose }: SDPHistoryModalProps) {
   const [attended, setAttended] = useState<SDPHistoryRow[]>([]);
   const [available, setAvailable] = useState<SDPHistoryRow[]>([]);
@@ -52,7 +57,7 @@ export function SDPHistoryModal({ scholarIdNumber, scholarName, onClose }: SDPHi
     })();
   }, [scholarIdNumber]);
 
-  const totalPoints = attended.reduce((sum, r) => sum + r.points, 0);
+  const completedCategories = new Set(attended.map(a => a.category).filter(Boolean));
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
@@ -72,8 +77,8 @@ export function SDPHistoryModal({ scholarIdNumber, scholarName, onClose }: SDPHi
           ) : (
             <>
               <div className="flex items-center gap-2 bg-[#F3BC00]/10 border border-[#F3BC00]/25 rounded-lg px-4 py-2.5">
-                <Award size={16} className="text-[#F3BC00]" />
-                <span className="text-[13px] font-bold text-[#062444]">{totalPoints} total SDP point{totalPoints === 1 ? "" : "s"}</span>
+                <ClipboardCheck size={16} className="text-[#F3BC00]" />
+                <span className="text-[13px] font-bold text-[#062444]">{completedCategories.size} of {SDP_CATEGORIES.length} SDP categories complete</span>
               </div>
 
               <div>

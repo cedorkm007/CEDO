@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Lightbulb, X, ClipboardList, Plus, Search, Award, UserCheck, Trash2 } from "lucide-react";
+import { Lightbulb, X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2 } from "lucide-react";
 import {
   fetchAllSDPActivities, updateSDPActivity, createApprovedActivity,
   fetchAttendanceForActivity, creditAttendance, removeAttendance,
-  fetchAllScholarsSDPSummary,
-  type SDPActivity, type SDPStatus, type AttendanceEntry, type ScholarSDPSummary,
+  fetchAllScholarsSDPChecklist,
+  type SDPActivity, type SDPStatus, type SDPCategory, type AttendanceEntry, type ScholarSDPChecklist,
 } from "../sdpMonitorApi";
+import { SDP_CATEGORIES } from "@/scholar/sdpApi";
 import { SDPHistoryModal } from "../components/SDPHistoryModal";
 
 const STATUS_OPTIONS: SDPStatus[] = ["pending", "approved", "ongoing", "finished", "canceled", "rescheduled"];
@@ -15,6 +16,10 @@ const statusColors: Record<SDPStatus, string> = {
   pending: "bg-orange-400", canceled: "bg-red-500", rescheduled: "bg-purple-500",
 };
 
+function categoryLabel(category: SDPCategory | null): string {
+  return SDP_CATEGORIES.find(c => c.key === category)?.label ?? "No category set";
+}
+
 function StatusBadge({ status }: { status: SDPStatus }) {
   return (
     <span className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-bold text-white ${statusColors[status]}`}>
@@ -23,8 +28,24 @@ function StatusBadge({ status }: { status: SDPStatus }) {
   );
 }
 
+function CategorySelect({ value, onChange }: { value: SDPCategory | null; onChange: (v: SDPCategory) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {SDP_CATEGORIES.map(c => (
+        <button key={c.key} type="button" onClick={() => onChange(c.key)}
+          className={`px-3 py-1.5 rounded-lg border text-[12px] font-bold transition-all ${
+            value === c.key ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"
+          }`}>
+          {c.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState("");
+  const [category, setCategory] = useState<SDPCategory | null>(null);
   const [organization, setOrganization] = useState("");
   const [dateTime, setDateTime] = useState("");
   const [venue, setVenue] = useState("");
@@ -33,8 +54,9 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   async function handleCreate() {
     if (!name.trim()) { setError("Enter an activity name."); return; }
+    if (!category) { setError("Choose which SDP category this activity counts toward."); return; }
     setBusy(true);
-    const result = await createApprovedActivity({ name: name.trim(), organization: organization.trim(), dateTime, venue: venue.trim(), nature: [] });
+    const result = await createApprovedActivity({ name: name.trim(), category, organization: organization.trim(), dateTime, venue: venue.trim(), nature: [] });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to create."); return; }
     onCreated();
@@ -52,6 +74,10 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
           <p className="text-[12.5px] text-slate-500 mb-1">Open to all scholars immediately, starting as "Approved" — no scholar proposal needed.</p>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Activity name"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">SDP Category</label>
+            <CategorySelect value={category} onChange={setCategory} />
+          </div>
           <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder="Organization"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
           <input type="datetime-local" value={dateTime} onChange={e => setDateTime(e.target.value)}
@@ -73,7 +99,6 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
   const [attendees, setAttendees] = useState<AttendanceEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [newScholarId, setNewScholarId] = useState("");
-  const [newPoints, setNewPoints] = useState(String(activity.sdpPoints || 0));
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -88,10 +113,8 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
   async function handleAdd() {
     setError("");
     if (!newScholarId.trim()) { setError("Enter a Scholar ID."); return; }
-    const points = Number(newPoints);
-    if (!Number.isFinite(points) || points < 0) { setError("Points must be a non-negative number."); return; }
     setBusy(true);
-    const result = await creditAttendance(activity.id, newScholarId.trim(), points, newDate);
+    const result = await creditAttendance(activity.id, newScholarId.trim(), newDate);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to credit — check the Scholar ID exists."); return; }
     setNewScholarId("");
@@ -105,7 +128,8 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
 
   return (
     <div className="border-t border-[#f0f3f8] pt-4">
-      <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2 flex items-center gap-1.5"><UserCheck size={13} /> Attendance & Points Credited</p>
+      <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2 flex items-center gap-1.5"><UserCheck size={13} /> Attendance</p>
+      <p className="text-[11px] text-slate-400 mb-3">Crediting a scholar here marks "{categoryLabel(activity.category)}" complete for them.</p>
 
       {loading ? (
         <p className="text-[12.5px] text-slate-400">Loading…</p>
@@ -117,7 +141,7 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
             <div key={a.id} className="flex items-center justify-between bg-[#f8fafd] rounded-lg px-3 py-2 text-[12.5px]">
               <span className="text-[#062444] font-medium">{a.scholarName} <span className="text-slate-400">({a.scholarIdNumber})</span></span>
               <span className="flex items-center gap-3">
-                <span className="font-bold text-[#062444]">{a.pointsCredited} pt{a.pointsCredited === 1 ? "" : "s"}</span>
+                <span className="text-slate-400">{a.attendedDate ? new Date(a.attendedDate).toLocaleDateString() : "—"}</span>
                 <button onClick={() => handleRemove(a.id)} className="text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
               </span>
             </div>
@@ -130,11 +154,6 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
           <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Scholar ID</label>
           <input value={newScholarId} onChange={e => setNewScholarId(e.target.value)} placeholder="20180000"
             className="w-28 border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" />
-        </div>
-        <div>
-          <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Points</label>
-          <input type="number" min={0} value={newPoints} onChange={e => setNewPoints(e.target.value)}
-            className="w-20 border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" />
         </div>
         <div>
           <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Date</label>
@@ -155,16 +174,15 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   const [status, setStatus] = useState<SDPStatus>(activity.status);
   const [projectHead, setProjectHead] = useState(activity.projectHead);
   const [headCluster, setHeadCluster] = useState(activity.headCluster);
-  const [sdpPoints, setSdpPoints] = useState(String(activity.sdpPoints || 0));
+  const [category, setCategory] = useState<SDPCategory | null>(activity.category);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   async function handleSave() {
     setError("");
-    const points = Number(sdpPoints);
-    if (!Number.isFinite(points) || points < 0) { setError("SDP points must be a non-negative number."); return; }
+    if (!category) { setError("Choose which SDP category this activity counts toward."); return; }
     setBusy(true);
-    const result = await updateSDPActivity(activity.id, { status, projectHead, headCluster, sdpPoints: points });
+    const result = await updateSDPActivity(activity.id, { status, projectHead, headCluster, category });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save."); return; }
     onChanged();
@@ -215,6 +233,10 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
 
           <div className="border-t border-[#f0f3f8] pt-4 space-y-3">
             <div>
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">SDP Category</label>
+              <CategorySelect value={category} onChange={setCategory} />
+            </div>
+            <div>
               <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Status</label>
               <div className="flex flex-wrap gap-1.5">
                 {STATUS_OPTIONS.map(s => (
@@ -227,7 +249,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
                 ))}
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-semibold text-slate-500 mb-1">Project Head</label>
                 <input value={projectHead} onChange={e => setProjectHead(e.target.value)}
@@ -238,13 +260,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
                 <input value={headCluster} onChange={e => setHeadCluster(e.target.value)}
                   className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
               </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-500 mb-1">SDP Points</label>
-                <input type="number" min={0} value={sdpPoints} onChange={e => setSdpPoints(e.target.value)}
-                  className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
-              </div>
             </div>
-            <p className="text-[11px] text-slate-400 italic">Points here are what a scholar gets credited when marked as attending below.</p>
           </div>
 
           <AttendanceSection activity={activity} />
@@ -340,7 +356,7 @@ function ActivitiesSection() {
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-[#062444] truncate">{a.name}</p>
                   <p className="text-[12px] text-slate-400 truncate">
-                    {a.organization || "—"} {a.submittedByScholarId ? `· Scholar ID ${a.submittedByScholarId}` : "· Staff-created"} · {a.sdpPoints} pt{a.sdpPoints === 1 ? "" : "s"}
+                    {a.organization || "—"} {a.submittedByScholarId ? `· Scholar ID ${a.submittedByScholarId}` : "· Staff-created"} · {categoryLabel(a.category)}
                   </p>
                 </div>
                 <StatusBadge status={a.status} />
@@ -356,15 +372,23 @@ function ActivitiesSection() {
   );
 }
 
-function PointsSection() {
-  const [scholars, setScholars] = useState<ScholarSDPSummary[]>([]);
+function ChecklistBadge({ complete }: { complete: boolean }) {
+  return complete ? (
+    <span className="inline-flex items-center gap-1 text-[11.5px] font-bold text-green-700"><CheckCircle2 size={13} /> Complete</span>
+  ) : (
+    <span className="inline-flex items-center gap-1 text-[11.5px] text-slate-400"><XCircle size={13} /> Incomplete</span>
+  );
+}
+
+function ChecklistSection() {
+  const [scholars, setScholars] = useState<ScholarSDPChecklist[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [viewingScholar, setViewingScholar] = useState<ScholarSDPSummary | null>(null);
+  const [viewingScholar, setViewingScholar] = useState<ScholarSDPChecklist | null>(null);
 
   async function load() {
     setLoading(true);
-    setScholars(await fetchAllScholarsSDPSummary());
+    setScholars(await fetchAllScholarsSDPChecklist());
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
@@ -377,7 +401,7 @@ function PointsSection() {
 
   return (
     <div>
-      <p className="text-sm text-muted-foreground mb-4">Running SDP point totals per scholar, and their attended vs. available activities.</p>
+      <p className="text-sm text-muted-foreground mb-4">Each scholar's completion of the 3 required SDP categories, and their attended vs. available activities.</p>
 
       <div className="flex items-center gap-2 bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 max-w-sm mb-4">
         <Search size={15} className="text-slate-400" />
@@ -385,29 +409,31 @@ function PointsSection() {
           className="w-full text-sm outline-none" />
       </div>
 
-      <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden">
+      <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
               <th className="px-5 py-3">Scholar ID</th>
               <th className="px-5 py-3">Scholar Name</th>
-              <th className="px-5 py-3">SDP Points</th>
+              <th className="px-5 py-3">Community Service</th>
+              <th className="px-5 py-3">Community Volunteerism</th>
+              <th className="px-5 py-3">Formation Program</th>
               <th className="px-5 py-3 text-right">SDP History</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} className="px-5 py-10 text-center text-slate-400">Loading…</td></tr>
+              <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={4} className="px-5 py-10 text-center text-slate-400">No scholars found.</td></tr>
+              <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">No scholars found.</td></tr>
             ) : (
               filtered.map(s => (
                 <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
-                  <td className="px-5 py-3 text-slate-500">{s.scholarIdNumber}</td>
-                  <td className="px-5 py-3 font-medium text-[#062444]">{s.name}</td>
-                  <td className="px-5 py-3">
-                    <span className="inline-flex items-center gap-1 font-bold text-[#062444]"><Award size={13} className="text-[#F3BC00]" /> {s.totalPoints}</span>
-                  </td>
+                  <td className="px-5 py-3 text-slate-500 whitespace-nowrap">{s.scholarIdNumber}</td>
+                  <td className="px-5 py-3 font-medium text-[#062444] whitespace-nowrap">{s.name}</td>
+                  <td className="px-5 py-3"><ChecklistBadge complete={s.communityService} /></td>
+                  <td className="px-5 py-3"><ChecklistBadge complete={s.communityVolunteerism} /></td>
+                  <td className="px-5 py-3"><ChecklistBadge complete={s.formationProgram} /></td>
                   <td className="px-5 py-3 text-right">
                     <button onClick={() => setViewingScholar(s)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">View</button>
                   </td>
@@ -428,12 +454,13 @@ function PointsSection() {
 /**
  * Monitoring tab for tagged CEDO staff (sdp_monitoring tag — assigned via
  * it.admin1's Staff Accounts page): SDP Activities (review/approve
- * proposals, credit attendance) and SDP Points (per-scholar totals and
- * attended/available history) — SDP participation feeds into scholarship
- * renewal, so this is where that gets tracked.
+ * proposals, credit attendance) and SDP Checklist (each scholar's
+ * completion of the 3 required categories, and their attended/available
+ * history) — SDP participation feeds into scholarship renewal, so this is
+ * where that gets tracked.
  */
 export function SDPMonitoringTab() {
-  const [section, setSection] = useState<"activities" | "points">("activities");
+  const [section, setSection] = useState<"activities" | "checklist">("activities");
 
   return (
     <div>
@@ -441,7 +468,7 @@ export function SDPMonitoringTab() {
       <div className="flex gap-1 border-b border-border mb-5">
         {([
           { key: "activities" as const, label: "SDP Activities" },
-          { key: "points" as const, label: "SDP Points" },
+          { key: "checklist" as const, label: "SDP Checklist" },
         ]).map(t => (
           <button key={t.key} onClick={() => setSection(t.key)}
             className={`px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
@@ -453,7 +480,7 @@ export function SDPMonitoringTab() {
       </div>
 
       {section === "activities" && <ActivitiesSection />}
-      {section === "points" && <PointsSection />}
+      {section === "checklist" && <ChecklistSection />}
     </div>
   );
 }

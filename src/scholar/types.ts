@@ -16,6 +16,7 @@ export interface ScholarProfile {
   contactNo: string;
   school: string;
   course: string;
+  yearLevel: string;
   civilStatus: string;
   address: string; // legacy free-text field, superseded by the structured fields below
   houseUnitNo: string;

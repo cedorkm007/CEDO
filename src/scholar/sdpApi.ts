@@ -1,6 +1,13 @@
 import { supabase } from "@/lib/supabase";
 
 export type SDPStatus = "finished" | "ongoing" | "approved" | "pending" | "canceled" | "rescheduled";
+export type SDPCategory = "community_service" | "community_volunteerism" | "formation_program";
+
+export const SDP_CATEGORIES: { key: SDPCategory; label: string }[] = [
+  { key: "community_service", label: "Community Service" },
+  { key: "community_volunteerism", label: "Community Volunteerism" },
+  { key: "formation_program", label: "Formation Program" },
+];
 
 export interface ObjectiveRow { objective: string; deliverable: string; }
 export interface WorkPlanRow { date: string; activity: string; }
@@ -11,6 +18,7 @@ export interface SDPActivity {
   id: string;
   name: string;
   submittedByScholarId: string | null; // null = staff-created, open to all scholars
+  category: SDPCategory | null;
   nature: string[];
   organization: string;
   dateTime: string; // "" if unset
@@ -18,7 +26,6 @@ export interface SDPActivity {
   projectHead: string;
   headCluster: string;
   status: SDPStatus;
-  sdpPoints: number;
   budgetaryRequirement: string;
   sourceOfFund: string[];
   sourceOfFundOther: string;
@@ -62,6 +69,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     id: String(r.id),
     name: String(r.name),
     submittedByScholarId: (r.submitted_by_scholar_id as string | null) ?? null,
+    category: (r.category as SDPCategory | null) ?? null,
     nature: (r.nature as string[]) ?? [],
     organization: String(r.organization ?? ""),
     dateTime: (r.date_time as string | null) ?? "",
@@ -69,7 +77,6 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     projectHead: String(r.project_head ?? ""),
     headCluster: String(r.head_cluster ?? ""),
     status: r.status as SDPStatus,
-    sdpPoints: Number(r.sdp_points ?? 0),
     budgetaryRequirement: String(r.budgetary_requirement ?? ""),
     sourceOfFund: (r.source_of_fund as string[]) ?? [],
     sourceOfFundOther: String(r.source_of_fund_other ?? ""),
@@ -109,6 +116,7 @@ export async function fetchMySDPActivities(scholarIdNumber: string): Promise<SDP
 
 export interface SDPProposalInput {
   name: string;
+  category: SDPCategory;
   nature: string[];
   organization: string;
   dateTime: string;
@@ -127,11 +135,25 @@ export interface SDPProposalInput {
   budgetItems: BudgetRow[];
 }
 
-/** Sum of this scholar's own credited SDP points (readable under their own RLS). */
-export async function fetchScholarSDPPoints(scholarIdNumber: string): Promise<number> {
-  const { data, error } = await supabase.from("sdp_attendance").select("points_credited").eq("scholar_id_number", scholarIdNumber);
-  if (error || !data) return 0;
-  return data.reduce((sum, r) => sum + Number(r.points_credited ?? 0), 0);
+/** Whether this scholar holds any Scholars' Formation Tools position (other than a plain
+ *  "member" roster entry) — only these scholars are allowed to submit an SDP proposal. */
+export async function checkIsFormationOfficer(scholarIdNumber: string): Promise<boolean> {
+  const { data, error } = await supabase.from("formation_positions")
+    .select("id").eq("scholar_id_number", scholarIdNumber).neq("role_key", "member").limit(1);
+  return !error && !!data && data.length > 0;
+}
+
+export type SDPCategoryStatus = Record<SDPCategory, boolean>;
+
+/** This scholar's completion status for each of the 3 required SDP categories. */
+export async function fetchScholarSDPCategoryStatus(scholarIdNumber: string): Promise<SDPCategoryStatus> {
+  const fallback: SDPCategoryStatus = { community_service: false, community_volunteerism: false, formation_program: false };
+  const { data, error } = await supabase.from("scholar_sdp_category_status")
+    .select("category, completed").eq("scholar_id_number", scholarIdNumber);
+  if (error || !data) return fallback;
+  const status = { ...fallback };
+  for (const row of data) status[row.category as SDPCategory] = !!row.completed;
+  return status;
 }
 
 export async function submitSDPProposal(
@@ -140,6 +162,7 @@ export async function submitSDPProposal(
   const { error } = await supabase.from("sdp_activities").insert({
     name: input.name,
     submitted_by_scholar_id: scholarIdNumber,
+    category: input.category,
     nature: input.nature,
     organization: input.organization,
     date_time: input.dateTime || null,

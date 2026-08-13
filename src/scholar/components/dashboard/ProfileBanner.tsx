@@ -1,15 +1,16 @@
-import { GraduationCap, ShieldCheck, Award, MapPinned } from "lucide-react";
+import { GraduationCap, ShieldCheck, MapPinned, CheckCircle2, Circle } from "lucide-react";
 import { clusterForBarangay, clusterLabel } from "@/lib/cdoBarangays";
+import { SDP_CATEGORIES, type SDPCategoryStatus } from "../../sdpApi";
 import type { ScholarProfile } from "../../types";
 
 interface ProfileBannerProps {
   profile: ScholarProfile;
-  sdpPoints: number;
+  sdpStatus: SDPCategoryStatus;
   positions: string[];
   onChangePassword: () => void;
 }
 
-export function ProfileBanner({ profile, sdpPoints, positions, onChangePassword }: ProfileBannerProps) {
+export function ProfileBanner({ profile, sdpStatus, positions, onChangePassword }: ProfileBannerProps) {
   const cluster = profile.barangay ? clusterForBarangay(profile.barangay) : null;
 
   return (
@@ -40,10 +41,20 @@ export function ProfileBanner({ profile, sdpPoints, positions, onChangePassword 
               ))}
             </div>
           )}
-          <div className="text-[13px] font-semibold text-[#F3BC00] tracking-wide mb-1">{profile.scholarIdNumber}</div>
-          <div className="flex items-center gap-3 flex-wrap text-[12.5px] font-semibold text-white/70 mb-2">
-            <span className="flex items-center gap-1.5"><Award size={13} className="text-[#F3BC00]" /> {sdpPoints} SDP Point{sdpPoints === 1 ? "" : "s"}</span>
-            {cluster && <span className="flex items-center gap-1.5"><MapPinned size={13} className="text-[#F3BC00]" /> {clusterLabel(cluster)}</span>}
+          <div className="text-[13px] font-semibold text-[#F3BC00] tracking-wide mb-1.5">{profile.scholarIdNumber}</div>
+          <div className="flex items-center gap-1.5 flex-wrap mb-2">
+            {SDP_CATEGORIES.map(c => (
+              <span key={c.key} className={`inline-flex items-center gap-1 text-[10.5px] font-bold rounded-full px-2.5 py-0.5 ${
+                sdpStatus[c.key] ? "bg-green-500/20 text-green-300 border border-green-400/30" : "bg-white/10 text-white/50 border border-white/15"
+              }`}>
+                {sdpStatus[c.key] ? <CheckCircle2 size={11} /> : <Circle size={11} />} {c.label}
+              </span>
+            ))}
+            {cluster && (
+              <span className="flex items-center gap-1.5 text-[10.5px] font-bold text-white/70">
+                <MapPinned size={11} className="text-[#F3BC00]" /> {clusterLabel(cluster)}
+              </span>
+            )}
           </div>
           <span className="inline-flex items-center gap-1.5 bg-[#F3BC00]/15 border border-[#F3BC00]/30 text-[#F3BC00] text-[11px] font-bold uppercase tracking-wider rounded-full px-3 py-1">
             City Scholar

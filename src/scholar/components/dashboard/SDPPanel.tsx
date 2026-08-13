@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Plus, Trash2, ClipboardList, FileText, ChevronRight, Award, List, Lightbulb } from "lucide-react";
+import { X, Plus, Trash2, ClipboardList, FileText, ChevronRight, Award, List, Lightbulb, Lock } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import {
-  fetchApprovedSDPActivities, fetchMySDPActivities, submitSDPProposal, ORGANIZATIONS,
-  type SDPActivity, type SDPStatus, type ObjectiveRow, type WorkPlanRow, type ProgramFlowRow, type BudgetRow, type SDPProposalInput,
+  fetchApprovedSDPActivities, fetchMySDPActivities, submitSDPProposal, checkIsFormationOfficer, ORGANIZATIONS, SDP_CATEGORIES,
+  type SDPActivity, type SDPStatus, type SDPCategory, type ObjectiveRow, type WorkPlanRow, type ProgramFlowRow, type BudgetRow, type SDPProposalInput,
 } from "../../sdpApi";
 
 const statusColors: Record<SDPStatus, string> = {
@@ -24,8 +24,8 @@ const statusDescriptions: Record<SDPStatus, string> = {
   rescheduled: "The activity has changed schedules.",
 };
 
-const emptyForm = (): SDPProposalInput => ({
-  name: "", nature: [], organization: "", dateTime: "", venue: "",
+const emptyForm = (): Omit<SDPProposalInput, "category"> & { category: SDPCategory | "" } => ({
+  name: "", category: "", nature: [], organization: "", dateTime: "", venue: "",
   budgetaryRequirement: "", sourceOfFund: [], sourceOfFundOther: "", rationale: "", linkWithOrg: "",
   objectives: [{ objective: "", deliverable: "" }, { objective: "", deliverable: "" }],
   targetPartners: [], targetPartnersOther: "", specificRole: [],
@@ -129,7 +129,7 @@ function ProposalForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (a
   const [form, setForm] = useState(emptyForm());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const setField = <K extends keyof SDPProposalInput>(key: K, value: SDPProposalInput[K]) => setForm(prev => ({ ...prev, [key]: value }));
+  const setField = <K extends keyof ReturnType<typeof emptyForm>>(key: K, value: ReturnType<typeof emptyForm>[K]) => setForm(prev => ({ ...prev, [key]: value }));
 
   const setObj = (i: number, col: keyof ObjectiveRow, v: string) => setField("objectives", form.objectives.map((r, idx) => idx === i ? { ...r, [col]: v } : r));
   const addObj = () => setField("objectives", [...form.objectives, { objective: "", deliverable: "" }]);
@@ -162,8 +162,9 @@ function ProposalForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (a
   async function handleSubmit() {
     setError("");
     if (!form.name.trim()) { setError("Please enter the Activity Name."); return; }
+    if (!form.category) { setError("Please choose which SDP category this activity counts toward."); return; }
     setSubmitting(true);
-    await onSubmit(form);
+    await onSubmit({ ...form, category: form.category });
     setSubmitting(false);
   }
 
@@ -192,6 +193,19 @@ function ProposalForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (a
           <FSec title="a. Name of Activity" />
           <FLabel label="Activity Name" required />
           <FInput value={form.name} onChange={v => setField("name", v)} placeholder="Enter activity name" />
+
+          <FSec title="SDP Category" />
+          <FLabel label="Which required SDP category does this count toward?" required />
+          <div className="flex flex-wrap gap-2">
+            {SDP_CATEGORIES.map(c => (
+              <button key={c.key} type="button" onClick={() => setField("category", c.key)}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                  form.category === c.key ? "bg-[#062444] text-white border-[#062444]" : "bg-white text-gray-600 border-gray-300"
+                }`}>
+                {c.label}
+              </button>
+            ))}
+          </div>
 
           <FSec title="b. Nature of Activity" />
           <FCheckbox options={["Sports", "Education", "Health", "Environment"]} selected={form.nature} onChange={v => setField("nature", v)} />
@@ -346,8 +360,13 @@ function ActivityCard({ act, onClick }: { act: SDPActivity; onClick: () => void 
       <div className="flex-1 min-w-0">
         <p className="font-bold text-[#062444] text-sm truncate">{act.name}</p>
         <p className="text-xs text-gray-500 truncate">{act.organization}</p>
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
           <StatusBadge status={act.status} />
+          {act.category && (
+            <span className="text-[10px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">
+              {SDP_CATEGORIES.find(c => c.key === act.category)?.label ?? act.category}
+            </span>
+          )}
           {act.dateTime && <span className="text-xs text-gray-400">{new Date(act.dateTime).toLocaleDateString()}</span>}
         </div>
         <p className="text-[10px] text-gray-400 mt-0.5 italic">{statusDescriptions[act.status]}</p>
@@ -372,15 +391,19 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   const [approved, setApproved] = useState<SDPActivity[]>([]);
   const [mine, setMine] = useState<SDPActivity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isOfficer, setIsOfficer] = useState(false);
   const [listView, setListView] = useState<"approved" | "mine">("approved");
   const [showProposal, setShowProposal] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<SDPActivity | null>(null);
 
   async function loadAll() {
     setLoading(true);
-    const [a, m] = await Promise.all([fetchApprovedSDPActivities(), fetchMySDPActivities(scholarIdNumber)]);
+    const [a, m, officer] = await Promise.all([
+      fetchApprovedSDPActivities(), fetchMySDPActivities(scholarIdNumber), checkIsFormationOfficer(scholarIdNumber),
+    ]);
     setApproved(a);
     setMine(m);
+    setIsOfficer(officer);
     setLoading(false);
   }
   useEffect(() => { loadAll(); }, [scholarIdNumber]);
@@ -409,12 +432,25 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
           <List className={`w-6 h-6 ${listView === "mine" ? "text-[#F3BC00]" : "text-[#062444]"}`} />
           <span className={`font-bold text-[11px] text-center leading-tight ${listView === "mine" ? "text-[#F3BC00]" : "text-[#062444]"}`}>My SDP Activity</span>
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={() => setShowProposal(true)}
-          className="bg-[#F3BC00] hover:bg-[#e0ac00] rounded-xl p-3 flex flex-col items-center gap-1.5 shadow-md transition-colors">
-          <FileText className="w-6 h-6 text-[#062444]" />
-          <span className="text-[#062444] font-bold text-[11px] text-center leading-tight">Submit Proposal</span>
-        </motion.button>
+        {isOfficer ? (
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={() => setShowProposal(true)}
+            className="bg-[#F3BC00] hover:bg-[#e0ac00] rounded-xl p-3 flex flex-col items-center gap-1.5 shadow-md transition-colors">
+            <FileText className="w-6 h-6 text-[#062444]" />
+            <span className="text-[#062444] font-bold text-[11px] text-center leading-tight">Submit Proposal</span>
+          </motion.button>
+        ) : (
+          <div className="bg-[#f7f9fc] rounded-xl p-3 flex flex-col items-center gap-1.5 border-2 border-transparent opacity-60" title="Only scholars holding an officer position can submit proposals">
+            <Lock className="w-6 h-6 text-slate-400" />
+            <span className="text-slate-400 font-bold text-[11px] text-center leading-tight">Officers Only</span>
+          </div>
+        )}
       </div>
+
+      {!isOfficer && (
+        <p className="text-[12px] text-slate-400 italic mb-4 -mt-3">
+          Only scholars holding an officer position (see Scholars' Formation Tools) can submit SDP proposals.
+        </p>
+      )}
 
       <div className="flex items-center gap-2 mb-3">
         <h4 className="text-[#062444] font-bold text-sm flex-1">{listView === "approved" ? "Approved SDP Activities" : "My SDP Activities"}</h4>

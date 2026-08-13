@@ -6,12 +6,12 @@ import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
 
 const TEMPLATE_HEADERS = [
   "Scholar ID Number", "First Name", "Last Name", "Middle Name", "Birthday (YYYY-MM-DD)",
-  "School", "Course", "Civil Status", "Contact No.",
+  "School", "Course", "Year Level", "Civil Status", "Contact No.",
   "House/Unit No.", "Street", "Barangay", "City/Municipality", "Province/Region", "Country", "Zip Code",
 ];
 
 const TEMPLATE_SAMPLE_ROWS = [
-  ["20250001", "", "", "", "", "", "", "", "09171234567", "Blk 3 Lot 12", "Rizal St.", "Poblacion", "Butuan City", "Agusan del Norte", "Philippines", "8600"],
+  ["20250001", "", "", "", "", "", "", "2nd Year", "", "09171234567", "Blk 3 Lot 12", "Rizal St.", "Poblacion", "Butuan City", "Agusan del Norte", "Philippines", "8600"],
 ];
 
 interface ParsedRow {
@@ -46,6 +46,7 @@ const FIELD_DEFS: { key: keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">; 
   { key: "birthday", label: "Birthday", aliases: ["birthday (yyyy-mm-dd)", "birthday", "birthdate", "date of birth"], isBirthday: true },
   { key: "school", label: "School", aliases: ["school"] },
   { key: "course", label: "Course", aliases: ["course"] },
+  { key: "yearLevel", label: "Year Level", aliases: ["year level", "yearlevel", "year"] },
   { key: "civilStatus", label: "Civil Status", aliases: ["civil status", "civilstatus"] },
   { key: "contactNo", label: "Contact No.", aliases: ["contact no.", "contact no", "contact number", "contact"] },
   { key: "houseUnitNo", label: "House/Unit No.", aliases: ["house/unit no.", "house/unit no", "house unit no", "house no"] },

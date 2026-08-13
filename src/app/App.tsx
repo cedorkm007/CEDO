@@ -371,11 +371,9 @@ function SignInPage({ users, onSignIn }: { users: UserProfile[]; onSignIn: (u: U
     if (!username || !password) { setError("Please enter your username/email and password."); return; }
     setBusy(true); setError("");
     try {
-      let resolvedEmail = username;
-      if (!username.includes("@")) {
-      const { data: lookedUpEmail } = await supabase.rpc("resolve_staff_login_email", { p_username: username });
-      resolvedEmail = lookedUpEmail;
-      }
+      const resolvedEmail = username.includes("@")
+        ? username
+        : users.find(u => u.username.toLowerCase() === username.toLowerCase())?.email;
       if (!resolvedEmail) { setError("Incorrect username or password."); setBusy(false); return; }
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email: resolvedEmail, password });
       if (authError || !data.user) { setError("Incorrect username or password."); setBusy(false); return; }

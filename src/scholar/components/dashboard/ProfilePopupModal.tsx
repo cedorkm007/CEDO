@@ -1,11 +1,12 @@
-import { X, ShieldCheck, Award, GraduationCap, LogOut, MapPinned } from "lucide-react";
+import { X, ShieldCheck, GraduationCap, LogOut, MapPinned, CheckCircle2, Circle } from "lucide-react";
 import { ProfilePanel } from "./ProfilePanel";
 import { clusterForBarangay, clusterLabel } from "@/lib/cdoBarangays";
+import { SDP_CATEGORIES, type SDPCategoryStatus } from "../../sdpApi";
 import type { ScholarProfile } from "../../types";
 
 interface ProfilePopupModalProps {
   profile: ScholarProfile;
-  sdpPoints: number;
+  sdpStatus: SDPCategoryStatus;
   positions: string[];
   onClose: () => void;
   onChangePassword: () => void;
@@ -15,10 +16,10 @@ interface ProfilePopupModalProps {
 
 /**
  * Mobile-only profile popup, opened from MobilePortalHeader's profile
- * button — shows name/ID/SDP points + Change Password up top, then the
+ * button — shows name/ID/SDP checklist + Change Password up top, then the
  * full profile page content below (same ProfilePanel used elsewhere).
  */
-export function ProfilePopupModal({ profile, sdpPoints, positions, onClose, onChangePassword, onProfileUpdated, onSignOut }: ProfilePopupModalProps) {
+export function ProfilePopupModal({ profile, sdpStatus, positions, onClose, onChangePassword, onProfileUpdated, onSignOut }: ProfilePopupModalProps) {
   const cluster = profile.barangay ? clusterForBarangay(profile.barangay) : null;
 
   return (
@@ -46,10 +47,20 @@ export function ProfilePopupModal({ profile, sdpPoints, positions, onClose, onCh
                 </div>
               )}
               <p className="text-[#F3BC00] text-[12.5px] font-semibold mt-1">{profile.scholarIdNumber}</p>
-              <p className="flex items-center gap-3 flex-wrap text-[12px] font-semibold text-white/70 mt-1">
-                <span className="flex items-center gap-1.5"><Award size={12} className="text-[#F3BC00]" /> {sdpPoints} SDP Point{sdpPoints === 1 ? "" : "s"}</span>
-                {cluster && <span className="flex items-center gap-1.5"><MapPinned size={12} className="text-[#F3BC00]" /> {clusterLabel(cluster)}</span>}
-              </p>
+              <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                {SDP_CATEGORIES.map(c => (
+                  <span key={c.key} className={`inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 ${
+                    sdpStatus[c.key] ? "bg-green-500/20 text-green-300 border border-green-400/30" : "bg-white/10 text-white/50 border border-white/15"
+                  }`}>
+                    {sdpStatus[c.key] ? <CheckCircle2 size={10} /> : <Circle size={10} />} {c.label}
+                  </span>
+                ))}
+                {cluster && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-white/70">
+                    <MapPinned size={10} className="text-[#F3BC00]" /> {clusterLabel(cluster)}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2 mt-4">

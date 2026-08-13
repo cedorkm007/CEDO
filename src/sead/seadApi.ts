@@ -102,6 +102,66 @@ export async function fetchCertificatePreviewUrl(subjectId: string): Promise<str
   return data.signedUrl;
 }
 
+export interface RankingFilters {
+  topN?: number; // undefined = all
+  yearLevel?: string;
+  school?: string;
+  barangayIn?: string[]; // used for cluster filtering
+  barangay?: string;
+}
+
+export interface RankingRow {
+  rank: number;
+  scholarIdNumber: string;
+  scholarName: string;
+  school: string;
+  yearLevel: string;
+  barangay: string;
+  subjectPercentage: number;
+  topicCount: number;
+}
+
+/** Top scorers for one subject, optionally filtered by year level / school / cluster (via barangayIn) / barangay. */
+export async function fetchSubjectRankings(subjectId: string, filters: RankingFilters = {}): Promise<RankingRow[]> {
+  const { data: progress, error } = await supabase.from("scholar_subject_progress")
+    .select("scholar_id_number, subject_percentage, topic_count").eq("subject_id", subjectId).gt("topic_count", 0);
+  if (error || !progress || progress.length === 0) return [];
+
+  let scholarQuery = supabase.from("scholars")
+    .select("scholar_id_number, first_name, last_name, school, year_level, barangay")
+    .in("scholar_id_number", progress.map(p => p.scholar_id_number));
+  if (filters.yearLevel) scholarQuery = scholarQuery.eq("year_level", filters.yearLevel);
+  if (filters.school) scholarQuery = scholarQuery.eq("school", filters.school);
+  if (filters.barangay) scholarQuery = scholarQuery.eq("barangay", filters.barangay);
+  if (filters.barangayIn) scholarQuery = scholarQuery.in("barangay", filters.barangayIn);
+
+  const { data: scholars } = await scholarQuery;
+  if (!scholars || scholars.length === 0) return [];
+
+  const progressByScholarId = new Map(progress.map(p => [p.scholar_id_number, p]));
+  const rows = scholars
+    .map(s => {
+      const p = progressByScholarId.get(s.scholar_id_number);
+      return {
+        scholarIdNumber: s.scholar_id_number, scholarName: `${s.first_name} ${s.last_name}`,
+        school: s.school ?? "", yearLevel: s.year_level ?? "", barangay: s.barangay ?? "",
+        subjectPercentage: Number(p?.subject_percentage ?? 0), topicCount: Number(p?.topic_count ?? 0),
+      };
+    })
+    .sort((a, b) => b.subjectPercentage - a.subjectPercentage)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+
+  return filters.topN ? rows.slice(0, filters.topN) : rows;
+}
+
+/** Distinct year levels already on scholars' profiles, for the Rankings filter dropdown. */
+export async function fetchDistinctYearLevels(): Promise<string[]> {
+  const { data, error } = await supabase.from("scholars").select("year_level").not("year_level", "is", null);
+  if (error || !data) return [];
+  const set = new Set(data.map(r => (r.year_level as string ?? "").trim()).filter(Boolean));
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
 export interface SubjectProgressRow {
   scholarIdNumber: string;
   scholarName: string;
@@ -398,7 +458,7 @@ export async function undoBulkScholarUpload(batchId: string): Promise<{ ok: bool
 export interface BulkScholarUpdateInput {
   scholarIdNumber: string; // key — must already exist
   firstName?: string; lastName?: string; middleName?: string; birthday?: string;
-  school?: string; course?: string; civilStatus?: string; contactNo?: string;
+  school?: string; course?: string; yearLevel?: string; civilStatus?: string; contactNo?: string;
   houseUnitNo?: string; street?: string; barangay?: string; cityMunicipality?: string;
   provinceRegion?: string; country?: string; zipCode?: string;
 }
@@ -413,7 +473,7 @@ export interface BulkScholarUpdateRowResult {
 
 const BULK_UPDATE_FIELD_MAP: Record<keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">, string> = {
   firstName: "first_name", lastName: "last_name", middleName: "middle_name", birthday: "birthday",
-  school: "school", course: "course", civilStatus: "civil_status", contactNo: "contact_no",
+  school: "school", course: "course", yearLevel: "year_level", civilStatus: "civil_status", contactNo: "contact_no",
   houseUnitNo: "house_unit_no", street: "street", barangay: "barangay", cityMunicipality: "city_municipality",
   provinceRegion: "province_region", country: "country", zipCode: "zip_code",
 };

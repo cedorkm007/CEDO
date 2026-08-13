@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Users, BookOpen, BarChart3, History } from "lucide-react";
+import { Users, BookOpen, BarChart3, History, Trophy } from "lucide-react";
 import { ScholarsTab } from "./pages/ScholarsTab";
 import { QuestionBankTab } from "./pages/QuestionBankTab";
 import { ScoresTab } from "./pages/ScoresTab";
 import { ScholarAccountHistoryTab } from "./pages/ScholarAccountHistoryTab";
+import { RankingsTab } from "./pages/RankingsTab";
 import type { SeadTab } from "./types";
 
 /**
@@ -21,6 +22,7 @@ export function ScholarManagementToolsPage() {
     { key: "scholars", label: "Scholars", icon: <Users size={14} /> },
     { key: "question-bank", label: "Question Bank", icon: <BookOpen size={14} /> },
     { key: "scores", label: "Scores & Progress", icon: <BarChart3 size={14} /> },
+    { key: "rankings", label: "Rankings", icon: <Trophy size={14} /> },
     { key: "history", label: "Account History", icon: <History size={14} /> },
   ];
 
@@ -46,6 +48,7 @@ export function ScholarManagementToolsPage() {
       {tab === "scholars" && <ScholarsTab />}
       {tab === "question-bank" && <QuestionBankTab />}
       {tab === "scores" && <ScoresTab />}
+      {tab === "rankings" && <RankingsTab />}
       {tab === "history" && <ScholarAccountHistoryTab />}
     </div>
   );
