@@ -71,7 +71,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const staffName = await getStaffName(admin, callerId);
-    const batchId = crypto.randomUUID();
+    const batchId: string = typeof body.batchId === "string" && body.batchId ? body.batchId : crypto.randomUUID();
     const results: RowResult[] = [];
 
     for (let i = 0; i < rows.length; i++) {

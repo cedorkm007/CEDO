@@ -427,12 +427,39 @@ export interface BulkScholarRowResult {
  * password to a whole freshly-created batch is a bigger exposure than one
  * manually-created account.
  */
-export async function bulkCreateScholars(rows: NewScholarInput[]): Promise<{ ok: boolean; error?: string; results?: BulkScholarRowResult[]; batchId?: string }> {
-  const result = await invokeEdgeFunction<{ batchId?: string; results?: BulkScholarRowResult[] }>(
-    "sead-bulk-create-scholars", { scholars: rows }
-  );
-  if (!result.ok) return { ok: false, error: result.error };
-  return { ok: true, results: result.data?.results ?? [], batchId: result.data?.batchId };
+// Each row does 2-4 sequential network calls inside the Edge Function
+// (existence check, create auth login, insert profile, audit log write),
+// so a single request with many rows risks hitting the platform's gateway
+// timeout before it finishes (a 504). Splitting into smaller chunks and
+// calling the function multiple times avoids that — every chunk shares the
+// same batchId so the whole upload still undoes as one unit.
+const BULK_CHUNK_SIZE = 15;
+
+export async function bulkCreateScholars(
+  rows: NewScholarInput[],
+  onProgress?: (done: number, total: number) => void
+): Promise<{ ok: boolean; error?: string; results?: BulkScholarRowResult[]; batchId?: string }> {
+  if (rows.length === 0) return { ok: false, error: "No scholar rows provided." };
+
+  const batchId = crypto.randomUUID();
+  const allResults: BulkScholarRowResult[] = [];
+
+  for (let start = 0; start < rows.length; start += BULK_CHUNK_SIZE) {
+    const chunk = rows.slice(start, start + BULK_CHUNK_SIZE);
+    const result = await invokeEdgeFunction<{ batchId?: string; results?: BulkScholarRowResult[] }>(
+      "sead-bulk-create-scholars", { scholars: chunk, batchId }
+    );
+    if (!result.ok) {
+      // Report what succeeded before the failing chunk, plus the error, rather
+      // than losing the whole upload's progress.
+      return { ok: false, error: result.error, results: allResults, batchId };
+    }
+    const chunkResults = (result.data?.results ?? []).map(r => ({ ...r, index: r.index + start }));
+    allResults.push(...chunkResults);
+    onProgress?.(Math.min(start + BULK_CHUNK_SIZE, rows.length), rows.length);
+  }
+
+  return { ok: true, results: allResults, batchId };
 }
 
 export async function deleteScholarAccount(id: string): Promise<{ ok: boolean; error?: string; name?: string }> {
