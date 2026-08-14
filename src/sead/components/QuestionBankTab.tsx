@@ -358,10 +358,10 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelet
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#e6ecf5]">
         <h3 className="text-[12.5px] font-bold text-[#062444]">Questions — {topic.name}</h3>
         <div className="flex items-center gap-3">
-          <button onClick={onBulkUpload} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc]">
+          <button onClick={onBulkUpload} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] cursor-pointer hover:opacity-80 transition-opacity">
             <UploadCloud size={14} /> Bulk Upload
           </button>
-          <button onClick={onAdd} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc]">
+          <button onClick={onAdd} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] cursor-pointer hover:opacity-80 transition-opacity">
             <Plus size={14} /> Add
           </button>
         </div>
@@ -378,11 +378,11 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelet
               </div>
               <p className="text-[12px] text-slate-400 mb-2">{q.choices.length} choices · correct: {q.choices.find(c => c.isCorrect)?.choiceText || "—"}</p>
               <div className="flex items-center gap-3 text-[12px]">
-                <button onClick={() => onEdit(q)} className="flex items-center gap-1 text-[#0088cc] font-semibold"><Pencil size={12} /> Edit</button>
-                <button onClick={() => onToggleActive(q.id, !q.isActive)} className="text-slate-400 font-semibold">
+                <button onClick={() => onEdit(q)} className="flex items-center gap-1 text-[#0088cc] font-semibold cursor-pointer hover:opacity-80 transition-opacity"><Pencil size={12} /> Edit</button>
+                <button onClick={() => onToggleActive(q.id, !q.isActive)} className="text-slate-400 font-semibold cursor-pointer hover:opacity-80 transition-opacity">
                   {q.isActive ? "Deactivate" : "Activate"}
                 </button>
-                <button onClick={() => onDelete(q.id)} className="flex items-center gap-1 text-red-500 font-semibold"><Trash2 size={12} /> Delete</button>
+                <button onClick={() => onDelete(q.id)} className="flex items-center gap-1 text-red-500 font-semibold cursor-pointer hover:opacity-80 transition-opacity"><Trash2 size={12} /> Delete</button>
               </div>
             </div>
           ))

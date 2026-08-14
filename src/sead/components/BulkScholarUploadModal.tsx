@@ -193,7 +193,7 @@ export function BulkScholarUploadModal({
               </p>
               {successCount > 0 && (
                 <button onClick={downloadCredentials}
-                  className="flex items-center gap-2 mx-auto text-[12.5px] font-semibold text-[#0088cc] border border-[#0088cc]/30 rounded-lg px-3 py-2 mt-2 hover:bg-[#0088cc]/5">
+                  className="flex items-center gap-2 mx-auto text-[12.5px] font-semibold text-[#0088cc] border border-[#0088cc]/30 rounded-lg px-3 py-2 mt-2 cursor-pointer hover:bg-[#0088cc]/10 hover:border-[#0088cc]/50 transition-colors">
                   <Download size={14} /> Download Credentials CSV
                 </button>
               )}
@@ -216,14 +216,14 @@ export function BulkScholarUploadModal({
                   {confirmUndo ? (
                     <div className="flex items-center justify-center gap-3">
                       <span className="text-[12.5px] text-slate-500">Remove all {successCount} scholar account{successCount === 1 ? "" : "s"} just created?</span>
-                      <button onClick={handleUndo} disabled={undoing} className="text-[12.5px] font-bold text-red-600 hover:underline">
+                      <button onClick={handleUndo} disabled={undoing} className="text-[12.5px] font-bold text-red-600 cursor-pointer hover:underline hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed">
                         {undoing ? "…" : "Confirm"}
                       </button>
-                      <button onClick={() => setConfirmUndo(false)} className="text-[12.5px] text-slate-400 hover:underline">Cancel</button>
+                      <button onClick={() => setConfirmUndo(false)} className="text-[12.5px] text-slate-400 cursor-pointer hover:underline hover:opacity-80 transition-opacity">Cancel</button>
                     </div>
                   ) : (
                     <button onClick={() => setConfirmUndo(true)}
-                      className="flex items-center gap-2 mx-auto text-[12.5px] font-semibold text-red-600 hover:underline">
+                      className="flex items-center gap-2 mx-auto text-[12.5px] font-semibold text-red-600 cursor-pointer hover:underline hover:opacity-80 transition-opacity">
                       <Undo2 size={14} /> Undo this upload
                     </button>
                   )}
@@ -240,7 +240,7 @@ export function BulkScholarUploadModal({
 
               <div className="flex justify-center gap-3 mt-5">
                 {failCount > 0 && (
-                  <button onClick={reset} className="text-[13px] font-semibold text-[#0088cc]">Upload another file</button>
+                  <button onClick={reset} className="text-[13px] font-semibold text-[#0088cc] cursor-pointer hover:opacity-80 transition-opacity">Upload another file</button>
                 )}
                 <button onClick={onClose} className="bg-[#062444] text-white text-sm font-semibold rounded-lg px-5 py-2.5">Done</button>
               </div>
@@ -252,7 +252,7 @@ export function BulkScholarUploadModal({
               </p>
 
               <button onClick={downloadTemplate}
-                className="flex items-center gap-2 text-[12.5px] font-semibold text-[#0088cc] border border-[#0088cc]/30 rounded-lg px-3 py-2 mb-4 hover:bg-[#0088cc]/5">
+                className="flex items-center gap-2 text-[12.5px] font-semibold text-[#0088cc] border border-[#0088cc]/30 rounded-lg px-3 py-2 mb-4 cursor-pointer hover:bg-[#0088cc]/10 hover:border-[#0088cc]/50 transition-colors">
                 <Download size={14} /> Download CSV Template
               </button>
 
@@ -260,7 +260,7 @@ export function BulkScholarUploadModal({
                 <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
                 <Upload size={20} className="mx-auto text-slate-400 mb-2" />
-                <button onClick={() => fileInputRef.current?.click()} className="text-[13px] font-semibold text-[#0088cc]">
+                <button onClick={() => fileInputRef.current?.click()} className="text-[13px] font-semibold text-[#0088cc] cursor-pointer hover:opacity-80 transition-opacity">
                   {fileName ? "Choose a different CSV file" : "Choose CSV file"}
                 </button>
                 {fileName && <p className="text-[12px] text-slate-400 mt-1">{fileName}</p>}

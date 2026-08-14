@@ -43,7 +43,7 @@ export function MembersListEditor({ orgKey }: { orgKey: string }) {
             <ScholarPicker currentScholarIdNumber={null} onAssign={addMember} onClear={() => setAdding(false)} placeholder="Search to add a member…" />
           </div>
         ) : (
-          <button onClick={() => setAdding(true)} className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
+          <button onClick={() => setAdding(true)} className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#0088cc] cursor-pointer hover:underline hover:opacity-80 transition-opacity">
             <UserPlus size={13} /> Add Member
           </button>
         )}

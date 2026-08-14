@@ -67,7 +67,7 @@ export function QuestionEditorModal({
           <div className="flex items-center justify-between mb-2">
             <p className="text-[12.5px] font-semibold text-slate-500">Choices — click the circle to mark the correct one</p>
             {choices.length < 6 && (
-              <button type="button" onClick={addChoice} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc]">
+              <button type="button" onClick={addChoice} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] cursor-pointer hover:opacity-80 transition-opacity">
                 <Plus size={13} /> Add choice
               </button>
             )}
@@ -75,13 +75,13 @@ export function QuestionEditorModal({
           <div className="space-y-2 mb-2">
             {choices.map((c, i) => (
               <div key={i} className="flex items-center gap-2">
-                <button type="button" onClick={() => setCorrect(i)} className="shrink-0">
+                <button type="button" onClick={() => setCorrect(i)} className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity">
                   {c.isCorrect ? <CheckCircle2 size={20} className="text-green-600" /> : <Circle size={20} className="text-slate-300" />}
                 </button>
                 <input value={c.choiceText} onChange={e => updateChoice(i, e.target.value)} placeholder={`Choice ${i + 1}`}
                   className="flex-1 border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
                 {choices.length > 2 && (
-                  <button type="button" onClick={() => removeChoice(i)} className="shrink-0 text-slate-300 hover:text-red-500">
+                  <button type="button" onClick={() => removeChoice(i)} className="shrink-0 text-slate-300 hover:text-red-500 cursor-pointer hover:opacity-80 transition-opacity">
                     <Trash2 size={16} />
                   </button>
                 )}

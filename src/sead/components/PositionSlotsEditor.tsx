@@ -124,11 +124,11 @@ export function PositionSlotsEditor({ orgType, orgKey, fixedRoles, expandableGro
                   placeholder={group.addPromptLabel}
                   onKeyDown={e => { if (e.key === "Enter") addExpandableSlot(group.roleKey); }}
                   className="flex-1 text-[12.5px] border border-[#0088cc]/40 rounded-lg px-2.5 py-1.5 outline-none" />
-                <button onClick={() => addExpandableSlot(group.roleKey)} className="text-[12.5px] font-bold text-[#0088cc]">Add</button>
-                <button onClick={() => { setAddingGroup(null); setNewLabel(""); }} className="text-[12.5px] text-slate-400">Cancel</button>
+                <button onClick={() => addExpandableSlot(group.roleKey)} className="text-[12.5px] font-bold text-[#0088cc] cursor-pointer hover:opacity-80 transition-opacity">Add</button>
+                <button onClick={() => { setAddingGroup(null); setNewLabel(""); }} className="text-[12.5px] text-slate-400 cursor-pointer hover:opacity-80 transition-opacity">Cancel</button>
               </div>
             ) : (
-              <button onClick={() => setAddingGroup(group.roleKey)} className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
+              <button onClick={() => setAddingGroup(group.roleKey)} className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#0088cc] cursor-pointer hover:underline hover:opacity-80 transition-opacity">
                 <Plus size={13} /> Add Seat
               </button>
             )}

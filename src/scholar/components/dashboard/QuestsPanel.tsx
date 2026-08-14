@@ -298,7 +298,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
 
             <div className="flex items-center gap-3">
               {step.index > 0 && (
-                <button onClick={goBack} className="flex items-center gap-1 text-[13px] font-semibold text-slate-500 px-4 py-3">
+                <button onClick={goBack} className="flex items-center gap-1 text-[13px] font-semibold text-slate-500 cursor-pointer hover:opacity-80 transition-opacity px-4 py-3">
                   <ChevronLeft size={14} /> Back
                 </button>
               )}
@@ -387,7 +387,7 @@ function QuestHistoryTab({ scores, dateFilter, onDateFilterChange }: {
             className="w-full text-sm outline-none text-[#062444]" />
         </div>
         {dateFilter && (
-          <button onClick={() => onDateFilterChange("")} className="flex items-center gap-1 text-[12.5px] font-semibold text-slate-400 hover:text-[#062444]">
+          <button onClick={() => onDateFilterChange("")} className="flex items-center gap-1 text-[12.5px] font-semibold text-slate-400 cursor-pointer hover:text-[#062444] hover:opacity-80 transition-colors">
             <XIcon size={13} /> Show All
           </button>
         )}
