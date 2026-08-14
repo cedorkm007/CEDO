@@ -180,7 +180,7 @@ export function BulkQuestionUploadModal({
                 <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
                 <Upload size={20} className="mx-auto text-slate-400 mb-2" />
-                <button onClick={() => fileInputRef.current?.click()} className="text-[13px] font-semibold text-[#0088cc] cursor-pointer hover:opacity-80 transition-opacity">
+                <button onClick={() => fileInputRef.current?.click()} style={{ cursor: 'pointer' }} className="text-[13px] font-semibold text-[#0088cc] hover:opacity-80 transition-opacity">
                   {fileName ? "Choose a different CSV file" : "Choose CSV file"}
                 </button>
                 {fileName && <p className="text-[12px] text-slate-400 mt-1">{fileName}</p>}

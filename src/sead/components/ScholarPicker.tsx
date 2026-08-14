@@ -77,14 +77,14 @@ export function ScholarPicker({ currentScholarIdNumber, currentName, onAssign, o
       <div className="flex items-center gap-1.5 text-[12.5px]">
         <UserCircle2 size={14} className="text-[#0088cc] shrink-0" />
         <span className="font-semibold text-[#062444]">{currentName ?? currentScholarIdNumber}</span>
-        <button onClick={() => setEditing(true)} className="text-[#0088cc] font-semibold cursor-pointer hover:underline hover:opacity-80 transition-opacity">Change</button>
-        <button onClick={onClear} className="text-red-400 hover:text-red-600 font-semibold cursor-pointer hover:underline hover:opacity-80 transition-opacity">Clear</button>
+        <button onClick={() => setEditing(true)} style={{ cursor: 'pointer' }} className="text-[#0088cc] font-semibold hover:underline hover:opacity-80 transition-opacity">Change</button>
+        <button onClick={onClear} style={{ cursor: 'pointer' }} className="text-red-400 hover:text-red-600 font-semibold hover:underline hover:opacity-80 transition-opacity">Clear</button>
       </div>
     );
   }
 
   return (
-    <button onClick={() => setEditing(true)} className="text-[12.5px] text-slate-400 italic cursor-pointer hover:text-[#0088cc] hover:not-italic hover:opacity-80 transition-all">
+    <button onClick={() => setEditing(true)} style={{ cursor: 'pointer' }} className="text-[12.5px] text-slate-400 italic hover:text-[#0088cc] hover:not-italic hover:opacity-80 transition-all">
       Vacant — click to assign
     </button>
   );

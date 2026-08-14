@@ -151,7 +151,7 @@ export function StaffAccountsPage() {
             <div className="text-center py-6">
               <p className="text-sm font-semibold text-foreground mb-1">Account created.</p>
               <p className="text-sm text-muted-foreground mb-4">{success}</p>
-              <button onClick={() => setSuccess(null)} className="text-sm font-semibold text-accent cursor-pointer hover:opacity-80 transition-opacity">Add another</button>
+              <button onClick={() => setSuccess(null)} style={{ cursor: 'pointer' }} className="text-sm font-semibold text-accent hover:opacity-80 transition-opacity">Add another</button>
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
@@ -233,10 +233,10 @@ export function StaffAccountsPage() {
                         className="flex-1 text-xs border border-border rounded-lg px-2 py-1.5 bg-input-background">
                         {DIVISION_LIST.map(d => <option key={d.code} value={d.code}>{d.fullName}</option>)}
                       </select>
-                      <button onClick={() => saveDivisionDraft(s)} disabled={divisionBusy} className="text-xs font-bold text-accent cursor-pointer hover:underline hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
+                      <button onClick={() => saveDivisionDraft(s)} disabled={divisionBusy} style={{ cursor: divisionBusy ? 'not-allowed' : 'pointer' }} className="text-xs font-bold text-accent hover:underline hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
                         {divisionBusy ? "…" : "Save"}
                       </button>
-                      <button onClick={() => setEditingDivisionId(null)} className="text-xs text-muted-foreground cursor-pointer hover:underline hover:opacity-80 transition-opacity shrink-0">Cancel</button>
+                      <button onClick={() => setEditingDivisionId(null)} style={{ cursor: 'pointer' }} className="text-xs text-muted-foreground hover:underline hover:opacity-80 transition-opacity shrink-0">Cancel</button>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 mb-2">
@@ -244,8 +244,8 @@ export function StaffAccountsPage() {
                       <span className="text-xs font-semibold text-foreground">
                         {(s.division as DivisionCode) in DIVISIONS ? DIVISIONS[s.division as DivisionCode].fullName : s.division}
                       </span>
-                      <button onClick={() => openDivisionEditor(s)} className="text-[11px] font-semibold text-accent cursor-pointer hover:underline hover:opacity-80 transition-opacity">Change</button>
-                      <button onClick={() => openHistory(s.id)} className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground cursor-pointer hover:underline hover:opacity-80 transition-opacity ml-auto">
+                      <button onClick={() => openDivisionEditor(s)} style={{ cursor: 'pointer' }} className="text-[11px] font-semibold text-accent hover:underline hover:opacity-80 transition-opacity">Change</button>
+                      <button onClick={() => openHistory(s.id)} style={{ cursor: 'pointer' }} className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:underline hover:opacity-80 transition-opacity ml-auto">
                         <History size={11} /> History
                       </button>
                     </div>
@@ -266,10 +266,10 @@ export function StaffAccountsPage() {
                         ))}
                       </div>
                       <div className="flex items-center gap-3">
-                        <button onClick={() => saveTagDraft(s.id)} disabled={tagBusy} className="text-xs font-bold text-accent cursor-pointer hover:underline hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button onClick={() => saveTagDraft(s.id)} disabled={tagBusy} style={{ cursor: tagBusy ? 'not-allowed' : 'pointer' }} className="text-xs font-bold text-accent hover:underline hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed">
                           {tagBusy ? "Saving…" : "Save"}
                         </button>
-                        <button onClick={() => setEditingTagsId(null)} className="text-xs text-muted-foreground cursor-pointer hover:underline hover:opacity-80 transition-opacity">Cancel</button>
+                        <button onClick={() => setEditingTagsId(null)} style={{ cursor: 'pointer' }} className="text-xs text-muted-foreground hover:underline hover:opacity-80 transition-opacity">Cancel</button>
                       </div>
                     </div>
                   ) : (
@@ -283,7 +283,7 @@ export function StaffAccountsPage() {
                           </span>
                         ))
                       )}
-                      <button onClick={() => openTagEditor(s)} className="flex items-center gap-1 text-[11px] font-semibold text-accent cursor-pointer hover:underline hover:opacity-80 transition-opacity ml-auto">
+                      <button onClick={() => openTagEditor(s)} style={{ cursor: 'pointer' }} className="flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline hover:opacity-80 transition-opacity ml-auto">
                         <Tag size={11} /> Edit Tags
                       </button>
                     </div>
@@ -297,18 +297,19 @@ export function StaffAccountsPage() {
                       <button
                         onClick={() => confirmAction.kind === "reset" ? handleResetPassword(s.id) : handleDelete(s.id)}
                         disabled={rowBusyId === s.id}
-                        className={`font-bold cursor-pointer hover:underline hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed ${confirmAction.kind === "delete" ? "text-destructive" : "text-accent"}`}
+                        style={{ cursor: rowBusyId === s.id ? 'not-allowed' : 'pointer' }}
+                        className={`font-bold hover:underline hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed ${confirmAction.kind === "delete" ? "text-destructive" : "text-accent"}`}
                       >
                         {rowBusyId === s.id ? "…" : "Confirm"}
                       </button>
-                      <button onClick={() => setConfirmAction(null)} className="text-muted-foreground cursor-pointer hover:underline hover:opacity-80 transition-opacity">Cancel</button>
+                      <button onClick={() => setConfirmAction(null)} style={{ cursor: 'pointer' }} className="text-muted-foreground hover:underline hover:opacity-80 transition-opacity">Cancel</button>
                     </div>
                   ) : (
                     <div className="flex items-center gap-3 text-xs">
-                      <button onClick={() => setConfirmAction({ id: s.id, kind: "reset" })} className="flex items-center gap-1 font-semibold text-accent cursor-pointer hover:underline hover:opacity-80 transition-opacity">
+                      <button onClick={() => setConfirmAction({ id: s.id, kind: "reset" })} style={{ cursor: 'pointer' }} className="flex items-center gap-1 font-semibold text-accent hover:underline hover:opacity-80 transition-opacity">
                         <KeyRound size={12} /> Reset Password
                       </button>
-                      <button onClick={() => setConfirmAction({ id: s.id, kind: "delete" })} className="flex items-center gap-1 font-semibold text-destructive cursor-pointer hover:underline hover:opacity-80 transition-opacity">
+                      <button onClick={() => setConfirmAction({ id: s.id, kind: "delete" })} style={{ cursor: 'pointer' }} className="flex items-center gap-1 font-semibold text-destructive hover:underline hover:opacity-80 transition-opacity">
                         <Trash2 size={12} /> Delete
                       </button>
                     </div>

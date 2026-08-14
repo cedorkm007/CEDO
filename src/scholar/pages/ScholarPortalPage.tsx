@@ -81,7 +81,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
           {/* Desktop only — on mobile, Sign Out lives in the profile popup instead */}
           <div className="hidden md:flex items-center justify-between mb-4">
             <p className="text-sm text-slate-500">Scholar Portal</p>
-            <button onClick={handleSignOut} className="flex items-center gap-1.5 text-sm font-semibold text-[#062444] cursor-pointer hover:text-red-600 hover:opacity-80 transition-colors">
+            <button onClick={handleSignOut} style={{ cursor: 'pointer' }} className="flex items-center gap-1.5 text-sm font-semibold text-[#062444] hover:text-red-600 hover:opacity-80 transition-colors">
               <LogOut size={15} /> Sign Out
             </button>
           </div>

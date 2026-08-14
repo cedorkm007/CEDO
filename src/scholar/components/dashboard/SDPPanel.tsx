@@ -258,12 +258,12 @@ function ProposalForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (a
                 <div className="p-2 flex gap-1">
                   <textarea value={row.deliverable} onChange={e => setObj(i, "deliverable", e.target.value)} placeholder="Deliverable/success indicator..." rows={2}
                     className="flex-1 text-xs border-0 focus:outline-none resize-none bg-transparent text-gray-700" />
-                  {form.objectives.length > 1 && <button onClick={() => delObj(i)} className="text-red-300 hover:text-red-500 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>}
+                  {form.objectives.length > 1 && <button onClick={() => delObj(i)} style={{ cursor: 'pointer' }} className="text-red-300 hover:text-red-500 shrink-0 hover:opacity-80 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>}
                 </div>
               </div>
             ))}
           </div>
-          <button onClick={addObj} className="flex items-center gap-2 text-xs text-[#062444] font-semibold cursor-pointer hover:underline hover:opacity-80 transition-opacity mb-2"><Plus className="w-4 h-4" />Add Row</button>
+          <button onClick={addObj} style={{ cursor: 'pointer' }} className="flex items-center gap-2 text-xs text-[#062444] font-semibold hover:underline hover:opacity-80 transition-opacity mb-2"><Plus className="w-4 h-4" />Add Row</button>
 
           <FSec title="k. Target Partners / Sponsors" />
           <FCheckbox options={["Sangguniang Kabataan", "Sangguniang Barangay"]} selected={form.targetPartners}
@@ -285,12 +285,12 @@ function ProposalForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (a
                 </div>
                 <div className="p-2 flex gap-1">
                   <input value={row.activity} onChange={e => setWP(i, "activity", e.target.value)} placeholder="Activity..." className="flex-1 text-xs border-0 focus:outline-none bg-transparent text-gray-700" />
-                  {form.workPlan.length > 1 && <button onClick={() => delWP(i)} className="text-red-300 hover:text-red-500 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>}
+                  {form.workPlan.length > 1 && <button onClick={() => delWP(i)} style={{ cursor: 'pointer' }} className="text-red-300 hover:text-red-500 shrink-0 hover:opacity-80 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>}
                 </div>
               </div>
             ))}
           </div>
-          <button onClick={addWP} className="flex items-center gap-2 text-xs text-[#062444] font-semibold cursor-pointer hover:underline hover:opacity-80 transition-opacity mb-2"><Plus className="w-4 h-4" />Add Row</button>
+          <button onClick={addWP} style={{ cursor: 'pointer' }} className="flex items-center gap-2 text-xs text-[#062444] font-semibold hover:underline hover:opacity-80 transition-opacity mb-2"><Plus className="w-4 h-4" />Add Row</button>
 
           <FSec title="n. Program Flow of the Kick-off and Culmination" />
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-3 overflow-x-auto">
@@ -305,13 +305,13 @@ function ProposalForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (a
                   <div key={col} className={`p-2 ${ci < 3 ? "border-r border-gray-100" : "flex gap-1"}`}>
                     <input value={row[col]} onChange={e => setPF(i, col, e.target.value)} placeholder={col === "time" ? "8:00 AM" : "..."}
                       className="w-full text-xs border-0 focus:outline-none bg-transparent text-gray-700" />
-                    {ci === 3 && form.programFlow.length > 1 && <button onClick={() => delPF(i)} className="text-red-300 hover:text-red-500 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>}
+                    {ci === 3 && form.programFlow.length > 1 && <button onClick={() => delPF(i)} style={{ cursor: 'pointer' }} className="text-red-300 hover:text-red-500 shrink-0 hover:opacity-80 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>}
                   </div>
                 ))}
               </div>
             ))}
           </div>
-          <button onClick={addPF} className="flex items-center gap-2 text-xs text-[#062444] font-semibold cursor-pointer hover:underline hover:opacity-80 transition-opacity mb-2"><Plus className="w-4 h-4" />Add Row</button>
+          <button onClick={addPF} style={{ cursor: 'pointer' }} className="flex items-center gap-2 text-xs text-[#062444] font-semibold hover:underline hover:opacity-80 transition-opacity mb-2"><Plus className="w-4 h-4" />Add Row</button>
 
           <FSec title="o. Budgetary Requirement (Itemized)" />
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-3 overflow-x-auto">
@@ -330,7 +330,7 @@ function ProposalForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (a
                 ))}
                 <div className="p-1.5 flex gap-1">
                   <input value={row.subtotal} readOnly className="flex-1 text-xs border-0 bg-transparent text-gray-500 font-semibold" />
-                  {form.budgetItems.length > 1 && <button onClick={() => delBudget(i)} className="text-red-300 hover:text-red-500 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>}
+                  {form.budgetItems.length > 1 && <button onClick={() => delBudget(i)} style={{ cursor: 'pointer' }} className="text-red-300 hover:text-red-500 shrink-0 hover:opacity-80 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>}
                 </div>
               </div>
             ))}
@@ -338,7 +338,7 @@ function ProposalForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (a
               <span className="text-xs font-bold text-[#062444]">Total: ₱{form.budgetItems.reduce((sum, r) => sum + (parseFloat(r.subtotal) || 0), 0).toFixed(2)}</span>
             </div>
           </div>
-          <button onClick={addBudget} className="flex items-center gap-2 text-xs text-[#062444] font-semibold cursor-pointer hover:underline hover:opacity-80 transition-opacity mb-2"><Plus className="w-4 h-4" />Add Row</button>
+          <button onClick={addBudget} style={{ cursor: 'pointer' }} className="flex items-center gap-2 text-xs text-[#062444] font-semibold hover:underline hover:opacity-80 transition-opacity mb-2"><Plus className="w-4 h-4" />Add Row</button>
 
           <div className="mt-8 flex gap-3">
             <motion.button whileTap={{ scale: 0.97 }} onClick={onClose} className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold text-sm">Cancel</motion.button>
