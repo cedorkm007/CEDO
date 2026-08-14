@@ -172,6 +172,20 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-medium);
     line-height: 1.5;
+    cursor: pointer;
+    transition: opacity 150ms ease, background-color 150ms ease, color 150ms ease, transform 100ms ease;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  button:not(:disabled):active {
+    transform: scale(0.98);
+  }
+
+  [role="button"] {
+    cursor: pointer;
   }
 
   input {
