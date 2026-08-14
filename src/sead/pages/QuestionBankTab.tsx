@@ -462,13 +462,13 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelet
     usePaginatedList(questions, { searchKeys: ["questionText"] });
   return (
     <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[600px]">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#e6ecf5] gap-2">
-        <h3 className="text-[12.5px] font-bold text-[#062444] shrink-0">Questions — {topic.name}</h3>
-        <div className="flex items-center gap-3 shrink-0">
-          <button onClick={onBulkUpload} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc]">
+      <div className="px-4 py-3 border-b border-[#e6ecf5] space-y-2">
+        <h3 className="text-[12.5px] font-bold text-[#062444] truncate">Questions — {topic.name}</h3>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={onBulkUpload} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] shrink-0">
             <UploadCloud size={14} /> Bulk Upload
           </button>
-          <button onClick={onAdd} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc]">
+          <button onClick={onAdd} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] shrink-0">
             <Plus size={14} /> Add
           </button>
         </div>
@@ -487,7 +487,7 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelet
           paged.map(q => (
             <div key={q.id} className="px-4 py-3 border-b border-[#f0f3f8]">
               <div className="flex items-start justify-between gap-2 mb-1.5">
-                <p className={`text-[13.5px] font-medium ${q.isActive ? "text-[#062444]" : "text-slate-400 line-through"}`}>{q.questionText}</p>
+                <p className={`text-[13.5px] font-medium min-w-0 break-words ${q.isActive ? "text-[#062444]" : "text-slate-400 line-through"}`}>{q.questionText}</p>
                 <span className="shrink-0 text-[11px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{q.points} pt</span>
               </div>
               <p className="text-[12px] text-slate-400 mb-2">{q.choices.length} choices · correct: {q.choices.find(c => c.isCorrect)?.choiceText || "—"}</p>
