@@ -139,10 +139,27 @@ export interface ScholarSDPChecklist {
 
 /** One row per scholar with an account, showing their 3-category checklist completion. */
 export async function fetchAllScholarsSDPChecklist(): Promise<ScholarSDPChecklist[]> {
-  const [{ data: scholars }, { data: statusRows }] = await Promise.all([
-    supabase.from("scholars").select("scholar_id_number, first_name, last_name").order("last_name"),
+  // PostgREST caps a single response (commonly at 1,000 rows). Fetch every
+  // page so the checklist remains complete as the scholar population grows.
+  async function fetchAllScholarRows() {
+    const pageSize = 1000;
+    const rows: { scholar_id_number: string; first_name: string; last_name: string }[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase.from("scholars")
+        .select("scholar_id_number, first_name, last_name")
+        .order("last_name").order("first_name")
+        .range(from, from + pageSize - 1);
+      if (error || !data) return null;
+      rows.push(...data);
+      if (data.length < pageSize) return rows;
+    }
+  }
+
+  const [scholars, statusResult] = await Promise.all([
+    fetchAllScholarRows(),
     supabase.from("scholar_sdp_category_status").select("scholar_id_number, category, completed").eq("completed", true),
   ]);
+  const statusRows = statusResult.data;
   if (!scholars) return [];
 
   const completedByScholarId = new Map<string, Set<SDPCategory>>();

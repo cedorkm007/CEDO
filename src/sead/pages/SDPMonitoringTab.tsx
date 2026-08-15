@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Lightbulb, X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download } from "lucide-react";
+import { jsPDF } from "jspdf";
+import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, createApprovedActivity,
   fetchAttendanceForActivity, creditAttendance, removeAttendance,
@@ -238,6 +240,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
   const [count, setCount] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -271,6 +274,53 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
     a.href = url; a.download = `${activity.name.replace(/[^a-z0-9]+/gi, "_")}_attendance_codes.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function downloadCodesPDF() {
+    if (!codes.length || exportingPdf) return;
+    setExportingPdf(true);
+    try {
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const margin = 8;
+      const columns = 4;
+      const rows = 5;
+      const gap = 2;
+      const cellWidth = (210 - margin * 2 - gap * (columns - 1)) / columns;
+      const cellHeight = (297 - margin * 2 - gap * (rows - 1)) / rows;
+
+      for (let index = 0; index < codes.length; index++) {
+        if (index > 0 && index % (columns * rows) === 0) pdf.addPage();
+        const position = index % (columns * rows);
+        const column = position % columns;
+        const row = Math.floor(position / columns);
+        const x = margin + column * (cellWidth + gap);
+        const y = margin + row * (cellHeight + gap);
+        const code = codes[index];
+        const qrDataUrl = await QRCode.toDataURL(code.code, { errorCorrectionLevel: "M", margin: 1, width: 240 });
+
+        pdf.setDrawColor(148, 163, 184);
+        pdf.rect(x, y, cellWidth, cellHeight);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(7);
+        pdf.setTextColor(6, 36, 68);
+        const activityLines = pdf.splitTextToSize(activity.name, cellWidth - 5).slice(0, 2);
+        pdf.text(activityLines, x + cellWidth / 2, y + 4, { align: "center", baseline: "top" });
+        const qrSize = 31;
+        pdf.addImage(qrDataUrl, "PNG", x + (cellWidth - qrSize) / 2, y + 13, qrSize, qrSize);
+        pdf.setFont("courier", "bold");
+        pdf.setFontSize(9);
+        pdf.text(code.code, x + cellWidth / 2, y + 47, { align: "center" });
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(6.5);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(code.kind.replace("_", " ").toUpperCase(), x + cellWidth / 2, y + 51, { align: "center" });
+      }
+      pdf.save(`${activity.name.replace(/[^a-z0-9]+/gi, "_")}_attendance_qr_codes.pdf`);
+    } catch {
+      setError("Could not create the QR code PDF. Please try again.");
+    } finally {
+      setExportingPdf(false);
+    }
   }
 
   if (loading) return <div className="border-t border-[#f0f3f8] pt-4"><p className="text-[12.5px] text-slate-400">Loading attendance…</p></div>;
@@ -349,6 +399,9 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
         <button onClick={downloadCodesCSV} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
           <Download size={13} /> Export CSV
         </button>
+        <button onClick={downloadCodesPDF} disabled={!codes.length || exportingPdf} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline disabled:opacity-50">
+          <Download size={13} /> {exportingPdf ? "Creating PDF..." : "Download QR PDF"}
+        </button>
       </div>
 
       {showCodes && (
@@ -368,6 +421,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
 }
 
 function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; onClose: () => void; onChanged: () => void }) {
+  const [tab, setTab] = useState<"details" | "attendance">("details");
   const [status, setStatus] = useState<SDPStatus>(activity.status);
   const [projectHead, setProjectHead] = useState(activity.projectHead);
   const [headCluster, setHeadCluster] = useState(activity.headCluster);
@@ -400,7 +454,15 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
           <button onClick={onClose} className="text-white/70 hover:text-white shrink-0"><X size={18} /></button>
         </div>
 
+        <div className="px-6 pt-4">
+          <div className="flex gap-1 border-b border-[#e6ecf5]">
+            <button type="button" onClick={() => setTab("details")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "details" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Activity Details</button>
+            <button type="button" onClick={() => setTab("attendance")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "attendance" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Attendance</button>
+          </div>
+        </div>
+
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+          {tab === "details" && <>
           <div className="grid grid-cols-2 gap-3 text-[13px]">
             <Field label="Organization" value={activity.organization} />
             <Field label="Nature" value={activity.nature.join(", ")} />
@@ -460,18 +522,21 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
             </div>
           </div>
 
-          <AttendanceSection activity={activity} />
-          <QRAttendanceSection activity={activity} />
-
           {error && <p className="text-[13px] text-red-600">{error}</p>}
+          </>}
+          {tab === "attendance" && <>
+            <p className="text-[12.5px] text-slate-500">Review the staff-credited and QR/code attendance lists for this activity.</p>
+            <AttendanceSection activity={activity} />
+            <QRAttendanceSection activity={activity} />
+          </>}
         </div>
 
         <div className="flex justify-end gap-3 px-6 pb-5">
           <button onClick={onClose} className="text-[13px] font-semibold text-slate-500">Cancel</button>
-          <button onClick={handleSave} disabled={busy}
+          {tab === "details" && <button onClick={handleSave} disabled={busy}
             className="bg-[#062444] text-white text-sm font-semibold rounded-lg px-5 py-2.5 disabled:opacity-50">
             {busy ? "Saving…" : "Save Changes"}
-          </button>
+          </button>}
         </div>
       </div>
     </div>
