@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { Lightbulb, X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2 } from "lucide-react";
+import { Lightbulb, X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download } from "lucide-react";
 import {
   fetchAllSDPActivities, updateSDPActivity, createApprovedActivity,
   fetchAttendanceForActivity, creditAttendance, removeAttendance,
   fetchAllScholarsSDPChecklist,
+  fetchAttendanceSession, enableAttendanceForActivity, fetchAttendanceRoster,
   type SDPActivity, type SDPStatus, type SDPCategory, type AttendanceEntry, type ScholarSDPChecklist,
+  type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
 } from "../sdpMonitorApi";
 import { SDP_CATEGORIES } from "@/scholar/sdpApi";
 import { SDPHistoryModal } from "../components/SDPHistoryModal";
@@ -53,20 +55,36 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const [attendanceEnabled, setAttendanceEnabled] = useState(false);
+  const [attendanceType, setAttendanceType] = useState<AttendanceType>("time_in_time_out");
+  const [attendanceCount, setAttendanceCount] = useState("");
+
   async function handleCreate() {
     if (!name.trim()) { setError("Enter an activity name."); return; }
     if (!category) { setError("Choose which SDP category this activity counts toward."); return; }
+    const count = Number(attendanceCount);
+    if (attendanceEnabled && (!attendanceCount.trim() || count < 1)) {
+      setError(attendanceType === "time_in_time_out" ? "Enter the expected number of attendees." : "Enter the activity duration in hours.");
+      return;
+    }
     setBusy(true);
     const result = await createApprovedActivity({ name: name.trim(), category, organization: organization.trim(), dateTime, venue: venue.trim(), nature: [] });
-    setBusy(false);
-    if (!result.ok) { setError(result.error || "Failed to create."); return; }
+    if (!result.ok || !result.id) { setBusy(false); setError(result.error || "Failed to create."); return; }
+
+    if (attendanceEnabled) {
+      const attResult = await enableAttendanceForActivity(result.id, attendanceType, count);
+      setBusy(false);
+      if (!attResult.ok) { setError(`Activity created, but attendance setup failed: ${attResult.error}`); return; }
+    } else {
+      setBusy(false);
+    }
     onCreated();
     onClose();
   }
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8" onClick={onClose}>
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4 rounded-t-2xl">
           <h3 className="text-white font-bold text-[15px]">New Approved Activity</h3>
           <button onClick={onClose} className="text-white/70 hover:text-white"><X size={18} /></button>
@@ -85,6 +103,43 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
           <input value={venue} onChange={e => setVenue(e.target.value)} placeholder="Venue"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+
+          <div className="border-t border-[#f0f3f8] pt-3">
+            <label className="flex items-center gap-2 text-[12.5px] font-semibold text-[#062444] cursor-pointer">
+              <input type="checkbox" checked={attendanceEnabled} onChange={e => setAttendanceEnabled(e.target.checked)}
+                className="w-4 h-4 accent-[#062444]" />
+              <QrCode size={14} /> Include attendance monitoring
+            </label>
+
+            {attendanceEnabled && (
+              <div className="mt-3 space-y-2.5 pl-1">
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setAttendanceType("time_in_time_out")}
+                    className={`flex-1 px-2.5 py-2 rounded-lg border text-[11.5px] font-bold ${attendanceType === "time_in_time_out" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}>
+                    Time-in / Time-out
+                  </button>
+                  <button type="button" onClick={() => setAttendanceType("voucher")}
+                    className={`flex-1 px-2.5 py-2 rounded-lg border text-[11.5px] font-bold ${attendanceType === "voucher" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}>
+                    Voucher (hourly)
+                  </button>
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">
+                    {attendanceType === "time_in_time_out" ? "Expected number of attendees" : "Activity duration (hours)"}
+                  </label>
+                  <input type="number" min={1} value={attendanceCount} onChange={e => setAttendanceCount(e.target.value)}
+                    placeholder={attendanceType === "time_in_time_out" ? "e.g. 50" : "e.g. 4"}
+                    className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  {attendanceType === "time_in_time_out"
+                    ? "Generates a time-in code and a time-out code for each expected attendee. A scholar counts as present once they've redeemed one of each."
+                    : "Generates one code per hour of the activity. Each redeemed code credits the scholar 1 hour."}
+                </p>
+              </div>
+            )}
+          </div>
+
           {error && <p className="text-[13px] text-red-600">{error}</p>}
           <button onClick={handleCreate} disabled={busy}
             className="w-full bg-[#062444] text-white text-sm font-semibold rounded-lg py-2.5 disabled:opacity-50">
@@ -171,7 +226,146 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
   );
 }
 
-function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; onClose: () => void; onChanged: () => void }) {
+function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
+  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<AttendanceSession | null>(null);
+  const [codes, setCodes] = useState<AttendanceCode[]>([]);
+  const [roster, setRoster] = useState<AttendanceRosterEntry[]>([]);
+  const [showCodes, setShowCodes] = useState(false);
+
+  const [enabling, setEnabling] = useState(false);
+  const [type, setType] = useState<AttendanceType>("time_in_time_out");
+  const [count, setCount] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    const result = await fetchAttendanceSession(activity.id);
+    if (result) {
+      setSession(result.session);
+      setCodes(result.codes);
+      setRoster(await fetchAttendanceRoster(result.session.id));
+    }
+    setLoading(false);
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activity.id]);
+
+  async function handleEnable() {
+    const n = Number(count);
+    if (!count.trim() || n < 1) { setError(type === "time_in_time_out" ? "Enter the expected number of attendees." : "Enter the duration in hours."); return; }
+    setBusy(true);
+    const result = await enableAttendanceForActivity(activity.id, type, n);
+    setBusy(false);
+    if (!result.ok) { setError(result.error || "Failed to enable attendance."); return; }
+    setEnabling(false);
+    load();
+  }
+
+  function downloadCodesCSV() {
+    const lines = ["kind,code"];
+    for (const c of codes) lines.push(`${c.kind},${c.code}`);
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${activity.name.replace(/[^a-z0-9]+/gi, "_")}_attendance_codes.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (loading) return <div className="border-t border-[#f0f3f8] pt-4"><p className="text-[12.5px] text-slate-400">Loading attendance…</p></div>;
+
+  if (!session) {
+    return (
+      <div className="border-t border-[#f0f3f8] pt-4">
+        <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2 flex items-center gap-1.5"><QrCode size={13} /> QR / Code Attendance</p>
+        {!enabling ? (
+          <button onClick={() => setEnabling(true)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">
+            + Enable attendance monitoring for this activity
+          </button>
+        ) : (
+          <div className="space-y-2.5">
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setType("time_in_time_out")}
+                className={`flex-1 px-2.5 py-2 rounded-lg border text-[11.5px] font-bold ${type === "time_in_time_out" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}>
+                Time-in / Time-out
+              </button>
+              <button type="button" onClick={() => setType("voucher")}
+                className={`flex-1 px-2.5 py-2 rounded-lg border text-[11.5px] font-bold ${type === "voucher" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}>
+                Voucher (hourly)
+              </button>
+            </div>
+            <input type="number" min={1} value={count} onChange={e => setCount(e.target.value)}
+              placeholder={type === "time_in_time_out" ? "Expected attendees, e.g. 50" : "Duration in hours, e.g. 4"}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
+            {error && <p className="text-[12px] text-red-600">{error}</p>}
+            <div className="flex gap-2">
+              <button onClick={handleEnable} disabled={busy}
+                className="bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-4 py-2 disabled:opacity-50">
+                {busy ? "Generating…" : "Generate Codes"}
+              </button>
+              <button onClick={() => setEnabling(false)} className="text-[12.5px] font-semibold text-slate-500">Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const presentCount = roster.filter(r => r.status === "present").length;
+
+  return (
+    <div className="border-t border-[#f0f3f8] pt-4">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[11px] font-semibold text-slate-500 uppercase flex items-center gap-1.5"><QrCode size={13} /> QR / Code Attendance</p>
+        <span className="text-[11px] text-slate-400">
+          {session.type === "time_in_time_out" ? `${session.expectedAttendees} expected` : `${session.durationHours}h duration`}
+        </span>
+      </div>
+
+      <p className="text-[12.5px] text-[#062444] font-semibold mb-2">{presentCount} of {roster.length || "0"} scholars present</p>
+
+      {roster.length > 0 && (
+        <div className="space-y-1 mb-3 max-h-40 overflow-y-auto">
+          {roster.map(r => (
+            <div key={r.scholarIdNumber} className="flex items-center justify-between bg-[#f8fafd] rounded-lg px-3 py-1.5 text-[12px]">
+              <span className="text-[#062444] font-medium">{r.scholarName} <span className="text-slate-400">({r.scholarIdNumber})</span></span>
+              {session.type === "time_in_time_out" ? (
+                <span className={r.status === "present" ? "text-green-600 font-semibold" : "text-orange-500 font-semibold"}>
+                  {r.status === "present" ? "Present" : r.timeInAt ? "Timed in only" : "Incomplete"}
+                </span>
+              ) : (
+                <span className="text-[#062444] font-semibold">{r.hoursEarned}h</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-3">
+        <button onClick={() => setShowCodes(s => !s)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">
+          {showCodes ? "Hide codes" : `View codes (${codes.length})`}
+        </button>
+        <button onClick={downloadCodesCSV} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
+          <Download size={13} /> Export CSV
+        </button>
+      </div>
+
+      {showCodes && (
+        <div className="mt-3 grid grid-cols-3 gap-2 max-h-72 overflow-y-auto p-1">
+          {codes.map(c => (
+            <div key={c.id} className={`border rounded-lg p-2 text-center ${c.redeemedByScholarId ? "border-green-300 bg-green-50" : "border-[#e6ecf5]"}`}>
+              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(c.code)}`} alt={c.code} className="mx-auto mb-1" width={80} height={80} />
+              <p className="text-[11px] font-mono font-bold text-[#062444]">{c.code}</p>
+              <p className="text-[9.5px] text-slate-400 uppercase">{c.kind.replace("_", " ")}</p>
+              {c.redeemedByScholarId && <p className="text-[9px] text-green-600 font-semibold mt-0.5">Redeemed</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
   const [status, setStatus] = useState<SDPStatus>(activity.status);
   const [projectHead, setProjectHead] = useState(activity.projectHead);
   const [headCluster, setHeadCluster] = useState(activity.headCluster);
@@ -265,6 +459,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
           </div>
 
           <AttendanceSection activity={activity} />
+          <QRAttendanceSection activity={activity} />
 
           {error && <p className="text-[13px] text-red-600">{error}</p>}
         </div>

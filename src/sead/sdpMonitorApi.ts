@@ -70,8 +70,8 @@ export interface NewApprovedActivityInput {
 }
 
 /** Staff can create an activity directly (no scholar proposal), open to all — starts 'approved'. */
-export async function createApprovedActivity(input: NewApprovedActivityInput): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("sdp_activities").insert({
+export async function createApprovedActivity(input: NewApprovedActivityInput): Promise<{ ok: boolean; error?: string; id?: string }> {
+  const { data, error } = await supabase.from("sdp_activities").insert({
     name: input.name,
     submitted_by_scholar_id: null,
     category: input.category,
@@ -80,8 +80,8 @@ export async function createApprovedActivity(input: NewApprovedActivityInput): P
     venue: input.venue,
     nature: input.nature,
     status: "approved",
-  });
-  return error ? { ok: false, error: error.message } : { ok: true };
+  }).select("id").single();
+  return error ? { ok: false, error: error.message } : { ok: true, id: data.id };
 }
 
 // ── SDP checklist monitoring ─────────────────────────────────
@@ -194,4 +194,117 @@ export async function fetchScholarSDPHistory(scholarIdNumber: string): Promise<{
     .map(a => ({ activityId: a.id, activityName: a.name, category: (a.category as SDPCategory | null) ?? null, date: a.date_time ?? "" }));
 
   return { attended, available };
+}
+
+// ── QR / code attendance monitoring ──────────────────────────
+// See supabase_migration_attendance_system.sql. Separate from the
+// manual "credit a scholar" flow above — this is the self-service
+// scan/enter-code system.
+
+export type AttendanceType = "time_in_time_out" | "voucher";
+
+export interface AttendanceSession {
+  id: string;
+  type: AttendanceType;
+  expectedAttendees: number | null;
+  durationHours: number | null;
+  createdAt: string;
+}
+
+export interface AttendanceCode {
+  id: string;
+  code: string;
+  kind: "time_in" | "time_out" | "voucher";
+  redeemedByScholarId: string | null;
+  redeemedAt: string | null;
+}
+
+function randomCode(): string {
+  // Excludes ambiguous characters (0/O, 1/I/L) so codes are easy to read/type by hand.
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 7; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return out;
+}
+
+/** The attendance session for one SDP activity, if attendance monitoring was enabled for it. */
+export async function fetchAttendanceSession(activityId: string): Promise<{ session: AttendanceSession; codes: AttendanceCode[] } | null> {
+  const { data: sessionRow } = await supabase.from("attendance_sessions").select("*").eq("sdp_activity_id", activityId).maybeSingle();
+  if (!sessionRow) return null;
+  const { data: codeRows } = await supabase.from("attendance_codes").select("*").eq("session_id", sessionRow.id).order("kind").order("created_at");
+  return {
+    session: {
+      id: sessionRow.id, type: sessionRow.type,
+      expectedAttendees: sessionRow.expected_attendees, durationHours: sessionRow.duration_hours,
+      createdAt: sessionRow.created_at,
+    },
+    codes: (codeRows ?? []).map(c => ({
+      id: c.id, code: c.code, kind: c.kind,
+      redeemedByScholarId: c.redeemed_by_scholar_id, redeemedAt: c.redeemed_at,
+    })),
+  };
+}
+
+/**
+ * Turns on attendance monitoring for an SDP activity and generates the
+ * full batch of codes upfront (per the department's confirmed model —
+ * codes are pre-generated tickets, not rotated live).
+ *   - time_in_time_out: `count` = expected attendees → generates
+ *     `count` time_in codes AND `count` time_out codes (2×count total).
+ *   - voucher: `count` = duration in hours → generates `count` codes,
+ *     each worth 1 hour.
+ */
+export async function enableAttendanceForActivity(
+  activityId: string, type: AttendanceType, count: number
+): Promise<{ ok: boolean; error?: string; sessionId?: string }> {
+  if (count < 1) return { ok: false, error: "Enter a number greater than 0." };
+
+  const { data: auth } = await supabase.auth.getUser();
+  const { data: session, error: sessionError } = await supabase.from("attendance_sessions").insert({
+    sdp_activity_id: activityId,
+    type,
+    expected_attendees: type === "time_in_time_out" ? count : null,
+    duration_hours: type === "voucher" ? count : null,
+    created_by: auth.user?.id ?? null,
+  }).select("id").single();
+  if (sessionError || !session) return { ok: false, error: sessionError?.message || "Failed to create attendance session." };
+
+  const codes: { session_id: string; code: string; kind: string }[] = [];
+  if (type === "time_in_time_out") {
+    for (let i = 0; i < count; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_in" });
+    for (let i = 0; i < count; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_out" });
+  } else {
+    for (let i = 0; i < count; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "voucher" });
+  }
+
+  const { error: codesError } = await supabase.from("attendance_codes").insert(codes);
+  if (codesError) return { ok: false, error: codesError.message, sessionId: session.id };
+  return { ok: true, sessionId: session.id };
+}
+
+export interface AttendanceRosterEntry {
+  scholarIdNumber: string;
+  scholarName: string;
+  timeInAt: string | null;
+  timeOutAt: string | null;
+  hoursEarned: number;
+  status: "incomplete" | "present";
+}
+
+/** Live roster of who's redeemed codes for a session — auto-maintained by a DB trigger. */
+export async function fetchAttendanceRoster(sessionId: string): Promise<AttendanceRosterEntry[]> {
+  const { data: rows } = await supabase.from("attendance_records").select("*").eq("session_id", sessionId).order("updated_at", { ascending: false });
+  if (!rows || rows.length === 0) return [];
+
+  const scholarIds = [...new Set(rows.map(r => r.scholar_id_number))];
+  const { data: scholars } = await supabase.from("scholars").select("scholar_id_number, first_name, last_name").in("scholar_id_number", scholarIds);
+  const nameByScholarId = new Map((scholars ?? []).map(s => [s.scholar_id_number, `${s.first_name} ${s.last_name}`]));
+
+  return rows.map(r => ({
+    scholarIdNumber: r.scholar_id_number,
+    scholarName: nameByScholarId.get(r.scholar_id_number) ?? r.scholar_id_number,
+    timeInAt: r.time_in_at, timeOutAt: r.time_out_at,
+    hoursEarned: Number(r.hours_earned ?? 0),
+    status: r.status,
+  }));
 }
