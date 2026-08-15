@@ -366,6 +366,8 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
     </div>
   );
 }
+
+function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; onClose: () => void; onChanged: () => void }) {
   const [status, setStatus] = useState<SDPStatus>(activity.status);
   const [projectHead, setProjectHead] = useState(activity.projectHead);
   const [headCluster, setHeadCluster] = useState(activity.headCluster);
