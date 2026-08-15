@@ -10,7 +10,7 @@ interface BottomNavProps {
 const NAV_ITEMS: { key: DashPanelKey; label: string; icon: React.ReactNode }[] = [
   { key: "quests", label: "Quests", icon: <Trophy className="w-5 h-5" /> },
   { key: "subjects-grades", label: "Grades", icon: <BookMarked className="w-5 h-5" /> },
-  { key: "services", label: "Services", icon: <Briefcase className="w-5 h-5" /> },
+  { key: "services", label: "Forms", icon: <Briefcase className="w-5 h-5" /> },
   { key: "sdp", label: "SDP", icon: <Lightbulb className="w-5 h-5" /> },
   { key: "calendar", label: "Calendar", icon: <CalendarIcon className="w-5 h-5" /> },
 ];

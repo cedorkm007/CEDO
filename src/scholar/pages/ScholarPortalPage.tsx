@@ -9,17 +9,15 @@ import { MobilePortalHeader } from "../components/dashboard/MobilePortalHeader";
 import { ProfilePopupModal } from "../components/dashboard/ProfilePopupModal";
 import { ProfilePanel } from "../components/dashboard/ProfilePanel";
 import { SubjectsGradesPanel } from "../components/dashboard/SubjectsGradesPanel";
-import { ServicesPanel } from "../components/dashboard/ServicesPanel";
+import { FormsAndServicesPanel } from "../components/dashboard/FormsAndServicesPanel";
 import { QuestsPanel } from "../components/dashboard/QuestsPanel";
 import { SDPPanel } from "../components/dashboard/SDPPanel";
 import { fetchScholarSDPCategoryStatus, type SDPCategoryStatus } from "../sdpApi";
 import { fetchOwnPositionLabels } from "../formationApi";
-import { UnderDevPanelCard } from "../components/dashboard/UnderDevPanelCard";
-import { SectionCard } from "../components/dashboard/SectionCard";
+import { CalendarAndActivitiesPanel } from "../components/dashboard/CalendarAndActivitiesPanel";
 import { ChangePasswordModal } from "../components/dashboard/ChangePasswordModal";
 import type { DashPanelKey } from "../components/dashboard/types";
 import type { ScholarProfile, SubjectGrade, QuestScore } from "../types";
-import { Calendar as CalendarIcon } from "lucide-react";
 
 interface ScholarPortalPageProps {
   onSignOut: () => void;
@@ -105,7 +103,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
 
               {panel === "profile" && <ProfilePanel profile={profile} onProfileUpdated={setProfile} />}
               {panel === "subjects-grades" && <SubjectsGradesPanel grades={grades} />}
-              {panel === "services" && <ServicesPanel />}
+              {panel === "services" && <FormsAndServicesPanel />}
               {panel === "quests" && (
                 <QuestsPanel
                   scores={scores}
@@ -114,11 +112,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
                 />
               )}
               {panel === "sdp" && <SDPPanel scholarIdNumber={profile.scholarIdNumber} />}
-              {panel === "calendar" && (
-                <SectionCard icon={<CalendarIcon size={14} />} title="Calendar">
-                  <UnderDevPanelCard label="Under Development" />
-                </SectionCard>
-              )}
+              {panel === "calendar" && <CalendarAndActivitiesPanel />}
             </>
           )}
         </div>

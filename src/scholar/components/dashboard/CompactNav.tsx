@@ -5,9 +5,9 @@ const PILLS: { key: DashPanelKey; label: string; icon: React.ReactNode }[] = [
   { key: "profile", label: "Profile", icon: <User size={14} /> },
   { key: "quests", label: "Quests", icon: <Trophy size={14} /> },
   { key: "subjects-grades", label: "Subjects & Grades", icon: <BookMarked size={14} /> },
-  { key: "services", label: "Services", icon: <Briefcase size={14} /> },
+  { key: "services", label: "Forms & Services", icon: <Briefcase size={14} /> },
   { key: "sdp", label: "SDP", icon: <Lightbulb size={14} /> },
-  { key: "calendar", label: "Calendar", icon: <CalendarIcon size={14} /> },
+  { key: "calendar", label: "Calendar & Activities", icon: <CalendarIcon size={14} /> },
 ];
 
 interface CompactNavProps {

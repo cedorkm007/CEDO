@@ -5,9 +5,9 @@ const WIDGETS: { key: DashPanelKey; label: string; icon: React.ReactNode }[] = [
   { key: "profile", label: "Profile", icon: <User size={28} /> },
   { key: "quests", label: "Quests", icon: <Trophy size={28} /> },
   { key: "subjects-grades", label: "Subjects and Grades", icon: <BookMarked size={28} /> },
-  { key: "services", label: "Services", icon: <Briefcase size={28} /> },
+  { key: "services", label: "Forms and Services", icon: <Briefcase size={28} /> },
   { key: "sdp", label: "Scholars' Development Program", icon: <Lightbulb size={28} /> },
-  { key: "calendar", label: "Calendar", icon: <CalendarIcon size={28} /> },
+  { key: "calendar", label: "Calendar and Activities", icon: <CalendarIcon size={28} /> },
 ];
 
 export function DashboardHome({ onOpen }: { onOpen: (panel: DashPanelKey) => void }) {

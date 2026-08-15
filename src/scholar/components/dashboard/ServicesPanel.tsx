@@ -11,11 +11,11 @@ const SERVICES = [
   { key: "atm-concerns", label: "ATM Concerns", icon: <AlertCircle size={18} /> },
 ];
 
-export function ServicesPanel() {
+export function ServicesContent() {
   const [selected, setSelected] = useState<string | null>(null);
 
   return (
-    <SectionCard icon={<Briefcase size={14} />} title="Services">
+    <>
       <p className="text-[13px] text-slate-400 italic flex items-center gap-1.5 mb-5">
         <Info size={13} /> Services you can avail from the City Education and Development Office (CEDO).
       </p>
@@ -39,6 +39,15 @@ export function ServicesPanel() {
           This service is under development — please contact the CEDO office directly for now.
         </div>
       )}
+    </>
+  );
+}
+
+/** Kept for any other place that still wants Services as its own standalone card. */
+export function ServicesPanel() {
+  return (
+    <SectionCard icon={<Briefcase size={14} />} title="Services">
+      <ServicesContent />
     </SectionCard>
   );
 }

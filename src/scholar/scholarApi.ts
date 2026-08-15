@@ -149,6 +149,15 @@ export async function updateOwnContactInfo(fields: OwnProfileEditableFields): Pr
   return { ok: true };
 }
 
+/** Scholar redeems a time-in/time-out/voucher code, either scanned via QR or typed manually.
+ *  All validation (already redeemed, invalid code, caller must be a scholar) happens inside
+ *  the redeem_attendance_code() database function — this is a thin wrapper around it. */
+export async function redeemAttendanceCode(code: string): Promise<{ ok: boolean; error?: string; kind?: string; activityName?: string }> {
+  const { data, error } = await supabase.rpc("redeem_attendance_code", { p_code: code.trim() });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, kind: data?.kind, activityName: data?.activityName };
+}
+
 /** Scholar self-service password change — re-verifies the current password first. */
 export async function changeOwnPassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser();
