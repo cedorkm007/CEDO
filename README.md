@@ -15,3 +15,7 @@ What changed:
 - Activity details and attendance are now separate tabs in SDP Monitoring.
 - Staff can download a print-ready A4 QR-code PDF: 20 outlined QR codes per
   page, each labelled with the activity name, code, and code type.
+- SDP monitors can permanently delete an SDP activity (with confirmation).
+- Voucher attendance now generates one voucher per participant, supports
+  1-, 2-, 4-, or 8-hour credits, and can generate additional vouchers for
+  unexpected participants.

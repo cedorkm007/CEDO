@@ -60,6 +60,14 @@ export async function updateSDPActivity(
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+/** Permanently removes an activity and its related attendance data. */
+export async function deleteSDPActivity(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { error: attendanceError } = await supabase.from("sdp_attendance").delete().eq("activity_id", id);
+  if (attendanceError) return { ok: false, error: attendanceError.message };
+  const { error } = await supabase.from("sdp_activities").delete().eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 export interface NewApprovedActivityInput {
   name: string;
   category: SDPCategory;
@@ -224,7 +232,7 @@ export interface AttendanceSession {
   id: string;
   type: AttendanceType;
   expectedAttendees: number | null;
-  durationHours: number | null;
+  voucherHours: number | null;
   createdAt: string;
 }
 
@@ -252,7 +260,7 @@ export async function fetchAttendanceSession(activityId: string): Promise<{ sess
   return {
     session: {
       id: sessionRow.id, type: sessionRow.type,
-      expectedAttendees: sessionRow.expected_attendees, durationHours: sessionRow.duration_hours,
+      expectedAttendees: sessionRow.expected_attendees, voucherHours: sessionRow.duration_hours,
       createdAt: sessionRow.created_at,
     },
     codes: (codeRows ?? []).map(c => ({
@@ -272,31 +280,46 @@ export async function fetchAttendanceSession(activityId: string): Promise<{ sess
  *     each worth 1 hour.
  */
 export async function enableAttendanceForActivity(
-  activityId: string, type: AttendanceType, count: number
+  activityId: string, type: AttendanceType, participantCount: number, voucherHours = 1
 ): Promise<{ ok: boolean; error?: string; sessionId?: string }> {
-  if (count < 1) return { ok: false, error: "Enter a number greater than 0." };
+  if (participantCount < 1) return { ok: false, error: "Enter a number greater than 0." };
+  if (type === "voucher" && ![1, 2, 4, 8].includes(voucherHours)) return { ok: false, error: "Choose a valid voucher hour equivalent." };
 
   const { data: auth } = await supabase.auth.getUser();
   const { data: session, error: sessionError } = await supabase.from("attendance_sessions").insert({
     sdp_activity_id: activityId,
     type,
-    expected_attendees: type === "time_in_time_out" ? count : null,
-    duration_hours: type === "voucher" ? count : null,
+    expected_attendees: participantCount,
+    duration_hours: type === "voucher" ? voucherHours : null,
     created_by: auth.user?.id ?? null,
   }).select("id").single();
   if (sessionError || !session) return { ok: false, error: sessionError?.message || "Failed to create attendance session." };
 
   const codes: { session_id: string; code: string; kind: string }[] = [];
   if (type === "time_in_time_out") {
-    for (let i = 0; i < count; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_in" });
-    for (let i = 0; i < count; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_out" });
+    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_in" });
+    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_out" });
   } else {
-    for (let i = 0; i < count; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "voucher" });
+    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "voucher" });
   }
 
   const { error: codesError } = await supabase.from("attendance_codes").insert(codes);
   if (codesError) return { ok: false, error: codesError.message, sessionId: session.id };
   return { ok: true, sessionId: session.id };
+}
+
+/** Generates additional single-use voucher codes when attendance exceeds the original estimate. */
+export async function addAttendanceVouchers(sessionId: string, participantCount: number): Promise<{ ok: boolean; error?: string }> {
+  if (participantCount < 1) return { ok: false, error: "Enter a number greater than 0." };
+  const codes = Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "voucher" }));
+  const { error } = await supabase.from("attendance_codes").insert(codes);
+  if (error) return { ok: false, error: error.message };
+  const { data: session, error: sessionError } = await supabase.from("attendance_sessions")
+    .select("expected_attendees").eq("id", sessionId).single();
+  if (sessionError) return { ok: false, error: sessionError.message };
+  const { error: updateError } = await supabase.from("attendance_sessions")
+    .update({ expected_attendees: Number(session.expected_attendees ?? 0) + participantCount }).eq("id", sessionId);
+  return updateError ? { ok: false, error: updateError.message } : { ok: true };
 }
 
 export interface AttendanceRosterEntry {

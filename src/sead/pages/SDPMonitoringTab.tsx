@@ -3,10 +3,10 @@ import { Lightbulb, X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserC
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
-  fetchAllSDPActivities, updateSDPActivity, createApprovedActivity,
+  fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
   fetchAttendanceForActivity, creditAttendance, removeAttendance,
   fetchAllScholarsSDPChecklist,
-  fetchAttendanceSession, enableAttendanceForActivity, fetchAttendanceRoster,
+  fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
   type SDPActivity, type SDPStatus, type SDPCategory, type AttendanceEntry, type ScholarSDPChecklist,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
 } from "../sdpMonitorApi";
@@ -60,13 +60,14 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [attendanceEnabled, setAttendanceEnabled] = useState(false);
   const [attendanceType, setAttendanceType] = useState<AttendanceType>("time_in_time_out");
   const [attendanceCount, setAttendanceCount] = useState("");
+  const [voucherHours, setVoucherHours] = useState(1);
 
   async function handleCreate() {
     if (!name.trim()) { setError("Enter an activity name."); return; }
     if (!category) { setError("Choose which SDP category this activity counts toward."); return; }
     const count = Number(attendanceCount);
     if (attendanceEnabled && (!attendanceCount.trim() || count < 1)) {
-      setError(attendanceType === "time_in_time_out" ? "Enter the expected number of attendees." : "Enter the activity duration in hours.");
+      setError("Enter the expected number of participants.");
       return;
     }
     setBusy(true);
@@ -74,7 +75,7 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
     if (!result.ok || !result.id) { setBusy(false); setError(result.error || "Failed to create."); return; }
 
     if (attendanceEnabled) {
-      const attResult = await enableAttendanceForActivity(result.id, attendanceType, count);
+      const attResult = await enableAttendanceForActivity(result.id, attendanceType, count, voucherHours);
       setBusy(false);
       if (!attResult.ok) { setError(`Activity created, but attendance setup failed: ${attResult.error}`); return; }
     } else {
@@ -127,16 +128,24 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
                 </div>
                 <div>
                   <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">
-                    {attendanceType === "time_in_time_out" ? "Expected number of attendees" : "Activity duration (hours)"}
+                    Number of participants
                   </label>
                   <input type="number" min={1} value={attendanceCount} onChange={e => setAttendanceCount(e.target.value)}
-                    placeholder={attendanceType === "time_in_time_out" ? "e.g. 50" : "e.g. 4"}
+                    placeholder="e.g. 50"
                     className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
                 </div>
+                {attendanceType === "voucher" && (
+                  <div>
+                    <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Hour equivalent per voucher</label>
+                    <select value={voucherHours} onChange={e => setVoucherHours(Number(e.target.value))} className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]">
+                      {[1, 2, 4, 8].map(hours => <option key={hours} value={hours}>{hours} hour{hours > 1 ? "s" : ""}</option>)}
+                    </select>
+                  </div>
+                )}
                 <p className="text-[11px] text-slate-400">
                   {attendanceType === "time_in_time_out"
                     ? "Generates a time-in code and a time-out code for each expected attendee. A scholar counts as present once they've redeemed one of each."
-                    : "Generates one code per hour of the activity. Each redeemed code credits the scholar 1 hour."}
+                    : "Generates one voucher QR/code for each participant. Each redeemed voucher credits the selected number of hours."}
                 </p>
               </div>
             )}
@@ -238,6 +247,8 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
   const [enabling, setEnabling] = useState(false);
   const [type, setType] = useState<AttendanceType>("time_in_time_out");
   const [count, setCount] = useState("");
+  const [voucherHours, setVoucherHours] = useState(1);
+  const [extraVoucherCount, setExtraVoucherCount] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -256,12 +267,23 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
 
   async function handleEnable() {
     const n = Number(count);
-    if (!count.trim() || n < 1) { setError(type === "time_in_time_out" ? "Enter the expected number of attendees." : "Enter the duration in hours."); return; }
+    if (!count.trim() || n < 1) { setError("Enter the expected number of participants."); return; }
     setBusy(true);
-    const result = await enableAttendanceForActivity(activity.id, type, n);
+    const result = await enableAttendanceForActivity(activity.id, type, n, voucherHours);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to enable attendance."); return; }
     setEnabling(false);
+    load();
+  }
+
+  async function handleAddVouchers() {
+    const n = Number(extraVoucherCount);
+    if (!extraVoucherCount.trim() || n < 1 || !session) { setError("Enter how many additional vouchers to generate."); return; }
+    setBusy(true);
+    const result = await addAttendanceVouchers(session.id, n);
+    setBusy(false);
+    if (!result.ok) { setError(result.error || "Failed to generate additional vouchers."); return; }
+    setExtraVoucherCount("");
     load();
   }
 
@@ -346,8 +368,16 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
               </button>
             </div>
             <input type="number" min={1} value={count} onChange={e => setCount(e.target.value)}
-              placeholder={type === "time_in_time_out" ? "Expected attendees, e.g. 50" : "Duration in hours, e.g. 4"}
+              placeholder="Number of participants, e.g. 50"
               className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
+            {type === "voucher" && (
+              <div>
+                <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Hour equivalent per voucher</label>
+                <select value={voucherHours} onChange={e => setVoucherHours(Number(e.target.value))} className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]">
+                  {[1, 2, 4, 8].map(hours => <option key={hours} value={hours}>{hours} hour{hours > 1 ? "s" : ""}</option>)}
+                </select>
+              </div>
+            )}
             {error && <p className="text-[12px] text-red-600">{error}</p>}
             <div className="flex gap-2">
               <button onClick={handleEnable} disabled={busy}
@@ -369,11 +399,21 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
       <div className="flex items-center justify-between mb-2">
         <p className="text-[11px] font-semibold text-slate-500 uppercase flex items-center gap-1.5"><QrCode size={13} /> QR / Code Attendance</p>
         <span className="text-[11px] text-slate-400">
-          {session.type === "time_in_time_out" ? `${session.expectedAttendees} expected` : `${session.durationHours}h duration`}
+          {session.type === "time_in_time_out" ? `${session.expectedAttendees} expected` : `${session.expectedAttendees} vouchers - ${session.voucherHours}h each`}
         </span>
       </div>
 
       <p className="text-[12.5px] text-[#062444] font-semibold mb-2">{presentCount} of {roster.length || "0"} scholars present</p>
+
+      {session.type === "voucher" && (
+        <div className="mb-3 rounded-lg bg-[#f8fafd] p-3">
+          <p className="text-[11px] font-semibold text-slate-500 mb-2">More participants than expected?</p>
+          <div className="flex items-center gap-2">
+            <input type="number" min={1} value={extraVoucherCount} onChange={e => setExtraVoucherCount(e.target.value)} placeholder="Additional participants" className="w-44 border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" />
+            <button onClick={handleAddVouchers} disabled={busy} className="bg-[#062444] text-white text-[12px] font-semibold rounded-lg px-3 py-1.5 disabled:opacity-50">Add vouchers</button>
+          </div>
+        </div>
+      )}
 
       {roster.length > 0 && (
         <div className="space-y-1 mb-3 max-h-40 overflow-y-auto">
@@ -436,6 +476,17 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
     const result = await updateSDPActivity(activity.id, { status, projectHead, headCluster, category });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save."); return; }
+    onChanged();
+    onClose();
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`Delete "${activity.name}" permanently? This also removes its attendance session, codes, and records. This cannot be undone.`)) return;
+    setError("");
+    setBusy(true);
+    const result = await deleteSDPActivity(activity.id);
+    setBusy(false);
+    if (!result.ok) { setError(result.error || "Failed to delete the activity."); return; }
     onChanged();
     onClose();
   }
@@ -531,12 +582,15 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
           </>}
         </div>
 
-        <div className="flex justify-end gap-3 px-6 pb-5">
+        <div className="flex items-center justify-between gap-3 px-6 pb-5">
+          {tab === "details" ? <button onClick={handleDelete} disabled={busy} className="text-[13px] font-semibold text-red-600 hover:text-red-700 disabled:opacity-50">Delete Activity</button> : <span />}
+          <div className="flex justify-end gap-3">
           <button onClick={onClose} className="text-[13px] font-semibold text-slate-500">Cancel</button>
           {tab === "details" && <button onClick={handleSave} disabled={busy}
             className="bg-[#062444] text-white text-sm font-semibold rounded-lg px-5 py-2.5 disabled:opacity-50">
             {busy ? "Saving…" : "Save Changes"}
           </button>}
+          </div>
         </div>
       </div>
     </div>

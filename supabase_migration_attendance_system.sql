@@ -99,9 +99,9 @@ begin
           updated_at = now();
   else
     insert into public.attendance_records (session_id, scholar_id_number, hours_earned, status)
-    values (v_session.id, v_scholar_id, 1, 'present')
+    values (v_session.id, v_scholar_id, coalesce(v_session.duration_hours, 1), 'present')
     on conflict (session_id, scholar_id_number) do update
-      set hours_earned = attendance_records.hours_earned + 1,
+      set hours_earned = attendance_records.hours_earned + coalesce(v_session.duration_hours, 1),
           status = 'present', updated_at = now();
   end if;
 
@@ -127,4 +127,10 @@ create policy "sdp monitors manage attendance codes" on public.attendance_codes 
   with check (exists (select 1 from public.staff_account_tags where staff_id = auth.uid() and tag_key = 'sdp_monitoring'));
 drop policy if exists "sdp monitors read attendance records" on public.attendance_records;
 create policy "sdp monitors read attendance records" on public.attendance_records for select
+  using (exists (select 1 from public.staff_account_tags where staff_id = auth.uid() and tag_key = 'sdp_monitoring'));
+
+-- Allows SDP monitors to remove an activity from the staff UI. Attendance
+-- sessions/codes/records are deleted automatically by their cascade links.
+drop policy if exists "sdp monitors delete activities" on public.sdp_activities;
+create policy "sdp monitors delete activities" on public.sdp_activities for delete
   using (exists (select 1 from public.staff_account_tags where staff_id = auth.uid() and tag_key = 'sdp_monitoring'));
