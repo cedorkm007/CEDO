@@ -40,15 +40,20 @@ export async function fetchOwnCertificateUrl(subjectId: string): Promise<{ ok: b
  * used, just grouped by topic_id instead of subject_id.
  */
 export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string): Promise<QuizTopic[]> {
-  const [{ data: subject }, { data: topics, error: topicsError }, { data: todayScores }] = await Promise.all([
+  const [{ data: subject }, { data: todayScores }] = await Promise.all([
     supabase.from("quest_subjects").select("max_attempts_per_day").eq("id", subjectId).maybeSingle(),
-    supabase.from("quest_topics").select("id, subject_id, name, max_attempts_per_day, youtube_url").eq("subject_id", subjectId).order("sort_order").order("name"),
     supabase.from("scholar_quest_scores")
       .select("topic_id")
       .eq("scholar_id_number", scholarIdNumber)
       .eq("subject_id", subjectId)
       .eq("date_taken", new Date().toISOString().slice(0, 10)),
   ]);
+  let { data: topics, error: topicsError } = await supabase.from("quest_topics")
+    .select("id, subject_id, name, max_attempts_per_day, youtube_url").eq("subject_id", subjectId).order("sort_order").order("name");
+  // Existing Supabase projects may receive this app deployment before the
+  // migration that adds sort_order. Keep their existing topics available.
+  if (topicsError) ({ data: topics, error: topicsError } = await supabase.from("quest_topics")
+    .select("id, subject_id, name, max_attempts_per_day, youtube_url").eq("subject_id", subjectId).order("name")));
   if (topicsError || !topics) return [];
 
   const usedTodayByTopic = new Map<string, number>();

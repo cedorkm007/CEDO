@@ -206,7 +206,10 @@ export async function deleteSubject(id: string): Promise<{ ok: boolean; error?: 
 
 // ── Question bank: Topics ────────────────────────────────────
 export async function fetchTopics(subjectId: string): Promise<QuestTopic[]> {
-  const { data, error } = await supabase.from("quest_topics").select("*").eq("subject_id", subjectId).order("sort_order").order("name");
+  let { data, error } = await supabase.from("quest_topics").select("*").eq("subject_id", subjectId).order("sort_order").order("name");
+  // Allows existing installations to keep displaying topics while the
+  // sort-order migration is being rolled out to Supabase.
+  if (error) ({ data, error } = await supabase.from("quest_topics").select("*").eq("subject_id", subjectId).order("name")));
   if (error || !data) return [];
   return data.map(r => ({
     id: r.id, subjectId: r.subject_id, name: r.name, sortOrder: Number(r.sort_order ?? 0),
