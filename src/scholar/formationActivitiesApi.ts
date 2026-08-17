@@ -7,6 +7,7 @@ export interface FormationActivity {
   name: string;
   shortDescription: string;
   dateTime: string;
+  endTime: string | null;
   venue: string;
   yearLevels: string[];
   allYearLevels: boolean;
@@ -17,7 +18,7 @@ export interface FormationActivity {
 function rowToActivity(row: Record<string, unknown>): FormationActivity {
   return {
     id: String(row.id), name: String(row.name ?? ""), shortDescription: String(row.short_description ?? ""),
-    dateTime: String(row.date_time ?? ""), venue: String(row.venue ?? ""),
+    dateTime: String(row.date_time ?? ""), endTime: row.end_time ? String(row.end_time) : null, venue: String(row.venue ?? ""),
     yearLevels: Array.isArray(row.target_year_levels) ? row.target_year_levels.map(String) : [],
     allYearLevels: Boolean(row.all_year_levels), attendanceEnabled: Boolean(row.attendance_enabled),
     createdAt: String(row.created_at ?? ""),

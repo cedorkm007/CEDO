@@ -12,6 +12,7 @@ type CalendarActivity = {
   name: string;
   shortDescription: string;
   dateTime: string;
+  endTime: string | null;
   venue: string;
   label: string;
   attendanceEnabled: boolean;
@@ -115,7 +116,7 @@ function ActivitiesList({ activities }: { activities: CalendarActivity[] }) {
             <span className="shrink-0 text-[10.5px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{a.label}</span>
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-500">
-            {a.dateTime && <span>{new Date(a.dateTime).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
+            {a.dateTime && <span>{new Date(a.dateTime).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}{a.endTime && ` – ${new Date(a.endTime).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}</span>}
             {a.venue && <span className="flex items-center gap-1"><MapPin size={11} /> {a.venue}</span>}
             {a.attendanceEnabled && <span className="font-semibold text-[#0088cc]">Attendance monitoring included</span>}
           </div>
@@ -135,11 +136,11 @@ export function CalendarAndActivitiesPanel() {
     Promise.all([fetchApprovedSDPActivities(), fetchFormationActivitiesForScholar()]).then(([sdpActivities, formationActivities]) => {
       const sdp = sdpActivities.map(activity => ({
         id: `sdp-${activity.id}`, name: activity.name, shortDescription: activity.rationale ?? "", dateTime: activity.dateTime,
-        venue: activity.venue, label: categoryLabel(activity.category), attendanceEnabled: false,
+        endTime: null, venue: activity.venue, label: categoryLabel(activity.category), attendanceEnabled: false,
       }));
       const formation = formationActivities.map(activity => ({
         id: `formation-${activity.id}`, name: activity.name, shortDescription: activity.shortDescription, dateTime: activity.dateTime,
-        venue: activity.venue, label: "Formation Activity", attendanceEnabled: activity.attendanceEnabled,
+        endTime: activity.endTime, venue: activity.venue, label: "Formation Activity", attendanceEnabled: activity.attendanceEnabled,
       }));
       setActivities([...sdp, ...formation].sort((a, b) => a.dateTime.localeCompare(b.dateTime)));
       setLoading(false);

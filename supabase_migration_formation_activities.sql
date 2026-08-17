@@ -4,6 +4,7 @@ create table if not exists public.formation_activities (
   name text not null,
   short_description text not null default '',
   date_time timestamptz not null,
+  end_time timestamptz,
   venue text not null default '',
   target_year_levels text[] not null default '{}',
   all_year_levels boolean not null default false,
