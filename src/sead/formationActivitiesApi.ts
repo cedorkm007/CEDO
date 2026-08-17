@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import type { FormationActivity } from "@/scholar/formationActivitiesApi";
+import type { AttendanceType, AttendanceCode, AttendanceSession } from "./sdpMonitorApi";
 
 export type NewFormationActivityInput = Pick<FormationActivity, "name" | "shortDescription" | "dateTime" | "venue" | "yearLevels" | "allYearLevels" | "attendanceEnabled">;
 
@@ -19,14 +20,14 @@ export async function fetchFormationActivities(): Promise<FormationActivity[]> {
   return data.map(row => rowToActivity(row as Record<string, unknown>));
 }
 
-export async function createFormationActivity(input: NewFormationActivityInput): Promise<{ ok: boolean; error?: string }> {
+export async function createFormationActivity(input: NewFormationActivityInput): Promise<{ ok: boolean; error?: string; id?: string }> {
   const { data: auth } = await supabase.auth.getUser();
-  const { error } = await supabase.from("formation_activities").insert({
+  const { data, error } = await supabase.from("formation_activities").insert({
     name: input.name, short_description: input.shortDescription, date_time: input.dateTime, venue: input.venue,
     target_year_levels: input.yearLevels, all_year_levels: input.allYearLevels, attendance_enabled: input.attendanceEnabled,
     created_by: auth.user?.id ?? null,
-  });
-  return error ? { ok: false, error: error.message } : { ok: true };
+  }).select("id").single();
+  return error || !data ? { ok: false, error: error?.message || "Couldn't create the activity." } : { ok: true, id: data.id };
 }
 
 export async function updateFormationActivity(id: string, input: NewFormationActivityInput): Promise<{ ok: boolean; error?: string }> {
@@ -41,4 +42,35 @@ export async function updateFormationActivity(id: string, input: NewFormationAct
 export async function deleteFormationActivity(id: string): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.from("formation_activities").delete().eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+function randomCode(): string {
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let result = "";
+  for (let index = 0; index < 7; index++) result += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return result;
+}
+
+export async function enableFormationAttendance(activityId: string, type: AttendanceType, participantCount: number, voucherHours = 1): Promise<{ ok: boolean; error?: string }> {
+  const { data: auth } = await supabase.auth.getUser();
+  const { data: session, error: sessionError } = await supabase.from("attendance_sessions").insert({
+    formation_activity_id: activityId, type, expected_attendees: participantCount,
+    duration_hours: type === "voucher" ? voucherHours : null, created_by: auth.user?.id ?? null,
+  }).select("id").single();
+  if (sessionError || !session) return { ok: false, error: sessionError?.message || "Couldn't enable attendance." };
+  const codes = type === "time_in_time_out"
+    ? Array.from({ length: participantCount * 2 }, (_, index) => ({ session_id: session.id, code: randomCode(), kind: index < participantCount ? "time_in" : "time_out" }))
+    : Array.from({ length: participantCount }, () => ({ session_id: session.id, code: randomCode(), kind: "voucher" }));
+  const { error } = await supabase.from("attendance_codes").insert(codes);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function fetchFormationAttendanceSession(activityId: string): Promise<{ session: AttendanceSession; codes: AttendanceCode[] } | null> {
+  const { data: row } = await supabase.from("attendance_sessions").select("*").eq("formation_activity_id", activityId).maybeSingle();
+  if (!row) return null;
+  const { data: codeRows } = await supabase.from("attendance_codes").select("*").eq("session_id", row.id).order("kind").order("created_at");
+  return {
+    session: { id: row.id, type: row.type, expectedAttendees: row.expected_attendees, voucherHours: row.duration_hours, createdAt: row.created_at },
+    codes: (codeRows ?? []).map(code => ({ id: code.id, code: code.code, kind: code.kind, redeemedByScholarId: code.redeemed_by_scholar_id, redeemedAt: code.redeemed_at })),
+  };
 }
