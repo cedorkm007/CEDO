@@ -26,7 +26,7 @@ function CalendarGrid({ activities }: { activities: CalendarActivity[] }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const activitiesByDate = useMemo(() => {
-    const map = new Map<string, SDPActivity[]>();
+    const map = new Map<string, CalendarActivity[]>();
     for (const a of activities) {
       if (!a.dateTime) continue;
       const key = a.dateTime.slice(0, 10); // YYYY-MM-DD
