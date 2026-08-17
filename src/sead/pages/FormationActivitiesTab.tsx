@@ -31,7 +31,7 @@ function FormationActivityModal({ activity, onClose, onCreated }: { activity: Fo
     const result = activity ? await updateFormationActivity(activity.id, input) : await createFormationActivity(input);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Couldn't save the activity."); return; }
-    if (!activity && attendanceEnabled && "id" in result && result.id) {
+    if (!activity && attendanceEnabled && "id" in result && typeof result.id === "string") {
       const attendance = await enableFormationAttendance(result.id, attendanceType, Number(participantCount), voucherHours);
       if (!attendance.ok) { setError(`Activity created, but attendance setup failed: ${attendance.error}`); return; }
     }
