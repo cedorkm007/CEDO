@@ -209,7 +209,11 @@ export async function fetchTopics(subjectId: string): Promise<QuestTopic[]> {
   let { data, error } = await supabase.from("quest_topics").select("*").eq("subject_id", subjectId).order("sort_order").order("name");
   // Allows existing installations to keep displaying topics while the
   // sort-order migration is being rolled out to Supabase.
-  if (error) ({ data, error } = await supabase.from("quest_topics").select("*").eq("subject_id", subjectId).order("name")));
+  if (error) {
+    const fallback = await supabase.from("quest_topics").select("*").eq("subject_id", subjectId).order("name");
+    data = fallback.data;
+    error = fallback.error;
+  }
   if (error || !data) return [];
   return data.map(r => ({
     id: r.id, subjectId: r.subject_id, name: r.name, sortOrder: Number(r.sort_order ?? 0),

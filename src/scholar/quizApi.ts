@@ -52,8 +52,12 @@ export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string
     .select("id, subject_id, name, max_attempts_per_day, youtube_url").eq("subject_id", subjectId).order("sort_order").order("name");
   // Existing Supabase projects may receive this app deployment before the
   // migration that adds sort_order. Keep their existing topics available.
-  if (topicsError) ({ data: topics, error: topicsError } = await supabase.from("quest_topics")
-    .select("id, subject_id, name, max_attempts_per_day, youtube_url").eq("subject_id", subjectId).order("name")));
+  if (topicsError) {
+    const fallback = await supabase.from("quest_topics")
+      .select("id, subject_id, name, max_attempts_per_day, youtube_url").eq("subject_id", subjectId).order("name");
+    topics = fallback.data;
+    topicsError = fallback.error;
+  }
   if (topicsError || !topics) return [];
 
   const usedTodayByTopic = new Map<string, number>();
