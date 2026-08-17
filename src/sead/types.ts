@@ -11,6 +11,7 @@ export interface QuestTopic {
   id: string;
   subjectId: string;
   name: string;
+  sortOrder: number;
   maxAttemptsPerDay: number | null; // null = inherit the subject's default
   youtubeUrl: string; // YouTube or Google Drive lecture URL; "" if none set
 }

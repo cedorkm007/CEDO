@@ -206,10 +206,10 @@ export async function deleteSubject(id: string): Promise<{ ok: boolean; error?: 
 
 // ── Question bank: Topics ────────────────────────────────────
 export async function fetchTopics(subjectId: string): Promise<QuestTopic[]> {
-  const { data, error } = await supabase.from("quest_topics").select("*").eq("subject_id", subjectId).order("name");
+  const { data, error } = await supabase.from("quest_topics").select("*").eq("subject_id", subjectId).order("sort_order").order("name");
   if (error || !data) return [];
   return data.map(r => ({
-    id: r.id, subjectId: r.subject_id, name: r.name,
+    id: r.id, subjectId: r.subject_id, name: r.name, sortOrder: Number(r.sort_order ?? 0),
     maxAttemptsPerDay: r.max_attempts_per_day === null || r.max_attempts_per_day === undefined ? null : Number(r.max_attempts_per_day),
     youtubeUrl: r.youtube_url ?? "",
   }));
@@ -218,9 +218,18 @@ export async function fetchTopics(subjectId: string): Promise<QuestTopic[]> {
 export async function createTopic(
   subjectId: string, name: string, maxAttemptsPerDay: number | null, youtubeUrl: string
 ): Promise<{ ok: boolean; error?: string }> {
+  const { data: lastTopic } = await supabase.from("quest_topics")
+    .select("sort_order").eq("subject_id", subjectId).order("sort_order", { ascending: false }).limit(1).maybeSingle();
   const { error } = await supabase.from("quest_topics")
-    .insert({ subject_id: subjectId, name, max_attempts_per_day: maxAttemptsPerDay, youtube_url: youtubeUrl || null });
+    .insert({ subject_id: subjectId, name, max_attempts_per_day: maxAttemptsPerDay, youtube_url: youtubeUrl || null, sort_order: Number(lastTopic?.sort_order ?? -1) + 1 });
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function reorderTopics(orderedTopicIds: string[]): Promise<{ ok: boolean; error?: string }> {
+  const results = await Promise.all(orderedTopicIds.map((id, sortOrder) => supabase.from("quest_topics")
+    .update({ sort_order: sortOrder, updated_at: new Date().toISOString() }).eq("id", id)));
+  const failure = results.find(result => result.error);
+  return failure?.error ? { ok: false, error: failure.error.message } : { ok: true };
 }
 
 export async function updateTopic(

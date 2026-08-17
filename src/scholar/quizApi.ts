@@ -42,7 +42,7 @@ export async function fetchOwnCertificateUrl(subjectId: string): Promise<{ ok: b
 export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string): Promise<QuizTopic[]> {
   const [{ data: subject }, { data: topics, error: topicsError }, { data: todayScores }] = await Promise.all([
     supabase.from("quest_subjects").select("max_attempts_per_day").eq("id", subjectId).maybeSingle(),
-    supabase.from("quest_topics").select("id, subject_id, name, max_attempts_per_day, youtube_url").eq("subject_id", subjectId).order("name"),
+    supabase.from("quest_topics").select("id, subject_id, name, max_attempts_per_day, youtube_url").eq("subject_id", subjectId).order("sort_order").order("name"),
     supabase.from("scholar_quest_scores")
       .select("topic_id")
       .eq("scholar_id_number", scholarIdNumber)

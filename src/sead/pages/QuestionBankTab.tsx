@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud, You
 import {
   fetchSubjects, createSubject, renameSubject, deleteSubject, updateSubjectMaxAttempts,
   updateSubjectPassingRate, uploadSubjectCertificate, removeSubjectCertificate, fetchCertificatePreviewUrl,
-  fetchTopics, createTopic, updateTopic, deleteTopic,
+  fetchTopics, createTopic, updateTopic, deleteTopic, reorderTopics,
   fetchQuestions, deleteQuestion, toggleQuestionActive,
 } from "../seadApi";
 import { QuestionEditorModal } from "../components/QuestionEditorModal";
@@ -80,6 +80,14 @@ export function QuestionBankTab() {
           return r;
         }}
         onUpdate={async (id, fields) => { const r = await updateTopic(id, fields); reloadTopics(); return r; }}
+        onReorder={async orderedTopicIds => {
+          const currentTopics = topics;
+          const orderedTopics = orderedTopicIds.map(id => currentTopics.find(topic => topic.id === id)).filter((topic): topic is QuestTopic => !!topic);
+          setTopics(orderedTopics);
+          const result = await reorderTopics(orderedTopicIds);
+          if (!result.ok) setTopics(currentTopics);
+          return result;
+        }}
         onDelete={async id => { const r = await deleteTopic(id); if (r.ok) setSelectedTopic(null); reloadTopics(); return r; }}
       />
 
@@ -321,10 +329,11 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
 }
 
 // ── Column: Topics ──────────────────────────────────────────
-function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, onDelete }: {
+function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, onReorder, onDelete }: {
   subject: QuestSubject | null; topics: QuestTopic[]; selected: QuestTopic | null; onSelect: (t: QuestTopic) => void;
   onCreate: (name: string, maxAttemptsPerDay: number | null, youtubeUrl: string) => Promise<{ ok: boolean; error?: string }>;
   onUpdate: (id: string, fields: { name: string; maxAttemptsPerDay: number | null; youtubeUrl: string }) => Promise<{ ok: boolean; error?: string }>;
+  onReorder: (orderedTopicIds: string[]) => Promise<{ ok: boolean; error?: string }>;
   onDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [newName, setNewName] = useState("");
@@ -336,6 +345,8 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
   const [editYoutubeUrl, setEditYoutubeUrl] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [draggedTopicId, setDraggedTopicId] = useState<string | null>(null);
+  const [reordering, setReordering] = useState(false);
 
   if (!subject) {
     return <EmptyColumn title="Topics" message="Select a subject to see its topics." />;
@@ -376,10 +387,29 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
     if (!result.ok) setError(result.error || "Failed to delete.");
   }
 
+  async function handleDrop(event: React.DragEvent<HTMLDivElement>, targetTopicId: string) {
+    event.preventDefault();
+    if (!draggedTopicId || draggedTopicId === targetTopicId || reordering) { setDraggedTopicId(null); return; }
+
+    const withoutDragged = topics.filter(topic => topic.id !== draggedTopicId);
+    const targetIndex = withoutDragged.findIndex(topic => topic.id === targetTopicId);
+    const targetBox = event.currentTarget.getBoundingClientRect();
+    const insertAfter = event.clientY > targetBox.top + targetBox.height / 2;
+    const reorderedIds = [...withoutDragged];
+    reorderedIds.splice(targetIndex + (insertAfter ? 1 : 0), 0, topics.find(topic => topic.id === draggedTopicId)!);
+
+    setDraggedTopicId(null);
+    setReordering(true);
+    const result = await onReorder(reorderedIds.map(topic => topic.id));
+    setReordering(false);
+    if (!result.ok) setError(result.error || "Couldn't save the new topic order.");
+  }
+
   return (
     <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[600px]">
       <div className="px-4 py-3 border-b border-[#e6ecf5]">
         <h3 className="text-[12.5px] font-bold text-[#062444]">Topics — {subject.name}</h3>
+        <p className="mt-0.5 text-[10.5px] text-slate-400">Drag a topic box to change its order.</p>
       </div>
       <div className="overflow-y-auto flex-1">
         {topics.length === 0 ? (
@@ -387,7 +417,12 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
         ) : (
           topics.map(t => (
             <div key={t.id}
-              className={`px-4 py-2.5 border-b border-[#f0f3f8] cursor-pointer ${selected?.id === t.id ? "bg-[#eef3fb]" : "hover:bg-[#f8fafd]"}`}
+              draggable={editingId !== t.id && !reordering}
+              onDragStart={event => { event.dataTransfer.effectAllowed = "move"; setDraggedTopicId(t.id); }}
+              onDragOver={event => event.preventDefault()}
+              onDrop={event => void handleDrop(event, t.id)}
+              onDragEnd={() => setDraggedTopicId(null)}
+              className={`px-4 py-2.5 border-b border-[#f0f3f8] cursor-grab active:cursor-grabbing ${draggedTopicId === t.id ? "opacity-40" : ""} ${selected?.id === t.id ? "bg-[#eef3fb]" : "hover:bg-[#f8fafd]"}`}
               onClick={() => editingId !== t.id && onSelect(t)}
             >
               {editingId === t.id ? (

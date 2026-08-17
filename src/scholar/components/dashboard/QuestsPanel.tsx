@@ -380,14 +380,14 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
       )}
 
       {activeLecture && (
-        <div className="fixed inset-0 z-[110] bg-[#062444]/85 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-6" onClick={closeLecture}>
-          <div ref={lecturePlayerRef} className="w-full max-w-5xl bg-white sm:rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[#062444]/85 p-3 backdrop-blur-sm sm:p-6" onClick={closeLecture}>
+          <div ref={lecturePlayerRef} className="flex w-full max-w-5xl max-h-[calc(100dvh-1.5rem)] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-[#062444] to-[#0a3a6b] px-4 py-3 sm:px-5">
               <h3 className="min-w-0 truncate flex items-center gap-2 text-[14px] font-bold text-white"><PlayCircle size={18} className="text-[#F3BC00] shrink-0" /> {activeLecture.name} lecture</h3>
               <button onClick={closeLecture} className="p-1 text-white/75 hover:text-white" aria-label="Close lecture"><XIcon size={20} /></button>
             </div>
-            <div className="bg-black">
-              <div className="relative w-full" style={{ paddingTop: "56.25%" }}>
+            <div className="flex min-h-0 flex-1 items-center justify-center bg-black">
+              <div className="relative w-full max-h-[calc(100dvh-8.5rem)] aspect-video">
                 <iframe src={activeLecture.src} title={`${activeLecture.name} lecture`} className="absolute inset-0 w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
               </div>
             </div>
