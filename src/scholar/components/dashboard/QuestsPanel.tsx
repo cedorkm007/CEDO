@@ -17,6 +17,15 @@ interface QuestsPanelProps {
   onScoreSubmitted: () => void; // lets the parent refresh "Your Quest History"
 }
 
+type OrientationControl = {
+  lock?: (orientation: "landscape") => Promise<void>;
+  unlock?: () => void;
+};
+
+function getOrientationControl(): OrientationControl | undefined {
+  return (screen.orientation as unknown as OrientationControl | undefined);
+}
+
 export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: QuestsPanelProps) {
   const [step, setStep] = useState<Step>({ view: "browse" });
   const [subjects, setSubjects] = useState<QuizSubject[]>([]);
@@ -76,14 +85,14 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
 
   function closeLecture() {
     if (document.fullscreenElement) void document.exitFullscreen();
-    screen.orientation?.unlock();
+    getOrientationControl()?.unlock?.();
     setActiveLecture(null);
   }
 
   async function useLandscapeView() {
     try {
       await lecturePlayerRef.current?.requestFullscreen();
-      await screen.orientation?.lock("landscape");
+      await getOrientationControl()?.lock?.("landscape");
     } catch {
       // Full-screen and orientation locking are controlled by the device/browser.
     }
