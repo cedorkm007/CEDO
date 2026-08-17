@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download, Maximize2, RotateCw } from "lucide-react";
+import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, Play, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download, Maximize2, RotateCw } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
@@ -251,12 +251,14 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
                     {lectureEmbed && (
                       <button
                         onClick={() => setActiveLecture({ name: t.name, src: lectureEmbed.src })}
-                        className="shrink-0 self-stretch flex flex-col sm:flex-row items-center justify-center gap-1 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white px-3 sm:px-4 transition-colors"
+                        className="shrink-0 self-stretch flex flex-col sm:flex-row items-center justify-center gap-1.5 border-l border-[#d7a500] bg-[#F3BC00] hover:bg-[#ffd34d] active:bg-[#e1ae00] px-3 sm:px-4 text-[#062444] transition-colors"
                         aria-label={`Watch short lecture for ${t.name}`}
                         title="Watch short lecture"
                       >
-                        <PlayCircle size={23} fill="currentColor" className="text-white" />
-                        <span className="text-[10px] sm:text-[12px] font-bold leading-tight text-center">Watch<br className="sm:hidden" /> video</span>
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#062444] text-[#F3BC00] shadow-sm">
+                          <Play size={13} fill="currentColor" strokeWidth={2.5} className="ml-0.5" />
+                        </span>
+                        <span className="text-[10px] sm:text-[12px] font-extrabold leading-tight text-center">Watch<br className="sm:hidden" /> video</span>
                       </button>
                     )}
                   </div>
