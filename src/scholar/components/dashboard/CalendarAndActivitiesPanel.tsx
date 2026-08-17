@@ -3,14 +3,25 @@ import { Calendar as CalendarIcon, ClipboardList, QrCode, ChevronLeft, ChevronRi
 import { SectionCard } from "./SectionCard";
 import { AttendanceScanner } from "./AttendanceScanner";
 import { fetchApprovedSDPActivities, SDP_CATEGORIES, type SDPActivity } from "../../sdpApi";
+import { fetchFormationActivitiesForScholar } from "../../formationActivitiesApi";
 
 type Tab = "calendar" | "activities" | "attendance";
+
+type CalendarActivity = {
+  id: string;
+  name: string;
+  shortDescription: string;
+  dateTime: string;
+  venue: string;
+  label: string;
+  attendanceEnabled: boolean;
+};
 
 function categoryLabel(category: SDPActivity["category"]): string {
   return SDP_CATEGORIES.find(c => c.key === category)?.label ?? "General";
 }
 
-function CalendarGrid({ activities }: { activities: SDPActivity[] }) {
+function CalendarGrid({ activities }: { activities: CalendarActivity[] }) {
   const [monthCursor, setMonthCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
@@ -83,7 +94,8 @@ function CalendarGrid({ activities }: { activities: SDPActivity[] }) {
           {selectedEvents.map(a => (
             <div key={a.id} className="bg-[#f8fafd] rounded-lg px-3 py-2.5">
               <p className="text-[13px] font-bold text-[#062444]">{a.name}</p>
-              <p className="text-[11.5px] text-slate-400">{categoryLabel(a.category)} {a.venue && `· ${a.venue}`}</p>
+              <p className="text-[11.5px] text-slate-400">{a.label} {a.venue && `· ${a.venue}`}</p>
+              {a.shortDescription && <p className="mt-1 text-[11.5px] text-slate-500">{a.shortDescription}</p>}
             </div>
           ))}
         </div>
@@ -92,7 +104,7 @@ function CalendarGrid({ activities }: { activities: SDPActivity[] }) {
   );
 }
 
-function ActivitiesList({ activities }: { activities: SDPActivity[] }) {
+function ActivitiesList({ activities }: { activities: CalendarActivity[] }) {
   if (activities.length === 0) return <p className="text-[13px] text-slate-400 italic">No upcoming activities right now.</p>;
   return (
     <div className="space-y-2.5">
@@ -100,13 +112,14 @@ function ActivitiesList({ activities }: { activities: SDPActivity[] }) {
         <div key={a.id} className="bg-[#f8fafd] border border-[#e6ecf5] rounded-xl px-4 py-3">
           <div className="flex items-start justify-between gap-2 mb-1">
             <p className="text-[13.5px] font-bold text-[#062444]">{a.name}</p>
-            <span className="shrink-0 text-[10.5px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{categoryLabel(a.category)}</span>
+            <span className="shrink-0 text-[10.5px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{a.label}</span>
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-500">
             {a.dateTime && <span>{new Date(a.dateTime).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
             {a.venue && <span className="flex items-center gap-1"><MapPin size={11} /> {a.venue}</span>}
-            {a.organization && <span>{a.organization}</span>}
+            {a.attendanceEnabled && <span className="font-semibold text-[#0088cc]">Attendance monitoring included</span>}
           </div>
+          {a.shortDescription && <p className="mt-2 text-[12px] text-slate-500">{a.shortDescription}</p>}
         </div>
       ))}
     </div>
@@ -115,11 +128,22 @@ function ActivitiesList({ activities }: { activities: SDPActivity[] }) {
 
 export function CalendarAndActivitiesPanel() {
   const [tab, setTab] = useState<Tab>("calendar");
-  const [activities, setActivities] = useState<SDPActivity[]>([]);
+  const [activities, setActivities] = useState<CalendarActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchApprovedSDPActivities().then(a => { setActivities(a); setLoading(false); });
+    Promise.all([fetchApprovedSDPActivities(), fetchFormationActivitiesForScholar()]).then(([sdpActivities, formationActivities]) => {
+      const sdp = sdpActivities.map(activity => ({
+        id: `sdp-${activity.id}`, name: activity.name, shortDescription: activity.rationale ?? "", dateTime: activity.dateTime,
+        venue: activity.venue, label: categoryLabel(activity.category), attendanceEnabled: false,
+      }));
+      const formation = formationActivities.map(activity => ({
+        id: `formation-${activity.id}`, name: activity.name, shortDescription: activity.shortDescription, dateTime: activity.dateTime,
+        venue: activity.venue, label: "Formation Activity", attendanceEnabled: activity.attendanceEnabled,
+      }));
+      setActivities([...sdp, ...formation].sort((a, b) => a.dateTime.localeCompare(b.dateTime)));
+      setLoading(false);
+    });
   }, []);
 
   return (
