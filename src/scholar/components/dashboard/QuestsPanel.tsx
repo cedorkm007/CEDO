@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download } from "lucide-react";
+import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download, Maximize2, RotateCw } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
@@ -25,7 +25,8 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
   const [error, setError] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({}); // questionId -> choiceId
   const [submitting, setSubmitting] = useState(false);
-  const [expandedVideoTopicId, setExpandedVideoTopicId] = useState<string | null>(null);
+  const [activeLecture, setActiveLecture] = useState<{ name: string; src: string } | null>(null);
+  const lecturePlayerRef = useRef<HTMLDivElement>(null);
   const [browseTab, setBrowseTab] = useState<"subject" | "history">("subject");
   const [historyDateFilter, setHistoryDateFilter] = useState(() => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }));
   const [subjectProgress, setSubjectProgress] = useState<{ percentage: number; topicCount: number } | null>(null);
@@ -43,7 +44,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
   async function openSubject(subject: QuizSubject) {
     setError("");
     setLoading(true);
-    setExpandedVideoTopicId(null);
+    setActiveLecture(null);
     setCertError("");
     const [topicsResult, progressResult] = await Promise.all([
       fetchQuizTopics(subject.id, scholarIdNumber),
@@ -71,6 +72,21 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
     setCertBusy(false);
     if (!result.ok || !result.url) { setCertError(result.error || "Couldn't get the certificate right now."); return; }
     window.open(result.url, "_blank", "noopener,noreferrer");
+  }
+
+  function closeLecture() {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    screen.orientation?.unlock();
+    setActiveLecture(null);
+  }
+
+  async function useLandscapeView() {
+    try {
+      await lecturePlayerRef.current?.requestFullscreen();
+      await screen.orientation?.lock("landscape");
+    } catch {
+      // Full-screen and orientation locking are controlled by the device/browser.
+    }
   }
 
   async function beginQuiz(subject: QuizSubject, topic: QuizTopic) {
@@ -207,13 +223,12 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
               {topics.map(t => {
                 const exhausted = t.attemptsUsedToday >= t.maxAttemptsPerDay;
                 const lectureEmbed = t.youtubeUrl ? getLectureEmbed(t.youtubeUrl) : null;
-                const videoOpen = expandedVideoTopicId === t.id;
                 return (
-                  <div key={t.id} className="border border-[#e8edf2] rounded-lg overflow-hidden">
+                  <div key={t.id} className="border border-[#e8edf2] rounded-lg overflow-hidden flex bg-[#f8fafd]">
                     <button
                       onClick={() => !exhausted && beginQuiz(step.subject, t)}
                       disabled={exhausted}
-                      className="w-full flex items-center justify-between bg-[#f8fafd] hover:bg-[#eef3fb] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-3.5 text-left transition-colors"
+                      className="min-w-0 flex-1 flex items-center justify-between hover:bg-[#eef3fb] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-3.5 text-left transition-colors"
                     >
                       <span>
                         <span className="text-sm font-semibold text-[#062444] block">{t.name}</span>
@@ -225,27 +240,15 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
                     </button>
 
                     {lectureEmbed && (
-                      <div className="border-t border-[#e8edf2]">
-                        <button
-                          onClick={() => setExpandedVideoTopicId(videoOpen ? null : t.id)}
-                          className="w-full flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-red-500 hover:bg-red-50/50"
-                        >
-                          <PlayCircle size={14} /> {videoOpen ? "Hide short lecture" : "Watch short lecture"}
-                        </button>
-                        {videoOpen && (
-                          <div className="px-4 pb-4">
-                            <div className="relative w-full rounded-lg overflow-hidden bg-black" style={{ paddingTop: "56.25%" }}>
-                              <iframe
-                                src={lectureEmbed.src}
-                                title={`${t.name} lecture`}
-                                className="absolute inset-0 w-full h-full"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowFullScreen
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                      <button
+                        onClick={() => setActiveLecture({ name: t.name, src: lectureEmbed.src })}
+                        className="shrink-0 self-stretch flex flex-col sm:flex-row items-center justify-center gap-1 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white px-3 sm:px-4 transition-colors"
+                        aria-label={`Watch short lecture for ${t.name}`}
+                        title="Watch short lecture"
+                      >
+                        <PlayCircle size={23} fill="currentColor" className="text-white" />
+                        <span className="text-[10px] sm:text-[12px] font-bold leading-tight text-center">Watch<br className="sm:hidden" /> video</span>
+                      </button>
                     )}
                   </div>
                 );
@@ -360,6 +363,30 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
             className="w-full bg-[#062444] text-white font-semibold text-sm rounded-xl py-3">
             Back to Quests
           </button>
+        </div>
+      )}
+
+      {activeLecture && (
+        <div className="fixed inset-0 z-[110] bg-[#062444]/85 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-6" onClick={closeLecture}>
+          <div ref={lecturePlayerRef} className="w-full max-w-5xl bg-white sm:rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-[#062444] to-[#0a3a6b] px-4 py-3 sm:px-5">
+              <h3 className="min-w-0 truncate flex items-center gap-2 text-[14px] font-bold text-white"><PlayCircle size={18} className="text-[#F3BC00] shrink-0" /> {activeLecture.name} lecture</h3>
+              <button onClick={closeLecture} className="p-1 text-white/75 hover:text-white" aria-label="Close lecture"><XIcon size={20} /></button>
+            </div>
+            <div className="bg-black">
+              <div className="relative w-full" style={{ paddingTop: "56.25%" }}>
+                <iframe src={activeLecture.src} title={`${activeLecture.name} lecture`} className="absolute inset-0 w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-3 bg-white">
+              <button onClick={() => void useLandscapeView()} className="sm:hidden flex items-center gap-1.5 rounded-lg bg-[#eef3fb] px-3 py-2 text-[12px] font-bold text-[#062444] hover:bg-[#dfeaf8]">
+                <RotateCw size={15} /> Use landscape
+              </button>
+              <button onClick={() => void lecturePlayerRef.current?.requestFullscreen()} className="hidden sm:flex items-center gap-1.5 rounded-lg bg-[#eef3fb] px-3 py-2 text-[12px] font-bold text-[#062444] hover:bg-[#dfeaf8]">
+                <Maximize2 size={15} /> Full screen
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </SectionCard>
