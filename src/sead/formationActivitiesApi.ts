@@ -28,3 +28,17 @@ export async function createFormationActivity(input: NewFormationActivityInput):
   });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+
+export async function updateFormationActivity(id: string, input: NewFormationActivityInput): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("formation_activities").update({
+    name: input.name, short_description: input.shortDescription, date_time: input.dateTime, venue: input.venue,
+    target_year_levels: input.yearLevels, all_year_levels: input.allYearLevels, attendance_enabled: input.attendanceEnabled,
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function deleteFormationActivity(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("formation_activities").delete().eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
