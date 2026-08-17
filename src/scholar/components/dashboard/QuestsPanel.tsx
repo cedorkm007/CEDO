@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download } from "lucide-react";
 import { SectionCard } from "./SectionCard";
-import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, extractYouTubeId, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
+import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
 
 type Step =
@@ -206,7 +206,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
             <div className="space-y-2 mt-3">
               {topics.map(t => {
                 const exhausted = t.attemptsUsedToday >= t.maxAttemptsPerDay;
-                const videoId = t.youtubeUrl ? extractYouTubeId(t.youtubeUrl) : null;
+                const lectureEmbed = t.youtubeUrl ? getLectureEmbed(t.youtubeUrl) : null;
                 const videoOpen = expandedVideoTopicId === t.id;
                 return (
                   <div key={t.id} className="border border-[#e8edf2] rounded-lg overflow-hidden">
@@ -224,7 +224,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
                       {exhausted ? <Lock size={15} className="text-slate-300 shrink-0" /> : <ChevronRight size={15} className="text-[#0088cc] shrink-0" />}
                     </button>
 
-                    {videoId && (
+                    {lectureEmbed && (
                       <div className="border-t border-[#e8edf2]">
                         <button
                           onClick={() => setExpandedVideoTopicId(videoOpen ? null : t.id)}
@@ -236,10 +236,10 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
                           <div className="px-4 pb-4">
                             <div className="relative w-full rounded-lg overflow-hidden bg-black" style={{ paddingTop: "56.25%" }}>
                               <iframe
-                                src={`https://www.youtube.com/embed/${videoId}`}
+                                src={lectureEmbed.src}
                                 title={`${t.name} lecture`}
                                 className="absolute inset-0 w-full h-full"
-                                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                 allowFullScreen
                               />
                             </div>

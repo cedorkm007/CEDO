@@ -400,7 +400,7 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
                       placeholder={`${subject.maxAttemptsPerDay} (default)`}
                       className="w-24 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
                   </div>
-                  <input value={editYoutubeUrl} onChange={e => setEditYoutubeUrl(e.target.value)} placeholder="YouTube lecture URL (optional)"
+                  <input value={editYoutubeUrl} onChange={e => setEditYoutubeUrl(e.target.value)} placeholder="YouTube or Google Drive video URL (optional)"
                     className="w-full text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
                   <div className="flex items-center gap-2">
                     <button onClick={() => submitEdit(t.id)} className="text-green-600"><Check size={15} /></button>
@@ -440,8 +440,9 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
             placeholder={`${subject.maxAttemptsPerDay} (default)`}
             className="w-28 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
         </div>
-        <input value={newYoutubeUrl} onChange={e => setNewYoutubeUrl(e.target.value)} placeholder="YouTube lecture URL (optional)" disabled={busy}
+        <input value={newYoutubeUrl} onChange={e => setNewYoutubeUrl(e.target.value)} placeholder="YouTube or Google Drive video URL (optional)" disabled={busy}
           className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
+        <p className="text-[10.5px] text-slate-400 px-1">Google Drive videos must be shared as “Anyone with the link.”</p>
         <button type="submit" disabled={busy} className="w-full flex items-center justify-center gap-1.5 bg-[#062444] text-[#F3BC00] rounded-lg p-2 disabled:opacity-50">
           <Plus size={15} /> Add Topic
         </button>

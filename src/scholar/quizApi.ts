@@ -136,3 +136,36 @@ export function extractYouTubeId(url: string): string | null {
   if (/^[\w-]{11}$/.test(trimmed)) return trimmed;
   return null;
 }
+
+export type LectureEmbed = {
+  provider: "youtube" | "google-drive";
+  src: string;
+};
+
+/**
+ * Returns a safe, embeddable player URL for the lecture links staff can add
+ * to a topic. Google Drive's normal share URLs open a Drive page, so they
+ * must be changed to its `/preview` player URL before being used in an iframe.
+ */
+export function getLectureEmbed(url: string): LectureEmbed | null {
+  const youtubeId = extractYouTubeId(url);
+  if (youtubeId) {
+    return { provider: "youtube", src: `https://www.youtube.com/embed/${youtubeId}` };
+  }
+
+  try {
+    const parsed = new URL(url.trim());
+    const isGoogleDrive = parsed.hostname === "drive.google.com" || parsed.hostname === "docs.google.com";
+    if (!isGoogleDrive) return null;
+
+    // Supports the common Drive share URLs, including /file/d/<id>/view,
+    // open?id=<id>, and uc?id=<id>.
+    const pathMatch = parsed.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    const fileId = pathMatch?.[1] ?? parsed.searchParams.get("id");
+    if (!fileId || !/^[a-zA-Z0-9_-]+$/.test(fileId)) return null;
+
+    return { provider: "google-drive", src: `https://drive.google.com/file/d/${fileId}/preview` };
+  } catch {
+    return null;
+  }
+}

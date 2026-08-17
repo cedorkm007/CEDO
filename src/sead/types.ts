@@ -12,7 +12,7 @@ export interface QuestTopic {
   subjectId: string;
   name: string;
   maxAttemptsPerDay: number | null; // null = inherit the subject's default
-  youtubeUrl: string; // "" if none set
+  youtubeUrl: string; // YouTube or Google Drive lecture URL; "" if none set
 }
 
 export interface QuestChoiceDraft {

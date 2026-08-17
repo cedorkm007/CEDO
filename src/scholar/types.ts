@@ -71,7 +71,7 @@ export interface QuizTopic {
   id: string;
   subjectId: string;
   name: string;
-  youtubeUrl: string; // "" if no lecture attached
+  youtubeUrl: string; // YouTube or Google Drive lecture URL; "" if none attached
   maxAttemptsPerDay: number; // effective limit — topic override, else the subject's default
   attemptsUsedToday: number;
 }
