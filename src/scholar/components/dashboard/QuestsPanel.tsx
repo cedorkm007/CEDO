@@ -251,12 +251,14 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
                     {lectureEmbed && (
                       <button
                         onClick={() => setActiveLecture({ name: t.name, src: lectureEmbed.src })}
-                        className="shrink-0 self-stretch flex flex-col sm:flex-row items-center justify-center gap-1.5 border-l border-[#d7a500] bg-[#F3BC00] hover:bg-[#ffd34d] active:bg-[#e1ae00] px-3 sm:px-4 text-[#062444] transition-colors"
+                        className="shrink-0 self-stretch flex flex-col sm:flex-row items-center justify-center gap-1.5 border-l border-[#e6ecf5] bg-white hover:bg-[#fbf7ea] active:bg-[#f5edda] px-3 sm:px-4 text-[#062444] transition-colors"
                         aria-label={`Watch short lecture for ${t.name}`}
                         title="Watch short lecture"
                       >
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#062444] text-[#F3BC00] shadow-sm">
-                          <Play size={13} fill="currentColor" strokeWidth={2.5} className="ml-0.5" />
+                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F3BC00] p-[3px] shadow-[0_2px_5px_rgba(6,36,68,0.28)] ring-1 ring-[#9b721b]">
+                          <span className="flex h-full w-full items-center justify-center rounded-full border border-[#c99831] bg-gradient-to-br from-[#173f6b] to-[#062444] text-[#f8f5ed] shadow-inner">
+                            <Play size={15} fill="currentColor" strokeWidth={2.25} className="ml-0.5 drop-shadow-sm" />
+                          </span>
                         </span>
                         <span className="text-[10px] sm:text-[12px] font-extrabold leading-tight text-center">Watch<br className="sm:hidden" /> video</span>
                       </button>
