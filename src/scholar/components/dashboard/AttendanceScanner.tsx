@@ -4,7 +4,7 @@ import { Camera, Keyboard, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { redeemAttendanceCode } from "../../scholarApi";
 
 type Mode = "scan" | "manual";
-type Result = { ok: boolean; message: string } | null;
+type Result = { ok: boolean; message: string; tone: "success" | "error" | "warning" } | null;
 
 export function AttendanceScanner() {
   const [mode, setMode] = useState<Mode>("scan");
@@ -31,9 +31,10 @@ export function AttendanceScanner() {
     setBusy(false);
     if (res.ok) {
       const label = res.kind === "time_in" ? "Timed in" : res.kind === "time_out" ? "Timed out" : "Hour credited";
-      setResult({ ok: true, message: `${label} for "${res.activityName ?? "the activity"}".` });
+      setResult({ ok: true, tone: "success", message: `${label} for "${res.activityName ?? "the activity"}".` });
     } else {
-      setResult({ ok: false, message: res.error || "Invalid or already-used code." });
+      const message = res.error || "Invalid QR code.";
+      setResult({ ok: false, tone: /you already completed/i.test(message) ? "warning" : "error", message });
       // Allow retrying the same code after a failure (e.g. typo), just not spamming a success.
       lastAttemptedCode.current = "";
     }
@@ -128,8 +129,8 @@ export function AttendanceScanner() {
       )}
 
       {result && (
-        <div className={`mt-4 flex items-start gap-2 rounded-xl px-4 py-3 text-[13px] ${result.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
-          {result.ok ? <CheckCircle2 size={16} className="shrink-0 mt-0.5" /> : <XCircle size={16} className="shrink-0 mt-0.5" />}
+        <div className={`mt-4 flex items-start gap-2 rounded-xl border px-4 py-4 text-[14px] font-semibold ${result.tone === "success" ? "border-green-300 bg-green-50 text-green-700" : result.tone === "warning" ? "border-yellow-300 bg-yellow-50 text-yellow-800" : "border-red-300 bg-red-50 text-red-600"}`}>
+          {result.ok ? <CheckCircle2 size={18} className="shrink-0 mt-0.5" /> : <XCircle size={18} className="shrink-0 mt-0.5" />}
           <span>{result.message}</span>
         </div>
       )}
