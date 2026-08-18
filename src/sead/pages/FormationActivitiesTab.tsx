@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, Check, ClipboardList, MapPin, Pencil, Plus, QrCode, RefreshCw, Trash2, Users, X } from "lucide-react";
+import { CalendarDays, Check, ClipboardList, Download, MapPin, Pencil, Plus, QrCode, RefreshCw, Trash2, Users, X } from "lucide-react";
+import { jsPDF } from "jspdf";
+import QRCode from "qrcode";
 import { FORMATION_YEAR_LEVELS, type FormationActivity } from "@/scholar/formationActivitiesApi";
-import { createFormationActivity, deleteFormationActivity, enableFormationAttendance, fetchFormationActivities, fetchFormationAttendanceSession, updateFormationActivity } from "../formationActivitiesApi";
-import { fetchAttendanceRoster, type AttendanceRosterEntry, type AttendanceType } from "../sdpMonitorApi";
+import { addFormationAttendanceCodes, createFormationActivity, deleteFormationActivity, enableFormationAttendance, fetchFormationActivities, fetchFormationAttendanceSession, updateFormationActivity } from "../formationActivitiesApi";
+import { fetchAttendanceRoster, type AttendanceCode, type AttendanceRosterEntry, type AttendanceSession, type AttendanceType } from "../sdpMonitorApi";
 
 function formatActivitySchedule(dateTime: string, endTime: string | null): string {
   const start = new Date(dateTime);
@@ -86,27 +88,88 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
   const monitoredActivities = activities.filter(activity => activity.attendanceEnabled);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [roster, setRoster] = useState<AttendanceRosterEntry[]>([]);
-  const [codes, setCodes] = useState<{ code: string; kind: string; redeemedByScholarId: string | null }[]>([]);
+  const [codes, setCodes] = useState<AttendanceCode[]>([]);
+  const [session, setSession] = useState<AttendanceSession | null>(null);
   const [expected, setExpected] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showCodes, setShowCodes] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [additionalCount, setAdditionalCount] = useState("");
+  const [addingCodes, setAddingCodes] = useState(false);
+  const [codeError, setCodeError] = useState("");
   const selected = monitoredActivities.find(activity => activity.id === selectedId) ?? null;
 
   async function loadAttendance(activityId: string) {
     setLoading(true);
     const attendance = await fetchFormationAttendanceSession(activityId);
-    if (!attendance) { setRoster([]); setCodes([]); setExpected(null); setLoading(false); return; }
+    if (!attendance) { setSession(null); setRoster([]); setCodes([]); setExpected(null); setLoading(false); return; }
+    setSession(attendance.session);
     setExpected(attendance.session.expectedAttendees);
     setCodes(attendance.codes);
     setRoster(await fetchAttendanceRoster(attendance.session.id));
     setLoading(false);
   }
 
+  async function addCodes() {
+    if (!session || !selected) return;
+    const count = Number(additionalCount);
+    if (!additionalCount.trim() || count < 1) { setCodeError("Enter the number of additional scholars."); return; }
+    setAddingCodes(true); setCodeError("");
+    const result = await addFormationAttendanceCodes(session.id, session.type, count);
+    setAddingCodes(false);
+    if (!result.ok) { setCodeError(result.error || "Could not generate additional codes."); return; }
+    setAdditionalCount("");
+    void loadAttendance(selected.id);
+  }
+
+  function downloadCodesCSV() {
+    if (!selected) return;
+    const lines = ["kind,code"];
+    for (const code of codes) lines.push(`${code.kind},${code.code}`);
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${selected.name.replace(/[^a-z0-9]+/gi, "_")}_attendance_codes.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadCodesPDF() {
+    if (!selected || !codes.length || exportingPdf) return;
+    setExportingPdf(true);
+    try {
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const margin = 8, columns = 4, rows = 5, gap = 2;
+      const cellWidth = (210 - margin * 2 - gap * (columns - 1)) / columns;
+      const cellHeight = (297 - margin * 2 - gap * (rows - 1)) / rows;
+      for (let index = 0; index < codes.length; index++) {
+        if (index > 0 && index % (columns * rows) === 0) pdf.addPage();
+        const position = index % (columns * rows);
+        const x = margin + (position % columns) * (cellWidth + gap);
+        const y = margin + Math.floor(position / columns) * (cellHeight + gap);
+        const code = codes[index];
+        const qrDataUrl = await QRCode.toDataURL(code.code, { errorCorrectionLevel: "M", margin: 1, width: 240 });
+        pdf.setDrawColor(148, 163, 184); pdf.rect(x, y, cellWidth, cellHeight);
+        pdf.setFont("helvetica", "bold"); pdf.setFontSize(7); pdf.setTextColor(6, 36, 68);
+        pdf.text(pdf.splitTextToSize(selected.name, cellWidth - 5).slice(0, 2), x + cellWidth / 2, y + 4, { align: "center", baseline: "top" });
+        pdf.addImage(qrDataUrl, "PNG", x + (cellWidth - 31) / 2, y + 13, 31, 31);
+        pdf.setFont("courier", "bold"); pdf.setFontSize(9); pdf.text(code.code, x + cellWidth / 2, y + 47, { align: "center" });
+        pdf.setFont("helvetica", "normal"); pdf.setFontSize(6.5); pdf.setTextColor(100, 116, 139);
+        pdf.text(code.kind.replace("_", " ").toUpperCase(), x + cellWidth / 2, y + 51, { align: "center" });
+      }
+      pdf.save(`${selected.name.replace(/[^a-z0-9]+/gi, "_")}_attendance_qr_codes.pdf`);
+    } catch {
+      window.alert("Could not create the QR code PDF. Please try again.");
+    } finally { setExportingPdf(false); }
+  }
+
   useEffect(() => { if (!selectedId && monitoredActivities[0]) setSelectedId(monitoredActivities[0].id); }, [monitoredActivities, selectedId]);
-  useEffect(() => { if (!selectedId) return; void loadAttendance(selectedId); const timer = window.setInterval(() => void loadAttendance(selectedId), 10000); return () => window.clearInterval(timer); }, [selectedId]);
+  useEffect(() => { if (selectedId) void loadAttendance(selectedId); }, [selectedId]);
 
   if (monitoredActivities.length === 0) return <p className="rounded-xl border border-dashed border-[#d9e1eb] p-6 text-center text-[13px] text-slate-400">No formation activities have attendance monitoring enabled.</p>;
   const present = roster.filter(entry => entry.status === "present").length;
-  return <div className="grid gap-4 lg:grid-cols-[260px_1fr]"><div className="space-y-2">{monitoredActivities.map(activity => <button key={activity.id} onClick={() => setSelectedId(activity.id)} className={`w-full rounded-xl border p-3 text-left ${selectedId === activity.id ? "border-[#0088cc] bg-[#eef7fc]" : "border-[#e6ecf5] bg-white hover:bg-[#f8fafd]"}`}><p className="text-[13px] font-bold text-[#062444]">{activity.name}</p><p className="mt-1 text-[11px] text-slate-400">{formatActivitySchedule(activity.dateTime, activity.endTime)}</p></button>)}</div><div className="rounded-xl border border-[#e6ecf5] bg-white p-4">{!selected ? null : <><div className="flex items-start justify-between gap-3"><div><h3 className="text-[15px] font-bold text-[#062444]">{selected.name}</h3><p className="mt-1 text-[12px] text-slate-500">Refreshes automatically every 10 seconds.</p></div><button onClick={() => void loadAttendance(selected.id)} className="rounded-lg p-2 text-[#0088cc] hover:bg-[#eef7fc]" aria-label="Refresh attendance"><RefreshCw size={16} /></button></div>{loading ? <p className="py-8 text-[13px] text-slate-400">Loading attendance…</p> : <><div className="mt-4 grid grid-cols-3 gap-2"><div className="rounded-lg bg-[#f8fafd] p-3"><p className="text-[10px] font-bold uppercase text-slate-400">Expected</p><p className="mt-1 text-lg font-extrabold text-[#062444]">{expected ?? "—"}</p></div><div className="rounded-lg bg-green-50 p-3"><p className="text-[10px] font-bold uppercase text-green-600">Present</p><p className="mt-1 text-lg font-extrabold text-green-700">{present}</p></div><div className="rounded-lg bg-orange-50 p-3"><p className="text-[10px] font-bold uppercase text-orange-600">Incomplete</p><p className="mt-1 text-lg font-extrabold text-orange-700">{roster.length - present}</p></div></div><div className="mt-5"><h4 className="mb-2 text-[11px] font-bold uppercase text-slate-400">Live roster</h4>{roster.length === 0 ? <p className="text-[12.5px] text-slate-400">No attendance has been recorded yet.</p> : <div className="space-y-1.5">{roster.map(entry => <div key={entry.scholarIdNumber} className="flex items-center justify-between rounded-lg bg-[#f8fafd] px-3 py-2 text-[12px]"><span className="font-semibold text-[#062444]">{entry.scholarName}</span><span className={entry.status === "present" ? "font-bold text-green-600" : "font-bold text-orange-600"}>{entry.status === "present" ? "Present" : "Incomplete"}</span></div>)}</div>}</div><details className="mt-5"><summary className="cursor-pointer text-[12px] font-bold text-[#0088cc]">View generated attendance codes ({codes.length})</summary><div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">{codes.map(code => <span key={code.code} className={`rounded px-2 py-1 text-[11px] font-mono ${code.redeemedByScholarId ? "bg-slate-100 text-slate-400 line-through" : "bg-[#eef7fc] text-[#062444]"}`}>{code.code}</span>)}</div></details></>}</>}</div></div>;
+  return <div className="grid gap-4 lg:grid-cols-[260px_1fr]"><div className="space-y-2">{monitoredActivities.map(activity => <button key={activity.id} onClick={() => { setShowCodes(false); setSelectedId(activity.id); }} className={`w-full rounded-xl border p-3 text-left ${selectedId === activity.id ? "border-[#0088cc] bg-[#eef7fc]" : "border-[#e6ecf5] bg-white hover:bg-[#f8fafd]"}`}><p className="text-[13px] font-bold text-[#062444]">{activity.name}</p><p className="mt-1 text-[11px] text-slate-400">{formatActivitySchedule(activity.dateTime, activity.endTime)}</p></button>)}</div><div className="rounded-xl border border-[#e6ecf5] bg-white p-4">{!selected ? null : <><div className="flex items-start justify-between gap-3"><div><h3 className="text-[15px] font-bold text-[#062444]">{selected.name}</h3><p className="mt-1 text-[12px] text-slate-500">Use Refresh to retrieve the latest attendance data.</p></div><button onClick={() => void loadAttendance(selected.id)} disabled={loading} className="rounded-lg p-2 text-[#0088cc] hover:bg-[#eef7fc] disabled:opacity-50" aria-label="Refresh attendance"><RefreshCw size={16} /></button></div>{loading ? <p className="py-8 text-[13px] text-slate-400">Loading attendance…</p> : <><div className="mt-4 grid grid-cols-3 gap-2"><div className="rounded-lg bg-[#f8fafd] p-3"><p className="text-[10px] font-bold uppercase text-slate-400">Expected</p><p className="mt-1 text-lg font-extrabold text-[#062444]">{expected ?? "—"}</p></div><div className="rounded-lg bg-green-50 p-3"><p className="text-[10px] font-bold uppercase text-green-600">Present</p><p className="mt-1 text-lg font-extrabold text-green-700">{present}</p></div><div className="rounded-lg bg-orange-50 p-3"><p className="text-[10px] font-bold uppercase text-orange-600">Incomplete</p><p className="mt-1 text-lg font-extrabold text-orange-700">{roster.length - present}</p></div></div><div className="mt-5"><h4 className="mb-2 text-[11px] font-bold uppercase text-slate-400">Live roster</h4>{roster.length === 0 ? <p className="text-[12.5px] text-slate-400">No attendance has been recorded yet.</p> : <div className="space-y-1.5">{roster.map(entry => <div key={entry.scholarIdNumber} className="flex items-center justify-between rounded-lg bg-[#f8fafd] px-3 py-2 text-[12px]"><span className="font-semibold text-[#062444]">{entry.scholarName}</span><span className={entry.status === "present" ? "font-bold text-green-600" : "font-bold text-orange-600"}>{entry.status === "present" ? "Present" : "Incomplete"}</span></div>)}</div>}</div><div className="mt-5 rounded-lg bg-[#f8fafd] p-3"><p className="mb-2 text-[11px] font-semibold text-slate-500">More scholars than expected?</p><div className="flex flex-wrap items-center gap-2"><input type="number" min={1} value={additionalCount} onChange={event => setAdditionalCount(event.target.value)} placeholder="Additional scholars" className="w-48 rounded-lg border border-[#062444]/15 px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" /><button onClick={() => void addCodes()} disabled={addingCodes} className="rounded-lg bg-[#062444] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50">{addingCodes ? "Generating…" : session?.type === "time_in_time_out" ? "Add code pairs" : "Add QR codes"}</button></div>{session?.type === "time_in_time_out" && <p className="mt-2 text-[10.5px] text-slate-400">Each additional scholar receives one time-in and one time-out code.</p>}{codeError && <p className="mt-2 text-[11px] text-red-600">{codeError}</p>}</div><div className="mt-5 flex flex-wrap items-center gap-3"><button onClick={() => setShowCodes(value => !value)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">{showCodes ? "Hide QR codes" : `View QR codes (${codes.length})`}</button><button onClick={downloadCodesCSV} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline"><Download size={13} /> Export CSV</button><button onClick={() => void downloadCodesPDF()} disabled={!codes.length || exportingPdf} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline disabled:opacity-50"><Download size={13} /> {exportingPdf ? "Creating PDF…" : "Download QR PDF"}</button></div>{showCodes && <div className="mt-3 grid max-h-72 grid-cols-2 gap-2 overflow-y-auto p-1 sm:grid-cols-3">{codes.map(code => <div key={code.id} className={`rounded-lg border p-2 text-center ${code.redeemedByScholarId ? "border-green-300 bg-green-50" : "border-[#e6ecf5]"}`}><img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(code.code)}`} alt={`QR code ${code.code}`} className="mx-auto mb-1" width={80} height={80} /><p className="text-[11px] font-mono font-bold text-[#062444]">{code.code}</p><p className="text-[9.5px] uppercase text-slate-400">{code.kind.replace("_", " ")}</p>{code.redeemedByScholarId && <p className="mt-0.5 text-[9px] font-semibold text-green-600">Redeemed</p>}</div>)}</div>}</>}</>}</div></div>;
 }
 
 export function FormationActivitiesTab() {

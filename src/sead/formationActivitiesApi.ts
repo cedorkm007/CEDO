@@ -65,6 +65,24 @@ export async function enableFormationAttendance(activityId: string, type: Attend
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+/** Adds capacity after attendance has been enabled. Time-in/time-out adds a matching pair per scholar. */
+export async function addFormationAttendanceCodes(sessionId: string, type: AttendanceType, participantCount: number): Promise<{ ok: boolean; error?: string }> {
+  if (participantCount < 1) return { ok: false, error: "Enter a number greater than 0." };
+  const codes = type === "time_in_time_out"
+    ? [
+        ...Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "time_in" })),
+        ...Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "time_out" })),
+      ]
+    : Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "voucher" }));
+  const { error: codesError } = await supabase.from("attendance_codes").insert(codes);
+  if (codesError) return { ok: false, error: codesError.message };
+  const { data: session, error: sessionError } = await supabase.from("attendance_sessions").select("expected_attendees").eq("id", sessionId).single();
+  if (sessionError) return { ok: false, error: sessionError.message };
+  const { error: updateError } = await supabase.from("attendance_sessions")
+    .update({ expected_attendees: Number(session.expected_attendees ?? 0) + participantCount }).eq("id", sessionId);
+  return updateError ? { ok: false, error: updateError.message } : { ok: true };
+}
+
 export async function fetchFormationAttendanceSession(activityId: string): Promise<{ session: AttendanceSession; codes: AttendanceCode[] } | null> {
   const { data: row } = await supabase.from("attendance_sessions").select("*").eq("formation_activity_id", activityId).maybeSingle();
   if (!row) return null;
