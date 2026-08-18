@@ -296,7 +296,7 @@ export async function enableAttendanceForActivity(
   }).select("id").single();
   if (sessionError || !session) return { ok: false, error: sessionError?.message || "Failed to create attendance session." };
 
-  const codes: { session_id: string; code: string; kind: string }[] = [];
+  const codes: { session_id: string; code: string; kind: string; batch_number: number }[] = [];
   if (type === "time_in_time_out") {
     for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_in", batch_number: 1 });
     for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_out", batch_number: 1 });
