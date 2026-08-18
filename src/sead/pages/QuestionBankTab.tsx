@@ -52,7 +52,7 @@ export function QuestionBankTab() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(220px,.75fr)_minmax(260px,.9fr)_minmax(480px,2fr)]">
       <SubjectColumn
         subjects={subjects}
         selected={selectedSubject}
@@ -212,7 +212,7 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[600px]">
+    <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[72vh] xl:max-h-[720px]">
       <div className="px-4 py-3 border-b border-[#e6ecf5]">
         <h3 className="text-[12.5px] font-bold text-[#062444]">Subjects</h3>
       </div>
@@ -417,7 +417,7 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[600px]">
+    <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[72vh] xl:max-h-[720px]">
       <div className="px-4 py-3 border-b border-[#e6ecf5]">
         <h3 className="text-[12.5px] font-bold text-[#062444]">Topics — {subject.name}</h3>
         <p className="mt-0.5 text-[10.5px] text-slate-400">Drag a topic box to change its order.</p>
@@ -518,7 +518,7 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelet
   const { paged, search, setSearch, page, setPage, totalPages, filteredCount, pageSize } =
     usePaginatedList(questions, { searchKeys: ["questionText"] });
   return (
-    <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[600px]">
+    <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col min-h-[72vh] max-h-[720px]">
       <div className="px-4 py-3 border-b border-[#e6ecf5] space-y-2">
         <h3 className="text-[12.5px] font-bold text-[#062444] truncate">Questions — {topic.name}</h3>
         <div className="flex items-center gap-3 flex-wrap">
