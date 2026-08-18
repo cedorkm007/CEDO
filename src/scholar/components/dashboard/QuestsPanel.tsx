@@ -310,9 +310,9 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
             </div>
 
             {/* Two-column at desktop widths (question card + side materials card); stacks vertically below lg. */}
-            <div className={hasMaterials ? "lg:grid lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start lg:gap-5" : ""}>
+            <div className={hasMaterials ? "lg:grid lg:grid-cols-2 lg:items-start lg:gap-5" : ""}>
               {hasMaterials && (
-                <div className="mb-5 lg:order-2 lg:mb-0 lg:max-w-[21rem]">
+                <div className="mb-5 min-w-0 lg:order-2 lg:mb-0">
                   <MaterialsPanel
                     topic={step.topic}
                     open={openMaterials}
