@@ -77,6 +77,12 @@ export interface NewApprovedActivityInput {
   nature: string[];
 }
 
+function localDateTimeToIso(value: string): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
+}
+
 /** Staff can create an activity directly (no scholar proposal), open to all — starts 'approved'. */
 export async function createApprovedActivity(input: NewApprovedActivityInput): Promise<{ ok: boolean; error?: string; id?: string }> {
   const { data, error } = await supabase.from("sdp_activities").insert({
@@ -84,7 +90,7 @@ export async function createApprovedActivity(input: NewApprovedActivityInput): P
     submitted_by_scholar_id: null,
     category: input.category,
     organization: input.organization,
-    date_time: input.dateTime || null,
+    date_time: localDateTimeToIso(input.dateTime),
     venue: input.venue,
     nature: input.nature,
     status: "approved",

@@ -12,12 +12,22 @@ function formatActivitySchedule(dateTime: string, endTime: string | null): strin
   return `${start.toLocaleDateString()} · ${start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} – ${new Date(endTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
 
+function localDatePart(value: string): string {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function localTimePart(value: string): string {
+  const date = new Date(value);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
 function FormationActivityModal({ activity, onClose, onCreated }: { activity: FormationActivity | null; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState(activity?.name ?? "");
   const [shortDescription, setShortDescription] = useState(activity?.shortDescription ?? "");
-  const [date, setDate] = useState(activity?.dateTime.slice(0, 10) ?? "");
-  const [startTime, setStartTime] = useState(activity?.dateTime.slice(11, 16) ?? "");
-  const [endTime, setEndTime] = useState(activity?.endTime?.slice(11, 16) ?? "");
+  const [date, setDate] = useState(activity ? localDatePart(activity.dateTime) : "");
+  const [startTime, setStartTime] = useState(activity ? localTimePart(activity.dateTime) : "");
+  const [endTime, setEndTime] = useState(activity?.endTime ? localTimePart(activity.endTime) : "");
   const [venue, setVenue] = useState(activity?.venue ?? "");
   const [yearLevels, setYearLevels] = useState<string[]>(activity?.yearLevels ?? []);
   const [allYearLevels, setAllYearLevels] = useState(activity?.allYearLevels ?? false);

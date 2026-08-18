@@ -4,6 +4,12 @@ import type { AttendanceType, AttendanceCode, AttendanceSession } from "./sdpMon
 
 export type NewFormationActivityInput = Pick<FormationActivity, "name" | "shortDescription" | "dateTime" | "endTime" | "venue" | "yearLevels" | "allYearLevels" | "attendanceEnabled">;
 
+function localDateTimeToIso(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
+}
+
 function rowToActivity(row: Record<string, unknown>): FormationActivity {
   return {
     id: String(row.id), name: String(row.name ?? ""), shortDescription: String(row.short_description ?? ""),
@@ -23,7 +29,7 @@ export async function fetchFormationActivities(): Promise<FormationActivity[]> {
 export async function createFormationActivity(input: NewFormationActivityInput): Promise<{ ok: boolean; error?: string; id?: string }> {
   const { data: auth } = await supabase.auth.getUser();
   const { data, error } = await supabase.from("formation_activities").insert({
-    name: input.name, short_description: input.shortDescription, date_time: input.dateTime, end_time: input.endTime, venue: input.venue,
+    name: input.name, short_description: input.shortDescription, date_time: localDateTimeToIso(input.dateTime), end_time: localDateTimeToIso(input.endTime), venue: input.venue,
     target_year_levels: input.yearLevels, all_year_levels: input.allYearLevels, attendance_enabled: input.attendanceEnabled,
     created_by: auth.user?.id ?? null,
   }).select("id").single();
@@ -32,7 +38,7 @@ export async function createFormationActivity(input: NewFormationActivityInput):
 
 export async function updateFormationActivity(id: string, input: NewFormationActivityInput): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.from("formation_activities").update({
-    name: input.name, short_description: input.shortDescription, date_time: input.dateTime, end_time: input.endTime, venue: input.venue,
+    name: input.name, short_description: input.shortDescription, date_time: localDateTimeToIso(input.dateTime), end_time: localDateTimeToIso(input.endTime), venue: input.venue,
     target_year_levels: input.yearLevels, all_year_levels: input.allYearLevels, attendance_enabled: input.attendanceEnabled,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
