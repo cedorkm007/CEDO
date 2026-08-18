@@ -6,19 +6,25 @@ alter table public.attendance_sessions add column if not exists formation_activi
 alter table public.attendance_sessions alter column sdp_activity_id drop not null;
 create unique index if not exists attendance_sessions_formation_activity_unique on public.attendance_sessions (formation_activity_id);
 
+-- Earlier deployments used chk_attendance_session_source. Remove both
+-- versions before applying the rule that supports SDP and Formation sessions.
+alter table public.attendance_sessions drop constraint if exists chk_attendance_session_source;
 alter table public.attendance_sessions drop constraint if exists attendance_sessions_exactly_one_activity;
 alter table public.attendance_sessions add constraint attendance_sessions_exactly_one_activity
   check (num_nonnulls(sdp_activity_id, formation_activity_id) = 1);
 
 drop policy if exists "sdp monitors manage attendance sessions" on public.attendance_sessions;
+drop policy if exists "cedo monitors manage attendance sessions" on public.attendance_sessions;
 create policy "cedo monitors manage attendance sessions" on public.attendance_sessions for all
   using (public.is_sead_staff() or exists (select 1 from public.staff_account_tags where staff_id = auth.uid() and tag_key = 'sdp_monitoring'))
   with check (public.is_sead_staff() or exists (select 1 from public.staff_account_tags where staff_id = auth.uid() and tag_key = 'sdp_monitoring'));
 drop policy if exists "sdp monitors manage attendance codes" on public.attendance_codes;
+drop policy if exists "cedo monitors manage attendance codes" on public.attendance_codes;
 create policy "cedo monitors manage attendance codes" on public.attendance_codes for all
   using (public.is_sead_staff() or exists (select 1 from public.staff_account_tags where staff_id = auth.uid() and tag_key = 'sdp_monitoring'))
   with check (public.is_sead_staff() or exists (select 1 from public.staff_account_tags where staff_id = auth.uid() and tag_key = 'sdp_monitoring'));
 drop policy if exists "sdp monitors read attendance records" on public.attendance_records;
+drop policy if exists "cedo monitors read attendance records" on public.attendance_records;
 create policy "cedo monitors read attendance records" on public.attendance_records for select
   using (public.is_sead_staff() or exists (select 1 from public.staff_account_tags where staff_id = auth.uid() and tag_key = 'sdp_monitoring'));
 
