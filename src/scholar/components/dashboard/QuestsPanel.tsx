@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { ComponentType } from "react";
 import { motion } from "motion/react";
 import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download, Maximize2, RotateCw, BookOpen, FileText, File, ExternalLink, Star } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, getSlideEmbed, getPdfEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
@@ -523,10 +523,8 @@ function MaterialsPanel({ topic, open, onToggle, onExpandVideo }: {
   );
 }
 
-type IconComponent = ComponentType<{ size?: number; className?: string }>;
-
 /** Compact icon+label toggle. Only rendered when its resource URL exists; clicking it opens the matching panel below, clicking again collapses back to icon-only. */
-function MaterialIconButton({ icon: Icon, label, active, onClick }: { icon: IconComponent; label: string; active: boolean; onClick: () => void }) {
+function MaterialIconButton({ icon: Icon, label, active, onClick }: { icon: LucideIcon; label: string; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -543,7 +541,7 @@ function MaterialIconButton({ icon: Icon, label, active, onClick }: { icon: Icon
 }
 
 /** Bounded "open in new tab" fallback shown for every resource — used as the only affordance when a provider can't be embedded, and alongside the embed otherwise, so a blocked/broken frame never leaves the scholar stuck. */
-function FallbackLink({ href, icon: Icon, label, className = "" }: { href: string; icon: IconComponent; label: string; className?: string }) {
+function FallbackLink({ href, icon: Icon, label, className = "" }: { href: string; icon: LucideIcon; label: string; className?: string }) {
   return (
     <a
       href={href}
