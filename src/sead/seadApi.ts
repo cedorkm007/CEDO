@@ -583,6 +583,30 @@ export async function resetScholarPassword(scholarIdNumber: string): Promise<{ o
   return { ok: true, name: result.data?.name };
 }
 
+export interface ResetAllPasswordsResult {
+  ok: boolean;
+  error?: string;
+  total?: number;
+  succeeded?: number;
+  failed?: number;
+  failures?: { scholarIdNumber: string; error: string }[];
+}
+
+/** Resets EVERY scholar's password (not just the current page/search results) back to the shared default. */
+export async function resetAllScholarPasswords(): Promise<ResetAllPasswordsResult> {
+  const result = await invokeEdgeFunction<{ total?: number; succeeded?: number; failed?: number; failures?: { scholarIdNumber: string; error: string }[] }>(
+    "sead-reset-all-scholar-passwords", {}
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  return {
+    ok: true,
+    total: result.data?.total,
+    succeeded: result.data?.succeeded,
+    failed: result.data?.failed,
+    failures: result.data?.failures,
+  };
+}
+
 // ── Scholar account history (audit log) ──────────────────────
 export interface ScholarLogFilters {
   search?: string;      // matches scholar id number or name
