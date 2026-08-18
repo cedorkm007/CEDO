@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud, Youtube, FileCheck2, FileUp, Eye } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud, Video, Presentation, FileCheck2, FileUp, Eye } from "lucide-react";
 import {
   fetchSubjects, createSubject, renameSubject, deleteSubject, updateSubjectMaxAttempts,
   updateSubjectPassingRate, uploadSubjectCertificate, removeSubjectCertificate, fetchCertificatePreviewUrl,
   fetchTopics, createTopic, updateTopic, deleteTopic, reorderTopics,
   fetchQuestions, deleteQuestion, toggleQuestionActive,
 } from "../seadApi";
+import { isValidHttpsUrl } from "@/lib/urlValidation";
 import { QuestionEditorModal } from "../components/QuestionEditorModal";
 import { BulkQuestionUploadModal } from "../components/BulkQuestionUploadModal";
 import type { QuestSubject, QuestTopic, QuestQuestion } from "../types";
@@ -73,9 +74,9 @@ export function QuestionBankTab() {
         topics={topics}
         selected={selectedTopic}
         onSelect={selectTopic}
-        onCreate={async (name, maxAttemptsPerDay, youtubeUrl) => {
+        onCreate={async (name, maxAttemptsPerDay, videoUrl, slideUrl) => {
           if (!selectedSubject) return { ok: false, error: "Select a subject first." };
-          const r = await createTopic(selectedSubject.id, name, maxAttemptsPerDay, youtubeUrl);
+          const r = await createTopic(selectedSubject.id, name, maxAttemptsPerDay, videoUrl, slideUrl);
           reloadTopics();
           return r;
         }}
@@ -331,18 +332,20 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
 // ── Column: Topics ──────────────────────────────────────────
 function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, onReorder, onDelete }: {
   subject: QuestSubject | null; topics: QuestTopic[]; selected: QuestTopic | null; onSelect: (t: QuestTopic) => void;
-  onCreate: (name: string, maxAttemptsPerDay: number | null, youtubeUrl: string) => Promise<{ ok: boolean; error?: string }>;
-  onUpdate: (id: string, fields: { name: string; maxAttemptsPerDay: number | null; youtubeUrl: string }) => Promise<{ ok: boolean; error?: string }>;
+  onCreate: (name: string, maxAttemptsPerDay: number | null, videoUrl: string, slideUrl: string) => Promise<{ ok: boolean; error?: string }>;
+  onUpdate: (id: string, fields: { name: string; maxAttemptsPerDay: number | null; videoUrl: string; slideUrl: string }) => Promise<{ ok: boolean; error?: string }>;
   onReorder: (orderedTopicIds: string[]) => Promise<{ ok: boolean; error?: string }>;
   onDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [newName, setNewName] = useState("");
   const [newMaxAttempts, setNewMaxAttempts] = useState(""); // blank = inherit subject default
-  const [newYoutubeUrl, setNewYoutubeUrl] = useState("");
+  const [newVideoUrl, setNewVideoUrl] = useState("");
+  const [newSlideUrl, setNewSlideUrl] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editMaxAttempts, setEditMaxAttempts] = useState("");
-  const [editYoutubeUrl, setEditYoutubeUrl] = useState("");
+  const [editVideoUrl, setEditVideoUrl] = useState("");
+  const [editSlideUrl, setEditSlideUrl] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [draggedTopicId, setDraggedTopicId] = useState<string | null>(null);
@@ -365,18 +368,22 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
     if (!newName.trim()) return;
     const attempts = parseAttempts(newMaxAttempts);
     if (!attempts.ok) { setError("Attempts override must be at least 1, or left blank to use the subject's default."); return; }
+    if (!isValidHttpsUrl(newVideoUrl)) { setError("Video URL must be a valid https:// link."); return; }
+    if (!isValidHttpsUrl(newSlideUrl)) { setError("Slide deck URL must be a valid https:// link."); return; }
     setBusy(true);
-    const result = await onCreate(newName.trim(), attempts.value, newYoutubeUrl.trim());
+    const result = await onCreate(newName.trim(), attempts.value, newVideoUrl.trim(), newSlideUrl.trim());
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save — check that this account is authorized."); return; }
-    setNewName(""); setNewMaxAttempts(""); setNewYoutubeUrl("");
+    setNewName(""); setNewMaxAttempts(""); setNewVideoUrl(""); setNewSlideUrl("");
   }
 
   async function submitEdit(id: string) {
     setError("");
     const attempts = parseAttempts(editMaxAttempts);
     if (!attempts.ok) { setError("Attempts override must be at least 1, or left blank to use the subject's default."); return; }
-    const result = await onUpdate(id, { name: editName.trim(), maxAttemptsPerDay: attempts.value, youtubeUrl: editYoutubeUrl.trim() });
+    if (!isValidHttpsUrl(editVideoUrl)) { setError("Video URL must be a valid https:// link."); return; }
+    if (!isValidHttpsUrl(editSlideUrl)) { setError("Slide deck URL must be a valid https:// link."); return; }
+    const result = await onUpdate(id, { name: editName.trim(), maxAttemptsPerDay: attempts.value, videoUrl: editVideoUrl.trim(), slideUrl: editSlideUrl.trim() });
     if (!result.ok) { setError(result.error || "Failed to save."); return; }
     setEditingId(null);
   }
@@ -435,7 +442,9 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
                       placeholder={`${subject.maxAttemptsPerDay} (default)`}
                       className="w-24 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
                   </div>
-                  <input value={editYoutubeUrl} onChange={e => setEditYoutubeUrl(e.target.value)} placeholder="YouTube or Google Drive video URL (optional)"
+                  <input value={editVideoUrl} onChange={e => setEditVideoUrl(e.target.value)} placeholder="Video URL — YouTube, Google Drive, etc. (optional)"
+                    className="w-full text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
+                  <input value={editSlideUrl} onChange={e => setEditSlideUrl(e.target.value)} placeholder="Slide deck URL — Google Slides, Canva, etc. (optional)"
                     className="w-full text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
                   <div className="flex items-center gap-2">
                     <button onClick={() => submitEdit(t.id)} className="text-green-600"><Check size={15} /></button>
@@ -450,13 +459,14 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
                     <span className="ml-2 text-[10.5px] font-semibold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">
                       {t.maxAttemptsPerDay ?? subject.maxAttemptsPerDay}/day{t.maxAttemptsPerDay === null ? " (default)" : ""}
                     </span>
-                    {t.youtubeUrl && <Youtube size={12} className="inline-block ml-1.5 text-red-500 align-text-bottom" />}
+                    {t.videoUrl && <Video size={12} className="inline-block ml-1.5 text-red-500 align-text-bottom" aria-label="Has a video resource" />}
+                    {t.slideUrl && <Presentation size={12} className="inline-block ml-1 text-[#0088cc] align-text-bottom" aria-label="Has a slide deck resource" />}
                   </div>
                   <button onClick={e => {
                     e.stopPropagation();
                     setEditingId(t.id); setEditName(t.name);
                     setEditMaxAttempts(t.maxAttemptsPerDay === null ? "" : String(t.maxAttemptsPerDay));
-                    setEditYoutubeUrl(t.youtubeUrl); setError("");
+                    setEditVideoUrl(t.videoUrl); setEditSlideUrl(t.slideUrl); setError("");
                   }} className="text-slate-300 hover:text-[#0088cc]"><Pencil size={13} /></button>
                   <button onClick={e => { e.stopPropagation(); handleDelete(t.id); }} className="text-slate-300 hover:text-red-500"><Trash2 size={13} /></button>
                 </div>
@@ -475,9 +485,11 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
             placeholder={`${subject.maxAttemptsPerDay} (default)`}
             className="w-28 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
         </div>
-        <input value={newYoutubeUrl} onChange={e => setNewYoutubeUrl(e.target.value)} placeholder="YouTube or Google Drive video URL (optional)" disabled={busy}
+        <input value={newVideoUrl} onChange={e => setNewVideoUrl(e.target.value)} placeholder="Video URL — YouTube, Google Drive, etc. (optional)" disabled={busy}
           className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
-        <p className="text-[10.5px] text-slate-400 px-1">Google Drive videos must be shared as “Anyone with the link.”</p>
+        <input value={newSlideUrl} onChange={e => setNewSlideUrl(e.target.value)} placeholder="Slide deck URL — Google Slides, Canva, etc. (optional)" disabled={busy}
+          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
+        <p className="text-[10.5px] text-slate-400 px-1">Google Drive videos must be shared as “Anyone with the link.” Both links must start with https://.</p>
         <button type="submit" disabled={busy} className="w-full flex items-center justify-center gap-1.5 bg-[#062444] text-[#F3BC00] rounded-lg p-2 disabled:opacity-50">
           <Plus size={15} /> Add Topic
         </button>

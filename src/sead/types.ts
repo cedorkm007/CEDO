@@ -13,7 +13,8 @@ export interface QuestTopic {
   name: string;
   sortOrder: number;
   maxAttemptsPerDay: number | null; // null = inherit the subject's default
-  youtubeUrl: string; // YouTube or Google Drive lecture URL; "" if none set
+  videoUrl: string; // YouTube, Google Drive, or any HTTPS video URL; "" if none set
+  slideUrl: string; // Google Slides, Canva, or any HTTPS slide-deck URL; "" if none set
 }
 
 export interface QuestChoiceDraft {

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { isValidHttpsUrl } from "@/lib/urlValidation";
 import type { QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, ScholarListItem, ScholarAccountLogEntry, ScoreRow } from "./types";
 
 /**
@@ -218,17 +219,24 @@ export async function fetchTopics(subjectId: string): Promise<QuestTopic[]> {
   return data.map(r => ({
     id: r.id, subjectId: r.subject_id, name: r.name, sortOrder: Number(r.sort_order ?? 0),
     maxAttemptsPerDay: r.max_attempts_per_day === null || r.max_attempts_per_day === undefined ? null : Number(r.max_attempts_per_day),
-    youtubeUrl: r.youtube_url ?? "",
+    videoUrl: r.video_url ?? "",
+    slideUrl: r.slide_url ?? "",
   }));
 }
 
 export async function createTopic(
-  subjectId: string, name: string, maxAttemptsPerDay: number | null, youtubeUrl: string
+  subjectId: string, name: string, maxAttemptsPerDay: number | null, videoUrl: string, slideUrl: string
 ): Promise<{ ok: boolean; error?: string }> {
+  if (!isValidHttpsUrl(videoUrl)) return { ok: false, error: "Video URL must be a valid https:// link." };
+  if (!isValidHttpsUrl(slideUrl)) return { ok: false, error: "Slide deck URL must be a valid https:// link." };
   const { data: lastTopic } = await supabase.from("quest_topics")
     .select("sort_order").eq("subject_id", subjectId).order("sort_order", { ascending: false }).limit(1).maybeSingle();
   const { error } = await supabase.from("quest_topics")
-    .insert({ subject_id: subjectId, name, max_attempts_per_day: maxAttemptsPerDay, youtube_url: youtubeUrl || null, sort_order: Number(lastTopic?.sort_order ?? -1) + 1 });
+    .insert({
+      subject_id: subjectId, name, max_attempts_per_day: maxAttemptsPerDay,
+      video_url: videoUrl.trim() || null, slide_url: slideUrl.trim() || null,
+      sort_order: Number(lastTopic?.sort_order ?? -1) + 1,
+    });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
@@ -240,13 +248,16 @@ export async function reorderTopics(orderedTopicIds: string[]): Promise<{ ok: bo
 }
 
 export async function updateTopic(
-  id: string, fields: { name: string; maxAttemptsPerDay: number | null; youtubeUrl: string }
+  id: string, fields: { name: string; maxAttemptsPerDay: number | null; videoUrl: string; slideUrl: string }
 ): Promise<{ ok: boolean; error?: string }> {
+  if (!isValidHttpsUrl(fields.videoUrl)) return { ok: false, error: "Video URL must be a valid https:// link." };
+  if (!isValidHttpsUrl(fields.slideUrl)) return { ok: false, error: "Slide deck URL must be a valid https:// link." };
   const { error } = await supabase.from("quest_topics")
     .update({
       name: fields.name,
       max_attempts_per_day: fields.maxAttemptsPerDay,
-      youtube_url: fields.youtubeUrl || null,
+      video_url: fields.videoUrl.trim() || null,
+      slide_url: fields.slideUrl.trim() || null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);

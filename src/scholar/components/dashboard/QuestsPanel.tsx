@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, Play, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download, Maximize2, RotateCw } from "lucide-react";
+import { Trophy, Info, ChevronRight, ChevronLeft, ChevronDown, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download, Maximize2, RotateCw, BookOpen, FileText, ExternalLink } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
@@ -36,6 +36,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
   const [submitting, setSubmitting] = useState(false);
   const [activeLecture, setActiveLecture] = useState<{ name: string; src: string } | null>(null);
   const lecturePlayerRef = useRef<HTMLDivElement>(null);
+  const [reviewMaterialsOpen, setReviewMaterialsOpen] = useState(false);
   const [browseTab, setBrowseTab] = useState<"subject" | "history">("subject");
   const [historyDateFilter, setHistoryDateFilter] = useState(() => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }));
   const [subjectProgress, setSubjectProgress] = useState<{ percentage: number; topicCount: number } | null>(null);
@@ -105,6 +106,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
     setLoading(false);
     if (!result.ok) { setError(result.error); return; }
     setAnswers({});
+    setReviewMaterialsOpen(false);
     setStep({ view: "quiz", subject, topic, questions: result.questions, index: 0 });
   }
 
@@ -231,7 +233,6 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
             <div className="space-y-2 mt-3">
               {topics.map(t => {
                 const exhausted = t.attemptsUsedToday >= t.maxAttemptsPerDay;
-                const lectureEmbed = t.youtubeUrl ? getLectureEmbed(t.youtubeUrl) : null;
                 return (
                   <div key={t.id} className="border border-[#e8edf2] rounded-lg overflow-hidden flex bg-[#f8fafd]">
                     <button
@@ -247,22 +248,6 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
                       </span>
                       {exhausted ? <Lock size={15} className="text-slate-300 shrink-0" /> : <ChevronRight size={15} className="text-[#0088cc] shrink-0" />}
                     </button>
-
-                    {lectureEmbed && (
-                      <button
-                        onClick={() => setActiveLecture({ name: t.name, src: lectureEmbed.src })}
-                        className="shrink-0 self-stretch flex flex-col sm:flex-row items-center justify-center gap-1.5 border-l border-[#e6ecf5] bg-white hover:bg-[#fbf7ea] active:bg-[#f5edda] px-3 sm:px-4 text-[#062444] transition-colors"
-                        aria-label={`Watch short lecture for ${t.name}`}
-                        title="Watch short lecture"
-                      >
-                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F3BC00] p-[3px] shadow-[0_2px_5px_rgba(6,36,68,0.28)] ring-1 ring-[#9b721b]">
-                          <span className="flex h-full w-full items-center justify-center rounded-full border border-[#c99831] bg-gradient-to-br from-[#173f6b] to-[#062444] text-[#f8f5ed] shadow-inner">
-                            <Play size={15} fill="currentColor" strokeWidth={2.25} className="ml-0.5 drop-shadow-sm" />
-                          </span>
-                        </span>
-                        <span className="text-[10px] sm:text-[12px] font-extrabold leading-tight text-center">Watch<br className="sm:hidden" /> video</span>
-                      </button>
-                    )}
                   </div>
                 );
               })}
@@ -283,11 +268,61 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
               <h4 className="text-[15px] font-extrabold text-[#062444]">{step.topic.name}</h4>
               <span className="text-[12px] font-semibold text-slate-400">Question {step.index + 1} of {step.questions.length}</span>
             </div>
-            <div className="flex gap-1 mb-6">
+            <div className="flex gap-1 mb-4">
               {step.questions.map((_, i) => (
                 <span key={i} className={`h-1.5 flex-1 rounded-full ${i <= step.index ? "bg-[#0088cc]" : "bg-[#e6ecf5]"}`} />
               ))}
             </div>
+
+            {(step.topic.slideUrl || step.topic.videoUrl) && (
+              <div className="mb-5 rounded-xl border border-[#e6ecf5] bg-[#f8fafd] overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setReviewMaterialsOpen(o => !o)}
+                  aria-expanded={reviewMaterialsOpen}
+                  aria-controls="review-materials-panel"
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-[12.5px] font-bold text-[#062444]"
+                >
+                  <span className="flex items-center gap-1.5"><BookOpen size={14} className="text-[#0088cc]" /> Review Materials</span>
+                  <ChevronDown size={15} className={`text-slate-400 transition-transform ${reviewMaterialsOpen ? "rotate-180" : ""}`} />
+                </button>
+                {reviewMaterialsOpen && (
+                  <div id="review-materials-panel" role="region" aria-label="Review materials for this topic" className="flex flex-wrap gap-2 px-4 pb-3">
+                    {step.topic.slideUrl && (
+                      <a
+                        href={step.topic.slideUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 hover:border-[#0088cc]/40 hover:bg-[#eef3fb] transition-colors"
+                      >
+                        <FileText size={14} className="text-[#0088cc]" /> View Slides <ExternalLink size={12} className="text-slate-400" />
+                      </a>
+                    )}
+                    {step.topic.videoUrl && (() => {
+                      const embed = getLectureEmbed(step.topic.videoUrl);
+                      return embed ? (
+                        <button
+                          type="button"
+                          onClick={() => setActiveLecture({ name: step.topic.name, src: embed.src })}
+                          className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 hover:border-[#0088cc]/40 hover:bg-[#eef3fb] transition-colors"
+                        >
+                          <PlayCircle size={14} className="text-[#0088cc]" /> Watch Video
+                        </button>
+                      ) : (
+                        <a
+                          href={step.topic.videoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 hover:border-[#0088cc]/40 hover:bg-[#eef3fb] transition-colors"
+                        >
+                          <PlayCircle size={14} className="text-[#0088cc]" /> Watch Video <ExternalLink size={12} className="text-slate-400" />
+                        </a>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
 
             {error && <ErrorBox message={error} />}
 
@@ -372,9 +407,9 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
             ))}
           </div>
 
-          <button onClick={() => setStep({ view: "browse" })}
+          <button onClick={() => { setStep({ view: "topics", subject: step.subject }); reloadTopics(step.subject); }}
             className="w-full bg-[#062444] text-white font-semibold text-sm rounded-xl py-3">
-            Back to Quests
+            Back to Topics
           </button>
         </div>
       )}

@@ -49,12 +49,12 @@ export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string
       .eq("date_taken", new Date().toISOString().slice(0, 10)),
   ]);
   let { data: topics, error: topicsError } = await supabase.from("quest_topics")
-    .select("id, subject_id, name, max_attempts_per_day, youtube_url").eq("subject_id", subjectId).order("sort_order").order("name");
+    .select("id, subject_id, name, max_attempts_per_day, video_url, slide_url").eq("subject_id", subjectId).order("sort_order").order("name");
   // Existing Supabase projects may receive this app deployment before the
   // migration that adds sort_order. Keep their existing topics available.
   if (topicsError) {
     const fallback = await supabase.from("quest_topics")
-      .select("id, subject_id, name, max_attempts_per_day, youtube_url").eq("subject_id", subjectId).order("name");
+      .select("id, subject_id, name, max_attempts_per_day, video_url, slide_url").eq("subject_id", subjectId).order("name");
     topics = fallback.data;
     topicsError = fallback.error;
   }
@@ -70,7 +70,8 @@ export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string
 
   return topics.map(t => ({
     id: t.id, subjectId: t.subject_id, name: t.name,
-    youtubeUrl: t.youtube_url ?? "",
+    videoUrl: t.video_url ?? "",
+    slideUrl: t.slide_url ?? "",
     maxAttemptsPerDay: t.max_attempts_per_day === null || t.max_attempts_per_day === undefined ? subjectDefault : Number(t.max_attempts_per_day),
     attemptsUsedToday: usedTodayByTopic.get(t.id) ?? 0,
   }));
