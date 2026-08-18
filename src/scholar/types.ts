@@ -75,6 +75,15 @@ export interface QuizTopic {
   slideUrl: string; // Google Slides, Canva, or any HTTPS slide-deck URL; "" if none attached
   maxAttemptsPerDay: number; // effective limit — topic override, else the subject's default
   attemptsUsedToday: number;
+  // ── Best-attempt summary, from the scholar's own scholar_quest_scores rows for this topic ──
+  highestScore: number | null; // raw points of the best attempt; null if never attempted
+  highestMaxScore: number | null; // points possible on that best attempt; null if never attempted
+  highestPercentage: number | null; // best (score/maxScore)*100, rounded; null if never attempted
+  // True once highestPercentage falls inside the topic's SUBJECT's passing_rate_min..max —
+  // the exact same range/rule scholar_subject_progress already uses to gate the certificate,
+  // just evaluated per-topic instead of averaged across the whole subject.
+  isCompleted: boolean;
+  isPerfectScore: boolean; // true when highestPercentage === 100
 }
 
 export interface QuizChoice {

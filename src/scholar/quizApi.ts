@@ -38,15 +38,26 @@ export async function fetchOwnCertificateUrl(subjectId: string): Promise<{ ok: b
  * the scholar's own scores (already readable under existing RLS — "scholar
  * reads own quest scores"), same approach the old subject-level version
  * used, just grouped by topic_id instead of subject_id.
+ *
+ * highestScore/highestPercentage/isCompleted/isPerfectScore reuse those same
+ * scholar_quest_scores rows (all-time, not just today) — no new table or
+ * duplicated record. "Completed" reuses the exact passing_rate_min..max
+ * range already defined on the subject (the same range
+ * scholar_subject_progress uses to gate the certificate), just applied to
+ * one topic's own best percentage instead of the subject-wide average.
  */
 export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string): Promise<QuizTopic[]> {
-  const [{ data: subject }, { data: todayScores }] = await Promise.all([
-    supabase.from("quest_subjects").select("max_attempts_per_day").eq("id", subjectId).maybeSingle(),
+  const [{ data: subject }, { data: todayScores }, { data: allScores }] = await Promise.all([
+    supabase.from("quest_subjects").select("max_attempts_per_day, passing_rate_min, passing_rate_max").eq("id", subjectId).maybeSingle(),
     supabase.from("scholar_quest_scores")
       .select("topic_id")
       .eq("scholar_id_number", scholarIdNumber)
       .eq("subject_id", subjectId)
       .eq("date_taken", new Date().toISOString().slice(0, 10)),
+    supabase.from("scholar_quest_scores")
+      .select("topic_id, score, max_score")
+      .eq("scholar_id_number", scholarIdNumber)
+      .eq("subject_id", subjectId),
   ]);
   let { data: topics, error: topicsError } = await supabase.from("quest_topics")
     .select("id, subject_id, name, max_attempts_per_day, video_url, slide_url").eq("subject_id", subjectId).order("sort_order").order("name");
@@ -66,15 +77,42 @@ export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string
     usedTodayByTopic.set(row.topic_id, (usedTodayByTopic.get(row.topic_id) ?? 0) + 1);
   }
 
-  const subjectDefault = Number(subject?.max_attempts_per_day ?? 1);
+  // Best (highest-percentage) attempt per topic, from every attempt the
+  // scholar has ever made on it — mirrors the "best_pct" subquery in the
+  // scholar_subject_progress view, just kept per-topic instead of averaged.
+  const bestByTopic = new Map<string, { score: number; maxScore: number; percentage: number }>();
+  for (const row of allScores ?? []) {
+    if (!row.topic_id) continue;
+    const maxScore = Number(row.max_score ?? 0);
+    if (!maxScore) continue; // avoid divide-by-zero on malformed rows
+    const score = Number(row.score ?? 0);
+    const percentage = (score / maxScore) * 100;
+    const existing = bestByTopic.get(row.topic_id);
+    if (!existing || percentage > existing.percentage) {
+      bestByTopic.set(row.topic_id, { score, maxScore, percentage });
+    }
+  }
 
-  return topics.map(t => ({
-    id: t.id, subjectId: t.subject_id, name: t.name,
-    videoUrl: t.video_url ?? "",
-    slideUrl: t.slide_url ?? "",
-    maxAttemptsPerDay: t.max_attempts_per_day === null || t.max_attempts_per_day === undefined ? subjectDefault : Number(t.max_attempts_per_day),
-    attemptsUsedToday: usedTodayByTopic.get(t.id) ?? 0,
-  }));
+  const subjectDefault = Number(subject?.max_attempts_per_day ?? 1);
+  const passingRateMin = Number(subject?.passing_rate_min ?? 75);
+  const passingRateMax = Number(subject?.passing_rate_max ?? 100);
+
+  return topics.map(t => {
+    const best = bestByTopic.get(t.id);
+    const highestPercentage = best ? best.percentage : null;
+    return {
+      id: t.id, subjectId: t.subject_id, name: t.name,
+      videoUrl: t.video_url ?? "",
+      slideUrl: t.slide_url ?? "",
+      maxAttemptsPerDay: t.max_attempts_per_day === null || t.max_attempts_per_day === undefined ? subjectDefault : Number(t.max_attempts_per_day),
+      attemptsUsedToday: usedTodayByTopic.get(t.id) ?? 0,
+      highestScore: best ? best.score : null,
+      highestMaxScore: best ? best.maxScore : null,
+      highestPercentage,
+      isCompleted: highestPercentage !== null && highestPercentage >= passingRateMin && highestPercentage <= passingRateMax,
+      isPerfectScore: highestPercentage !== null && highestPercentage >= 100,
+    };
+  });
 }
 
 export async function startQuizAttempt(topicId: string): Promise<

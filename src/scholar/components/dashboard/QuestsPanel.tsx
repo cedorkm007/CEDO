@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { Trophy, Info, ChevronRight, ChevronLeft, ChevronDown, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download, Maximize2, RotateCw, BookOpen, FileText, ExternalLink } from "lucide-react";
+import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download, Maximize2, RotateCw, BookOpen, FileText, ExternalLink, Star } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
@@ -36,7 +36,6 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
   const [submitting, setSubmitting] = useState(false);
   const [activeLecture, setActiveLecture] = useState<{ name: string; src: string } | null>(null);
   const lecturePlayerRef = useRef<HTMLDivElement>(null);
-  const [reviewMaterialsOpen, setReviewMaterialsOpen] = useState(false);
   const [browseTab, setBrowseTab] = useState<"subject" | "history">("subject");
   const [historyDateFilter, setHistoryDateFilter] = useState(() => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }));
   const [subjectProgress, setSubjectProgress] = useState<{ percentage: number; topicCount: number } | null>(null);
@@ -106,7 +105,6 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
     setLoading(false);
     if (!result.ok) { setError(result.error); return; }
     setAnswers({});
-    setReviewMaterialsOpen(false);
     setStep({ view: "quiz", subject, topic, questions: result.questions, index: 0 });
   }
 
@@ -234,19 +232,40 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
               {topics.map(t => {
                 const exhausted = t.attemptsUsedToday >= t.maxAttemptsPerDay;
                 return (
-                  <div key={t.id} className="border border-[#e8edf2] rounded-lg overflow-hidden flex bg-[#f8fafd]">
+                  <div key={t.id} className={`border rounded-lg overflow-hidden flex relative ${t.isCompleted ? "border-green-200 bg-green-50" : "border-[#e8edf2] bg-[#f8fafd]"}`}>
                     <button
                       onClick={() => !exhausted && beginQuiz(step.subject, t)}
                       disabled={exhausted}
-                      className="min-w-0 flex-1 flex items-center justify-between hover:bg-[#eef3fb] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-3.5 text-left transition-colors"
+                      className={`min-w-0 flex-1 flex flex-col gap-1.5 hover:bg-[#eef3fb] disabled:cursor-not-allowed px-4 py-3.5 text-left transition-colors ${exhausted ? "opacity-60" : ""}`}
                     >
-                      <span>
-                        <span className="text-sm font-semibold text-[#062444] block">{t.name}</span>
-                        <span className={`text-[11px] font-medium ${exhausted ? "text-red-500" : "text-slate-400"}`}>
-                          {t.attemptsUsedToday}/{t.maxAttemptsPerDay} attempts today
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 flex items-center gap-1.5 flex-wrap">
+                          {t.isCompleted && <CheckCircle2 size={15} className="text-green-600 shrink-0" />}
+                          <span className={`text-sm font-semibold ${t.isCompleted ? "text-green-800" : "text-[#062444]"}`}>{t.name}</span>
+                          {t.isPerfectScore && (
+                            <span className="shrink-0 inline-flex items-center gap-1 text-[9.5px] font-extrabold uppercase tracking-wide text-[#062444] bg-[#F3BC00] rounded-full px-2 py-0.5">
+                              <Star size={10} className="fill-[#062444]" /> Perfect Score
+                            </span>
+                          )}
                         </span>
-                      </span>
-                      {exhausted ? <Lock size={15} className="text-slate-300 shrink-0" /> : <ChevronRight size={15} className="text-[#0088cc] shrink-0" />}
+                        {exhausted ? <Lock size={15} className="text-slate-300 shrink-0" /> : <ChevronRight size={15} className="text-[#0088cc] shrink-0" />}
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="flex items-center gap-2.5 flex-wrap">
+                          {t.highestPercentage !== null && (
+                            <span className={`text-[11px] font-bold ${t.isCompleted ? "text-green-700" : "text-[#062444]"}`}>
+                              Highest score: {Math.round(t.highestPercentage)}%
+                            </span>
+                          )}
+                          <span className={`text-[11px] font-medium ${exhausted ? "text-red-500" : "text-slate-400"}`}>
+                            Attempts: {t.attemptsUsedToday}
+                          </span>
+                        </span>
+                        <span className={`text-[11px] font-semibold shrink-0 ${exhausted ? "text-red-500" : "text-slate-400"}`}>
+                          {t.attemptsUsedToday} / {t.maxAttemptsPerDay} allowed
+                        </span>
+                      </div>
                     </button>
                   </div>
                 );
@@ -276,51 +295,78 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
 
             {(step.topic.slideUrl || step.topic.videoUrl) && (
               <div className="mb-5 rounded-xl border border-[#e6ecf5] bg-[#f8fafd] overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setReviewMaterialsOpen(o => !o)}
-                  aria-expanded={reviewMaterialsOpen}
-                  aria-controls="review-materials-panel"
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-[12.5px] font-bold text-[#062444]"
-                >
-                  <span className="flex items-center gap-1.5"><BookOpen size={14} className="text-[#0088cc]" /> Review Materials</span>
-                  <ChevronDown size={15} className={`text-slate-400 transition-transform ${reviewMaterialsOpen ? "rotate-180" : ""}`} />
-                </button>
-                {reviewMaterialsOpen && (
-                  <div id="review-materials-panel" role="region" aria-label="Review materials for this topic" className="flex flex-wrap gap-2 px-4 pb-3">
-                    {step.topic.slideUrl && (
+                <div className="w-full flex items-center gap-1.5 px-4 py-2.5 text-[12.5px] font-bold text-[#062444] bg-[#eef3fb] border-b border-[#e6ecf5]">
+                  <BookOpen size={14} className="text-[#0088cc]" /> Learning Materials
+                </div>
+                <div className="px-4 py-3.5 space-y-4">
+                  {step.topic.slideUrl && (
+                    <div>
+                      <p className="text-[10.5px] font-bold uppercase tracking-[1px] text-slate-400 mb-1.5 flex items-center gap-1.5">
+                        <FileText size={12} className="text-[#0088cc]" /> Slide Deck
+                      </p>
                       <a
                         href={step.topic.slideUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 hover:border-[#0088cc]/40 hover:bg-[#eef3fb] transition-colors"
+                        className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 hover:border-[#0088cc]/40 hover:bg-white/60 transition-colors"
                       >
                         <FileText size={14} className="text-[#0088cc]" /> View Slides <ExternalLink size={12} className="text-slate-400" />
                       </a>
-                    )}
-                    {step.topic.videoUrl && (() => {
-                      const embed = getLectureEmbed(step.topic.videoUrl);
-                      return embed ? (
-                        <button
-                          type="button"
-                          onClick={() => setActiveLecture({ name: step.topic.name, src: embed.src })}
-                          className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 hover:border-[#0088cc]/40 hover:bg-[#eef3fb] transition-colors"
-                        >
-                          <PlayCircle size={14} className="text-[#0088cc]" /> Watch Video
-                        </button>
-                      ) : (
-                        <a
-                          href={step.topic.videoUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 hover:border-[#0088cc]/40 hover:bg-[#eef3fb] transition-colors"
-                        >
-                          <PlayCircle size={14} className="text-[#0088cc]" /> Watch Video <ExternalLink size={12} className="text-slate-400" />
-                        </a>
-                      );
-                    })()}
-                  </div>
-                )}
+                    </div>
+                  )}
+
+                  {step.topic.videoUrl && (() => {
+                    const embed = getLectureEmbed(step.topic.videoUrl);
+                    return (
+                      <div>
+                        <p className="text-[10.5px] font-bold uppercase tracking-[1px] text-slate-400 mb-1.5 flex items-center gap-1.5">
+                          <PlayCircle size={12} className="text-[#0088cc]" /> Video
+                        </p>
+                        {embed ? (
+                          <>
+                            <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
+                              <iframe
+                                src={embed.src}
+                                title={`${step.topic.name} lecture`}
+                                className="absolute inset-0 w-full h-full"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2">
+                              <button
+                                type="button"
+                                onClick={() => setActiveLecture({ name: step.topic.name, src: embed.src })}
+                                className="flex items-center gap-1.5 text-[12px] font-semibold text-[#0088cc] hover:underline"
+                              >
+                                <Maximize2 size={12} /> Expand player
+                              </button>
+                              {embed.provider === "google-drive" && (
+                                <a
+                                  href={step.topic.videoUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-[12px] font-semibold text-slate-400 hover:text-[#062444]"
+                                >
+                                  Open video in Google Drive <ExternalLink size={11} />
+                                </a>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <a
+                            href={step.topic.videoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 hover:border-[#0088cc]/40 hover:bg-white/60 transition-colors"
+                          >
+                            <PlayCircle size={14} className="text-[#0088cc]" /> Watch Video <ExternalLink size={12} className="text-slate-400" />
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             )}
 
