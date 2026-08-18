@@ -60,12 +60,12 @@ export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string
       .eq("subject_id", subjectId),
   ]);
   let { data: topics, error: topicsError } = await supabase.from("quest_topics")
-    .select("id, subject_id, name, max_attempts_per_day, video_url, slide_url").eq("subject_id", subjectId).order("sort_order").order("name");
+    .select("id, subject_id, name, max_attempts_per_day, video_url, slide_url, pdf_url").eq("subject_id", subjectId).order("sort_order").order("name");
   // Existing Supabase projects may receive this app deployment before the
   // migration that adds sort_order. Keep their existing topics available.
   if (topicsError) {
     const fallback = await supabase.from("quest_topics")
-      .select("id, subject_id, name, max_attempts_per_day, video_url, slide_url").eq("subject_id", subjectId).order("name");
+      .select("id, subject_id, name, max_attempts_per_day, video_url, slide_url, pdf_url").eq("subject_id", subjectId).order("name");
     topics = fallback.data;
     topicsError = fallback.error;
   }
@@ -104,6 +104,7 @@ export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string
       id: t.id, subjectId: t.subject_id, name: t.name,
       videoUrl: t.video_url ?? "",
       slideUrl: t.slide_url ?? "",
+      pdfUrl: t.pdf_url ?? "",
       maxAttemptsPerDay: t.max_attempts_per_day === null || t.max_attempts_per_day === undefined ? subjectDefault : Number(t.max_attempts_per_day),
       attemptsUsedToday: usedTodayByTopic.get(t.id) ?? 0,
       highestScore: best ? best.score : null,
@@ -213,6 +214,64 @@ export function getLectureEmbed(url: string): LectureEmbed | null {
     if (!fileId || !/^[a-zA-Z0-9_-]+$/.test(fileId)) return null;
 
     return { provider: "google-drive", src: `https://drive.google.com/file/d/${fileId}/preview` };
+  } catch {
+    return null;
+  }
+}
+
+export type ResourceEmbed = {
+  provider: "google-drive" | "generic";
+  src: string;
+};
+
+/**
+ * Returns a safe, embeddable preview URL for a topic's PDF material link.
+ * Google Drive's normal share URLs (/file/d/<id>/view, open?id=<id>,
+ * uc?id=<id>) open a Drive page rather than the document itself, so they're
+ * normalized to Drive's `/preview` embed URL — the same one used for
+ * videos. Any other HTTPS link (a direct .pdf URL, another host's document
+ * viewer, etc.) is passed through unchanged so the browser's native PDF
+ * viewer can render it directly in the iframe.
+ */
+export function getPdfEmbed(url: string): ResourceEmbed | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    const isGoogleDrive = parsed.hostname === "drive.google.com" || parsed.hostname === "docs.google.com";
+    if (isGoogleDrive) {
+      const pathMatch = parsed.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+      const fileId = pathMatch?.[1] ?? parsed.searchParams.get("id");
+      if (fileId && /^[a-zA-Z0-9_-]+$/.test(fileId)) {
+        return { provider: "google-drive", src: `https://drive.google.com/file/d/${fileId}/preview` };
+      }
+    }
+    return { provider: "generic", src: trimmed };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns a safe, embeddable preview URL for a topic's slide-deck link.
+ * Google Slides "edit" and "share" links (…/presentation/d/<id>/edit,
+ * …/pub, etc.) open the full editor chrome rather than a clean viewer, so
+ * they're normalized to Slides' dedicated `/embed` URL. Other slide
+ * providers (Canva, etc.) are passed through unchanged since their share
+ * links generally already support being embedded directly.
+ */
+export function getSlideEmbed(url: string): ResourceEmbed | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    const isGoogleSlides = parsed.hostname === "docs.google.com" && parsed.pathname.includes("/presentation/d/");
+    if (isGoogleSlides) {
+      const pathMatch = parsed.pathname.match(/\/presentation\/d\/([a-zA-Z0-9_-]+)/);
+      const fileId = pathMatch?.[1];
+      if (fileId) return { provider: "generic", src: `https://docs.google.com/presentation/d/${fileId}/embed` };
+    }
+    return { provider: "generic", src: trimmed };
   } catch {
     return null;
   }

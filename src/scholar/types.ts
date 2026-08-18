@@ -73,6 +73,7 @@ export interface QuizTopic {
   name: string;
   videoUrl: string; // YouTube, Google Drive, or any HTTPS video URL; "" if none attached
   slideUrl: string; // Google Slides, Canva, or any HTTPS slide-deck URL; "" if none attached
+  pdfUrl: string; // Google Drive or any HTTPS PDF document URL; "" if none attached
   maxAttemptsPerDay: number; // effective limit — topic override, else the subject's default
   attemptsUsedToday: number;
   // ── Best-attempt summary, from the scholar's own scholar_quest_scores rows for this topic ──

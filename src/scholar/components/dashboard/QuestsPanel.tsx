@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
+import type { ComponentType } from "react";
 import { motion } from "motion/react";
-import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download, Maximize2, RotateCw, BookOpen, FileText, ExternalLink, Star } from "lucide-react";
+import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download, Maximize2, RotateCw, BookOpen, FileText, File, ExternalLink, Star } from "lucide-react";
 import { SectionCard } from "./SectionCard";
-import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
+import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, getSlideEmbed, getPdfEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
+
+/** Which review-material panels are expanded inline on the quiz page. Independent per material — opening one doesn't close another. */
+type OpenMaterials = { video: boolean; slides: boolean; pdf: boolean };
+const CLOSED_MATERIALS: OpenMaterials = { video: false, slides: false, pdf: false };
 
 type Step =
   | { view: "browse" }
@@ -36,6 +41,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
   const [submitting, setSubmitting] = useState(false);
   const [activeLecture, setActiveLecture] = useState<{ name: string; src: string } | null>(null);
   const lecturePlayerRef = useRef<HTMLDivElement>(null);
+  const [openMaterials, setOpenMaterials] = useState<OpenMaterials>(CLOSED_MATERIALS);
   const [browseTab, setBrowseTab] = useState<"subject" | "history">("subject");
   const [historyDateFilter, setHistoryDateFilter] = useState(() => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }));
   const [subjectProgress, setSubjectProgress] = useState<{ percentage: number; topicCount: number } | null>(null);
@@ -105,11 +111,20 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
     setLoading(false);
     if (!result.ok) { setError(result.error); return; }
     setAnswers({});
+    setOpenMaterials(CLOSED_MATERIALS);
     setStep({ view: "quiz", subject, topic, questions: result.questions, index: 0 });
   }
 
   function selectAnswer(questionId: string, choiceId: string) {
     setAnswers(a => ({ ...a, [questionId]: choiceId }));
+  }
+
+  // Toggling a material panel open/closed is deliberately independent from
+  // `step`/`answers` state — it never touches the question index, selected
+  // answers, or attempt data, so opening or closing a resource can never
+  // reset quiz progress.
+  function toggleMaterial(key: keyof OpenMaterials) {
+    setOpenMaterials(m => ({ ...m, [key]: !m[key] }));
   }
 
   function goNext() {
@@ -279,6 +294,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
         const q = step.questions[step.index];
         const selected = answers[q.id];
         const isLast = step.index === step.questions.length - 1;
+        const hasMaterials = !!(step.topic.videoUrl || step.topic.slideUrl || step.topic.pdfUrl);
         return (
           <div>
             <BackButton label="Cancel" onClick={() => { setStep({ view: "topics", subject: step.subject }); reloadTopics(step.subject); }} />
@@ -293,119 +309,58 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
               ))}
             </div>
 
-            {(step.topic.slideUrl || step.topic.videoUrl) && (
-              <div className="mb-5 rounded-xl border border-[#e6ecf5] bg-[#f8fafd] overflow-hidden">
-                <div className="w-full flex items-center gap-1.5 px-4 py-2.5 text-[12.5px] font-bold text-[#062444] bg-[#eef3fb] border-b border-[#e6ecf5]">
-                  <BookOpen size={14} className="text-[#0088cc]" /> Learning Materials
+            {/* Two-column at desktop widths (question card + side materials card); stacks vertically below lg. */}
+            <div className={hasMaterials ? "lg:grid lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start lg:gap-5" : ""}>
+              {hasMaterials && (
+                <div className="mb-5 lg:order-2 lg:mb-0 lg:max-w-[21rem]">
+                  <MaterialsPanel
+                    topic={step.topic}
+                    open={openMaterials}
+                    onToggle={toggleMaterial}
+                    onExpandVideo={src => setActiveLecture({ name: step.topic.name, src })}
+                  />
                 </div>
-                <div className="px-4 py-3.5 space-y-4">
-                  {step.topic.slideUrl && (
-                    <div>
-                      <p className="text-[10.5px] font-bold uppercase tracking-[1px] text-slate-400 mb-1.5 flex items-center gap-1.5">
-                        <FileText size={12} className="text-[#0088cc]" /> Slide Deck
-                      </p>
-                      <a
-                        href={step.topic.slideUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 hover:border-[#0088cc]/40 hover:bg-white/60 transition-colors"
-                      >
-                        <FileText size={14} className="text-[#0088cc]" /> View Slides <ExternalLink size={12} className="text-slate-400" />
-                      </a>
-                    </div>
-                  )}
+              )}
 
-                  {step.topic.videoUrl && (() => {
-                    const embed = getLectureEmbed(step.topic.videoUrl);
+              <div className="min-w-0 lg:order-1">
+                {error && <ErrorBox message={error} />}
+
+                <p className="text-sm font-semibold text-[#062444] mb-3">
+                  {q.questionText} <span className="text-[11px] font-normal text-slate-400">({q.points} pt{q.points === 1 ? "" : "s"})</span>
+                </p>
+                <div className="space-y-2 mb-7">
+                  {q.choices.map(c => {
+                    const isSelected = selected === c.id;
                     return (
-                      <div>
-                        <p className="text-[10.5px] font-bold uppercase tracking-[1px] text-slate-400 mb-1.5 flex items-center gap-1.5">
-                          <PlayCircle size={12} className="text-[#0088cc]" /> Video
-                        </p>
-                        {embed ? (
-                          <>
-                            <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
-                              <iframe
-                                src={embed.src}
-                                title={`${step.topic.name} lecture`}
-                                className="absolute inset-0 w-full h-full"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowFullScreen
-                              />
-                            </div>
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2">
-                              <button
-                                type="button"
-                                onClick={() => setActiveLecture({ name: step.topic.name, src: embed.src })}
-                                className="flex items-center gap-1.5 text-[12px] font-semibold text-[#0088cc] hover:underline"
-                              >
-                                <Maximize2 size={12} /> Expand player
-                              </button>
-                              {embed.provider === "google-drive" && (
-                                <a
-                                  href={step.topic.videoUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-1 text-[12px] font-semibold text-slate-400 hover:text-[#062444]"
-                                >
-                                  Open video in Google Drive <ExternalLink size={11} />
-                                </a>
-                              )}
-                            </div>
-                          </>
-                        ) : (
-                          <a
-                            href={step.topic.videoUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 hover:border-[#0088cc]/40 hover:bg-white/60 transition-colors"
-                          >
-                            <PlayCircle size={14} className="text-[#0088cc]" /> Watch Video <ExternalLink size={12} className="text-slate-400" />
-                          </a>
-                        )}
-                      </div>
+                      <button
+                        key={c.id}
+                        onClick={() => selectAnswer(q.id, c.id)}
+                        className={`w-full flex items-center gap-2.5 text-left px-4 py-2.5 rounded-lg border transition-colors ${
+                          isSelected ? "border-[#0088cc] bg-[#0088cc]/5" : "border-[#e6ecf5] hover:bg-[#f8fafd]"
+                        }`}
+                      >
+                        {isSelected ? <CheckCircle2 size={16} className="text-[#0088cc] shrink-0" /> : <Circle size={16} className="text-slate-300 shrink-0" />}
+                        <span className="text-sm text-[#062444]">{c.choiceText}</span>
+                      </button>
                     );
-                  })()}
+                  })}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {step.index > 0 && (
+                    <button onClick={goBack} style={{ cursor: 'pointer' }} className="flex items-center gap-1 text-[13px] font-semibold text-slate-500 hover:opacity-80 transition-opacity px-4 py-3">
+                      <ChevronLeft size={14} /> Back
+                    </button>
+                  )}
+                  <button
+                    onClick={goNext}
+                    disabled={!selected || submitting}
+                    className="flex-1 bg-gradient-to-br from-[#062444] to-[#0a3a6b] disabled:opacity-50 text-white font-semibold text-sm rounded-xl py-3"
+                  >
+                    {submitting ? "Submitting…" : !selected ? "Select an answer to continue" : isLast ? "Finish Quiz" : "Next Question"}
+                  </button>
                 </div>
               </div>
-            )}
-
-            {error && <ErrorBox message={error} />}
-
-            <p className="text-sm font-semibold text-[#062444] mb-3">
-              {q.questionText} <span className="text-[11px] font-normal text-slate-400">({q.points} pt{q.points === 1 ? "" : "s"})</span>
-            </p>
-            <div className="space-y-2 mb-7">
-              {q.choices.map(c => {
-                const isSelected = selected === c.id;
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => selectAnswer(q.id, c.id)}
-                    className={`w-full flex items-center gap-2.5 text-left px-4 py-2.5 rounded-lg border transition-colors ${
-                      isSelected ? "border-[#0088cc] bg-[#0088cc]/5" : "border-[#e6ecf5] hover:bg-[#f8fafd]"
-                    }`}
-                  >
-                    {isSelected ? <CheckCircle2 size={16} className="text-[#0088cc] shrink-0" /> : <Circle size={16} className="text-slate-300 shrink-0" />}
-                    <span className="text-sm text-[#062444]">{c.choiceText}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex items-center gap-3">
-              {step.index > 0 && (
-                <button onClick={goBack} style={{ cursor: 'pointer' }} className="flex items-center gap-1 text-[13px] font-semibold text-slate-500 hover:opacity-80 transition-opacity px-4 py-3">
-                  <ChevronLeft size={14} /> Back
-                </button>
-              )}
-              <button
-                onClick={goNext}
-                disabled={!selected || submitting}
-                className="flex-1 bg-gradient-to-br from-[#062444] to-[#0a3a6b] disabled:opacity-50 text-white font-semibold text-sm rounded-xl py-3"
-              >
-                {submitting ? "Submitting…" : !selected ? "Select an answer to continue" : isLast ? "Finish Quiz" : "Next Question"}
-              </button>
             </div>
           </div>
         );
@@ -531,6 +486,130 @@ function QuestHistoryTab({ scores, dateFilter, onDateFilterChange }: {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Review Materials: collapsed-by-default icon buttons + inline panels ──
+function MaterialsPanel({ topic, open, onToggle, onExpandVideo }: {
+  topic: QuizTopic;
+  open: OpenMaterials;
+  onToggle: (key: keyof OpenMaterials) => void;
+  onExpandVideo: (src: string) => void;
+}) {
+  return (
+    <div className="w-full max-w-full rounded-xl border border-[#e6ecf5] bg-[#f8fafd] overflow-hidden">
+      <div className="w-full flex items-center gap-1.5 px-4 py-2.5 text-[12.5px] font-bold text-[#062444] bg-[#eef3fb] border-b border-[#e6ecf5]">
+        <BookOpen size={14} className="text-[#0088cc]" /> Review Materials
+      </div>
+      <div className="px-4 py-3.5 space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {topic.videoUrl && (
+            <MaterialIconButton icon={PlayCircle} label="Play Video" active={open.video} onClick={() => onToggle("video")} />
+          )}
+          {topic.slideUrl && (
+            <MaterialIconButton icon={FileText} label="View Slides" active={open.slides} onClick={() => onToggle("slides")} />
+          )}
+          {topic.pdfUrl && (
+            <MaterialIconButton icon={File} label="View PDF" active={open.pdf} onClick={() => onToggle("pdf")} />
+          )}
+        </div>
+
+        {open.video && topic.videoUrl && <VideoMaterial topicName={topic.name} url={topic.videoUrl} onExpand={onExpandVideo} />}
+        {open.slides && topic.slideUrl && <SlidesMaterial url={topic.slideUrl} />}
+        {open.pdf && topic.pdfUrl && <PdfMaterial url={topic.pdfUrl} />}
+      </div>
+    </div>
+  );
+}
+
+type IconComponent = ComponentType<{ size?: number; className?: string }>;
+
+/** Compact icon+label toggle. Only rendered when its resource URL exists; clicking it opens the matching panel below, clicking again collapses back to icon-only. */
+function MaterialIconButton({ icon: Icon, label, active, onClick }: { icon: IconComponent; label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex items-center gap-1.5 text-[12px] font-semibold rounded-lg px-3 py-2 border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0088cc] ${
+        active ? "bg-[#062444] border-[#062444] text-white" : "bg-white border-[#e6ecf5] text-[#062444] hover:border-[#0088cc]/40"
+      }`}
+    >
+      <Icon size={14} className={active ? "text-[#F3BC00]" : "text-[#0088cc]"} />
+      {label}
+    </button>
+  );
+}
+
+/** Bounded "open in new tab" fallback shown for every resource — used as the only affordance when a provider can't be embedded, and alongside the embed otherwise, so a blocked/broken frame never leaves the scholar stuck. */
+function FallbackLink({ href, icon: Icon, label, className = "" }: { href: string; icon: IconComponent; label: string; className?: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 hover:border-[#0088cc]/40 hover:bg-white/60 transition-colors ${className}`}
+    >
+      <Icon size={14} className="text-[#0088cc]" /> {label} <ExternalLink size={12} className="text-slate-400" />
+    </a>
+  );
+}
+
+function VideoMaterial({ topicName, url, onExpand }: { topicName: string; url: string; onExpand: (src: string) => void }) {
+  const embed = getLectureEmbed(url);
+  if (!embed) {
+    return <FallbackLink href={url} icon={PlayCircle} label="Watch Video" />;
+  }
+  return (
+    <div className="w-full max-w-full">
+      {/* aspect-video keeps the player's height tied to its width instead of a
+          fixed/max-height, which is what caused portrait-mobile clipping. */}
+      <div className="relative w-full max-w-full aspect-video rounded-lg overflow-hidden bg-black">
+        <iframe
+          src={embed.src}
+          title={`${topicName} lecture`}
+          className="w-full h-full"
+          allow="autoplay; fullscreen; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2">
+        <button type="button" onClick={() => onExpand(embed.src)} className="flex items-center gap-1.5 text-[12px] font-semibold text-[#0088cc] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0088cc] rounded">
+          <Maximize2 size={12} /> Expand player
+        </button>
+        <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[12px] font-semibold text-slate-400 hover:text-[#062444]">
+          {embed.provider === "google-drive" ? "Open video in Google Drive" : "Open in new tab"} <ExternalLink size={11} />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function SlidesMaterial({ url }: { url: string }) {
+  const embed = getSlideEmbed(url);
+  return (
+    <div className="w-full max-w-full">
+      {embed && (
+        <div className="w-full max-w-full h-[60vh] max-h-[420px] min-h-[220px] rounded-lg overflow-hidden border border-[#e6ecf5] bg-white">
+          <iframe src={embed.src} title="Slide deck" className="w-full h-full" allow="fullscreen" allowFullScreen />
+        </div>
+      )}
+      <FallbackLink href={url} icon={FileText} label="Open Slides in new tab" className={embed ? "mt-2" : ""} />
+    </div>
+  );
+}
+
+function PdfMaterial({ url }: { url: string }) {
+  const embed = getPdfEmbed(url);
+  return (
+    <div className="w-full max-w-full">
+      {embed && (
+        <div className="w-full max-w-full h-[60vh] max-h-[420px] min-h-[220px] rounded-lg overflow-hidden border border-[#e6ecf5] bg-white">
+          <iframe src={embed.src} title="PDF document" className="w-full h-full" />
+        </div>
+      )}
+      <FallbackLink href={url} icon={File} label="Open PDF in new tab" className={embed ? "mt-2" : ""} />
     </div>
   );
 }

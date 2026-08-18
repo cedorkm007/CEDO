@@ -15,6 +15,7 @@ export interface QuestTopic {
   maxAttemptsPerDay: number | null; // null = inherit the subject's default
   videoUrl: string; // YouTube, Google Drive, or any HTTPS video URL; "" if none set
   slideUrl: string; // Google Slides, Canva, or any HTTPS slide-deck URL; "" if none set
+  pdfUrl: string; // Google Drive or any HTTPS PDF document URL; "" if none set
 }
 
 export interface QuestChoiceDraft {

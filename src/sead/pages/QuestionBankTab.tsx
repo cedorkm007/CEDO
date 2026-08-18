@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud, Video, Presentation, FileCheck2, FileUp, Eye } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud, Video, Presentation, FileCheck2, FileUp, Eye, FileText } from "lucide-react";
 import {
   fetchSubjects, createSubject, renameSubject, deleteSubject, updateSubjectMaxAttempts,
   updateSubjectPassingRate, uploadSubjectCertificate, removeSubjectCertificate, fetchCertificatePreviewUrl,
@@ -74,9 +74,9 @@ export function QuestionBankTab() {
         topics={topics}
         selected={selectedTopic}
         onSelect={selectTopic}
-        onCreate={async (name, maxAttemptsPerDay, videoUrl, slideUrl) => {
+        onCreate={async (name, maxAttemptsPerDay, videoUrl, slideUrl, pdfUrl) => {
           if (!selectedSubject) return { ok: false, error: "Select a subject first." };
-          const r = await createTopic(selectedSubject.id, name, maxAttemptsPerDay, videoUrl, slideUrl);
+          const r = await createTopic(selectedSubject.id, name, maxAttemptsPerDay, videoUrl, slideUrl, pdfUrl);
           reloadTopics();
           return r;
         }}
@@ -332,8 +332,8 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
 // ── Column: Topics ──────────────────────────────────────────
 function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, onReorder, onDelete }: {
   subject: QuestSubject | null; topics: QuestTopic[]; selected: QuestTopic | null; onSelect: (t: QuestTopic) => void;
-  onCreate: (name: string, maxAttemptsPerDay: number | null, videoUrl: string, slideUrl: string) => Promise<{ ok: boolean; error?: string }>;
-  onUpdate: (id: string, fields: { name: string; maxAttemptsPerDay: number | null; videoUrl: string; slideUrl: string }) => Promise<{ ok: boolean; error?: string }>;
+  onCreate: (name: string, maxAttemptsPerDay: number | null, videoUrl: string, slideUrl: string, pdfUrl: string) => Promise<{ ok: boolean; error?: string }>;
+  onUpdate: (id: string, fields: { name: string; maxAttemptsPerDay: number | null; videoUrl: string; slideUrl: string; pdfUrl: string }) => Promise<{ ok: boolean; error?: string }>;
   onReorder: (orderedTopicIds: string[]) => Promise<{ ok: boolean; error?: string }>;
   onDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
@@ -341,11 +341,13 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
   const [newMaxAttempts, setNewMaxAttempts] = useState(""); // blank = inherit subject default
   const [newVideoUrl, setNewVideoUrl] = useState("");
   const [newSlideUrl, setNewSlideUrl] = useState("");
+  const [newPdfUrl, setNewPdfUrl] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editMaxAttempts, setEditMaxAttempts] = useState("");
   const [editVideoUrl, setEditVideoUrl] = useState("");
   const [editSlideUrl, setEditSlideUrl] = useState("");
+  const [editPdfUrl, setEditPdfUrl] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [draggedTopicId, setDraggedTopicId] = useState<string | null>(null);
@@ -370,11 +372,12 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
     if (!attempts.ok) { setError("Attempts override must be at least 1, or left blank to use the subject's default."); return; }
     if (!isValidHttpsUrl(newVideoUrl)) { setError("Video URL must be a valid https:// link."); return; }
     if (!isValidHttpsUrl(newSlideUrl)) { setError("Slide deck URL must be a valid https:// link."); return; }
+    if (!isValidHttpsUrl(newPdfUrl)) { setError("PDF material URL must be a valid https:// link."); return; }
     setBusy(true);
-    const result = await onCreate(newName.trim(), attempts.value, newVideoUrl.trim(), newSlideUrl.trim());
+    const result = await onCreate(newName.trim(), attempts.value, newVideoUrl.trim(), newSlideUrl.trim(), newPdfUrl.trim());
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save — check that this account is authorized."); return; }
-    setNewName(""); setNewMaxAttempts(""); setNewVideoUrl(""); setNewSlideUrl("");
+    setNewName(""); setNewMaxAttempts(""); setNewVideoUrl(""); setNewSlideUrl(""); setNewPdfUrl("");
   }
 
   async function submitEdit(id: string) {
@@ -383,7 +386,8 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
     if (!attempts.ok) { setError("Attempts override must be at least 1, or left blank to use the subject's default."); return; }
     if (!isValidHttpsUrl(editVideoUrl)) { setError("Video URL must be a valid https:// link."); return; }
     if (!isValidHttpsUrl(editSlideUrl)) { setError("Slide deck URL must be a valid https:// link."); return; }
-    const result = await onUpdate(id, { name: editName.trim(), maxAttemptsPerDay: attempts.value, videoUrl: editVideoUrl.trim(), slideUrl: editSlideUrl.trim() });
+    if (!isValidHttpsUrl(editPdfUrl)) { setError("PDF material URL must be a valid https:// link."); return; }
+    const result = await onUpdate(id, { name: editName.trim(), maxAttemptsPerDay: attempts.value, videoUrl: editVideoUrl.trim(), slideUrl: editSlideUrl.trim(), pdfUrl: editPdfUrl.trim() });
     if (!result.ok) { setError(result.error || "Failed to save."); return; }
     setEditingId(null);
   }
@@ -446,6 +450,8 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
                     className="w-full text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
                   <input value={editSlideUrl} onChange={e => setEditSlideUrl(e.target.value)} placeholder="Slide deck URL — Google Slides, Canva, etc. (optional)"
                     className="w-full text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
+                  <input value={editPdfUrl} onChange={e => setEditPdfUrl(e.target.value)} placeholder="PDF material URL — Google Drive, etc. (optional)"
+                    className="w-full text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
                   <div className="flex items-center gap-2">
                     <button onClick={() => submitEdit(t.id)} className="text-green-600"><Check size={15} /></button>
                     <button onClick={() => { setEditingId(null); setError(""); }} className="text-slate-400"><XIcon size={15} /></button>
@@ -461,12 +467,13 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
                     </span>
                     {t.videoUrl && <Video size={12} className="inline-block ml-1.5 text-red-500 align-text-bottom" aria-label="Has a video resource" />}
                     {t.slideUrl && <Presentation size={12} className="inline-block ml-1 text-[#0088cc] align-text-bottom" aria-label="Has a slide deck resource" />}
+                    {t.pdfUrl && <FileText size={12} className="inline-block ml-1 text-emerald-600 align-text-bottom" aria-label="Has a PDF resource" />}
                   </div>
                   <button onClick={e => {
                     e.stopPropagation();
                     setEditingId(t.id); setEditName(t.name);
                     setEditMaxAttempts(t.maxAttemptsPerDay === null ? "" : String(t.maxAttemptsPerDay));
-                    setEditVideoUrl(t.videoUrl); setEditSlideUrl(t.slideUrl); setError("");
+                    setEditVideoUrl(t.videoUrl); setEditSlideUrl(t.slideUrl); setEditPdfUrl(t.pdfUrl); setError("");
                   }} className="text-slate-300 hover:text-[#0088cc]"><Pencil size={13} /></button>
                   <button onClick={e => { e.stopPropagation(); handleDelete(t.id); }} className="text-slate-300 hover:text-red-500"><Trash2 size={13} /></button>
                 </div>
@@ -489,7 +496,9 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
           className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
         <input value={newSlideUrl} onChange={e => setNewSlideUrl(e.target.value)} placeholder="Slide deck URL — Google Slides, Canva, etc. (optional)" disabled={busy}
           className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
-        <p className="text-[10.5px] text-slate-400 px-1">Google Drive videos must be shared as “Anyone with the link.” Both links must start with https://.</p>
+        <input value={newPdfUrl} onChange={e => setNewPdfUrl(e.target.value)} placeholder="PDF material URL — Google Drive, etc. (optional)" disabled={busy}
+          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
+        <p className="text-[10.5px] text-slate-400 px-1">Google Drive links must be shared as “Anyone with the link.” All links must start with https://.</p>
         <button type="submit" disabled={busy} className="w-full flex items-center justify-center gap-1.5 bg-[#062444] text-[#F3BC00] rounded-lg p-2 disabled:opacity-50">
           <Plus size={15} /> Add Topic
         </button>
