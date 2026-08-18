@@ -240,6 +240,7 @@ export interface AttendanceCode {
   id: string;
   code: string;
   kind: "time_in" | "time_out" | "voucher";
+  batchNumber: number;
   redeemedByScholarId: string | null;
   redeemedAt: string | null;
 }
@@ -265,7 +266,7 @@ export async function fetchAttendanceSession(activityId: string): Promise<{ sess
     },
     codes: (codeRows ?? []).map(c => ({
       id: c.id, code: c.code, kind: c.kind,
-      redeemedByScholarId: c.redeemed_by_scholar_id, redeemedAt: c.redeemed_at,
+      batchNumber: Number(c.batch_number ?? 1), redeemedByScholarId: c.redeemed_by_scholar_id, redeemedAt: c.redeemed_at,
     })),
   };
 }
@@ -297,10 +298,10 @@ export async function enableAttendanceForActivity(
 
   const codes: { session_id: string; code: string; kind: string }[] = [];
   if (type === "time_in_time_out") {
-    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_in" });
-    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_out" });
+    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_in", batch_number: 1 });
+    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_out", batch_number: 1 });
   } else {
-    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "voucher" });
+    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "voucher", batch_number: 1 });
   }
 
   const { error: codesError } = await supabase.from("attendance_codes").insert(codes);
@@ -311,7 +312,9 @@ export async function enableAttendanceForActivity(
 /** Generates additional single-use voucher codes when attendance exceeds the original estimate. */
 export async function addAttendanceVouchers(sessionId: string, participantCount: number): Promise<{ ok: boolean; error?: string }> {
   if (participantCount < 1) return { ok: false, error: "Enter a number greater than 0." };
-  const codes = Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "voucher" }));
+  const { data: latestBatch } = await supabase.from("attendance_codes").select("batch_number").eq("session_id", sessionId).order("batch_number", { ascending: false }).limit(1).maybeSingle();
+  const batchNumber = Number(latestBatch?.batch_number ?? 0) + 1;
+  const codes = Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "voucher", batch_number: batchNumber }));
   const { error } = await supabase.from("attendance_codes").insert(codes);
   if (error) return { ok: false, error: error.message };
   const { data: session, error: sessionError } = await supabase.from("attendance_sessions")

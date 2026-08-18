@@ -17,6 +17,7 @@ create table if not exists public.attendance_codes (
   session_id uuid not null references public.attendance_sessions(id) on delete cascade,
   code text not null unique,
   kind text not null check (kind in ('time_in', 'time_out', 'voucher')),
+  batch_number integer not null default 1 check (batch_number > 0),
   redeemed_by_scholar_id text references public.scholars(scholar_id_number),
   redeemed_at timestamptz,
   created_at timestamptz not null default now(),

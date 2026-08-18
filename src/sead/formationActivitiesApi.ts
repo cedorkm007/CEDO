@@ -59,8 +59,8 @@ export async function enableFormationAttendance(activityId: string, type: Attend
   }).select("id").single();
   if (sessionError || !session) return { ok: false, error: sessionError?.message || "Couldn't enable attendance." };
   const codes = type === "time_in_time_out"
-    ? Array.from({ length: participantCount * 2 }, (_, index) => ({ session_id: session.id, code: randomCode(), kind: index < participantCount ? "time_in" : "time_out" }))
-    : Array.from({ length: participantCount }, () => ({ session_id: session.id, code: randomCode(), kind: "voucher" }));
+    ? Array.from({ length: participantCount * 2 }, (_, index) => ({ session_id: session.id, code: randomCode(), kind: index < participantCount ? "time_in" : "time_out", batch_number: 1 }))
+    : Array.from({ length: participantCount }, () => ({ session_id: session.id, code: randomCode(), kind: "voucher", batch_number: 1 }));
   const { error } = await supabase.from("attendance_codes").insert(codes);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
@@ -68,12 +68,14 @@ export async function enableFormationAttendance(activityId: string, type: Attend
 /** Adds capacity after attendance has been enabled. Time-in/time-out adds a matching pair per scholar. */
 export async function addFormationAttendanceCodes(sessionId: string, type: AttendanceType, participantCount: number): Promise<{ ok: boolean; error?: string }> {
   if (participantCount < 1) return { ok: false, error: "Enter a number greater than 0." };
+  const { data: latestBatch } = await supabase.from("attendance_codes").select("batch_number").eq("session_id", sessionId).order("batch_number", { ascending: false }).limit(1).maybeSingle();
+  const batchNumber = Number(latestBatch?.batch_number ?? 0) + 1;
   const codes = type === "time_in_time_out"
     ? [
-        ...Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "time_in" })),
-        ...Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "time_out" })),
+        ...Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "time_in", batch_number: batchNumber })),
+        ...Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "time_out", batch_number: batchNumber })),
       ]
-    : Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "voucher" }));
+    : Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "voucher", batch_number: batchNumber }));
   const { error: codesError } = await supabase.from("attendance_codes").insert(codes);
   if (codesError) return { ok: false, error: codesError.message };
   const { data: session, error: sessionError } = await supabase.from("attendance_sessions").select("expected_attendees").eq("id", sessionId).single();
@@ -89,6 +91,6 @@ export async function fetchFormationAttendanceSession(activityId: string): Promi
   const { data: codeRows } = await supabase.from("attendance_codes").select("*").eq("session_id", row.id).order("kind").order("created_at");
   return {
     session: { id: row.id, type: row.type, expectedAttendees: row.expected_attendees, voucherHours: row.duration_hours, createdAt: row.created_at },
-    codes: (codeRows ?? []).map(code => ({ id: code.id, code: code.code, kind: code.kind, redeemedByScholarId: code.redeemed_by_scholar_id, redeemedAt: code.redeemed_at })),
+    codes: (codeRows ?? []).map(code => ({ id: code.id, code: code.code, kind: code.kind, batchNumber: Number(code.batch_number ?? 1), redeemedByScholarId: code.redeemed_by_scholar_id, redeemedAt: code.redeemed_at })),
   };
 }

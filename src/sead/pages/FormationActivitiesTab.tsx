@@ -135,20 +135,20 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
     URL.revokeObjectURL(url);
   }
 
-  async function downloadCodesPDF() {
-    if (!selected || !codes.length || exportingPdf) return;
+  async function downloadCodesPDF(batchNumber = 1, batchCodes = codes) {
+    if (!selected || !batchCodes.length || exportingPdf) return;
     setExportingPdf(true);
     try {
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const margin = 8, columns = 4, rows = 5, gap = 2;
       const cellWidth = (210 - margin * 2 - gap * (columns - 1)) / columns;
       const cellHeight = (297 - margin * 2 - gap * (rows - 1)) / rows;
-      for (let index = 0; index < codes.length; index++) {
+      for (let index = 0; index < batchCodes.length; index++) {
         if (index > 0 && index % (columns * rows) === 0) pdf.addPage();
         const position = index % (columns * rows);
         const x = margin + (position % columns) * (cellWidth + gap);
         const y = margin + Math.floor(position / columns) * (cellHeight + gap);
-        const code = codes[index];
+        const code = batchCodes[index];
         const qrDataUrl = await QRCode.toDataURL(code.code, { errorCorrectionLevel: "M", margin: 1, width: 240 });
         pdf.setDrawColor(148, 163, 184); pdf.rect(x, y, cellWidth, cellHeight);
         pdf.setFont("helvetica", "bold"); pdf.setFontSize(7); pdf.setTextColor(6, 36, 68);
@@ -158,7 +158,7 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
         pdf.setFont("helvetica", "normal"); pdf.setFontSize(6.5); pdf.setTextColor(100, 116, 139);
         pdf.text(code.kind.replace("_", " ").toUpperCase(), x + cellWidth / 2, y + 51, { align: "center" });
       }
-      pdf.save(`${selected.name.replace(/[^a-z0-9]+/gi, "_")}_attendance_qr_codes.pdf`);
+      pdf.save(`${selected.name.replace(/[^a-z0-9]+/gi, "_")}_attendance_qr_codes_batch_${batchNumber}.pdf`);
     } catch {
       window.alert("Could not create the QR code PDF. Please try again.");
     } finally { setExportingPdf(false); }
@@ -169,6 +169,7 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
 
   if (monitoredActivities.length === 0) return <p className="rounded-xl border border-dashed border-[#d9e1eb] p-6 text-center text-[13px] text-slate-400">No formation activities have attendance monitoring enabled.</p>;
   const present = roster.filter(entry => entry.status === "present").length;
+  const batches = Array.from(new Set(codes.map(code => code.batchNumber))).sort((a, b) => a - b).map(number => ({ number, codes: codes.filter(code => code.batchNumber === number) }));
   return <div className="grid gap-4 lg:grid-cols-[260px_1fr]"><div className="space-y-2">{monitoredActivities.map(activity => <button key={activity.id} onClick={() => { setShowCodes(false); setSelectedId(activity.id); }} className={`w-full rounded-xl border p-3 text-left ${selectedId === activity.id ? "border-[#0088cc] bg-[#eef7fc]" : "border-[#e6ecf5] bg-white hover:bg-[#f8fafd]"}`}><p className="text-[13px] font-bold text-[#062444]">{activity.name}</p><p className="mt-1 text-[11px] text-slate-400">{formatActivitySchedule(activity.dateTime, activity.endTime)}</p></button>)}</div><div className="rounded-xl border border-[#e6ecf5] bg-white p-4">{!selected ? null : <><div className="flex items-start justify-between gap-3"><div><h3 className="text-[15px] font-bold text-[#062444]">{selected.name}</h3><p className="mt-1 text-[12px] text-slate-500">Use Refresh to retrieve the latest attendance data.</p></div><button onClick={() => void loadAttendance(selected.id)} disabled={loading} className="rounded-lg p-2 text-[#0088cc] hover:bg-[#eef7fc] disabled:opacity-50" aria-label="Refresh attendance"><RefreshCw size={16} /></button></div>{loading ? <p className="py-8 text-[13px] text-slate-400">Loading attendance…</p> : <><div className="mt-4 grid grid-cols-3 gap-2"><div className="rounded-lg bg-[#f8fafd] p-3"><p className="text-[10px] font-bold uppercase text-slate-400">Expected</p><p className="mt-1 text-lg font-extrabold text-[#062444]">{expected ?? "—"}</p></div><div className="rounded-lg bg-green-50 p-3"><p className="text-[10px] font-bold uppercase text-green-600">Present</p><p className="mt-1 text-lg font-extrabold text-green-700">{present}</p></div><div className="rounded-lg bg-orange-50 p-3"><p className="text-[10px] font-bold uppercase text-orange-600">Incomplete</p><p className="mt-1 text-lg font-extrabold text-orange-700">{roster.length - present}</p></div></div><div className="mt-5"><h4 className="mb-2 text-[11px] font-bold uppercase text-slate-400">Live roster</h4>{roster.length === 0 ? <p className="text-[12.5px] text-slate-400">No attendance has been recorded yet.</p> : <div className="space-y-1.5">{roster.map(entry => <div key={entry.scholarIdNumber} className="flex items-center justify-between rounded-lg bg-[#f8fafd] px-3 py-2 text-[12px]"><span className="font-semibold text-[#062444]">{entry.scholarName}</span><span className={entry.status === "present" ? "font-bold text-green-600" : "font-bold text-orange-600"}>{entry.status === "present" ? "Present" : "Incomplete"}</span></div>)}</div>}</div><div className="mt-5 rounded-lg bg-[#f8fafd] p-3"><p className="mb-2 text-[11px] font-semibold text-slate-500">More scholars than expected?</p><div className="flex flex-wrap items-center gap-2"><input type="number" min={1} value={additionalCount} onChange={event => setAdditionalCount(event.target.value)} placeholder="Additional scholars" className="w-48 rounded-lg border border-[#062444]/15 px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" /><button onClick={() => void addCodes()} disabled={addingCodes} className="rounded-lg bg-[#062444] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50">{addingCodes ? "Generating…" : session?.type === "time_in_time_out" ? "Add code pairs" : "Add QR codes"}</button></div>{session?.type === "time_in_time_out" && <p className="mt-2 text-[10.5px] text-slate-400">Each additional scholar receives one time-in and one time-out code.</p>}{codeError && <p className="mt-2 text-[11px] text-red-600">{codeError}</p>}</div><div className="mt-5 flex flex-wrap items-center gap-3"><button onClick={() => setShowCodes(value => !value)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">{showCodes ? "Hide QR codes" : `View QR codes (${codes.length})`}</button><button onClick={downloadCodesCSV} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline"><Download size={13} /> Export CSV</button><button onClick={() => void downloadCodesPDF()} disabled={!codes.length || exportingPdf} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline disabled:opacity-50"><Download size={13} /> {exportingPdf ? "Creating PDF…" : "Download QR PDF"}</button></div>{showCodes && <div className="mt-3 grid max-h-72 grid-cols-2 gap-2 overflow-y-auto p-1 sm:grid-cols-3">{codes.map(code => <div key={code.id} className={`rounded-lg border p-2 text-center ${code.redeemedByScholarId ? "border-green-300 bg-green-50" : "border-[#e6ecf5]"}`}><img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(code.code)}`} alt={`QR code ${code.code}`} className="mx-auto mb-1" width={80} height={80} /><p className="text-[11px] font-mono font-bold text-[#062444]">{code.code}</p><p className="text-[9.5px] uppercase text-slate-400">{code.kind.replace("_", " ")}</p>{code.redeemedByScholarId && <p className="mt-0.5 text-[9px] font-semibold text-green-600">Redeemed</p>}</div>)}</div>}</>}</>}</div></div>;
 }
 

@@ -298,8 +298,8 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
     URL.revokeObjectURL(url);
   }
 
-  async function downloadCodesPDF() {
-    if (!codes.length || exportingPdf) return;
+  async function downloadCodesPDF(batchNumber: number, batchCodes: AttendanceCode[]) {
+    if (!batchCodes.length || exportingPdf) return;
     setExportingPdf(true);
     try {
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -310,14 +310,14 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
       const cellWidth = (210 - margin * 2 - gap * (columns - 1)) / columns;
       const cellHeight = (297 - margin * 2 - gap * (rows - 1)) / rows;
 
-      for (let index = 0; index < codes.length; index++) {
+      for (let index = 0; index < batchCodes.length; index++) {
         if (index > 0 && index % (columns * rows) === 0) pdf.addPage();
         const position = index % (columns * rows);
         const column = position % columns;
         const row = Math.floor(position / columns);
         const x = margin + column * (cellWidth + gap);
         const y = margin + row * (cellHeight + gap);
-        const code = codes[index];
+        const code = batchCodes[index];
         const qrDataUrl = await QRCode.toDataURL(code.code, { errorCorrectionLevel: "M", margin: 1, width: 240 });
 
         pdf.setDrawColor(148, 163, 184);
@@ -337,7 +337,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
         pdf.setTextColor(100, 116, 139);
         pdf.text(code.kind.replace("_", " ").toUpperCase(), x + cellWidth / 2, y + 51, { align: "center" });
       }
-      pdf.save(`${activity.name.replace(/[^a-z0-9]+/gi, "_")}_attendance_qr_codes.pdf`);
+      pdf.save(`${activity.name.replace(/[^a-z0-9]+/gi, "_")}_attendance_qr_codes_batch_${batchNumber}.pdf`);
     } catch {
       setError("Could not create the QR code PDF. Please try again.");
     } finally {
@@ -393,6 +393,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
   }
 
   const presentCount = roster.filter(r => r.status === "present").length;
+  const batches = Array.from(new Set(codes.map(code => code.batchNumber))).sort((a, b) => a - b).map(number => ({ number, codes: codes.filter(code => code.batchNumber === number) }));
 
   return (
     <div className="border-t border-[#f0f3f8] pt-4">
@@ -439,21 +440,19 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
         <button onClick={downloadCodesCSV} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
           <Download size={13} /> Export CSV
         </button>
-        <button onClick={downloadCodesPDF} disabled={!codes.length || exportingPdf} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline disabled:opacity-50">
-          <Download size={13} /> {exportingPdf ? "Creating PDF..." : "Download QR PDF"}
-        </button>
+        {batches.map(batch => <button key={batch.number} onClick={() => void downloadCodesPDF(batch.number, batch.codes)} disabled={exportingPdf} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline disabled:opacity-50"><Download size={13} /> {exportingPdf ? "Creating PDF..." : `Batch ${batch.number} QR PDF`}</button>)}
       </div>
 
       {showCodes && (
-        <div className="mt-3 grid grid-cols-3 gap-2 max-h-72 overflow-y-auto p-1">
-          {codes.map(c => (
+        <div className="mt-3 max-h-72 space-y-4 overflow-y-auto p-1">
+          {batches.map(batch => <div key={batch.number}><p className="mb-2 text-[11px] font-bold uppercase text-slate-500">Batch {batch.number}</p><div className="grid grid-cols-3 gap-2">{batch.codes.map(c => (
             <div key={c.id} className={`border rounded-lg p-2 text-center ${c.redeemedByScholarId ? "border-green-300 bg-green-50" : "border-[#e6ecf5]"}`}>
               <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(c.code)}`} alt={c.code} className="mx-auto mb-1" width={80} height={80} />
               <p className="text-[11px] font-mono font-bold text-[#062444]">{c.code}</p>
               <p className="text-[9.5px] text-slate-400 uppercase">{c.kind.replace("_", " ")}</p>
               {c.redeemedByScholarId && <p className="text-[9px] text-green-600 font-semibold mt-0.5">Redeemed</p>}
             </div>
-          ))}
+          ))}</div></div>)}
         </div>
       )}
     </div>
