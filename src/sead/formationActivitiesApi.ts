@@ -94,7 +94,7 @@ export async function addFormationAttendanceCodes(sessionId: string, type: Atten
 export async function fetchFormationAttendanceSession(activityId: string): Promise<{ session: AttendanceSession; codes: AttendanceCode[] } | null> {
   const { data: row } = await supabase.from("attendance_sessions").select("*").eq("formation_activity_id", activityId).maybeSingle();
   if (!row) return null;
-  const { data: codeRows } = await supabase.from("attendance_codes").select("*").eq("session_id", row.id).order("kind").order("created_at");
+  const { data: codeRows } = await supabase.from("attendance_codes").select("*").eq("session_id", row.id).order("batch_number").order("kind").order("created_at");
   return {
     session: { id: row.id, type: row.type, expectedAttendees: row.expected_attendees, voucherHours: row.duration_hours, createdAt: row.created_at },
     codes: (codeRows ?? []).map(code => ({ id: code.id, code: code.code, kind: code.kind, batchNumber: Number(code.batch_number ?? 1), redeemedByScholarId: code.redeemed_by_scholar_id, redeemedAt: code.redeemed_at })),

@@ -145,8 +145,18 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
     URL.revokeObjectURL(url);
   }
 
-  async function downloadCodesPDF(batchNumber = 1, batchCodes = codes) {
-    if (!selected || !batchCodes.length || exportingPdf) return;
+  async function downloadCodesPDF(batchNumber?: number, batchCodes?: AttendanceCode[], unclaimedOnly = false) {
+    if (!selected || exportingPdf) return;
+    if (!batchCodes) {
+      const choice = window.prompt(`Enter a batch number (1-${batches.length}) or U for all unclaimed QR codes.`);
+      if (!choice) return;
+      const normalized = choice.trim().toUpperCase();
+      if (normalized === "U") return downloadCodesPDF(0, codes.filter(code => !code.redeemedByScholarId), true);
+      const selectedBatch = batches.find(batch => batch.number === Number(normalized));
+      if (!selectedBatch) { window.alert("That batch does not exist."); return; }
+      return downloadCodesPDF(selectedBatch.number, selectedBatch.codes);
+    }
+    if (!batchCodes.length) { window.alert(unclaimedOnly ? "There are no unclaimed QR codes." : "This batch has no QR codes."); return; }
     setExportingPdf(true);
     try {
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -168,7 +178,7 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
         pdf.setFont("helvetica", "normal"); pdf.setFontSize(6.5); pdf.setTextColor(100, 116, 139);
         pdf.text(code.kind.replace("_", " ").toUpperCase(), x + cellWidth / 2, y + 51, { align: "center" });
       }
-      pdf.save(`${selected.name.replace(/[^a-z0-9]+/gi, "_")}_attendance_qr_codes_batch_${batchNumber}.pdf`);
+      pdf.save(`${selected.name.replace(/[^a-z0-9]+/gi, "_")}_${unclaimedOnly ? "unclaimed_qr_codes" : `attendance_qr_codes_batch_${batchNumber}`}.pdf`);
     } catch {
       window.alert("Could not create the QR code PDF. Please try again.");
     } finally { setExportingPdf(false); }

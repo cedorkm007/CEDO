@@ -252,6 +252,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [showPdfMenu, setShowPdfMenu] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -337,7 +338,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
         pdf.setTextColor(100, 116, 139);
         pdf.text(code.kind.replace("_", " ").toUpperCase(), x + cellWidth / 2, y + 51, { align: "center" });
       }
-      pdf.save(`${activity.name.replace(/[^a-z0-9]+/gi, "_")}_attendance_qr_codes_batch_${batchNumber}.pdf`);
+      pdf.save(`${activity.name.replace(/[^a-z0-9]+/gi, "_")}_${batchNumber === 0 ? "unclaimed_qr_codes" : `attendance_qr_codes_batch_${batchNumber}`}.pdf`);
     } catch {
       setError("Could not create the QR code PDF. Please try again.");
     } finally {
@@ -440,7 +441,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
         <button onClick={downloadCodesCSV} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
           <Download size={13} /> Export CSV
         </button>
-        {batches.map(batch => <button key={batch.number} onClick={() => void downloadCodesPDF(batch.number, batch.codes)} disabled={exportingPdf} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline disabled:opacity-50"><Download size={13} /> {exportingPdf ? "Creating PDF..." : `Batch ${batch.number} QR PDF`}</button>)}
+        <div className="relative"><button onClick={() => setShowPdfMenu(value => !value)} disabled={exportingPdf} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline disabled:opacity-50"><Download size={13} /> {exportingPdf ? "Creating PDF..." : "Download QR PDF"}</button>{showPdfMenu && <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-[#e6ecf5] bg-white p-1 shadow-lg">{batches.map(batch => <button key={batch.number} onClick={() => { setShowPdfMenu(false); void downloadCodesPDF(batch.number, batch.codes); }} className="block w-full rounded px-3 py-2 text-left text-[12px] hover:bg-[#f8fafd]">Batch {batch.number} QR PDF</button>)}<button onClick={() => { setShowPdfMenu(false); void downloadCodesPDF(0, codes.filter(code => !code.redeemedByScholarId)); }} className="block w-full rounded px-3 py-2 text-left text-[12px] font-semibold text-[#0088cc] hover:bg-[#f8fafd]">Unclaimed QR codes PDF</button></div>}</div>
       </div>
 
       {showCodes && (
