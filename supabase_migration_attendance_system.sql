@@ -73,6 +73,18 @@ begin
     raise exception 'This attendance code has already been used.';
   end if;
 
+  -- A scholar may use one time-in and one time-out code per session, or one
+  -- voucher code. Reject a second scan of the same attendance stage.
+  if exists (
+    select 1 from public.attendance_records r
+    where r.session_id = v_code.session_id and r.scholar_id_number = v_scholar_id
+      and ((v_code.kind = 'time_in' and r.time_in_at is not null)
+        or (v_code.kind = 'time_out' and r.time_out_at is not null)
+        or v_code.kind = 'voucher')
+  ) then
+    raise exception 'You have already redeemed this attendance code for the activity.';
+  end if;
+
   update public.attendance_codes
   set redeemed_by_scholar_id = v_scholar_id, redeemed_at = now()
   where id = v_code.id and redeemed_by_scholar_id is null
