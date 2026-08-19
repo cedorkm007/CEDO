@@ -128,7 +128,10 @@ async function fetchQuizScoreRows(subjectId: string, scholarIdNumber: string, to
     if (todayOnly) query = query.eq("date_taken", new Date().toISOString().slice(0, 10));
     const { data, error } = await query.range(from, from + QUEST_PAGE_SIZE - 1);
     if (error || !data) return [];
-    rows.push(...(data as QuizScoreRow[]));
+    // The selected column list is conditional, which Supabase's compile-time
+    // parser cannot represent. Both branches are deliberately mapped to this
+    // shared row shape before use below.
+    rows.push(...(data as unknown as QuizScoreRow[]));
     if (data.length < QUEST_PAGE_SIZE) return rows;
   }
 }
