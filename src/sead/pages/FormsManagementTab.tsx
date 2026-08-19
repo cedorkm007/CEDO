@@ -33,10 +33,18 @@ function FormMaterialModal({ material, onClose, onSaved }: { material: FormMater
     setBusy(true);
     setError("");
     const fields = { title: title.trim(), kind, url: kind === "flipbook" ? url.trim() : "", description: description.trim() };
-    const result = material ? await updateFormMaterial(material.id, fields) : await createFormMaterial(fields.title, fields.kind, fields.url, fields.description);
-    if (!result.ok) { setBusy(false); setError(result.error || "Couldn't save the material."); return; }
 
-    const materialId = material ? material.id : "id" in result ? result.id : undefined;
+    let materialId: string | undefined;
+    if (material) {
+      const updateResult = await updateFormMaterial(material.id, fields);
+      if (!updateResult.ok) { setBusy(false); setError(updateResult.error || "Couldn't save the material."); return; }
+      materialId = material.id;
+    } else {
+      const createResult = await createFormMaterial(fields.title, fields.kind, fields.url, fields.description);
+      if (!createResult.ok) { setBusy(false); setError(createResult.error || "Couldn't save the material."); return; }
+      materialId = createResult.id;
+    }
+
     if (kind === "pdf" && materialId) {
       if (file) {
         const uploadResult = await uploadFormMaterialFile(materialId, file);
