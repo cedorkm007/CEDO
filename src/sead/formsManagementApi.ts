@@ -9,7 +9,8 @@ export type FormMaterialCondition =
   | { type: "quest_subject"; subjectId: string; subjectName?: string }
   | { type: "formation_activity"; formationActivityId: string; formationActivityName?: string }
   | { type: "sdp_activity"; sdpActivityId: string; sdpActivityName?: string }
-  | { type: "year_level"; allYearLevels: boolean; yearLevels: string[] };
+  | { type: "year_level"; allYearLevels: boolean; yearLevels: string[] }
+  | { type: "course"; course: string };
 
 export interface FormMaterial {
   id: string;
@@ -35,6 +36,8 @@ function rowToCondition(row: Record<string, unknown>): FormMaterialCondition {
       return { type: "formation_activity", formationActivityId: String(row.formation_activity_id), formationActivityName: (row.formation_activities as { name?: string } | null)?.name };
     case "sdp_activity":
       return { type: "sdp_activity", sdpActivityId: String(row.sdp_activity_id), sdpActivityName: (row.sdp_activities as { name?: string } | null)?.name };
+    case "course":
+      return { type: "course", course: String(row.course ?? "") };
     default:
       return { type: "year_level", allYearLevels: Boolean(row.all_year_levels), yearLevels: (row.target_year_levels as string[] | null) ?? [] };
   }
@@ -64,7 +67,7 @@ export async function fetchFormMaterials(): Promise<FormMaterial[]> {
     .select(`
       id, title, kind, url, description, file_name, created_at, updated_at,
       form_material_conditions (
-        condition_type, subject_id, formation_activity_id, sdp_activity_id, target_year_levels, all_year_levels,
+        condition_type, subject_id, formation_activity_id, sdp_activity_id, target_year_levels, all_year_levels, course,
         quest_subjects ( name ),
         formation_activities ( name ),
         sdp_activities ( name )
@@ -170,6 +173,8 @@ export async function setFormMaterialConditions(
         return { material_id: materialId, condition_type: "formation_activity", formation_activity_id: c.formationActivityId };
       case "sdp_activity":
         return { material_id: materialId, condition_type: "sdp_activity", sdp_activity_id: c.sdpActivityId };
+      case "course":
+        return { material_id: materialId, condition_type: "course", course: c.course };
       case "year_level":
         return { material_id: materialId, condition_type: "year_level", all_year_levels: c.allYearLevels, target_year_levels: c.yearLevels };
     }

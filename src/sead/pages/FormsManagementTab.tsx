@@ -126,6 +126,7 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
   const [newSubjectId, setNewSubjectId] = useState("");
   const [newActivityId, setNewActivityId] = useState("");
   const [newSdpActivityId, setNewSdpActivityId] = useState("");
+  const [newCourse, setNewCourse] = useState("");
   const [newAllYearLevels, setNewAllYearLevels] = useState(true);
   const [newYearLevels, setNewYearLevels] = useState<string[]>([]);
 
@@ -151,6 +152,8 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
         return `Formation Activity: ${c.formationActivityName || activities.find(a => a.id === c.formationActivityId)?.name || "Unknown activity"}`;
       case "sdp_activity":
         return `SDP Activity: ${c.sdpActivityName || sdpActivities.find(a => a.id === c.sdpActivityId)?.name || "Unknown activity"}`;
+      case "course":
+        return `Course: ${c.course}`;
       case "year_level":
         return c.allYearLevels ? "Year Level: Any" : `Year Level: ${c.yearLevels.join(", ") || "None selected"}`;
     }
@@ -176,6 +179,14 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
       const activity = sdpActivities.find(a => a.id === newSdpActivityId);
       setConditions(cs => [...cs, { type: "sdp_activity", sdpActivityId: newSdpActivityId, sdpActivityName: activity?.name }]);
       setNewSdpActivityId("");
+    } else if (newType === "course") {
+      const trimmed = newCourse.trim();
+      if (!trimmed) { setError("Enter a course."); return; }
+      // Matches DB matching, which is also case/whitespace-insensitive — so
+      // "BSIT" and "bsit" are treated as the same rule here too.
+      if (conditions.some(c => c.type === "course" && c.course.trim().toLowerCase() === trimmed.toLowerCase())) { setError("That course rule already exists."); return; }
+      setConditions(cs => [...cs, { type: "course", course: trimmed }]);
+      setNewCourse("");
     } else {
       if (conditions.some(c => c.type === "year_level")) { setError("Only one year-level rule is allowed — remove the existing one first to change it."); return; }
       if (!newAllYearLevels && newYearLevels.length === 0) { setError('Select at least one year level, or check "Any year level."'); return; }
@@ -230,6 +241,7 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
               <option value="quest_subject">Quest Subject</option>
               <option value="formation_activity">Formation Activity</option>
               <option value="sdp_activity">SDP Activity</option>
+              <option value="course">Course</option>
               <option value="year_level">Year Level</option>
             </select>
 
@@ -250,6 +262,16 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
                 <option value="">Select an SDP activity…</option>
                 {sdpActivities.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
+            ) : newType === "course" ? (
+              <div>
+                <input
+                  value={newCourse}
+                  onChange={event => setNewCourse(event.target.value)}
+                  placeholder="e.g. BSIT"
+                  className="w-full rounded-lg border border-[#062444]/15 px-3 py-2 text-[12.5px] outline-none focus:border-[#0088cc]"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">Matched case- and whitespace-insensitively against each scholar's course on file.</p>
+              </div>
             ) : (
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-[12.5px] font-semibold text-[#062444]">
