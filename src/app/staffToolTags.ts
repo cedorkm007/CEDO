@@ -33,4 +33,9 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     label: "Scholars' Formation Tools",
     description: "Tag scholars with leadership positions across School-based, Community-based, and VIP organizations.",
   },
+  {
+    key: "forms_management",
+    label: "Forms Management",
+    description: "Upload and manage the PDFs/flipbooks scholars see under Forms and Services → Forms, including unlock conditions.",
+  },
 ];
