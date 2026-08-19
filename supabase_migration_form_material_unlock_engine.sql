@@ -68,6 +68,12 @@ alter table public.form_materials add column if not exists updated_at timestampt
 
 alter table public.form_material_conditions add column if not exists course text;
 
+-- The original Forms schema makes this column NOT NULL. Its value is only
+-- meaningful for year-level rules, but a default protects inserts of all
+-- other condition types as well.
+alter table public.form_material_conditions
+  alter column target_year_levels set default '{}'::text[];
+
 -- Find and drop any existing CHECK constraint that mentions condition_type
 -- (whatever it happens to be named in your database), then re-add one that
 -- allows all five types. If your database has no such constraint at all,

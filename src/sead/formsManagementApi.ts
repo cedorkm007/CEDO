@@ -165,18 +165,26 @@ export async function setFormMaterialConditions(
   if (deleteError) return { ok: false, error: deleteError.message };
   if (conditions.length === 0) return { ok: true };
 
+  // target_year_levels is NOT NULL in the Forms schema. Include an empty
+  // array for every non-year-level rule as well, so a mixed batch insert
+  // cannot fail merely because that column is irrelevant to one of its rows.
   const rows = conditions.map(c => {
+    const base = {
+      material_id: materialId,
+      target_year_levels: [] as string[],
+      all_year_levels: false,
+    };
     switch (c.type) {
       case "quest_subject":
-        return { material_id: materialId, condition_type: "quest_subject", subject_id: c.subjectId };
+        return { ...base, condition_type: "quest_subject", subject_id: c.subjectId };
       case "formation_activity":
-        return { material_id: materialId, condition_type: "formation_activity", formation_activity_id: c.formationActivityId };
+        return { ...base, condition_type: "formation_activity", formation_activity_id: c.formationActivityId };
       case "sdp_activity":
-        return { material_id: materialId, condition_type: "sdp_activity", sdp_activity_id: c.sdpActivityId };
+        return { ...base, condition_type: "sdp_activity", sdp_activity_id: c.sdpActivityId };
       case "course":
-        return { material_id: materialId, condition_type: "course", course: c.course };
+        return { ...base, condition_type: "course", course: c.course };
       case "year_level":
-        return { material_id: materialId, condition_type: "year_level", all_year_levels: c.allYearLevels, target_year_levels: c.yearLevels };
+        return { ...base, condition_type: "year_level", all_year_levels: c.allYearLevels, target_year_levels: c.yearLevels };
     }
   });
   const { error: insertError } = await supabase.from("form_material_conditions").insert(rows);

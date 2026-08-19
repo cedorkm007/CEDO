@@ -108,12 +108,9 @@ function FormMaterialModal({ material, onClose, onSaved }: { material: FormMater
 
 /**
  * Per-material unlock-condition editor. Lets staff add/remove rules of the
- * 4 condition types and saves the whole set at once via
- * setFormMaterialConditions(). Note: this only manages which rows exist in
- * form_material_conditions — the scholar-side "show this material once a
- * rule is met" evaluation isn't built yet (see the RLS comment in
- * src/scholar/formsApi.ts): today, any material with 1+ conditions is
- * simply hidden from every scholar until that check exists.
+ * 5 condition types and saves the whole set at once via
+ * setFormMaterialConditions(). The scholar portal evaluates the saved rules
+ * before it unlocks a material.
  */
 function FormMaterialConditionsModal({ material, onClose, onSaved }: { material: FormMaterial; onClose: () => void; onSaved: () => void }) {
   const [conditions, setConditions] = useState<FormMaterialCondition[]>(material.conditions);
