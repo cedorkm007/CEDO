@@ -68,7 +68,7 @@ function FormMaterialCard({ material }: { material: FormMaterial }) {
       {material.description && <span className="text-[12px] text-slate-500 leading-snug">{material.description}</span>}
 
       {locked ? (
-        <span className="flex flex-col gap-1 w-full">
+        <div className="flex w-full flex-col gap-1">
           <span className="flex items-center gap-1 text-[11.5px] font-bold text-slate-500">
             <Lock size={12} /> Locked
           </span>
@@ -79,7 +79,13 @@ function FormMaterialCard({ material }: { material: FormMaterial }) {
               ))}
             </span>
           )}
-        </span>
+          <div className="mt-2 flex w-full gap-2" aria-label="Material actions are locked until requirements are met">
+            <button type="button" disabled className="flex flex-1 cursor-not-allowed items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-100 px-2.5 py-2 text-[11.5px] font-bold text-slate-400">
+              <Eye size={13} /> Preview locked
+            </button>
+            {material.kind === "pdf" && <button type="button" disabled className="flex flex-1 cursor-not-allowed items-center justify-center gap-1 rounded-lg bg-slate-200 px-2.5 py-2 text-[11.5px] font-bold text-slate-400"><Download size={13} /> Download locked</button>}
+          </div>
+        </div>
       ) : (
         <div className="mt-auto flex w-full gap-2">
           <button type="button" onClick={() => void handlePreview()} disabled={disabled} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-[#cfe0f5] bg-white px-2.5 py-2 text-[11.5px] font-bold text-[#0088cc] hover:bg-[#f0f7fc] disabled:cursor-not-allowed disabled:opacity-60">
