@@ -103,13 +103,21 @@ export async function fetchSubjectsAndGrades(scholarIdNumber: string): Promise<S
 }
 
 export async function fetchQuestScores(scholarIdNumber: string): Promise<QuestScore[]> {
-  const { data, error } = await supabase
-    .from("scholar_quest_scores")
-    .select("*")
-    .eq("scholar_id_number", scholarIdNumber)
-    .order("date_taken", { ascending: false });
-  if (error || !data) return [];
-  return (data as Record<string, unknown>[]).map(r => ({
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 500;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("scholar_quest_scores")
+      .select("*")
+      .eq("scholar_id_number", scholarIdNumber)
+      .order("date_taken", { ascending: false })
+      .order("id")
+      .range(from, from + pageSize - 1);
+    if (error || !data) return [];
+    rows.push(...(data as Record<string, unknown>[]));
+    if (data.length < pageSize) break;
+  }
+  return rows.map(r => ({
     id: String(r.id),
     scholarIdNumber: String(r.scholar_id_number),
     questName: String(r.quest_name ?? ""),

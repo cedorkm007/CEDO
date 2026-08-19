@@ -57,6 +57,30 @@ function randomCode(): string {
   return result;
 }
 
+type AttendanceCodeInsert = { session_id: string; code: string; kind: string; batch_number: number };
+type AttendanceCodeRow = { id: string; code: string; kind: "time_in" | "time_out" | "voucher"; batch_number: number | null; redeemed_by_scholar_id: string | null; redeemed_at: string | null };
+const ATTENDANCE_CODE_PAGE_SIZE = 500;
+
+async function fetchAllAttendanceCodeRows(sessionId: string): Promise<AttendanceCodeRow[] | null> {
+  const rows: AttendanceCodeRow[] = [];
+  for (let from = 0; ; from += ATTENDANCE_CODE_PAGE_SIZE) {
+    const { data, error } = await supabase.from("attendance_codes").select("*").eq("session_id", sessionId)
+      .order("batch_number").order("kind").order("created_at").order("id")
+      .range(from, from + ATTENDANCE_CODE_PAGE_SIZE - 1);
+    if (error || !data) return null;
+    rows.push(...(data as AttendanceCodeRow[]));
+    if (data.length < ATTENDANCE_CODE_PAGE_SIZE) return rows;
+  }
+}
+
+async function insertAttendanceCodes(codes: AttendanceCodeInsert[]): Promise<string | null> {
+  for (let from = 0; from < codes.length; from += ATTENDANCE_CODE_PAGE_SIZE) {
+    const { error } = await supabase.from("attendance_codes").insert(codes.slice(from, from + ATTENDANCE_CODE_PAGE_SIZE));
+    if (error) return error.message;
+  }
+  return null;
+}
+
 export async function enableFormationAttendance(activityId: string, type: AttendanceType, participantCount: number, voucherHours = 1): Promise<{ ok: boolean; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
   const { data: session, error: sessionError } = await supabase.from("attendance_sessions").insert({
@@ -67,8 +91,8 @@ export async function enableFormationAttendance(activityId: string, type: Attend
   const codes = type === "time_in_time_out"
     ? Array.from({ length: participantCount * 2 }, (_, index) => ({ session_id: session.id, code: randomCode(), kind: index < participantCount ? "time_in" : "time_out", batch_number: 1 }))
     : Array.from({ length: participantCount }, () => ({ session_id: session.id, code: randomCode(), kind: "voucher", batch_number: 1 }));
-  const { error } = await supabase.from("attendance_codes").insert(codes);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  const error = await insertAttendanceCodes(codes);
+  return error ? { ok: false, error } : { ok: true };
 }
 
 /** Adds capacity after attendance has been enabled. Time-in/time-out adds a matching pair per scholar. */
@@ -82,8 +106,8 @@ export async function addFormationAttendanceCodes(sessionId: string, type: Atten
         ...Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "time_out", batch_number: batchNumber })),
       ]
     : Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "voucher", batch_number: batchNumber }));
-  const { error: codesError } = await supabase.from("attendance_codes").insert(codes);
-  if (codesError) return { ok: false, error: codesError.message };
+  const codesError = await insertAttendanceCodes(codes);
+  if (codesError) return { ok: false, error: codesError };
   const { data: session, error: sessionError } = await supabase.from("attendance_sessions").select("expected_attendees").eq("id", sessionId).single();
   if (sessionError) return { ok: false, error: sessionError.message };
   const { error: updateError } = await supabase.from("attendance_sessions")
@@ -94,7 +118,7 @@ export async function addFormationAttendanceCodes(sessionId: string, type: Atten
 export async function fetchFormationAttendanceSession(activityId: string): Promise<{ session: AttendanceSession; codes: AttendanceCode[] } | null> {
   const { data: row } = await supabase.from("attendance_sessions").select("*").eq("formation_activity_id", activityId).maybeSingle();
   if (!row) return null;
-  const { data: codeRows } = await supabase.from("attendance_codes").select("*").eq("session_id", row.id).order("batch_number").order("kind").order("created_at");
+  const codeRows = await fetchAllAttendanceCodeRows(row.id);
   return {
     session: { id: row.id, type: row.type, expectedAttendees: row.expected_attendees, voucherHours: row.duration_hours, createdAt: row.created_at },
     codes: (codeRows ?? []).map(code => ({ id: code.id, code: code.code, kind: code.kind, batchNumber: Number(code.batch_number ?? 1), redeemedByScholarId: code.redeemed_by_scholar_id, redeemedAt: code.redeemed_at })),

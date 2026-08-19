@@ -75,6 +75,13 @@ const FORM_MATERIAL_BUCKET = "form-materials";
  * for it.
  */
 export async function fetchFormMaterialDownloadUrl(materialId: string): Promise<string | null> {
+  const { data, error } = await supabase.storage.from(FORM_MATERIAL_BUCKET).createSignedUrl(`${materialId}/file.pdf`, 300, { download: true });
+  if (error || !data) return null;
+  return data.signedUrl;
+}
+
+/** A browser-preview URL for an unlocked PDF. Storage RLS enforces the same conditions as downloading. */
+export async function fetchFormMaterialPreviewUrl(materialId: string): Promise<string | null> {
   const { data, error } = await supabase.storage.from(FORM_MATERIAL_BUCKET).createSignedUrl(`${materialId}/file.pdf`, 300);
   if (error || !data) return null;
   return data.signedUrl;

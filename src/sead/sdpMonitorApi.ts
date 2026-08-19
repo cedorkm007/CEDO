@@ -259,11 +259,37 @@ function randomCode(): string {
   return out;
 }
 
+type AttendanceCodeInsert = { session_id: string; code: string; kind: string; batch_number: number };
+type AttendanceCodeRow = { id: string; code: string; kind: "time_in" | "time_out" | "voucher"; batch_number: number | null; redeemed_by_scholar_id: string | null; redeemed_at: string | null };
+const ATTENDANCE_CODE_PAGE_SIZE = 500;
+
+/** Supabase limits a single REST response, so read every code page before rendering/exporting QR batches. */
+async function fetchAllAttendanceCodeRows(sessionId: string): Promise<AttendanceCodeRow[] | null> {
+  const rows: AttendanceCodeRow[] = [];
+  for (let from = 0; ; from += ATTENDANCE_CODE_PAGE_SIZE) {
+    const { data, error } = await supabase.from("attendance_codes").select("*").eq("session_id", sessionId)
+      .order("batch_number").order("kind").order("created_at").order("id")
+      .range(from, from + ATTENDANCE_CODE_PAGE_SIZE - 1);
+    if (error || !data) return null;
+    rows.push(...(data as AttendanceCodeRow[]));
+    if (data.length < ATTENDANCE_CODE_PAGE_SIZE) return rows;
+  }
+}
+
+/** Insert in small requests so sessions with thousands of QR codes do not exceed REST request limits. */
+async function insertAttendanceCodes(codes: AttendanceCodeInsert[]): Promise<string | null> {
+  for (let from = 0; from < codes.length; from += ATTENDANCE_CODE_PAGE_SIZE) {
+    const { error } = await supabase.from("attendance_codes").insert(codes.slice(from, from + ATTENDANCE_CODE_PAGE_SIZE));
+    if (error) return error.message;
+  }
+  return null;
+}
+
 /** The attendance session for one SDP activity, if attendance monitoring was enabled for it. */
 export async function fetchAttendanceSession(activityId: string): Promise<{ session: AttendanceSession; codes: AttendanceCode[] } | null> {
   const { data: sessionRow } = await supabase.from("attendance_sessions").select("*").eq("sdp_activity_id", activityId).maybeSingle();
   if (!sessionRow) return null;
-  const { data: codeRows } = await supabase.from("attendance_codes").select("*").eq("session_id", sessionRow.id).order("kind").order("created_at");
+  const codeRows = await fetchAllAttendanceCodeRows(sessionRow.id);
   return {
     session: {
       id: sessionRow.id, type: sessionRow.type,
@@ -302,7 +328,7 @@ export async function enableAttendanceForActivity(
   }).select("id").single();
   if (sessionError || !session) return { ok: false, error: sessionError?.message || "Failed to create attendance session." };
 
-  const codes: { session_id: string; code: string; kind: string; batch_number: number }[] = [];
+  const codes: AttendanceCodeInsert[] = [];
   if (type === "time_in_time_out") {
     for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_in", batch_number: 1 });
     for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_out", batch_number: 1 });
@@ -310,8 +336,8 @@ export async function enableAttendanceForActivity(
     for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "voucher", batch_number: 1 });
   }
 
-  const { error: codesError } = await supabase.from("attendance_codes").insert(codes);
-  if (codesError) return { ok: false, error: codesError.message, sessionId: session.id };
+  const codesError = await insertAttendanceCodes(codes);
+  if (codesError) return { ok: false, error: codesError, sessionId: session.id };
   return { ok: true, sessionId: session.id };
 }
 
@@ -321,8 +347,8 @@ export async function addAttendanceVouchers(sessionId: string, participantCount:
   const { data: latestBatch } = await supabase.from("attendance_codes").select("batch_number").eq("session_id", sessionId).order("batch_number", { ascending: false }).limit(1).maybeSingle();
   const batchNumber = Number(latestBatch?.batch_number ?? 0) + 1;
   const codes = Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "voucher", batch_number: batchNumber }));
-  const { error } = await supabase.from("attendance_codes").insert(codes);
-  if (error) return { ok: false, error: error.message };
+  const error = await insertAttendanceCodes(codes);
+  if (error) return { ok: false, error };
   const { data: session, error: sessionError } = await supabase.from("attendance_sessions")
     .select("expected_attendees").eq("id", sessionId).single();
   if (sessionError) return { ok: false, error: sessionError.message };

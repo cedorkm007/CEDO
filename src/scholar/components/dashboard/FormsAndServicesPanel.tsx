@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Briefcase, FileText, Download, BookOpen, Info, Lock } from "lucide-react";
+import { Briefcase, FileText, Download, BookOpen, Eye, Info, Lock } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { ServicesContent } from "./ServicesPanel";
-import { fetchFormMaterialsForScholar, fetchFormMaterialDownloadUrl, type FormMaterial, type UnmetRequirement } from "../../formsApi";
+import { fetchFormMaterialsForScholar, fetchFormMaterialDownloadUrl, fetchFormMaterialPreviewUrl, type FormMaterial, type UnmetRequirement } from "../../formsApi";
 
 type Tab = "forms" | "services";
 
@@ -25,7 +25,7 @@ function FormMaterialCard({ material }: { material: FormMaterial }) {
   const notYetUploaded = material.kind === "pdf" && !material.fileName;
   const disabled = locked || notYetUploaded || opening;
 
-  async function handleOpen() {
+  async function handlePreview() {
     // Locked is checked again here (not just via the disabled attribute) so
     // this can't be triggered by anything other than a real click on an
     // enabled button — e.g. a stray Enter/Space on a disabled button
@@ -35,17 +35,26 @@ function FormMaterialCard({ material }: { material: FormMaterial }) {
     if (disabled) return;
     if (material.kind === "flipbook") { window.open(material.url, "_blank", "noopener,noreferrer"); return; }
     setOpening(true);
-    const url = await fetchFormMaterialDownloadUrl(material.id);
+    const url = await fetchFormMaterialPreviewUrl(material.id);
     setOpening(false);
-    if (!url) { window.alert("This file couldn't be opened right now — please try again later."); return; }
+    if (!url) { window.alert("This file couldn't be previewed right now — please try again later."); return; }
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  async function handleDownload() {
+    if (disabled || material.kind !== "pdf") return;
+    setOpening(true);
+    const url = await fetchFormMaterialDownloadUrl(material.id);
+    setOpening(false);
+    if (!url) { window.alert("This file couldn't be downloaded right now — please try again later."); return; }
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = material.fileName || `${material.title}.pdf`;
+    link.click();
+  }
+
   return (
-    <button
-      onClick={() => void handleOpen()}
-      disabled={disabled}
-      aria-disabled={disabled}
+    <article
       className={`flex flex-col items-start gap-2.5 border rounded-xl p-4 text-left transition-all disabled:cursor-not-allowed ${
         locked
           ? "bg-[#f4f5f7] border-[#e6ecf5]"
@@ -72,11 +81,14 @@ function FormMaterialCard({ material }: { material: FormMaterial }) {
           )}
         </span>
       ) : (
-        <span className="flex items-center gap-1 text-[11.5px] text-slate-400">
-          <Download size={12} /> {notYetUploaded ? "Not yet uploaded" : opening ? "Opening…" : material.kind === "pdf" ? "Download" : "Open flipbook"}
-        </span>
+        <div className="mt-auto flex w-full gap-2">
+          <button type="button" onClick={() => void handlePreview()} disabled={disabled} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-[#cfe0f5] bg-white px-2.5 py-2 text-[11.5px] font-bold text-[#0088cc] hover:bg-[#f0f7fc] disabled:cursor-not-allowed disabled:opacity-60">
+            <Eye size={13} /> {opening ? "Opening…" : material.kind === "pdf" ? "Preview" : "Open flipbook"}
+          </button>
+          {material.kind === "pdf" && <button type="button" onClick={() => void handleDownload()} disabled={disabled} className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-[#062444] px-2.5 py-2 text-[11.5px] font-bold text-white hover:bg-[#0b365d] disabled:cursor-not-allowed disabled:opacity-60"><Download size={13} /> Download</button>}
+        </div>
       )}
-    </button>
+    </article>
   );
 }
 

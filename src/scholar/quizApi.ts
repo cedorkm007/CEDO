@@ -1,10 +1,23 @@
 import { supabase } from "@/lib/supabase";
 import type { QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult, QuizResultItem } from "./types";
 
+// Supabase projects can cap REST responses below the number of Quest rows a
+// scholar needs. Fetch in pages rather than silently showing only page one.
+const QUEST_PAGE_SIZE = 500;
+type QuizSubjectRow = { id: string; name: string; passing_rate_min: number | null; passing_rate_max: number | null; certificate_filename: string | null };
+type QuizTopicRow = { id: string; subject_id: string; name: string; max_attempts_per_day: number | null; video_url: string | null; slide_url: string | null; pdf_url: string | null };
+type QuizScoreRow = { topic_id: string | null; score?: number | null; max_score?: number | null };
+
 export async function fetchQuizSubjects(): Promise<QuizSubject[]> {
-  const { data, error } = await supabase.from("quest_subjects").select("id, name, passing_rate_min, passing_rate_max, certificate_filename").order("name");
-  if (error || !data) return [];
-  return data.map(s => ({
+  const rows: QuizSubjectRow[] = [];
+  for (let from = 0; ; from += QUEST_PAGE_SIZE) {
+    const { data, error } = await supabase.from("quest_subjects").select("id, name, passing_rate_min, passing_rate_max, certificate_filename").order("name").order("id")
+      .range(from, from + QUEST_PAGE_SIZE - 1);
+    if (error || !data) return [];
+    rows.push(...(data as QuizSubjectRow[]));
+    if (data.length < QUEST_PAGE_SIZE) break;
+  }
+  return rows.map(s => ({
     id: s.id, name: s.name,
     passingRateMin: Number(s.passing_rate_min ?? 75), passingRateMax: Number(s.passing_rate_max ?? 100),
     certificateFilename: s.certificate_filename ?? "",
@@ -47,32 +60,20 @@ export async function fetchOwnCertificateUrl(subjectId: string): Promise<{ ok: b
  * one topic's own best percentage instead of the subject-wide average.
  */
 export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string): Promise<QuizTopic[]> {
-  const [{ data: subject }, { data: todayScores }, { data: allScores }] = await Promise.all([
+  const [subjectResult, todayScores, allScores, orderedTopics] = await Promise.all([
     supabase.from("quest_subjects").select("max_attempts_per_day, passing_rate_min, passing_rate_max").eq("id", subjectId).maybeSingle(),
-    supabase.from("scholar_quest_scores")
-      .select("topic_id")
-      .eq("scholar_id_number", scholarIdNumber)
-      .eq("subject_id", subjectId)
-      .eq("date_taken", new Date().toISOString().slice(0, 10)),
-    supabase.from("scholar_quest_scores")
-      .select("topic_id, score, max_score")
-      .eq("scholar_id_number", scholarIdNumber)
-      .eq("subject_id", subjectId),
+    fetchQuizScoreRows(subjectId, scholarIdNumber, true),
+    fetchQuizScoreRows(subjectId, scholarIdNumber, false),
+    fetchQuizTopicRows(subjectId, true),
   ]);
-  let { data: topics, error: topicsError } = await supabase.from("quest_topics")
-    .select("id, subject_id, name, max_attempts_per_day, video_url, slide_url, pdf_url").eq("subject_id", subjectId).order("sort_order").order("name");
   // Existing Supabase projects may receive this app deployment before the
   // migration that adds sort_order. Keep their existing topics available.
-  if (topicsError) {
-    const fallback = await supabase.from("quest_topics")
-      .select("id, subject_id, name, max_attempts_per_day, video_url, slide_url, pdf_url").eq("subject_id", subjectId).order("name");
-    topics = fallback.data;
-    topicsError = fallback.error;
-  }
-  if (topicsError || !topics) return [];
+  const topics = orderedTopics ?? await fetchQuizTopicRows(subjectId, false);
+  if (!topics) return [];
+  const subject = subjectResult.data;
 
   const usedTodayByTopic = new Map<string, number>();
-  for (const row of todayScores ?? []) {
+  for (const row of todayScores) {
     if (!row.topic_id) continue;
     usedTodayByTopic.set(row.topic_id, (usedTodayByTopic.get(row.topic_id) ?? 0) + 1);
   }
@@ -81,7 +82,7 @@ export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string
   // scholar has ever made on it — mirrors the "best_pct" subquery in the
   // scholar_subject_progress view, just kept per-topic instead of averaged.
   const bestByTopic = new Map<string, { score: number; maxScore: number; percentage: number }>();
-  for (const row of allScores ?? []) {
+  for (const row of allScores) {
     if (!row.topic_id) continue;
     const maxScore = Number(row.max_score ?? 0);
     if (!maxScore) continue; // avoid divide-by-zero on malformed rows
@@ -114,6 +115,36 @@ export async function fetchQuizTopics(subjectId: string, scholarIdNumber: string
       isPerfectScore: highestPercentage !== null && highestPercentage >= 100,
     };
   });
+}
+
+async function fetchQuizScoreRows(subjectId: string, scholarIdNumber: string, todayOnly: boolean): Promise<QuizScoreRow[]> {
+  const rows: QuizScoreRow[] = [];
+  for (let from = 0; ; from += QUEST_PAGE_SIZE) {
+    let query = supabase.from("scholar_quest_scores")
+      .select(todayOnly ? "topic_id" : "topic_id, score, max_score")
+      .eq("scholar_id_number", scholarIdNumber)
+      .eq("subject_id", subjectId)
+      .order("id");
+    if (todayOnly) query = query.eq("date_taken", new Date().toISOString().slice(0, 10));
+    const { data, error } = await query.range(from, from + QUEST_PAGE_SIZE - 1);
+    if (error || !data) return [];
+    rows.push(...(data as QuizScoreRow[]));
+    if (data.length < QUEST_PAGE_SIZE) return rows;
+  }
+}
+
+async function fetchQuizTopicRows(subjectId: string, useSortOrder: boolean): Promise<QuizTopicRow[] | null> {
+  const rows: QuizTopicRow[] = [];
+  for (let from = 0; ; from += QUEST_PAGE_SIZE) {
+    let query = supabase.from("quest_topics")
+      .select("id, subject_id, name, max_attempts_per_day, video_url, slide_url, pdf_url")
+      .eq("subject_id", subjectId);
+    query = useSortOrder ? query.order("sort_order").order("name").order("id") : query.order("name").order("id");
+    const { data, error } = await query.range(from, from + QUEST_PAGE_SIZE - 1);
+    if (error || !data) return null;
+    rows.push(...(data as QuizTopicRow[]));
+    if (data.length < QUEST_PAGE_SIZE) return rows;
+  }
 }
 
 export async function startQuizAttempt(topicId: string): Promise<

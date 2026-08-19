@@ -697,43 +697,49 @@ export interface ScoreFilters {
 }
 
 export async function fetchScores(filters: ScoreFilters): Promise<ScoreRow[]> {
-  let query = supabase
-    .from("scholar_quest_scores")
-    .select("id, scholar_id_number, quest_name, score, max_score, date_taken, subject_id, topic_id")
-    .order("date_taken", { ascending: false })
-    .limit(500);
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 500;
+  for (let from = 0; ; from += pageSize) {
+    let query = supabase
+      .from("scholar_quest_scores")
+      .select("id, scholar_id_number, quest_name, score, max_score, date_taken, subject_id, topic_id")
+      .order("date_taken", { ascending: false })
+      .order("id");
 
-  if (filters.subjectId) query = query.eq("subject_id", filters.subjectId);
-  if (filters.topicId) query = query.eq("topic_id", filters.topicId);
-  if (filters.dateFrom) query = query.gte("date_taken", filters.dateFrom);
-  if (filters.dateTo) query = query.lte("date_taken", filters.dateTo);
+    if (filters.subjectId) query = query.eq("subject_id", filters.subjectId);
+    if (filters.topicId) query = query.eq("topic_id", filters.topicId);
+    if (filters.dateFrom) query = query.gte("date_taken", filters.dateFrom);
+    if (filters.dateTo) query = query.lte("date_taken", filters.dateTo);
 
-  const { data: rows, error } = await query;
-  if (error || !rows) return [];
+    const { data, error } = await query.range(from, from + pageSize - 1);
+    if (error || !data) return [];
+    rows.push(...(data as Record<string, unknown>[]));
+    if (data.length < pageSize) break;
+  }
 
-  const scholarIds = Array.from(new Set(rows.map(r => r.scholar_id_number)));
+  const scholarIds = Array.from(new Set(rows.map(r => String(r.scholar_id_number))));
   const { data: scholars } = scholarIds.length
     ? await supabase.from("scholars").select("scholar_id_number, first_name, last_name").in("scholar_id_number", scholarIds)
     : { data: [] as Record<string, unknown>[] };
   const nameByScholarId = new Map((scholars ?? []).map((s: Record<string, unknown>) => [s.scholar_id_number, `${s.first_name} ${s.last_name}`]));
 
-  const subjectIds = Array.from(new Set(rows.map(r => r.subject_id).filter(Boolean)));
-  const topicIds = Array.from(new Set(rows.map(r => r.topic_id).filter(Boolean)));
+  const subjectIds = Array.from(new Set(rows.map(r => String(r.subject_id ?? "")).filter(Boolean)));
+  const topicIds = Array.from(new Set(rows.map(r => String(r.topic_id ?? "")).filter(Boolean)));
   const { data: subjects } = subjectIds.length ? await supabase.from("quest_subjects").select("id, name").in("id", subjectIds) : { data: [] as Record<string, unknown>[] };
   const { data: topics } = topicIds.length ? await supabase.from("quest_topics").select("id, name").in("id", topicIds) : { data: [] as Record<string, unknown>[] };
   const subjectNameById = new Map((subjects ?? []).map((s: Record<string, unknown>) => [s.id, s.name]));
   const topicNameById = new Map((topics ?? []).map((t: Record<string, unknown>) => [t.id, t.name]));
 
   let result: ScoreRow[] = rows.map(r => ({
-    id: r.id,
-    scholarIdNumber: r.scholar_id_number,
-    scholarName: nameByScholarId.get(r.scholar_id_number) ?? r.scholar_id_number,
-    subjectName: r.subject_id ? (subjectNameById.get(r.subject_id) as string) ?? null : null,
-    topicName: r.topic_id ? (topicNameById.get(r.topic_id) as string) ?? null : null,
-    questName: r.quest_name,
+    id: String(r.id),
+    scholarIdNumber: String(r.scholar_id_number),
+    scholarName: nameByScholarId.get(String(r.scholar_id_number)) ?? String(r.scholar_id_number),
+    subjectName: r.subject_id ? (subjectNameById.get(String(r.subject_id)) as string) ?? null : null,
+    topicName: r.topic_id ? (topicNameById.get(String(r.topic_id)) as string) ?? null : null,
+    questName: String(r.quest_name ?? ""),
     score: r.score == null ? null : Number(r.score),
     maxScore: r.max_score == null ? null : Number(r.max_score),
-    dateTaken: r.date_taken,
+    dateTaken: String(r.date_taken ?? ""),
   }));
 
   if (filters.scholarSearch?.trim()) {
