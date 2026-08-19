@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud, Video, Presentation, FileCheck2, FileUp, Eye, FileText } from "lucide-react";
+import {
+  Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud, Video, Presentation,
+  FileCheck2, FileUp, Eye, FileText, Search,
+} from "lucide-react";
 import {
   fetchSubjects, createSubject, renameSubject, deleteSubject, updateSubjectMaxAttempts,
   updateSubjectPassingRate, uploadSubjectCertificate, removeSubjectCertificate, fetchCertificatePreviewUrl,
@@ -19,6 +22,7 @@ export function QuestionBankTab() {
   const [selectedSubject, setSelectedSubject] = useState<QuestSubject | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<QuestTopic | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<QuestQuestion | "new" | null>(null);
+  const [previewQuestion, setPreviewQuestion] = useState<QuestQuestion | null>(null);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
 
   useEffect(() => { loadSubjects(); }, []);
@@ -98,6 +102,7 @@ export function QuestionBankTab() {
         onAdd={() => setEditingQuestion("new")}
         onBulkUpload={() => setShowBulkUpload(true)}
         onEdit={q => setEditingQuestion(q)}
+        onView={q => setPreviewQuestion(q)}
         onDelete={async id => { await deleteQuestion(id); reloadQuestions(); }}
         onToggleActive={async (id, active) => { await toggleQuestionActive(id, active); reloadQuestions(); }}
       />
@@ -111,6 +116,10 @@ export function QuestionBankTab() {
         />
       )}
 
+      {previewQuestion && (
+        <QuestionPreviewModal question={previewQuestion} onClose={() => setPreviewQuestion(null)} />
+      )}
+
       {showBulkUpload && selectedTopic && (
         <BulkQuestionUploadModal
           topicId={selectedTopic.id}
@@ -118,6 +127,38 @@ export function QuestionBankTab() {
           onClose={() => setShowBulkUpload(false)}
           onDone={reloadQuestions}
         />
+      )}
+    </div>
+  );
+}
+
+// ── Shared: modal shell (matches the app's existing modal convention) ──
+function ModalShell({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8" onClick={onClose}>
+      <div className={`w-full ${wide ? "max-w-lg" : "max-w-md"} bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto`} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4 rounded-t-2xl sticky top-0">
+          <h3 className="text-white font-bold text-[15px]">{title}</h3>
+          <button onClick={onClose} className="text-white/70 hover:text-white"><XIcon size={18} /></button>
+        </div>
+        <div className="p-6 space-y-3">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Shared: compact header with an "Add" button that opens a modal ──
+function ColumnHeader({ title, subtitle, onAdd, addLabel }: { title: string; subtitle?: string; onAdd?: () => void; addLabel?: string }) {
+  return (
+    <div className="px-4 py-3 border-b border-[#e6ecf5] flex items-center justify-between gap-2">
+      <div className="min-w-0">
+        <h3 className="text-[12.5px] font-bold text-[#062444] truncate">{title}</h3>
+        {subtitle && <p className="mt-0.5 text-[10.5px] text-slate-400 truncate">{subtitle}</p>}
+      </div>
+      {onAdd && (
+        <button onClick={onAdd} className="shrink-0 flex items-center gap-1 text-[12px] font-semibold text-[#0088cc] hover:underline">
+          <Plus size={14} /> {addLabel}
+        </button>
       )}
     </div>
   );
@@ -135,38 +176,24 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
   onPreviewCertificate: (id: string) => Promise<string | null>;
   onDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
-  const [newName, setNewName] = useState("");
-  const [newMaxAttempts, setNewMaxAttempts] = useState("3");
-  const [newPassingMin, setNewPassingMin] = useState("75");
-  const [newPassingMax, setNewPassingMax] = useState("100");
+  const [showCreate, setShowCreate] = useState(false);
+  const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editMaxAttempts, setEditMaxAttempts] = useState("");
   const [editPassingMin, setEditPassingMin] = useState("");
   const [editPassingMax, setEditPassingMax] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   const [certBusyId, setCertBusyId] = useState<string | null>(null);
+
+  const filteredSubjects = search.trim()
+    ? subjects.filter(s => s.name.toLowerCase().includes(search.trim().toLowerCase()))
+    : subjects;
 
   function validatePassingRate(minRaw: string, maxRaw: string): { ok: true; min: number; max: number } | { ok: false } {
     const min = Number(minRaw), max = Number(maxRaw);
     if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 100 || min > max) return { ok: false };
     return { ok: true, min, max };
-  }
-
-  async function submitCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    if (!newName.trim()) return;
-    const attempts = Number(newMaxAttempts);
-    if (!Number.isFinite(attempts) || attempts < 1) { setError("Allowable attempts per day must be at least 1."); return; }
-    const rate = validatePassingRate(newPassingMin, newPassingMax);
-    if (!rate.ok) { setError("Passing rate must be 0–100%, with the minimum not exceeding the maximum."); return; }
-    setBusy(true);
-    const result = await onCreate(newName.trim(), attempts, rate.min, rate.max);
-    setBusy(false);
-    if (!result.ok) { setError(result.error || "Failed to save — check that this account is authorized."); return; }
-    setNewName(""); setNewMaxAttempts("3"); setNewPassingMin("75"); setNewPassingMax("100");
   }
 
   async function submitEdit(id: string) {
@@ -213,14 +240,25 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
 
   return (
     <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[72vh] xl:max-h-[720px]">
-      <div className="px-4 py-3 border-b border-[#e6ecf5]">
-        <h3 className="text-[12.5px] font-bold text-[#062444]">Subjects</h3>
-      </div>
-      <div className="overflow-y-auto flex-1">
+      <ColumnHeader title="Subjects" onAdd={() => setShowCreate(true)} addLabel="Add Subject" />
+
+      {subjects.length > 0 && (
+        <div className="px-3 pt-2.5">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search subjects…"
+              className="w-full text-[12.5px] border border-[#062444]/15 rounded-lg pl-7 pr-3 py-1.5 outline-none focus:border-[#0088cc]" />
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-y-auto flex-1 mt-1">
         {subjects.length === 0 ? (
           <p className="text-sm text-slate-400 px-4 py-6 text-center">None yet.</p>
+        ) : filteredSubjects.length === 0 ? (
+          <p className="text-sm text-slate-400 px-4 py-6 text-center">No subjects match your search.</p>
         ) : (
-          subjects.map(s => (
+          filteredSubjects.map(s => (
             <div key={s.id}
               className={`px-4 py-2.5 border-b border-[#f0f3f8] cursor-pointer ${selected?.id === s.id ? "bg-[#eef3fb]" : "hover:bg-[#f8fafd]"}`}
               onClick={() => editingId !== s.id && onSelect(s)}
@@ -302,30 +340,72 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
           ))
         )}
       </div>
-      {error && <p className="text-[12px] text-red-600 px-4 py-2 border-t border-red-100 bg-red-50">{error}</p>}
-      <form onSubmit={submitCreate} className="px-3 py-2.5 border-t border-[#e6ecf5] space-y-1.5">
-        <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="New subject (e.g. Mathematics)" disabled={busy}
-          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
+      {error && !showCreate && <p className="text-[12px] text-red-600 px-4 py-2 border-t border-red-100 bg-red-50">{error}</p>}
+
+      {showCreate && (
+        <CreateSubjectModal
+          onClose={() => setShowCreate(false)}
+          onCreate={onCreate}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateSubjectModal({ onClose, onCreate }: {
+  onClose: () => void;
+  onCreate: (name: string, maxAttemptsPerDay: number, passingRateMin: number, passingRateMax: number) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [name, setName] = useState("");
+  const [maxAttempts, setMaxAttempts] = useState("3");
+  const [passingMin, setPassingMin] = useState("75");
+  const [passingMax, setPassingMax] = useState("100");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!name.trim()) { setError("Enter a subject name."); return; }
+    const attempts = Number(maxAttempts);
+    if (!Number.isFinite(attempts) || attempts < 1) { setError("Allowable attempts per day must be at least 1."); return; }
+    const min = Number(passingMin), max = Number(passingMax);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 100 || min > max) {
+      setError("Passing rate must be 0–100%, with the minimum not exceeding the maximum."); return;
+    }
+    setBusy(true);
+    const result = await onCreate(name.trim(), attempts, min, max);
+    setBusy(false);
+    if (!result.ok) { setError(result.error || "Failed to save — check that this account is authorized."); return; }
+    onClose();
+  }
+
+  return (
+    <ModalShell title="Add Subject" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Subject name (e.g. Mathematics)" disabled={busy} autoFocus
+          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2.5 outline-none focus:border-[#0088cc]" />
         <div className="flex items-center gap-2">
-          <span className="text-[11.5px] text-slate-500 whitespace-nowrap">Allowable attempts/day:</span>
-          <input type="number" min={1} value={newMaxAttempts} onChange={e => setNewMaxAttempts(e.target.value)} disabled={busy}
+          <span className="text-[12px] text-slate-500 whitespace-nowrap">Allowable attempts/day:</span>
+          <input type="number" min={1} value={maxAttempts} onChange={e => setMaxAttempts(e.target.value)} disabled={busy}
+            className="w-20 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] text-slate-500 whitespace-nowrap">Passing rate:</span>
+          <input type="number" min={0} max={100} value={passingMin} onChange={e => setPassingMin(e.target.value)} disabled={busy}
             className="w-16 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
+          <span className="text-[12px] text-slate-500">% –</span>
+          <input type="number" min={0} max={100} value={passingMax} onChange={e => setPassingMax(e.target.value)} disabled={busy}
+            className="w-16 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
+          <span className="text-[12px] text-slate-500">%</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[11.5px] text-slate-500 whitespace-nowrap">Passing rate:</span>
-          <input type="number" min={0} max={100} value={newPassingMin} onChange={e => setNewPassingMin(e.target.value)} disabled={busy}
-            className="w-14 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
-          <span className="text-[11.5px] text-slate-500">% –</span>
-          <input type="number" min={0} max={100} value={newPassingMax} onChange={e => setNewPassingMax(e.target.value)} disabled={busy}
-            className="w-14 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
-          <span className="text-[11.5px] text-slate-500">%</span>
-        </div>
-        <p className="text-[10.5px] text-slate-400">Certificate upload is available after creating the subject (edit it to attach one).</p>
-        <button type="submit" disabled={busy} className="w-full flex items-center justify-center gap-1.5 bg-[#062444] text-[#F3BC00] rounded-lg p-2 disabled:opacity-50">
-          <Plus size={15} /> Add Subject
+        <p className="text-[11px] text-slate-400">Certificate upload is available after creating the subject (edit it to attach one).</p>
+        {error && <p className="text-[12.5px] text-red-600">{error}</p>}
+        <button type="submit" disabled={busy} className="w-full flex items-center justify-center gap-1.5 bg-[#062444] text-[#F3BC00] rounded-lg p-2.5 font-semibold disabled:opacity-50">
+          <Plus size={15} /> {busy ? "Creating…" : "Add Subject"}
         </button>
       </form>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -337,11 +417,8 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
   onReorder: (orderedTopicIds: string[]) => Promise<{ ok: boolean; error?: string }>;
   onDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
-  const [newName, setNewName] = useState("");
-  const [newMaxAttempts, setNewMaxAttempts] = useState(""); // blank = inherit subject default
-  const [newVideoUrl, setNewVideoUrl] = useState("");
-  const [newSlideUrl, setNewSlideUrl] = useState("");
-  const [newPdfUrl, setNewPdfUrl] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editMaxAttempts, setEditMaxAttempts] = useState("");
@@ -349,7 +426,6 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
   const [editSlideUrl, setEditSlideUrl] = useState("");
   const [editPdfUrl, setEditPdfUrl] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   const [draggedTopicId, setDraggedTopicId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
 
@@ -357,28 +433,14 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
     return <EmptyColumn title="Topics" message="Select a subject to see its topics." />;
   }
 
-  function parseAttempts(raw: string): { ok: true; value: number | null } | { ok: false } {
-    if (raw.trim() === "") return { ok: true, value: null }; // inherit subject default
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n < 1) return { ok: false };
-    return { ok: true, value: n };
-  }
-
-  async function submitCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    if (!newName.trim()) return;
-    const attempts = parseAttempts(newMaxAttempts);
-    if (!attempts.ok) { setError("Attempts override must be at least 1, or left blank to use the subject's default."); return; }
-    if (!isValidHttpsUrl(newVideoUrl)) { setError("Video URL must be a valid https:// link."); return; }
-    if (!isValidHttpsUrl(newSlideUrl)) { setError("Slide deck URL must be a valid https:// link."); return; }
-    if (!isValidHttpsUrl(newPdfUrl)) { setError("PDF material URL must be a valid https:// link."); return; }
-    setBusy(true);
-    const result = await onCreate(newName.trim(), attempts.value, newVideoUrl.trim(), newSlideUrl.trim(), newPdfUrl.trim());
-    setBusy(false);
-    if (!result.ok) { setError(result.error || "Failed to save — check that this account is authorized."); return; }
-    setNewName(""); setNewMaxAttempts(""); setNewVideoUrl(""); setNewSlideUrl(""); setNewPdfUrl("");
-  }
+  // Drag-and-drop reordering works against the full, unfiltered topic list —
+  // disabling it while a search filter narrows what's visible avoids ambiguous
+  // index math (dropping a filtered item "between" two others it isn't actually
+  // adjacent to in the real order).
+  const isFiltering = search.trim().length > 0;
+  const filteredTopics = isFiltering
+    ? topics.filter(t => t.name.toLowerCase().includes(search.trim().toLowerCase()))
+    : topics;
 
   async function submitEdit(id: string) {
     setError("");
@@ -418,22 +480,32 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
 
   return (
     <div className="bg-white rounded-2xl border border-[#e6ecf5] flex flex-col max-h-[72vh] xl:max-h-[720px]">
-      <div className="px-4 py-3 border-b border-[#e6ecf5]">
-        <h3 className="text-[12.5px] font-bold text-[#062444]">Topics — {subject.name}</h3>
-        <p className="mt-0.5 text-[10.5px] text-slate-400">Drag a topic box to change its order.</p>
-      </div>
-      <div className="overflow-y-auto flex-1">
+      <ColumnHeader title={`Topics — ${subject.name}`} subtitle={isFiltering ? undefined : "Drag a topic box to change its order."} onAdd={() => setShowCreate(true)} addLabel="Add Topic" />
+
+      {topics.length > 0 && (
+        <div className="px-3 pt-2.5">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search topics…"
+              className="w-full text-[12.5px] border border-[#062444]/15 rounded-lg pl-7 pr-3 py-1.5 outline-none focus:border-[#0088cc]" />
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-y-auto flex-1 mt-1">
         {topics.length === 0 ? (
           <p className="text-sm text-slate-400 px-4 py-6 text-center">None yet.</p>
+        ) : filteredTopics.length === 0 ? (
+          <p className="text-sm text-slate-400 px-4 py-6 text-center">No topics match your search.</p>
         ) : (
-          topics.map(t => (
+          filteredTopics.map(t => (
             <div key={t.id}
-              draggable={editingId !== t.id && !reordering}
+              draggable={!isFiltering && editingId !== t.id && !reordering}
               onDragStart={event => { event.dataTransfer.effectAllowed = "move"; setDraggedTopicId(t.id); }}
               onDragOver={event => event.preventDefault()}
               onDrop={event => void handleDrop(event, t.id)}
               onDragEnd={() => setDraggedTopicId(null)}
-              className={`px-4 py-2.5 border-b border-[#f0f3f8] cursor-grab active:cursor-grabbing ${draggedTopicId === t.id ? "opacity-40" : ""} ${selected?.id === t.id ? "bg-[#eef3fb]" : "hover:bg-[#f8fafd]"}`}
+              className={`px-4 py-2.5 border-b border-[#f0f3f8] ${isFiltering ? "" : "cursor-grab active:cursor-grabbing"} ${draggedTopicId === t.id ? "opacity-40" : ""} ${selected?.id === t.id ? "bg-[#eef3fb]" : "hover:bg-[#f8fafd]"}`}
               onClick={() => editingId !== t.id && onSelect(t)}
             >
               {editingId === t.id ? (
@@ -482,35 +554,86 @@ function TopicColumn({ subject, topics, selected, onSelect, onCreate, onUpdate, 
           ))
         )}
       </div>
-      {error && <p className="text-[12px] text-red-600 px-4 py-2 border-t border-red-100 bg-red-50">{error}</p>}
-      <form onSubmit={submitCreate} className="px-3 py-2.5 border-t border-[#e6ecf5] space-y-1.5">
-        <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="New topic (e.g. Algebra)" disabled={busy}
-          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
-        <div className="flex items-center gap-2">
-          <span className="text-[11.5px] text-slate-500 whitespace-nowrap">Attempts/day override:</span>
-          <input type="number" min={1} value={newMaxAttempts} onChange={e => setNewMaxAttempts(e.target.value)} disabled={busy}
-            placeholder={`${subject.maxAttemptsPerDay} (default)`}
-            className="w-28 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
-        </div>
-        <input value={newVideoUrl} onChange={e => setNewVideoUrl(e.target.value)} placeholder="Video URL — YouTube, Google Drive, etc. (optional)" disabled={busy}
-          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
-        <input value={newSlideUrl} onChange={e => setNewSlideUrl(e.target.value)} placeholder="Slide deck URL — Google Slides, Canva, etc. (optional)" disabled={busy}
-          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
-        <input value={newPdfUrl} onChange={e => setNewPdfUrl(e.target.value)} placeholder="PDF material URL — Google Drive, etc. (optional)" disabled={busy}
-          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]" />
-        <p className="text-[10.5px] text-slate-400 px-1">Google Drive links must be shared as “Anyone with the link.” All links must start with https://.</p>
-        <button type="submit" disabled={busy} className="w-full flex items-center justify-center gap-1.5 bg-[#062444] text-[#F3BC00] rounded-lg p-2 disabled:opacity-50">
-          <Plus size={15} /> Add Topic
-        </button>
-      </form>
+      {error && !showCreate && <p className="text-[12px] text-red-600 px-4 py-2 border-t border-red-100 bg-red-50">{error}</p>}
+
+      {showCreate && (
+        <CreateTopicModal
+          subject={subject}
+          onClose={() => setShowCreate(false)}
+          onCreate={onCreate}
+        />
+      )}
     </div>
   );
 }
 
+function parseAttempts(raw: string): { ok: true; value: number | null } | { ok: false } {
+  if (raw.trim() === "") return { ok: true, value: null }; // inherit subject default
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return { ok: false };
+  return { ok: true, value: n };
+}
+
+function CreateTopicModal({ subject, onClose, onCreate }: {
+  subject: QuestSubject;
+  onClose: () => void;
+  onCreate: (name: string, maxAttemptsPerDay: number | null, videoUrl: string, slideUrl: string, pdfUrl: string) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [name, setName] = useState("");
+  const [maxAttempts, setMaxAttempts] = useState(""); // blank = inherit subject default
+  const [videoUrl, setVideoUrl] = useState("");
+  const [slideUrl, setSlideUrl] = useState("");
+  const [pdfUrl, setPdfUrl] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!name.trim()) { setError("Enter a topic name."); return; }
+    const attempts = parseAttempts(maxAttempts);
+    if (!attempts.ok) { setError("Attempts override must be at least 1, or left blank to use the subject's default."); return; }
+    if (!isValidHttpsUrl(videoUrl)) { setError("Video URL must be a valid https:// link."); return; }
+    if (!isValidHttpsUrl(slideUrl)) { setError("Slide deck URL must be a valid https:// link."); return; }
+    if (!isValidHttpsUrl(pdfUrl)) { setError("PDF material URL must be a valid https:// link."); return; }
+    setBusy(true);
+    const result = await onCreate(name.trim(), attempts.value, videoUrl.trim(), slideUrl.trim(), pdfUrl.trim());
+    setBusy(false);
+    if (!result.ok) { setError(result.error || "Failed to save — check that this account is authorized."); return; }
+    onClose();
+  }
+
+  return (
+    <ModalShell title={`Add Topic — ${subject.name}`} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Topic name (e.g. Algebra)" disabled={busy} autoFocus
+          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2.5 outline-none focus:border-[#0088cc]" />
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] text-slate-500 whitespace-nowrap">Attempts/day override:</span>
+          <input type="number" min={1} value={maxAttempts} onChange={e => setMaxAttempts(e.target.value)} disabled={busy}
+            placeholder={`${subject.maxAttemptsPerDay} (default)`}
+            className="w-28 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
+        </div>
+        <input value={videoUrl} onChange={e => setVideoUrl(e.target.value)} placeholder="Video URL — YouTube, Google Drive, etc. (optional)" disabled={busy}
+          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2.5 outline-none focus:border-[#0088cc]" />
+        <input value={slideUrl} onChange={e => setSlideUrl(e.target.value)} placeholder="Slide deck URL — Google Slides, Canva, etc. (optional)" disabled={busy}
+          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2.5 outline-none focus:border-[#0088cc]" />
+        <input value={pdfUrl} onChange={e => setPdfUrl(e.target.value)} placeholder="PDF material URL — Google Drive, etc. (optional)" disabled={busy}
+          className="w-full text-sm border border-[#062444]/15 rounded-lg px-3 py-2.5 outline-none focus:border-[#0088cc]" />
+        <p className="text-[11px] text-slate-400">Google Drive links must be shared as "Anyone with the link." All links must start with https://.</p>
+        {error && <p className="text-[12.5px] text-red-600">{error}</p>}
+        <button type="submit" disabled={busy} className="w-full flex items-center justify-center gap-1.5 bg-[#062444] text-[#F3BC00] rounded-lg p-2.5 font-semibold disabled:opacity-50">
+          <Plus size={15} /> {busy ? "Creating…" : "Add Topic"}
+        </button>
+      </form>
+    </ModalShell>
+  );
+}
+
 // ── Column: Questions ───────────────────────────────────────
-function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelete, onToggleActive }: {
+function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onView, onDelete, onToggleActive }: {
   topic: QuestTopic | null; questions: QuestQuestion[]; onAdd: () => void; onBulkUpload: () => void; onEdit: (q: QuestQuestion) => void;
-  onDelete: (id: string) => void; onToggleActive: (id: string, active: boolean) => void;
+  onView: (q: QuestQuestion) => void; onDelete: (id: string) => void; onToggleActive: (id: string, active: boolean) => void;
 }) {
   if (!topic) {
     return <EmptyColumn title="Questions" message="Select a topic to manage its questions." />;
@@ -542,12 +665,22 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelet
           <p className="text-sm text-slate-400 px-4 py-6 text-center">No questions match your search.</p>
         ) : (
           paged.map(q => (
-            <div key={q.id} className="px-4 py-3 border-b border-[#f0f3f8]">
-              <div className="flex items-start justify-between gap-2 mb-1.5">
-                <p className={`text-[13.5px] font-medium min-w-0 break-words ${q.isActive ? "text-[#062444]" : "text-slate-400 line-through"}`}>{q.questionText}</p>
-                <span className="shrink-0 text-[11px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{q.points} pt</span>
+            <div key={q.id} className="px-4 py-4 border-b border-[#f0f3f8]">
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <p className={`text-[14.5px] leading-relaxed font-medium min-w-0 break-words ${q.isActive ? "text-[#062444]" : "text-slate-400 line-through"}`}>
+                  {q.questionText}
+                </p>
+                <button onClick={() => onView(q)} className="shrink-0 flex items-center gap-1 text-[11px] font-semibold text-[#0088cc] border border-[#0088cc]/30 rounded-full px-2.5 py-1 hover:bg-[#0088cc]/10">
+                  <Eye size={12} /> View
+                </button>
               </div>
-              <p className="text-[12px] text-slate-400 mb-2">{q.choices.length} choices · correct: {q.choices.find(c => c.isCorrect)?.choiceText || "—"}</p>
+              <div className="flex items-center gap-2 mb-2.5 flex-wrap">
+                <span className="text-[11px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{q.points} pt</span>
+                <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">{q.choices.length} choices</span>
+                <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${q.isActive ? "text-green-700 bg-green-100" : "text-slate-500 bg-slate-100"}`}>
+                  {q.isActive ? "Active" : "Inactive"}
+                </span>
+              </div>
               <div className="flex items-center gap-3 text-[12px]">
                 <button onClick={() => onEdit(q)} className="flex items-center gap-1 text-[#0088cc] font-semibold hover:underline"><Pencil size={12} /> Edit</button>
                 <button onClick={() => onToggleActive(q.id, !q.isActive)} className="text-slate-400 font-semibold hover:underline hover:text-slate-600">
@@ -565,6 +698,37 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onDelet
         </div>
       )}
     </div>
+  );
+}
+
+// ── Read-only full question preview (staff-authorized, shows correct answer) ──
+function QuestionPreviewModal({ question, onClose }: { question: QuestQuestion; onClose: () => void }) {
+  return (
+    <ModalShell title="Question Preview" onClose={onClose} wide>
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <span className="text-[11px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{question.points} pt</span>
+        <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${question.isActive ? "text-green-700 bg-green-100" : "text-slate-500 bg-slate-100"}`}>
+          {question.isActive ? "Active" : "Inactive"}
+        </span>
+        <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">{question.choices.length} choices</span>
+      </div>
+      <p className="text-[15px] leading-relaxed font-semibold text-[#062444] whitespace-pre-wrap break-words">
+        {question.questionText}
+      </p>
+      <div className="space-y-2 pt-1">
+        {question.choices.map(choice => (
+          <div key={choice.id} className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 ${choice.isCorrect ? "border-green-300 bg-green-50" : "border-[#e6ecf5]"}`}>
+            {choice.isCorrect ? (
+              <Check size={16} className="text-green-600 shrink-0 mt-0.5" />
+            ) : (
+              <span className="w-4 h-4 shrink-0 mt-0.5" />
+            )}
+            <p className={`text-[13.5px] break-words ${choice.isCorrect ? "font-semibold text-green-800" : "text-[#062444]"}`}>{choice.choiceText}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-slate-400 pt-1">This is a read-only preview. Use Edit to change the question.</p>
+    </ModalShell>
   );
 }
 
