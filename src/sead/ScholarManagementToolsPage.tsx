@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { Users, BookOpen, BarChart3, History, CalendarDays, FileText } from "lucide-react";
+import { Users, BookOpen, BarChart3, History, CalendarDays } from "lucide-react";
 import { ScholarsTab } from "./pages/ScholarsTab";
 import { QuestionBankTab } from "./pages/QuestionBankTab";
 import { ScholarAccountHistoryTab } from "./pages/ScholarAccountHistoryTab";
 import { QuestsMonitoringTab } from "./pages/QuestsMonitoringTab";
 import { FormationActivitiesTab } from "./pages/FormationActivitiesTab";
-import { FormsManagementTab } from "./pages/FormsManagementTab";
 import type { SeadTab } from "./types";
 
 /**
@@ -16,12 +15,10 @@ import type { SeadTab } from "./types";
  * is_sead_staff flag + RLS policies (supabase_migration_sead_staff.sql),
  * so the real security boundary doesn't depend on this UI gate alone.
  *
- * `tags` is the signed-in staff account's tool tags (see
- * src/app/staffToolTags.ts) — used here only to further gate the Forms
- * Management sub-tab, which needs its own "forms_management" tag on top
- * of whatever already got the account into this page.
+ * Forms Management is a separate staff tool in the main navigation; it is
+ * intentionally not embedded as a Scholar Management Tools sub-tab.
  */
-export function ScholarManagementToolsPage({ tags }: { tags: string[] }) {
+export function ScholarManagementToolsPage() {
   const [tab, setTab] = useState<SeadTab>("scholars");
 
   const TABS: { key: SeadTab; label: string; icon: React.ReactNode }[] = [
@@ -31,10 +28,6 @@ export function ScholarManagementToolsPage({ tags }: { tags: string[] }) {
     { key: "formation-activities", label: "Formation Activities", icon: <CalendarDays size={14} /> },
     { key: "history", label: "Account History", icon: <History size={14} /> },
   ];
-  if (tags.includes("forms_management")) {
-    TABS.push({ key: "forms-management", label: "Forms Management", icon: <FileText size={14} /> });
-  }
-
   return (
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Scholar Management Tools</h1>
@@ -59,7 +52,6 @@ export function ScholarManagementToolsPage({ tags }: { tags: string[] }) {
       {tab === "quests-monitoring" && <QuestsMonitoringTab />}
       {tab === "formation-activities" && <FormationActivitiesTab />}
       {tab === "history" && <ScholarAccountHistoryTab />}
-      {tab === "forms-management" && tags.includes("forms_management") && <FormsManagementTab />}
     </div>
   );
 }
