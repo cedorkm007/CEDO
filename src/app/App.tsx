@@ -23,6 +23,7 @@ import CEDOSeal from "@/imports/CEDO_Seal.png";
 import { ScholarManagementToolsPage } from "@/sead/ScholarManagementToolsPage";
 import { SDPMonitoringTab } from "@/sead/pages/SDPMonitoringTab";
 import { FormationToolsTab } from "@/sead/pages/FormationToolsTab";
+import { FormsManagementTab } from "@/sead/pages/FormsManagementTab";
 import { StaffAccountsPage } from "@/itadmin/StaffAccountsPage";
 
 // ─────────────────────────────────────────────────────────────
@@ -47,7 +48,7 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
-type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "sdpMonitoring" | "formationTools" | "staffAccounts";
+type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "staffAccounts";
 
 /** "Scholar Management Tools" (question bank + scholar accounts) is now gated by
  *  the "scholar_management" tag (see src/app/staffToolTags.ts) instead of a fixed
@@ -445,6 +446,9 @@ function TopNav({ user, page, setPage, onSignOut, unreadCount }: { user: UserPro
   }
   if (user.tags.includes("scholars_formation")) {
     primaryItems.push({ key:"formationTools", label:"Scholars' Formation Tools", icon:<Users2 size={14}/> });
+  }
+  if (user.tags.includes("forms_management")) {
+    primaryItems.push({ key:"formsManagement", label:"Forms Management", icon:<FileText size={14}/> });
   }
   if (user.username.toLowerCase() === IT_ADMIN_USERNAME) {
     primaryItems.push({ key:"staffAccounts", label:"Staff Accounts", icon:<Lock size={14}/> });
@@ -3431,6 +3435,9 @@ export default function App() {
         )}
         {page==="formationTools" && currentUser.tags.includes("scholars_formation") && (
           <FormationToolsTab/>
+        )}
+        {page==="formsManagement" && currentUser.tags.includes("forms_management") && (
+          <FormsManagementTab/>
         )}
         {page==="staffAccounts" && currentUser.username.toLowerCase()===IT_ADMIN_USERNAME && (
           <StaffAccountsPage/>
