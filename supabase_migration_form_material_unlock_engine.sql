@@ -203,7 +203,11 @@ as $$
       select jsonb_agg(
         jsonb_build_object(
           'type', c.condition_type,
-          'label', coalesce(qs.name, fa.name, sa.name, c.course, '')
+          'label', case
+            when c.condition_type = 'quest_subject' then
+              coalesce(qs.name, 'Quest subject') || ' (' || qs.passing_rate_min::text || '%–' || qs.passing_rate_max::text || '% required)'
+            else coalesce(qs.name, fa.name, sa.name, c.course, '')
+          end
         )
         order by c.condition_type
       )
@@ -255,6 +259,13 @@ create policy "scholar downloads unlocked form material" on storage.objects
     bucket_id = 'form-materials'
     and exists (select 1 from public.scholars where id = auth.uid())
     and public.is_form_material_unlocked(split_part(storage.objects.name, '/', 1)::uuid)
+    and not exists (
+      select 1
+      from public.form_material_conditions c
+      where c.material_id = split_part(storage.objects.name, '/', 1)::uuid
+        and c.condition_type = 'year_level'
+        and not public.is_form_condition_met(c.id)
+    )
   );
 
 -- Staff (forms_management-tagged, see step 6 below) still needs to manage

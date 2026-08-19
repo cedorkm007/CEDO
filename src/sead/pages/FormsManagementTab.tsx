@@ -146,8 +146,14 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
 
   function conditionLabel(c: FormMaterialCondition): string {
     switch (c.type) {
-      case "quest_subject":
-        return `Subject: ${c.subjectName || subjects.find(s => s.id === c.subjectId)?.name || "Unknown subject"}`;
+      case "quest_subject": {
+        const subject = subjects.find(s => s.id === c.subjectId);
+        const subjectName = c.subjectName || subject?.name || "Unknown subject";
+        const passingRate = subject
+          ? ` (passing rate: ${subject.passingRateMin}%–${subject.passingRateMax}% required)`
+          : "";
+        return `Subject: ${subjectName}${passingRate}`;
+      }
       case "formation_activity":
         return `Formation Activity: ${c.formationActivityName || activities.find(a => a.id === c.formationActivityId)?.name || "Unknown activity"}`;
       case "sdp_activity":
@@ -219,9 +225,8 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
         </div>
         <div className="space-y-4 p-6">
           <p className="text-[12px] text-slate-500">
-            A material with no rules is visible to every scholar. Adding one or more rules hides this material from
-            all scholars for now — showing it once a scholar actually meets a rule is a separate step that hasn't
-            been built yet.
+            A material with no rules is visible to every scholar. When rules are added, a scholar must meet every
+            selected rule before the material unlocks. Year-level rules also control which scholars can see it.
           </p>
 
           {conditions.length > 0 && (
@@ -250,7 +255,7 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
             ) : newType === "quest_subject" ? (
               <select value={newSubjectId} onChange={event => setNewSubjectId(event.target.value)} className="w-full rounded-lg border border-[#062444]/15 px-3 py-2 text-[12.5px] outline-none focus:border-[#0088cc]">
                 <option value="">Select a subject…</option>
-                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {subjects.map(s => <option key={s.id} value={s.id}>{s.name} — Passing rate: {s.passingRateMin}%–{s.passingRateMax}%</option>)}
               </select>
             ) : newType === "formation_activity" ? (
               <select value={newActivityId} onChange={event => setNewActivityId(event.target.value)} className="w-full rounded-lg border border-[#062444]/15 px-3 py-2 text-[12.5px] outline-none focus:border-[#0088cc]">
@@ -375,7 +380,7 @@ export function FormsManagementTab() {
                   <span className="flex items-center gap-1 font-semibold text-green-700"><ShieldCheck size={12} /> Visible to all scholars</span>
                 ) : (
                   <button onClick={() => setManagingConditions(material)} className="flex items-center gap-1 font-semibold text-amber-700 hover:underline">
-                    <ShieldAlert size={12} /> {material.conditions.length} condition{material.conditions.length === 1 ? "" : "s"} set — hidden from all scholars until condition-based visibility is implemented
+                    <ShieldAlert size={12} /> {material.conditions.length} condition{material.conditions.length === 1 ? "" : "s"} set — locked until the conditions are met
                   </button>
                 )}
               </div>
