@@ -171,34 +171,45 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
     }
     setExportingPdf(true);
     try {
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const margin = 8, columns = 4, rows = 5, gap = 2;
       const cellWidth = (210 - margin * 2 - gap * (columns - 1)) / columns;
       const cellHeight = (297 - margin * 2 - gap * (rows - 1)) / rows;
-      for (let index = 0; index < batchCodes.length; index++) {
-        if (index > 0 && index % (columns * rows) === 0) pdf.addPage();
-        const position = index % (columns * rows);
-        const x = margin + (position % columns) * (cellWidth + gap);
-        const y = margin + Math.floor(position / columns) * (cellHeight + gap);
-        const code = batchCodes[index];
-        const qrDataUrl = await QRCode.toDataURL(code.code, { errorCorrectionLevel: "M", margin: 1, width: 240 });
-        pdf.setDrawColor(148, 163, 184);
-        pdf.rect(x, y, cellWidth, cellHeight);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(7);
-        pdf.setTextColor(6, 36, 68);
-        pdf.text(pdf.splitTextToSize(selected.name, cellWidth - 5).slice(0, 2), x + cellWidth / 2, y + 4, { align: "center", baseline: "top" });
-        pdf.addImage(qrDataUrl, "PNG", x + (cellWidth - 31) / 2, y + 13, 31, 31);
-        pdf.setFont("courier", "bold");
-        pdf.setFontSize(9);
-        pdf.text(code.code, x + cellWidth / 2, y + 47, { align: "center" });
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(6.5);
-        pdf.setTextColor(100, 116, 139);
-        pdf.text(code.kind.replace("_", " ").toUpperCase(), x + cellWidth / 2, y + 51, { align: "center" });
-      }
       const suffix = batchNumber === 0 ? "unclaimed" : `batch_${batchNumber}`;
-      pdf.save(`${selected.name.replace(/[^a-z0-9]+/gi, "_")}_${suffix}_qr_codes.pdf`);
+      // Large batches can contain thousands of QR images. Keeping each PDF to
+      // 200 codes (10 pages) prevents jsPDF from holding a huge document in
+      // memory and lets the browser stay responsive while printing.
+      const codesPerFile = 200;
+      const fileCount = Math.ceil(batchCodes.length / codesPerFile);
+      for (let fileIndex = 0; fileIndex < fileCount; fileIndex++) {
+        const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+        const fileCodes = batchCodes.slice(fileIndex * codesPerFile, (fileIndex + 1) * codesPerFile);
+        for (let index = 0; index < fileCodes.length; index++) {
+          if (index > 0 && index % (columns * rows) === 0) pdf.addPage();
+          const position = index % (columns * rows);
+          const x = margin + (position % columns) * (cellWidth + gap);
+          const y = margin + Math.floor(position / columns) * (cellHeight + gap);
+          const code = fileCodes[index];
+          const qrDataUrl = await QRCode.toDataURL(code.code, { errorCorrectionLevel: "M", margin: 1, width: 240 });
+          pdf.setDrawColor(148, 163, 184);
+          pdf.rect(x, y, cellWidth, cellHeight);
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(7);
+          pdf.setTextColor(6, 36, 68);
+          pdf.text(pdf.splitTextToSize(selected.name, cellWidth - 5).slice(0, 2), x + cellWidth / 2, y + 4, { align: "center", baseline: "top" });
+          pdf.addImage(qrDataUrl, "PNG", x + (cellWidth - 31) / 2, y + 13, 31, 31);
+          pdf.setFont("courier", "bold");
+          pdf.setFontSize(9);
+          pdf.text(code.code, x + cellWidth / 2, y + 47, { align: "center" });
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(6.5);
+          pdf.setTextColor(100, 116, 139);
+          pdf.text(code.kind.replace("_", " ").toUpperCase(), x + cellWidth / 2, y + 51, { align: "center" });
+          if (index % 10 === 9) await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+        }
+        const partSuffix = fileCount === 1 ? "" : `_part_${fileIndex + 1}_of_${fileCount}`;
+        pdf.save(`${selected.name.replace(/[^a-z0-9]+/gi, "_")}_${suffix}${partSuffix}_qr_codes.pdf`);
+        await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+      }
     } catch {
       window.alert("Could not create the QR code PDF. Please try again.");
     } finally {
