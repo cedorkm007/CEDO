@@ -1,17 +1,38 @@
 import { useEffect, useState } from "react";
-import { Briefcase, FileText, Download, BookOpen, Info } from "lucide-react";
+import { Briefcase, FileText, Download, BookOpen, Info, Lock } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { ServicesContent } from "./ServicesPanel";
-import { fetchFormMaterialsForScholar, fetchFormMaterialDownloadUrl, type FormMaterial } from "../../formsApi";
+import { fetchFormMaterialsForScholar, fetchFormMaterialDownloadUrl, type FormMaterial, type UnmetRequirement } from "../../formsApi";
 
 type Tab = "forms" | "services";
 
+/** Friendly prefix per condition type for a locked material's requirement list. Falls back to a generic label for any future condition type this component doesn't know about yet, rather than showing nothing. */
+const REQUIREMENT_TYPE_LABELS: Record<string, string> = {
+  quest_subject: "Pass Quest subject",
+  formation_activity: "Attend Formation activity",
+  sdp_activity: "Complete SDP activity",
+  course: "Be enrolled in course",
+};
+
+function requirementText(req: UnmetRequirement): string {
+  const prefix = REQUIREMENT_TYPE_LABELS[req.type] ?? "Requirement";
+  return req.label ? `${prefix}: ${req.label}` : prefix;
+}
+
 function FormMaterialCard({ material }: { material: FormMaterial }) {
   const [opening, setOpening] = useState(false);
+  const locked = !material.isUnlocked;
   const notYetUploaded = material.kind === "pdf" && !material.fileName;
+  const disabled = locked || notYetUploaded || opening;
 
   async function handleOpen() {
-    if (notYetUploaded) return;
+    // Locked is checked again here (not just via the disabled attribute) so
+    // this can't be triggered by anything other than a real click on an
+    // enabled button — e.g. a stray Enter/Space on a disabled button
+    // shouldn't be able to reach fetchFormMaterialDownloadUrl at all. The
+    // real enforcement is still server-side (storage RLS), this is just
+    // making sure the UI never even tries for a card it knows is locked.
+    if (disabled) return;
     if (material.kind === "flipbook") { window.open(material.url, "_blank", "noopener,noreferrer"); return; }
     setOpening(true);
     const url = await fetchFormMaterialDownloadUrl(material.id);
@@ -23,17 +44,38 @@ function FormMaterialCard({ material }: { material: FormMaterial }) {
   return (
     <button
       onClick={() => void handleOpen()}
-      disabled={notYetUploaded || opening}
-      className="flex flex-col items-start gap-2.5 bg-[#f7f9fc] hover:bg-white border border-[#e6ecf5] hover:border-[#cfe0f5] rounded-xl p-4 text-left hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(6,36,68,0.1)] transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
+      disabled={disabled}
+      aria-disabled={disabled}
+      className={`flex flex-col items-start gap-2.5 border rounded-xl p-4 text-left transition-all disabled:cursor-not-allowed ${
+        locked
+          ? "bg-[#f4f5f7] border-[#e6ecf5]"
+          : "bg-[#f7f9fc] hover:bg-white border-[#e6ecf5] hover:border-[#cfe0f5] hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(6,36,68,0.1)] disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+      }`}
     >
-      <span className="w-[42px] h-[42px] rounded-[10px] bg-[#062444] text-[#F3BC00] flex items-center justify-center">
-        {material.kind === "pdf" ? <FileText size={18} /> : <BookOpen size={18} />}
+      <span className={`w-[42px] h-[42px] rounded-[10px] flex items-center justify-center shrink-0 ${locked ? "bg-slate-300 text-white" : "bg-[#062444] text-[#F3BC00]"}`}>
+        {locked ? <Lock size={18} /> : material.kind === "pdf" ? <FileText size={18} /> : <BookOpen size={18} />}
       </span>
       <span className="text-[13.5px] font-bold text-[#062444] leading-snug">{material.title}</span>
       {material.description && <span className="text-[12px] text-slate-500 leading-snug">{material.description}</span>}
-      <span className="flex items-center gap-1 text-[11.5px] text-slate-400">
-        <Download size={12} /> {notYetUploaded ? "Not yet uploaded" : opening ? "Opening…" : material.kind === "pdf" ? "Download" : "Open flipbook"}
-      </span>
+
+      {locked ? (
+        <span className="flex flex-col gap-1 w-full">
+          <span className="flex items-center gap-1 text-[11.5px] font-bold text-slate-500">
+            <Lock size={12} /> Locked
+          </span>
+          {material.unmetRequirements.length > 0 && (
+            <span className="flex flex-col gap-0.5">
+              {material.unmetRequirements.map((req, i) => (
+                <span key={i} className="text-[11px] text-slate-400 leading-snug">• {requirementText(req)}</span>
+              ))}
+            </span>
+          )}
+        </span>
+      ) : (
+        <span className="flex items-center gap-1 text-[11.5px] text-slate-400">
+          <Download size={12} /> {notYetUploaded ? "Not yet uploaded" : opening ? "Opening…" : material.kind === "pdf" ? "Download" : "Open flipbook"}
+        </span>
+      )}
     </button>
   );
 }
