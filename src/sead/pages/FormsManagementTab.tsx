@@ -227,14 +227,23 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
           </p>
 
           {conditions.length > 0 && (
-            <ul className="space-y-1.5">
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Required conditions</p>
+                <span className="rounded-full bg-[#062444]/10 px-2 py-0.5 text-[10.5px] font-bold text-[#062444]">
+                  {conditions.length} rule{conditions.length === 1 ? "" : "s"} — all required
+                </span>
+              </div>
+              <p className="text-[11.5px] text-slate-500">Add as many requirements as needed. Scholars unlock this material only after meeting every rule below.</p>
+              <ul className="space-y-1.5">
               {conditions.map((c, i) => (
                 <li key={i} className="flex items-center justify-between gap-2 rounded-lg border border-[#e6ecf5] bg-[#f8fafd] px-3 py-2">
                   <span className="text-[12.5px] font-semibold text-[#062444]">{conditionLabel(c)}</span>
                   <button onClick={() => removeCondition(i)} className="shrink-0 text-slate-400 hover:text-red-600" aria-label="Remove rule"><Trash2 size={14} /></button>
                 </li>
               ))}
-            </ul>
+              </ul>
+            </section>
           )}
 
           <div className="space-y-2.5 rounded-lg border border-dashed border-[#062444]/20 p-3">
@@ -299,7 +308,7 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
             )}
 
             <button type="button" onClick={addCondition} className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#f0f7fc] py-2 text-[12.5px] font-bold text-[#0088cc] hover:bg-[#e0f0fa]">
-              <Plus size={14} /> Add Rule
+              <Plus size={14} /> {conditions.length > 0 ? "Add Another Required Condition" : "Add Required Condition"}
             </button>
           </div>
 

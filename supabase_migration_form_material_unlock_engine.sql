@@ -97,6 +97,32 @@ alter table public.form_material_conditions
   add constraint form_material_conditions_type_check
   check (condition_type in ('quest_subject', 'formation_activity', 'sdp_activity', 'year_level', 'course'));
 
+-- A material can require several conditions (for example, two Quest subjects
+-- and a Formation Activity). Remove legacy uniqueness rules that allow only
+-- one condition per material or one condition per type; the application still
+-- prevents duplicate selections of the same requirement.
+do $$
+declare
+  con record;
+  normalized_definition text;
+begin
+  for con in
+    select conname, pg_get_constraintdef(oid) as definition
+    from pg_constraint
+    where conrelid = 'public.form_material_conditions'::regclass
+      and contype = 'u'
+  loop
+    normalized_definition := regexp_replace(lower(con.definition), '\s+', '', 'g');
+    if normalized_definition like 'unique(material_id)%'
+       or normalized_definition like 'unique(material_id,condition_type)%' then
+      execute format('alter table public.form_material_conditions drop constraint %I', con.conname);
+    end if;
+  end loop;
+end $$;
+
+create index if not exists form_material_conditions_material_id_idx
+  on public.form_material_conditions (material_id);
+
 -- ── 2. Per-condition evaluator ──────────────────────────────
 -- Evaluates ONE condition row against the signed-in scholar. Reused by
 -- both is_form_material_unlocked() (material-level AND) and
