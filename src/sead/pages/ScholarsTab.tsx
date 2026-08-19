@@ -197,13 +197,15 @@ function ResetAllPasswordsModal({ onClose, onDone }: { onClose: () => void; onDo
   const [confirmText, setConfirmText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const canConfirm = confirmText.trim().toUpperCase() === "RESET";
 
   async function handleConfirm() {
     if (!canConfirm || busy) return;
     setBusy(true);
     setError("");
-    const result = await resetAllScholarPasswords();
+    setProgress(null);
+    const result = await resetAllScholarPasswords((done, total) => setProgress({ done, total }));
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to reset passwords."); return; }
     const total = result.total ?? 0;
@@ -243,6 +245,22 @@ function ResetAllPasswordsModal({ onClose, onDone }: { onClose: () => void; onDo
           />
 
           {error && <p className="text-[12.5px] text-red-600 mb-3">{error}</p>}
+
+          {busy && (
+            <div className="mb-3">
+              <p className="text-[12px] text-slate-500 mb-1.5">
+                {progress && progress.total > 0
+                  ? `Resetting… ${progress.done} / ${progress.total}`
+                  : "Starting…"}
+              </p>
+              <div className="w-full h-1.5 bg-[#f0f3f8] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#0088cc] rounded-full transition-all"
+                  style={{ width: progress && progress.total > 0 ? `${Math.min(100, (progress.done / progress.total) * 100)}%` : "10%" }}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-3">
             <button onClick={onClose} disabled={busy} className="text-[13px] font-semibold text-slate-500 hover:text-[#062444] disabled:opacity-40 px-4 py-2.5">

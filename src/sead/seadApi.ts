@@ -592,19 +592,63 @@ export interface ResetAllPasswordsResult {
   failures?: { scholarIdNumber: string; error: string }[];
 }
 
-/** Resets EVERY scholar's password (not just the current page/search results) back to the shared default. */
-export async function resetAllScholarPasswords(): Promise<ResetAllPasswordsResult> {
-  const result = await invokeEdgeFunction<{ total?: number; succeeded?: number; failed?: number; failures?: { scholarIdNumber: string; error: string }[] }>(
-    "sead-reset-all-scholar-passwords", {}
-  );
-  if (!result.ok) return { ok: false, error: result.error };
-  return {
-    ok: true,
-    total: result.data?.total,
-    succeeded: result.data?.succeeded,
-    failed: result.data?.failed,
-    failures: result.data?.failures,
-  };
+interface ResetAllPasswordsBatchResponse {
+  total?: number;
+  processed?: number;
+  succeeded?: number;
+  failed?: number;
+  failures?: { scholarIdNumber: string; error: string }[];
+  nextOffset?: number;
+  done?: boolean;
+}
+
+/**
+ * Resets EVERY scholar's password (not just the current page/search
+ * results) back to the shared default. Processes the roster in small
+ * batches — one Edge Function call per batch — instead of one call for
+ * everyone, because a single call trying to loop through a large roster
+ * can run long enough to hit Supabase's Edge Function execution-time
+ * limit and get killed mid-run (a 504 IDLE_TIMEOUT with no usable error
+ * body). Each batch call stays fast regardless of roster size, so this
+ * can't time out no matter how many scholars there are.
+ *
+ * onProgress, if given, is called after each batch with (done, total) so
+ * the UI can show live progress across the whole run.
+ */
+export async function resetAllScholarPasswords(
+  onProgress?: (done: number, total: number) => void
+): Promise<ResetAllPasswordsResult> {
+  let offset = 0;
+  let total = 0;
+  let succeeded = 0;
+  let failed = 0;
+  const failures: { scholarIdNumber: string; error: string }[] = [];
+
+  // Safety cap so a server-side bug (e.g. nextOffset never advancing)
+  // can't spin the browser in an infinite loop — comfortably above any
+  // realistic roster size at BATCH_SIZE=200 per call.
+  const MAX_BATCHES = 500;
+
+  for (let batchCount = 0; batchCount < MAX_BATCHES; batchCount++) {
+    const result = await invokeEdgeFunction<ResetAllPasswordsBatchResponse>(
+      "sead-reset-all-scholar-passwords", { offset }
+    );
+    if (!result.ok) return { ok: false, error: result.error, total, succeeded, failed, failures };
+
+    const data = result.data ?? {};
+    total = data.total ?? total;
+    succeeded += data.succeeded ?? 0;
+    failed += data.failed ?? 0;
+    if (data.failures?.length) failures.push(...data.failures);
+
+    const doneCount = Math.min(offset + (data.processed ?? 0), total || offset + (data.processed ?? 0));
+    onProgress?.(doneCount, total);
+
+    if (data.done || !data.processed) break;
+    offset = data.nextOffset ?? offset + data.processed;
+  }
+
+  return { ok: true, total, succeeded, failed, failures };
 }
 
 // ── Scholar account history (audit log) ──────────────────────
