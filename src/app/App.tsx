@@ -3424,7 +3424,7 @@ export default function App() {
           <AdminManagementPage users={users} currentUser={currentUser} onChangeRole={handleChangeUserRole}/>
         )}
         {page==="scholarManagement" && currentUser.tags.includes("scholar_management") && (
-          <ScholarManagementToolsPage/>
+          <ScholarManagementToolsPage tags={currentUser.tags}/>
         )}
         {page==="sdpMonitoring" && currentUser.tags.includes("sdp_monitoring") && (
           <SDPMonitoringTab/>
