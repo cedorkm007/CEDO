@@ -92,21 +92,6 @@ export async function fetchFormMaterialPreviewUrl(materialId: string): Promise<s
 }
 
 /**
- * Diffs two fetchFormMaterialsForScholar() snapshots (e.g. one taken right
- * before a quiz submission or attendance redemption, one right after) and
- * returns only the materials that flipped locked -> unlocked between them —
- * i.e. what NewlyUnlockedModal should announce. A material present in
- * `after` but not in `before` (outside the scholar's year level before,
- * inside it after — shouldn't normally happen mid-session, but handled
- * defensively) counts as newly unlocked too, provided it's unlocked in
- * `after`. Never returns something that was already unlocked in `before`.
- */
-export function compareUnlockStatus(before: FormMaterial[], after: FormMaterial[]): FormMaterial[] {
-  const wasUnlockedById = new Map(before.map(m => [m.id, m.isUnlocked]));
-  return after.filter(m => m.isUnlocked && wasUnlockedById.get(m.id) !== true);
-}
-
-/**
  * Whether at least one material is BOTH unlocked AND actually linked to
  * the given Quest subject via a quest_subject condition — i.e. whether
  * passing this specific subject is genuinely why something became

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
 import { Camera, Keyboard, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { redeemAttendanceCode } from "../../scholarApi";
-import { fetchFormMaterialsForScholar, compareUnlockStatus, type FormMaterial } from "../../formsApi";
+import { syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormUnlockNotification } from "../../formsApi";
 import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
 
 type Mode = "scan" | "manual";
@@ -14,7 +14,7 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result>(null);
   const [cameraError, setCameraError] = useState("");
-  const [newlyUnlocked, setNewlyUnlocked] = useState<FormMaterial[]>([]);
+  const [newlyUnlocked, setNewlyUnlocked] = useState<FormUnlockNotification[]>([]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -30,23 +30,24 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
 
     setBusy(true);
     setResult(null);
-    // Snapshotted right before the redemption call, same reasoning as
-    // QuestsPanel.submitQuiz() — comparing right around the actual state
-    // change that might flip a condition keeps the diff accurate.
-    const before = await fetchFormMaterialsForScholar();
     const res = await redeemAttendanceCode(code);
     setBusy(false);
     if (res.ok) {
       const label = res.kind === "time_in" ? "Timed in" : res.kind === "time_out" ? "Timed out" : "Hour credited";
       setResult({ ok: true, tone: "success", message: `${label} for "${res.activityName ?? "the activity"}".` });
-      const after = await fetchFormMaterialsForScholar();
-      setNewlyUnlocked(compareUnlockStatus(before, after));
+      setNewlyUnlocked(await syncAndFetchUnreadFormUnlockNotifications());
     } else {
       const message = res.error || "Invalid QR code.";
       setResult({ ok: false, tone: /you already completed/i.test(message) ? "warning" : "error", message });
       // Allow retrying the same code after a failure (e.g. typo), just not spamming a success.
       lastAttemptedCode.current = "";
     }
+  }
+
+  function dismissNewlyUnlocked() {
+    const ids = newlyUnlocked.map(n => n.notificationId);
+    setNewlyUnlocked([]);
+    if (ids.length > 0) void markFormUnlockNotificationsRead(ids);
   }
 
   useEffect(() => {
@@ -145,7 +146,7 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
         </div>
       )}
     </div>
-    <NewlyUnlockedModal materials={newlyUnlocked} onGoToForms={onNavigateToForms} onClose={() => setNewlyUnlocked([])} />
+    <NewlyUnlockedModal notifications={newlyUnlocked} onGoToForms={onNavigateToForms} onClose={dismissNewlyUnlocked} />
     </>
   );
 }

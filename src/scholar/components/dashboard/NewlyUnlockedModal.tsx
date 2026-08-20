@@ -1,22 +1,30 @@
 import { PartyPopper, X } from "lucide-react";
-import type { FormMaterial } from "../../formsApi";
+import type { FormUnlockNotification } from "../../formsApi";
 
 /**
  * Shown right after a scholar action (quiz passed, attendance redeemed) newly
- * unlocks one or more form materials — see compareUnlockStatus() in
- * formsApi.ts for how "newly" is determined. Deliberately generic: it takes
- * whatever materials to announce and a callback for its one action, so
- * Milestone B (Quest) and C (Attendance) can both reuse it unchanged for
- * their own trigger points instead of building their own pop-up.
+ * unlocks one or more form materials — or after any other server-side change
+ * (staff created a qualifying material, loosened a condition, changed the
+ * scholar's year level) the scholar hasn't been shown yet. Backed by
+ * syncAndFetchUnreadFormUnlockNotifications() rather than a live before/after
+ * diff, so it also catches unlocks the scholar didn't personally trigger.
+ * Deliberately generic: it takes whatever notifications to announce and a
+ * callback for its one action, so every trigger point (portal load, quiz
+ * submit, attendance scan) can reuse it unchanged.
+ *
+ * `onClose` is expected to also mark these notifications read on the
+ * caller's end (via markFormUnlockNotificationsRead) — this component stays
+ * presentational and doesn't call that itself, the same way it already
+ * doesn't call fetch/sync itself.
  */
 export function NewlyUnlockedModal({
-  materials, onGoToForms, onClose,
+  notifications, onGoToForms, onClose,
 }: {
-  materials: FormMaterial[];
+  notifications: FormUnlockNotification[];
   onGoToForms: () => void;
   onClose: () => void;
 }) {
-  if (materials.length === 0) return null;
+  if (notifications.length === 0) return null;
 
   return (
     <div className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center px-4 py-8" onClick={onClose}>
@@ -29,15 +37,15 @@ export function NewlyUnlockedModal({
             <PartyPopper size={24} />
           </div>
           <h3 className="text-white font-bold text-[16px]">
-            {materials.length === 1 ? "You unlocked a new form!" : `You unlocked ${materials.length} new forms!`}
+            {notifications.length === 1 ? "You unlocked a new form!" : `You unlocked ${notifications.length} new forms!`}
           </h3>
         </div>
 
         <div className="p-5 space-y-3">
           <ul className="space-y-1.5">
-            {materials.map(m => (
-              <li key={m.id} className="text-[13.5px] font-semibold text-[#062444] bg-[#f8fafd] rounded-lg px-3 py-2">
-                {m.title}
+            {notifications.map(n => (
+              <li key={n.notificationId} className="text-[13.5px] font-semibold text-[#062444] bg-[#f8fafd] rounded-lg px-3 py-2">
+                {n.title}
               </li>
             ))}
           </ul>

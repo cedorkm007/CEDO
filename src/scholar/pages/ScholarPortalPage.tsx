@@ -16,6 +16,8 @@ import { fetchScholarSDPCategoryStatus, type SDPCategoryStatus } from "../sdpApi
 import { fetchOwnPositionLabels } from "../formationApi";
 import { CalendarAndActivitiesPanel } from "../components/dashboard/CalendarAndActivitiesPanel";
 import { ChangePasswordModal } from "../components/dashboard/ChangePasswordModal";
+import { NewlyUnlockedModal } from "../components/dashboard/NewlyUnlockedModal";
+import { syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormUnlockNotification } from "../formsApi";
 import type { DashPanelKey } from "../components/dashboard/types";
 import type { ScholarProfile, SubjectGrade, QuestScore } from "../types";
 
@@ -33,6 +35,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
   const [panel, setPanel] = useState<DashPanelKey | null>(null); // null = home
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showProfilePopup, setShowProfilePopup] = useState(false);
+  const [newlyUnlocked, setNewlyUnlocked] = useState<FormUnlockNotification[]>([]);
 
   function goToForms() { setPanel("services"); }
 
@@ -41,18 +44,29 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
       const p = await fetchCurrentScholarProfile();
       setProfile(p);
       if (p) {
-        const [g, s, status, pos] = await Promise.all([
+        const [g, s, status, pos, unread] = await Promise.all([
           fetchSubjectsAndGrades(p.scholarIdNumber), fetchQuestScores(p.scholarIdNumber), fetchScholarSDPCategoryStatus(p.scholarIdNumber),
           fetchOwnPositionLabels(p.scholarIdNumber),
+          // Catches unlocks the scholar didn't personally just cause — staff
+          // created a newly-qualifying material, loosened a condition, or
+          // changed their year level since they were last here.
+          syncAndFetchUnreadFormUnlockNotifications(),
         ]);
         setGrades(g);
         setScores(s);
         setSdpStatus(status);
         setPositions(pos);
+        setNewlyUnlocked(unread);
       }
       setLoading(false);
     })();
   }, []);
+
+  function dismissNewlyUnlocked() {
+    const ids = newlyUnlocked.map(n => n.notificationId);
+    setNewlyUnlocked([]);
+    if (ids.length > 0) void markFormUnlockNotificationsRead(ids);
+  }
 
   async function handleSignOut() {
     await scholarSignOut();
@@ -134,6 +148,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
         />
       )}
       <BottomNav active={panel} onSelect={setPanel} />
+      <NewlyUnlockedModal notifications={newlyUnlocked} onGoToForms={goToForms} onClose={dismissNewlyUnlocked} />
     </>
   );
 }

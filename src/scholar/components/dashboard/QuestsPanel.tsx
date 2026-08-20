@@ -4,7 +4,7 @@ import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle,
 import type { LucideIcon } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, getSlideEmbed, getPdfEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
-import { fetchFormMaterialsForScholar, compareUnlockStatus, hasUnlockedMaterialForSubject, type FormMaterial } from "../../formsApi";
+import { fetchFormMaterialsForScholar, hasUnlockedMaterialForSubject, syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormMaterial, type FormUnlockNotification } from "../../formsApi";
 import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
 
@@ -50,7 +50,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
   const [subjectProgress, setSubjectProgress] = useState<{ percentage: number; topicCount: number } | null>(null);
   const [certBusy, setCertBusy] = useState(false);
   const [certError, setCertError] = useState("");
-  const [newlyUnlocked, setNewlyUnlocked] = useState<FormMaterial[]>([]);
+  const [newlyUnlocked, setNewlyUnlocked] = useState<FormUnlockNotification[]>([]);
   // Current Forms Management materials for this scholar — fetched whenever
   // a subject's topic list loads, so the "You passed!" button below can
   // check whether something is ACTUALLY unlocked and linked to this
@@ -166,11 +166,6 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
   async function submitQuiz() {
     if (step.view !== "quiz") return;
     setSubmitting(true);
-    // Snapshotted before the submit call completes, not before the whole quiz
-    // started — a scholar could pass a DIFFERENT subject's quiz in another
-    // tab/session mid-quiz; comparing right around the actual state change
-    // that might flip a condition keeps the diff accurate to this submission.
-    const before = await fetchFormMaterialsForScholar();
     const answerList = step.questions.map(q => ({ questionId: q.id, choiceId: answers[q.id] ?? null }));
     const result = await submitQuizAttempt(step.topic.id, answerList);
     setSubmitting(false);
@@ -178,9 +173,27 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
     setStep({ view: "results", subject: step.subject, topic: step.topic, result: result.result });
     onScoreSubmitted();
 
-    const after = await fetchFormMaterialsForScholar();
-    setFormMaterials(after);
-    setNewlyUnlocked(compareUnlockStatus(before, after));
+    // Re-fetch the live snapshot (for the gold "You passed!" button's
+    // hasUnlockedMaterialForSubject check above) and separately sync/fetch
+    // this scholar's persistent unlock notifications (for the popup) — two
+    // different jobs: one is a live view of what's unlocked right now, the
+    // other is "what hasn't this scholar been told about yet," which also
+    // catches unlocks the scholar didn't personally just cause.
+    const [materials, unread] = await Promise.all([
+      fetchFormMaterialsForScholar(),
+      syncAndFetchUnreadFormUnlockNotifications(),
+    ]);
+    setFormMaterials(materials);
+    setNewlyUnlocked(unread);
+  }
+
+  /** "View in Forms" and "Maybe later" both end up here — marks whatever's
+   * currently showing as read server-side so a refresh never re-shows it,
+   * then closes the popup. */
+  function dismissNewlyUnlocked() {
+    const ids = newlyUnlocked.map(n => n.notificationId);
+    setNewlyUnlocked([]);
+    if (ids.length > 0) void markFormUnlockNotificationsRead(ids);
   }
 
   return (
@@ -482,7 +495,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
         </div>
       )}
     </SectionCard>
-    <NewlyUnlockedModal materials={newlyUnlocked} onGoToForms={onNavigateToForms} onClose={() => setNewlyUnlocked([])} />
+    <NewlyUnlockedModal notifications={newlyUnlocked} onGoToForms={onNavigateToForms} onClose={dismissNewlyUnlocked} />
     </>
   );
 }
