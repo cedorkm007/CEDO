@@ -1,10 +1,10 @@
-import { useState } from "react";
 import { Users, BookOpen, BarChart3, History, CalendarDays } from "lucide-react";
 import { ScholarsTab } from "./pages/ScholarsTab";
 import { QuestionBankTab } from "./pages/QuestionBankTab";
 import { ScholarAccountHistoryTab } from "./pages/ScholarAccountHistoryTab";
 import { QuestsMonitoringTab } from "./pages/QuestsMonitoringTab";
 import { FormationActivitiesTab } from "./pages/FormationActivitiesTab";
+import { useUrlState } from "@/app/useUrlState";
 import type { SeadTab } from "./types";
 
 /**
@@ -19,8 +19,6 @@ import type { SeadTab } from "./types";
  * intentionally not embedded as a Scholar Management Tools sub-tab.
  */
 export function ScholarManagementToolsPage() {
-  const [tab, setTab] = useState<SeadTab>("scholars");
-
   const TABS: { key: SeadTab; label: string; icon: React.ReactNode }[] = [
     { key: "scholars", label: "Scholars", icon: <Users size={14} /> },
     { key: "question-bank", label: "Question Bank", icon: <BookOpen size={14} /> },
@@ -28,6 +26,11 @@ export function ScholarManagementToolsPage() {
     { key: "formation-activities", label: "Formation Activities", icon: <CalendarDays size={14} /> },
     { key: "history", label: "Account History", icon: <History size={14} /> },
   ];
+  // "smtTab" so it's namespaced apart from the other staff-app containers'
+  // own URL params (SDP Monitoring, Formation Tools) — several of these
+  // can theoretically be present in the URL from earlier navigation at
+  // once; each container only ever reads its own param name.
+  const [tab, setTab] = useUrlState<SeadTab>("smtTab", "scholars", TABS.map(t => t.key));
   return (
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Scholar Management Tools</h1>

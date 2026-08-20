@@ -13,6 +13,7 @@ import {
 import { SDP_CATEGORIES } from "@/scholar/sdpApi";
 import { SDPHistoryModal } from "../components/SDPHistoryModal";
 import { ListPagination } from "@/app/components/PaginatedList";
+import { useUrlState } from "@/app/useUrlState";
 
 const STATUS_OPTIONS: SDPStatus[] = ["pending", "approved", "ongoing", "finished", "canceled", "rescheduled"];
 
@@ -802,7 +803,7 @@ function ChecklistSection() {
  * where that gets tracked.
  */
 export function SDPMonitoringTab() {
-  const [section, setSection] = useState<"activities" | "checklist">("activities");
+  const [section, setSection] = useUrlState<"activities" | "checklist">("sdpView", "activities", ["activities", "checklist"]);
 
   return (
     <div>

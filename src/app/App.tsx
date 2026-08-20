@@ -63,6 +63,32 @@ type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "n
  *  staff accounts get created. CHANGE THIS to whatever username you actually
  *  register for your IT admin account. */
 const IT_ADMIN_USERNAME = "it.admin1";
+
+const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "sdpMonitoring", "formationTools", "formsManagement", "staffAccounts"];
+
+/**
+ * Mirrors the exact gating conditions in the render switch at the bottom
+ * of App() (the `{page==="..." && ...}` lines) — used to validate a page
+ * restored from the URL on refresh before actually landing on it, so a
+ * stale/shared link or a since-revoked tag can't put someone on a gated
+ * page whose content wouldn't render for them anyway. Kept in this one
+ * place rather than duplicated inline in the restore effect specifically
+ * so it can't drift out of sync with the real render conditions below —
+ * if a page's gating requirement ever changes, update it here too.
+ */
+function isPageAuthorizedFor(page: Page, user: UserProfile): boolean {
+  switch (page) {
+    case "monitoring": case "history": return user.isAdmin;
+    case "admin": return user.role === "super_admin";
+    case "scholarManagement": return user.tags.includes("scholar_management");
+    case "sdpMonitoring": return user.tags.includes("sdp_monitoring");
+    case "formationTools": return user.tags.includes("scholars_formation");
+    case "formsManagement": return user.tags.includes("forms_management");
+    case "staffAccounts": return user.username.toLowerCase() === IT_ADMIN_USERNAME;
+    default: return true; // home, profile, tasks, accomplishments, notifications, forms — open to any signed-in user
+  }
+}
+
 type DailyStatus = "pending" | "submitted" | "approved" | "returned" | "finished";
 
 /** staff = regular employee. division_admin = admin scoped to their own division.
@@ -2889,7 +2915,16 @@ export default function App() {
       return { ...parsed, tags: parsed.tags ?? [] };
     } catch { return null; }
   });
-  const [page, setPage] = useState<Page>("home");
+  // Restored from the URL on first render (see the page-restore effect
+  // below, which re-validates once currentUser has actually loaded — the
+  // static list check here only guards against an unrecognized/garbage
+  // `page` value, not against tag authorization, since currentUser may
+  // still be null at this exact point on a hard refresh).
+  const [page, setPage] = useState<Page>(() => {
+    if (typeof window === "undefined") return "home";
+    const fromUrl = new URLSearchParams(window.location.search).get("page");
+    return fromUrl && (PAGE_VALUES as readonly string[]).includes(fromUrl) ? (fromUrl as Page) : "home";
+  });
   const [users, setUsers] = useState<UserProfile[]>(INITIAL_USERS);
   const [allTasks, setAllTasks] = useState<TasksData>(buildSeedTasks);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -2897,6 +2932,32 @@ export default function App() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [accomplishmentLogs, setAccomplishmentLogs] = useState<AccomplishmentLog[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+
+  // Keep the URL's `page` param in sync with state (replaceState — no new
+  // history entry), so refreshing the browser lands back on the same
+  // page. Mirrors useUrlState's write behavior (src/app/useUrlState.ts),
+  // but page's *read* side needs currentUser for tag validation (below),
+  // so the shared hook isn't reused directly for this one.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (page === "home") url.searchParams.delete("page");
+    else url.searchParams.set("page", page);
+    const next = url.toString();
+    if (next !== window.location.href) window.history.replaceState(window.history.state, "", next);
+  }, [page]);
+
+  // Once a real signed-in profile is known (from the localStorage cache on
+  // first render, or the confirmed fetch shortly after), re-validate
+  // whatever page was restored from the URL against that profile's actual
+  // tags/role/username — falls back to "home" if the requirement isn't
+  // met, e.g. a shared/stale link to a gated page, or a tag that was
+  // revoked since the URL was last saved. Also guards a page that becomes
+  // unauthorized mid-session (tags changed), not just on refresh.
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!isPageAuthorizedFor(page, currentUser)) setPage("home");
+  }, [currentUser, page]);
 
   const unreadCount = notifications.filter(n =>
     !n.read && (

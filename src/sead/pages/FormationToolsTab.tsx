@@ -5,6 +5,7 @@ import { PositionSlotsEditor } from "../components/PositionSlotsEditor";
 import { MembersListEditor } from "../components/MembersListEditor";
 import { CLUSTERS, namedBarangaysInCluster, NUMBERED_BARANGAYS, type ClusterCode } from "@/lib/cdoBarangays";
 import { VIP_DEPARTMENTS } from "@/lib/formationLabels";
+import { useUrlState } from "@/app/useUrlState";
 
 const ADVOCACY_SUGGESTIONS = [
   "Committee on External Affairs", "Committee on Advocacy Programs", "Advocacy for Education", "Advocacy for Environment",
@@ -206,7 +207,7 @@ function VipSection() {
  * it.admin1's Staff Accounts page.
  */
 export function FormationToolsTab() {
-  const [section, setSection] = useState<Section>("school");
+  const [section, setSection] = useUrlState<Section>("formationView", "school", ["school", "community", "vip"]);
 
   const TABS: { key: Section; label: string; icon: React.ReactNode }[] = [
     { key: "school", label: "School-based Organization", icon: <School size={14} /> },
