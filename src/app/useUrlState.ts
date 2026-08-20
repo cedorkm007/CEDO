@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 
 /**
  * Persists a small piece of UI navigation state (an active tab/section) to
- * a URL query parameter via history.replaceState, so a browser refresh
- * restores it — without adopting a full router. react-router is a listed
- * dependency of this project but isn't wired up anywhere in the codebase
- * (every page/tab here is plain useState); this stays consistent with
- * that existing style rather than introducing a second navigation
+ * a URL query parameter, so a browser refresh restores it AND Back/Forward
+ * move through it — without adopting a full router. react-router is a
+ * listed dependency of this project but isn't wired up anywhere in the
+ * codebase (every page/tab here is plain useState); this stays consistent
+ * with that existing style rather than introducing a second navigation
  * paradigm just for this feature.
  *
  * On first render, reads `paramName` from the current URL; if present AND
@@ -35,12 +35,29 @@ import { useEffect, useState } from "react";
  *     `defaultValue`) if it turns out to be stale — see QuestsPanel.tsx
  *     for a worked example.
  *
- * Every time the returned state changes afterward, the URL is rewritten
- * in place (replaceState — no new history entry, no page navigation) to
- * match, so the NEXT refresh restores the new value too. The default
- * value is kept OUT of the URL (the param is removed, not written) so the
- * address bar doesn't fill up with noise when nothing's actually been
- * changed from the default.
+ * Back/Forward: every time the returned state changes as a direct result
+ * of calling the returned setter (a real user-driven navigation — clicked
+ * a tab, selected a subject, etc.), the URL is updated via pushState, so a
+ * NEW history entry is created and Back returns to the value it had
+ * before. A `popstate` listener (fired by the browser on Back/Forward)
+ * reads the URL's value for THIS param and syncs local state to match,
+ * WITHOUT pushing yet another entry — the browser already moved history
+ * for us at that point, we're only catching React state up to it. The
+ * default value is kept OUT of the URL (the param is removed, not
+ * written) so the address bar doesn't fill up with noise when nothing's
+ * actually been changed from the default, and so Back past the first
+ * real change lands on a clean URL rather than one with an explicit
+ * "?tab=default" still in it.
+ *
+ * Known limitation: this hook manages ONE param independently. A single
+ * user action that changes state in TWO different useUrlState-backed
+ * values at once (e.g. leaving the Quests panel resets the selected
+ * subject AND changes the active dashboard panel) produces two separate
+ * pushState calls — two history entries for what felt like one click, so
+ * Back would need to be pressed twice to fully undo it. Solving that
+ * properly needs a shared/coalesced history writer across all
+ * useUrlState instances on a page, which is a bigger change than this fix
+ * — flagging it rather than silently leaving it undocumented.
  */
 export function useUrlState<T extends string>(
   paramName: string,
@@ -50,11 +67,28 @@ export function useUrlState<T extends string>(
   const isValid = (v: string): v is T =>
     typeof validValues === "function" ? validValues(v) : (validValues as readonly string[]).includes(v);
 
-  const [value, setValue] = useState<T>(() => {
+  const readFromUrl = (): T => {
     if (typeof window === "undefined") return defaultValue;
     const fromUrl = new URLSearchParams(window.location.search).get(paramName);
     return fromUrl && isValid(fromUrl) ? fromUrl : defaultValue;
-  });
+  };
+
+  const [value, setValue] = useState<T>(readFromUrl);
+
+  // Back/Forward: the browser has already updated window.location by the
+  // time this fires — just catch React state up to it. Deliberately does
+  // NOT call history.pushState/replaceState itself; the effect below
+  // no-ops for this case on its own (see its comment), since by the time
+  // it runs the URL already matches the now-synced value.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    function onPopState() {
+      setValue(readFromUrl());
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramName, defaultValue]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -62,7 +96,13 @@ export function useUrlState<T extends string>(
     if (value === defaultValue) url.searchParams.delete(paramName);
     else url.searchParams.set(paramName, value);
     const next = url.toString();
-    if (next !== window.location.href) window.history.replaceState(window.history.state, "", next);
+    // Nothing to do if the address bar already matches — true on first
+    // mount (state was just read from this same URL above), and true
+    // right after a popstate sync (the browser already updated
+    // window.location before onPopState ever ran). Only a genuine
+    // user-driven change reaches the pushState call below.
+    if (next === window.location.href) return;
+    window.history.pushState(window.history.state, "", next);
   }, [paramName, value, defaultValue]);
 
   return [value, setValue];

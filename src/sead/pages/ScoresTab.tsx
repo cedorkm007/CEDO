@@ -165,7 +165,7 @@ export function ScoresTab() {
           </tbody>
         </table>
       </div>
-      <ListPagination page={safePage} totalPages={totalPages} onPageChange={setPage} filteredCount={rows.length} pageSize={pageSize} />
+      <ListPagination page={safePage} totalPages={totalPages} onPageChange={setPage} filteredCount={rows.length} pageSize={pageSize} itemLabel="attempt records" />
     </div>
   );
 }

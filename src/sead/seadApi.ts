@@ -763,6 +763,33 @@ export interface ScoreFilters {
   dateTo?: string;
 }
 
+/**
+ * Runs `.select(selectCols).in(column, ids)` in chunks instead of one call
+ * with every id — an unchunked .in() with a very large id list risks a
+ * URL-length failure (GET request query string) well before Supabase's
+ * 1000-row response cap would ever matter, since the number of ids here
+ * scales with the number of DISTINCT scholars/subjects/topics in a result
+ * set, not the row count itself. A failed/truncated lookup here doesn't
+ * throw — the existing `?? id` fallback in every caller means it would
+ * otherwise silently show raw id numbers instead of names for however many
+ * scholars fell outside whatever the single query happened to return. This
+ * is the actual fix for that: chunk small enough that a single request
+ * never risks the URL-length limit, so the fallback path is never hit for
+ * this reason.
+ */
+async function fetchInChunks(
+  table: string, selectCols: string, column: string, ids: string[], chunkSize = 150,
+): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const { data, error } = await supabase.from(table).select(selectCols).in(column, chunk);
+    if (error || !data) continue; // best-effort per chunk, matching every caller's existing `?? id` fallback for whatever didn't resolve
+    out.push(...(data as unknown as Record<string, unknown>[]));
+  }
+  return out;
+}
+
 export async function fetchScores(filters: ScoreFilters): Promise<ScoreRow[]> {
   const rows: Record<string, unknown>[] = [];
   const pageSize = 500;
@@ -785,17 +812,17 @@ export async function fetchScores(filters: ScoreFilters): Promise<ScoreRow[]> {
   }
 
   const scholarIds = Array.from(new Set(rows.map(r => String(r.scholar_id_number))));
-  const { data: scholars } = scholarIds.length
-    ? await supabase.from("scholars").select("scholar_id_number, first_name, last_name").in("scholar_id_number", scholarIds)
-    : { data: [] as Record<string, unknown>[] };
-  const nameByScholarId = new Map((scholars ?? []).map((s: Record<string, unknown>) => [s.scholar_id_number, `${s.first_name} ${s.last_name}`]));
+  const scholars = scholarIds.length
+    ? await fetchInChunks("scholars", "scholar_id_number, first_name, last_name", "scholar_id_number", scholarIds)
+    : [];
+  const nameByScholarId = new Map(scholars.map((s: Record<string, unknown>) => [s.scholar_id_number, `${s.first_name} ${s.last_name}`]));
 
   const subjectIds = Array.from(new Set(rows.map(r => String(r.subject_id ?? "")).filter(Boolean)));
   const topicIds = Array.from(new Set(rows.map(r => String(r.topic_id ?? "")).filter(Boolean)));
-  const { data: subjects } = subjectIds.length ? await supabase.from("quest_subjects").select("id, name").in("id", subjectIds) : { data: [] as Record<string, unknown>[] };
-  const { data: topics } = topicIds.length ? await supabase.from("quest_topics").select("id, name").in("id", topicIds) : { data: [] as Record<string, unknown>[] };
-  const subjectNameById = new Map((subjects ?? []).map((s: Record<string, unknown>) => [s.id, s.name]));
-  const topicNameById = new Map((topics ?? []).map((t: Record<string, unknown>) => [t.id, t.name]));
+  const subjects = subjectIds.length ? await fetchInChunks("quest_subjects", "id, name", "id", subjectIds) : [];
+  const topics = topicIds.length ? await fetchInChunks("quest_topics", "id, name", "id", topicIds) : [];
+  const subjectNameById = new Map(subjects.map((s: Record<string, unknown>) => [s.id, s.name]));
+  const topicNameById = new Map(topics.map((t: Record<string, unknown>) => [t.id, t.name]));
 
   let result: ScoreRow[] = rows.map(r => ({
     id: String(r.id),

@@ -92,12 +92,19 @@ export function ListPagination({
   onPageChange,
   filteredCount,
   pageSize,
+  itemLabel = "results",
 }: {
   page: number;
   totalPages: number;
   onPageChange: (page: number) => void;
   filteredCount: number;
   pageSize: number;
+  /** What each row actually represents, for when "results" is ambiguous —
+   * e.g. "attempt records" on a log where one scholar can have several
+   * rows, so it's clear the count/pagination is per-row, not per-scholar.
+   * Optional and defaults to the prior generic wording; every existing
+   * caller is unaffected unless it opts in. */
+  itemLabel?: string;
 }) {
   if (filteredCount === 0) return null;
   const start = (page - 1) * pageSize + 1;
@@ -105,7 +112,7 @@ export function ListPagination({
   return (
     <div className="flex items-center justify-between gap-4 py-3 text-sm text-muted-foreground">
       <span>
-        Showing {start}–{end} of {filteredCount}
+        Showing {start}–{end} of {filteredCount} {itemLabel}
       </span>
       <div className="flex items-center gap-2">
         <Button
