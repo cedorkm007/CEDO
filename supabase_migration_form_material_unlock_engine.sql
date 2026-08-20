@@ -44,6 +44,23 @@
 --      is_sead_staff() account (unchanged), matching how every other
 --      staff-tool table in this codebase separates "any SEAD staff can
 --      look" from "only the specifically-tagged tool can write".
+--   7. Creates scholar_form_unlock_notifications (one row per scholar per
+--      material they've been told is unlocked) and
+--      public.sync_and_get_my_form_unlock_notifications() — the RPC the
+--      scholar portal calls at portal load, quiz submit, attendance scan,
+--      and when the Forms panel opens. It (a) inserts a notification row
+--      for every material that is CURRENTLY unlocked and applicable to
+--      the signed-in scholar and doesn't already have one, then (b)
+--      returns every still-unread row for that scholar — re-checking
+--      unlocked/applicable at read time too, so a material that somehow
+--      became locked again after being notified is never returned. It
+--      never selects url or file_name, and every step is scoped to
+--      auth.uid() via the scholars table, so it can't create or return a
+--      row for a locked material, a material outside the scholar's year
+--      level, or another scholar's notifications. Marking a notification
+--      read is a plain scholar-scoped UPDATE (see the RLS policy below),
+--      not part of this RPC — nothing marks a notification read except
+--      that explicit action.
 --
 -- Run this in the Supabase SQL Editor. Safe to re-run — every statement
 -- uses IF EXISTS / IF NOT EXISTS / CREATE OR REPLACE (except
@@ -426,3 +443,122 @@ create policy "forms management staff delete conditions" on public.form_material
 -- needs `authenticated` execute rights (already granted above) — no table
 -- SELECT grant to scholars is required beyond that, since the RPC is
 -- security definer and reads the tables as its owner, not as the caller.
+
+-- ── 7. Persistent unlock notifications ──────────────────────
+-- One row per (scholar, material) they've been told about. Unlike
+-- get_my_form_materials() (a live snapshot), this survives across
+-- sessions so "you unlocked X" can be shown once — including for unlocks
+-- the scholar didn't personally trigger (staff created a newly-qualifying
+-- material, loosened a condition, or changed the scholar's year level) —
+-- and never shown again once dismissed.
+
+create table if not exists public.scholar_form_unlock_notifications (
+  id uuid primary key default gen_random_uuid(),
+  scholar_id uuid not null references public.scholars(id) on delete cascade,
+  material_id uuid not null references public.form_materials(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  read_at timestamptz
+);
+
+-- One notification per scholar per material, ever — re-locking and
+-- re-unlocking the same material later does not create a second one (see
+-- the RPC below: ON CONFLICT DO NOTHING against this same constraint).
+alter table public.scholar_form_unlock_notifications
+  drop constraint if exists scholar_form_unlock_notifications_scholar_material_key;
+alter table public.scholar_form_unlock_notifications
+  add constraint scholar_form_unlock_notifications_scholar_material_key
+  unique (scholar_id, material_id);
+
+create index if not exists scholar_form_unlock_notifications_scholar_id_idx
+  on public.scholar_form_unlock_notifications (scholar_id);
+create index if not exists scholar_form_unlock_notifications_unread_idx
+  on public.scholar_form_unlock_notifications (scholar_id)
+  where read_at is null;
+
+alter table public.scholar_form_unlock_notifications enable row level security;
+
+-- Scholars can read and mark-read only their own rows. There is
+-- deliberately no INSERT (or DELETE) policy for scholars at all — the
+-- only way a row is ever created is the security-definer RPC below, which
+-- runs as its owner and therefore bypasses RLS for the insert, but only
+-- ever inserts (scholar_id = the caller's own auth.uid(), material_id = a
+-- material it already verified is unlocked for them). A scholar can never
+-- insert an arbitrary row, or a row for a material they don't actually
+-- have unlocked, via a direct table call.
+drop policy if exists "scholar reads own form unlock notifications" on public.scholar_form_unlock_notifications;
+create policy "scholar reads own form unlock notifications" on public.scholar_form_unlock_notifications
+  for select using (scholar_id = auth.uid());
+
+drop policy if exists "scholar marks own form unlock notifications read" on public.scholar_form_unlock_notifications;
+create policy "scholar marks own form unlock notifications read" on public.scholar_form_unlock_notifications
+  for update using (scholar_id = auth.uid()) with check (scholar_id = auth.uid());
+
+-- Staff visibility isn't needed for this table (it's purely a per-scholar
+-- "have they seen this" marker, not a Forms Management concern) — no
+-- staff policy is added, so it stays scholar-only, matching RLS's
+-- default-deny for anything without a matching policy.
+
+create or replace function public.sync_and_get_my_form_unlock_notifications()
+returns table (
+  notification_id uuid,
+  material_id uuid,
+  title text,
+  kind text,
+  created_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_scholar public.scholars%rowtype;
+begin
+  select * into v_scholar from public.scholars where id = auth.uid();
+  if not found then
+    return; -- not signed in as a scholar: nothing to sync or return
+  end if;
+
+  -- Create a notification row for every material that is CURRENTLY
+  -- unlocked and applicable to this scholar and doesn't already have one.
+  -- Same applicability/unlock logic as get_my_form_materials() and the
+  -- storage policy above — is_form_material_unlocked() (the cumulative AND
+  -- over non-year_level conditions) plus the separate year_level
+  -- applicability check — so this can never create a row for a locked
+  -- material or one outside the scholar's year level.
+  insert into public.scholar_form_unlock_notifications (scholar_id, material_id)
+  select v_scholar.id, m.id
+  from public.form_materials m
+  where public.is_form_material_unlocked(m.id)
+    and not exists (
+      select 1
+      from public.form_material_conditions c
+      where c.material_id = m.id
+        and c.condition_type = 'year_level'
+        and not public.is_form_condition_met(c.id)
+    )
+  on conflict (scholar_id, material_id) do nothing;
+
+  -- Return every still-unread row for this scholar — re-checking
+  -- unlocked/applicable here too (not just trusting the row exists), so a
+  -- material that was unlocked when notified but has since become locked
+  -- again is never handed back, even if its notification row is still
+  -- sitting there unread.
+  return query
+  select n.id, n.material_id, m.title, m.kind, n.created_at
+  from public.scholar_form_unlock_notifications n
+  join public.form_materials m on m.id = n.material_id
+  where n.scholar_id = v_scholar.id
+    and n.read_at is null
+    and public.is_form_material_unlocked(m.id)
+    and not exists (
+      select 1
+      from public.form_material_conditions c
+      where c.material_id = m.id
+        and c.condition_type = 'year_level'
+        and not public.is_form_condition_met(c.id)
+    )
+  order by n.created_at;
+end;
+$$;
+
+grant execute on function public.sync_and_get_my_form_unlock_notifications() to authenticated;

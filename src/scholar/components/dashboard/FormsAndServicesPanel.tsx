@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Briefcase, FileText, Download, BookOpen, Eye, Info, Lock } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { ServicesContent } from "./ServicesPanel";
-import { fetchFormMaterialsForScholar, fetchFormMaterialDownloadUrl, fetchFormMaterialPreviewUrl, syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormMaterial, type UnmetRequirement } from "../../formsApi";
+import { fetchFormMaterialsForScholar, fetchFormMaterialDownloadUrl, fetchFormMaterialPreviewUrl, syncAndFetchUnreadFormUnlockNotifications, type FormMaterial, type UnmetRequirement } from "../../formsApi";
 
 type Tab = "forms" | "services";
 
@@ -106,13 +106,14 @@ function FormsContent() {
     (async () => {
       setMaterials(await fetchFormMaterialsForScholar());
       setLoading(false);
-      // No popup here — the scholar is already looking at the full materials
-      // list, so seeing it in this list is enough to count as "seen." This
-      // is what stops a notification popping up again later for something
-      // the scholar has already browsed to directly (without ever having
-      // gotten the popup at portal load / quiz / attendance first).
-      const unread = await syncAndFetchUnreadFormUnlockNotifications();
-      if (unread.length > 0) void markFormUnlockNotificationsRead(unread.map(n => n.notificationId));
+      // Sync only — this creates a notification row for anything newly
+      // unlocked, so it exists to be dismissed later, but it must NOT mark
+      // anything read just because the scholar opened this panel. Read
+      // status only ever changes when they explicitly click "View in
+      // Forms" or "Maybe later" on NewlyUnlockedModal (see
+      // dismissNewlyUnlocked() in ScholarPortalPage.tsx / QuestsPanel.tsx /
+      // AttendanceScanner.tsx) — never implicitly here.
+      void syncAndFetchUnreadFormUnlockNotifications();
     })();
   }, []);
 
