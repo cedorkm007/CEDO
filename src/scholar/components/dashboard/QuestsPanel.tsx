@@ -4,7 +4,7 @@ import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle,
 import type { LucideIcon } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, getSlideEmbed, getPdfEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
-import { fetchFormMaterialsForScholar, compareUnlockStatus, type FormMaterial } from "../../formsApi";
+import { fetchFormMaterialsForScholar, compareUnlockStatus, hasUnlockedMaterialForSubject, type FormMaterial } from "../../formsApi";
 import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
 
@@ -51,11 +51,19 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
   const [certBusy, setCertBusy] = useState(false);
   const [certError, setCertError] = useState("");
   const [newlyUnlocked, setNewlyUnlocked] = useState<FormMaterial[]>([]);
+  // Current Forms Management materials for this scholar — fetched whenever
+  // a subject's topic list loads, so the "You passed!" button below can
+  // check whether something is ACTUALLY unlocked and linked to this
+  // subject, not just whether the subject was passed.
+  const [formMaterials, setFormMaterials] = useState<FormMaterial[]>([]);
   // Which subjects' "You passed! Check your unlocked Forms" banner the
   // scholar has already followed this session — tracked so the banner
   // doesn't keep reappearing every time they reopen a subject they've
-  // already acted on (Milestone D polish). Per-subject, not global: a
-  // different subject reaching its passing rate still shows its own banner.
+  // already acted on. Per-subject, not global: a different subject with
+  // its own newly-unlocked material still shows its own banner. The
+  // banner itself only shows when hasUnlockedMaterialForSubject() is true
+  // (an actual Forms Management material, unlocked, linked to this
+  // subject) — passing the subject alone is not sufficient.
   const [visitedFormsForSubject, setVisitedFormsForSubject] = useState<Set<string>>(new Set());
 
   useEffect(() => { loadSubjects(); }, []);
@@ -71,23 +79,27 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
     setLoading(true);
     setActiveLecture(null);
     setCertError("");
-    const [topicsResult, progressResult] = await Promise.all([
+    const [topicsResult, progressResult, materialsResult] = await Promise.all([
       fetchQuizTopics(subject.id, scholarIdNumber),
       fetchOwnSubjectProgress(subject.id, scholarIdNumber),
+      fetchFormMaterialsForScholar(),
     ]);
     setTopics(topicsResult);
     setSubjectProgress(progressResult);
+    setFormMaterials(materialsResult);
     setLoading(false);
     setStep({ view: "topics", subject });
   }
 
   async function reloadTopics(subject: QuizSubject) {
-    const [topicsResult, progressResult] = await Promise.all([
+    const [topicsResult, progressResult, materialsResult] = await Promise.all([
       fetchQuizTopics(subject.id, scholarIdNumber),
       fetchOwnSubjectProgress(subject.id, scholarIdNumber),
+      fetchFormMaterialsForScholar(),
     ]);
     setTopics(topicsResult);
     setSubjectProgress(progressResult);
+    setFormMaterials(materialsResult);
   }
 
   async function handleDownloadCertificate(subject: QuizSubject) {
@@ -167,6 +179,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
     onScoreSubmitted();
 
     const after = await fetchFormMaterialsForScholar();
+    setFormMaterials(after);
     setNewlyUnlocked(compareUnlockStatus(before, after));
   }
 
@@ -256,7 +269,9 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
             );
           })()}
 
-          {subjectProgress && subjectProgress.percentage >= step.subject.passingRateMin && subjectProgress.percentage <= step.subject.passingRateMax && !visitedFormsForSubject.has(step.subject.id) && (
+          {subjectProgress && subjectProgress.percentage >= step.subject.passingRateMin && subjectProgress.percentage <= step.subject.passingRateMax
+            && hasUnlockedMaterialForSubject(formMaterials, step.subject.id)
+            && !visitedFormsForSubject.has(step.subject.id) && (
             <button
               onClick={() => { setVisitedFormsForSubject(prev => new Set(prev).add(step.subject.id)); onNavigateToForms(); }}
               className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-[#F3BC00] to-[#e0a800] text-[#062444] rounded-xl px-4 py-3.5 mb-4 font-extrabold text-[13.5px] shadow-[0_4px_14px_rgba(243,188,0,0.35)] hover:shadow-[0_6px_18px_rgba(243,188,0,0.45)] transition-shadow"

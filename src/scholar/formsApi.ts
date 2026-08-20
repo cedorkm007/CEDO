@@ -20,10 +20,13 @@ export interface FormMaterial {
   isUnlocked: boolean;
   /** Which specific conditions are still unmet, for display to the scholar — always empty when isUnlocked is true. */
   unmetRequirements: UnmetRequirement[];
+  /** Every Quest subject this material has a quest_subject condition on — met or not. Used to tell "this material is unlocked AND actually linked to subject X" apart from "the scholar merely passed subject X" (see QuestsPanel.tsx). Not security-sensitive: subject ids/names are already visible elsewhere in the scholar portal. */
+  questSubjectIds: string[];
 }
 
 function rowToMaterial(row: Record<string, unknown>): FormMaterial {
   const rawRequirements = row.unmet_requirements;
+  const rawSubjectIds = row.quest_subject_ids;
   return {
     id: String(row.id),
     title: String(row.title ?? ""),
@@ -35,6 +38,7 @@ function rowToMaterial(row: Record<string, unknown>): FormMaterial {
     unmetRequirements: Array.isArray(rawRequirements)
       ? (rawRequirements as { type?: unknown; label?: unknown }[]).map(r => ({ type: String(r.type ?? ""), label: String(r.label ?? "") }))
       : [],
+    questSubjectIds: Array.isArray(rawSubjectIds) ? rawSubjectIds.map(id => String(id)) : [],
   };
 }
 
@@ -100,4 +104,17 @@ export async function fetchFormMaterialPreviewUrl(materialId: string): Promise<s
 export function compareUnlockStatus(before: FormMaterial[], after: FormMaterial[]): FormMaterial[] {
   const wasUnlockedById = new Map(before.map(m => [m.id, m.isUnlocked]));
   return after.filter(m => m.isUnlocked && wasUnlockedById.get(m.id) !== true);
+}
+
+/**
+ * Whether at least one material is BOTH unlocked AND actually linked to
+ * the given Quest subject via a quest_subject condition — i.e. whether
+ * passing this specific subject is genuinely why something became
+ * available, not just a coincidence of the scholar passing something.
+ * Used to gate QuestsPanel.tsx's "You passed! Check your unlocked Forms"
+ * button, which must not appear just because the scholar passed the
+ * subject if nothing in Forms Management is actually linked to it.
+ */
+export function hasUnlockedMaterialForSubject(materials: FormMaterial[], subjectId: string): boolean {
+  return materials.some(m => m.isUnlocked && m.questSubjectIds.includes(subjectId));
 }

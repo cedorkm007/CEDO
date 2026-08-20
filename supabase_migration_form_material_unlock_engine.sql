@@ -26,7 +26,11 @@
 --      year_level condition excludes this scholar is not returned at all.
 --      Locked materials come back with url/file_name blanked out — the
 --      PDF filename and the flipbook link are themselves gated, not just
---      the "download" button.
+--      the "download" button. Also returns quest_subject_ids — every
+--      subject a material has a quest_subject condition on, met or not —
+--      so the scholar portal can tell "unlocked AND linked to subject X"
+--      apart from "the scholar merely passed subject X" (see
+--      QuestsPanel.tsx's "You passed! Check your unlocked Forms" button).
 --   5. Updates the "form-materials" storage bucket policy so a scholar can
 --      only download a PDF that is_form_material_unlocked() for them —
 --      table/RPC visibility alone doesn't grant file access, the file
@@ -42,7 +46,11 @@
 --      look" from "only the specifically-tagged tool can write".
 --
 -- Run this in the Supabase SQL Editor. Safe to re-run — every statement
--- uses IF EXISTS / IF NOT EXISTS / CREATE OR REPLACE, and the three DO
+-- uses IF EXISTS / IF NOT EXISTS / CREATE OR REPLACE (except
+-- get_my_form_materials(), which uses DROP FUNCTION IF EXISTS + CREATE,
+-- since changing a table-returning function's columns needs a drop first —
+-- CREATE OR REPLACE alone errors on a changed return type; the drop-then-
+-- create pair is just as safe to re-run), and the three DO
 -- blocks that touch existing constraints/policies look them up by
 -- catalog inspection rather than a hardcoded name, since this repo copy
 -- doesn't have the original migration to know those names for certain.
@@ -204,7 +212,11 @@ grant execute on function public.is_form_material_unlocked(uuid) to authenticate
 
 -- ── 4. Scholar-facing RPC ────────────────────────────────────
 
-create or replace function public.get_my_form_materials()
+-- Changing a "returns table (...)" function's columns requires a drop
+-- first — CREATE OR REPLACE alone errors on a changed return type.
+drop function if exists public.get_my_form_materials();
+
+create function public.get_my_form_materials()
 returns table (
   id uuid,
   title text,
@@ -213,7 +225,8 @@ returns table (
   description text,
   file_name text,
   is_unlocked boolean,
-  unmet_requirements jsonb
+  unmet_requirements jsonb,
+  quest_subject_ids uuid[]
 )
 language sql
 security definer
@@ -250,7 +263,22 @@ as $$
       where c.material_id = m.id
         and c.condition_type <> 'year_level'
         and not public.is_form_condition_met(c.id)
-    ), '[]'::jsonb) as unmet_requirements
+    ), '[]'::jsonb) as unmet_requirements,
+    -- Every quest_subject this material has a condition on — met or not,
+    -- unlike unmet_requirements above. This is how the scholar portal's
+    -- "You passed! Check your unlocked Forms" button (QuestsPanel.tsx)
+    -- knows a material is actually LINKED to a given subject, rather than
+    -- just guessing from "the scholar passed something" — it only shows
+    -- the button when a material in this array for the current subject is
+    -- also is_unlocked. Not a security-sensitive value: subject names/ids
+    -- are already visible elsewhere in the scholar portal (Quests tab).
+    coalesce((
+      select array_agg(c.subject_id)
+      from public.form_material_conditions c
+      where c.material_id = m.id
+        and c.condition_type = 'quest_subject'
+        and c.subject_id is not null
+    ), array[]::uuid[]) as quest_subject_ids
   from public.form_materials m
   cross join me
   where me.id is not null
