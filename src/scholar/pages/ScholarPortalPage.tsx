@@ -18,12 +18,25 @@ import { CalendarAndActivitiesPanel } from "../components/dashboard/CalendarAndA
 import { ChangePasswordModal } from "../components/dashboard/ChangePasswordModal";
 import { NewlyUnlockedModal } from "../components/dashboard/NewlyUnlockedModal";
 import { syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormUnlockNotification } from "../formsApi";
+import { useUrlState } from "@/app/useUrlState";
 import type { DashPanelKey } from "../components/dashboard/types";
 import type { ScholarProfile, SubjectGrade, QuestScore } from "../types";
 
 interface ScholarPortalPageProps {
   onSignOut: () => void;
 }
+
+// URL representation of the panel state — "home" stands in for `panel ===
+// null` (the DashboardHome grid) since useUrlState's default value must be
+// a real string, not null, and "home" doubles as a readable URL rather
+// than an empty/missing param meaning something implicit. Converted back
+// to `DashPanelKey | null` immediately below so every other line in this
+// file keeps using the exact same `panel`/`setPanel` shape as before —
+// nested tabs and in-progress quiz state are deliberately NOT part of
+// this (Quests' internal browse/topics/quiz steps, Formation Tools-style
+// drill-downs, etc. — out of scope per this milestone's instructions).
+type PanelUrlValue = "home" | DashPanelKey;
+const PANEL_VALUES: readonly PanelUrlValue[] = ["home", "profile", "subjects-grades", "services", "quests", "sdp", "calendar"];
 
 export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
   const [profile, setProfile] = useState<ScholarProfile | null>(null);
@@ -32,7 +45,9 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
   const [sdpStatus, setSdpStatus] = useState<SDPCategoryStatus>({ community_service: false, community_volunteerism: false, formation_program: false });
   const [positions, setPositions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [panel, setPanel] = useState<DashPanelKey | null>(null); // null = home
+  const [panelUrlValue, setPanelUrlValue] = useUrlState<PanelUrlValue>("panel", "home", PANEL_VALUES);
+  const panel: DashPanelKey | null = panelUrlValue === "home" ? null : panelUrlValue;
+  function setPanel(next: DashPanelKey | null) { setPanelUrlValue(next ?? "home"); }
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showProfilePopup, setShowProfilePopup] = useState(false);
   const [newlyUnlocked, setNewlyUnlocked] = useState<FormUnlockNotification[]>([]);
@@ -43,6 +58,17 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
     (async () => {
       const p = await fetchCurrentScholarProfile();
       setProfile(p);
+      // Any restored panel value is already guaranteed to be a real
+      // PANEL_VALUES member by useUrlState itself (invalid/garbage URL
+      // values fall back to "home" there) — every one of the six panels
+      // is available to any signed-in scholar (no per-panel tag/role gate
+      // exists on this side, unlike the staff app), so there's no further
+      // per-panel authorization check needed here once a profile exists.
+      // The one thing that DOES need checking is "no profile at all"
+      // (session expired / sign-in failed) — the early-return screens
+      // below already cover that by never reaching the panel switch, so a
+      // stale ?panel=... on an unauthenticated load safely shows the
+      // sign-in-again screen instead of a broken panel.
       if (p) {
         const [g, s, status, pos, unread] = await Promise.all([
           fetchSubjectsAndGrades(p.scholarIdNumber), fetchQuestScores(p.scholarIdNumber), fetchScholarSDPCategoryStatus(p.scholarIdNumber),
