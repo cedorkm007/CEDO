@@ -49,12 +49,16 @@
 --      public.sync_and_get_my_form_unlock_notifications() — the RPC the
 --      scholar portal calls at portal load, quiz submit, attendance scan,
 --      and when the Forms panel opens. It (a) inserts a notification row
---      for every material that is CURRENTLY unlocked and applicable to
---      the signed-in scholar and doesn't already have one, then (b)
---      returns every still-unread row for that scholar — re-checking
---      unlocked/applicable at read time too, so a material that somehow
---      became locked again after being notified is never returned. It
---      never selects url or file_name, and every step is scoped to
+--      for every material that is CURRENTLY unlocked, applicable to the
+--      signed-in scholar, and actually HAS at least one condition on it,
+--      and doesn't already have one, then (b) returns every still-unread
+--      row for that scholar — re-checking unlocked/applicable/conditioned
+--      at read time too, so a material that somehow became locked again,
+--      or had its last condition removed, after being notified is never
+--      returned. A public/no-condition material never generates a "you
+--      unlocked a new form" notification for anyone, since it was never
+--      meaningfully "unlocked" — it was already visible to every scholar.
+--      It never selects url or file_name, and every step is scoped to
 --      auth.uid() via the scholars table, so it can't create or return a
 --      row for a locked material, a material outside the scholar's year
 --      level, or another scholar's notifications. Marking a notification
@@ -524,11 +528,22 @@ begin
   -- storage policy above — is_form_material_unlocked() (the cumulative AND
   -- over non-year_level conditions) plus the separate year_level
   -- applicability check — so this can never create a row for a locked
-  -- material or one outside the scholar's year level.
+  -- material or one outside the scholar's year level. Also requires at
+  -- least one form_material_conditions row to exist at all — a material
+  -- with zero conditions is public/visible to every scholar by design
+  -- (see is_form_material_unlocked()'s own "empty conditions = unlocked
+  -- for everyone" behavior), so it was never actually "unlocked" for this
+  -- scholar in any meaningful sense and must not generate a "you unlocked
+  -- a new form" notification.
   insert into public.scholar_form_unlock_notifications (scholar_id, material_id)
   select v_scholar.id, m.id
   from public.form_materials m
   where public.is_form_material_unlocked(m.id)
+    and exists (
+      select 1
+      from public.form_material_conditions c
+      where c.material_id = m.id
+    )
     and not exists (
       select 1
       from public.form_material_conditions c
@@ -539,10 +554,11 @@ begin
   on conflict (scholar_id, material_id) do nothing;
 
   -- Return every still-unread row for this scholar — re-checking
-  -- unlocked/applicable here too (not just trusting the row exists), so a
-  -- material that was unlocked when notified but has since become locked
-  -- again is never handed back, even if its notification row is still
-  -- sitting there unread.
+  -- unlocked/applicable/conditioned here too (not just trusting the row
+  -- exists), so a material that was unlocked when notified but has since
+  -- become locked again, or had every one of its conditions removed since,
+  -- is never handed back, even if its notification row is still sitting
+  -- there unread.
   return query
   select n.id, n.material_id, m.title, m.kind, n.created_at
   from public.scholar_form_unlock_notifications n
@@ -550,6 +566,11 @@ begin
   where n.scholar_id = v_scholar.id
     and n.read_at is null
     and public.is_form_material_unlocked(m.id)
+    and exists (
+      select 1
+      from public.form_material_conditions c
+      where c.material_id = m.id
+    )
     and not exists (
       select 1
       from public.form_material_conditions c
