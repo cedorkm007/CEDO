@@ -51,6 +51,12 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
   const [certBusy, setCertBusy] = useState(false);
   const [certError, setCertError] = useState("");
   const [newlyUnlocked, setNewlyUnlocked] = useState<FormMaterial[]>([]);
+  // Which subjects' "You passed! Check your unlocked Forms" banner the
+  // scholar has already followed this session — tracked so the banner
+  // doesn't keep reappearing every time they reopen a subject they've
+  // already acted on (Milestone D polish). Per-subject, not global: a
+  // different subject reaching its passing rate still shows its own banner.
+  const [visitedFormsForSubject, setVisitedFormsForSubject] = useState<Set<string>>(new Set());
 
   useEffect(() => { loadSubjects(); }, []);
 
@@ -250,9 +256,9 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
             );
           })()}
 
-          {subjectProgress && subjectProgress.percentage >= step.subject.passingRateMin && subjectProgress.percentage <= step.subject.passingRateMax && (
+          {subjectProgress && subjectProgress.percentage >= step.subject.passingRateMin && subjectProgress.percentage <= step.subject.passingRateMax && !visitedFormsForSubject.has(step.subject.id) && (
             <button
-              onClick={onNavigateToForms}
+              onClick={() => { setVisitedFormsForSubject(prev => new Set(prev).add(step.subject.id)); onNavigateToForms(); }}
               className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-[#F3BC00] to-[#e0a800] text-[#062444] rounded-xl px-4 py-3.5 mb-4 font-extrabold text-[13.5px] shadow-[0_4px_14px_rgba(243,188,0,0.35)] hover:shadow-[0_6px_18px_rgba(243,188,0,0.45)] transition-shadow"
             >
               <FileText size={16} /> You passed! Check your unlocked Forms
