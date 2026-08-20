@@ -43,7 +43,7 @@ export function ScoresTab() {
     : 0;
 
   const [page, setPage] = useState(1);
-  const pageSize = 50;
+  const pageSize = 10;
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const pagedRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
