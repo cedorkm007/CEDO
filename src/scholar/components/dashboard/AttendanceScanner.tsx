@@ -2,16 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
 import { Camera, Keyboard, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { redeemAttendanceCode } from "../../scholarApi";
+import { fetchFormMaterialsForScholar, compareUnlockStatus, type FormMaterial } from "../../formsApi";
+import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
 
 type Mode = "scan" | "manual";
 type Result = { ok: boolean; message: string; tone: "success" | "error" | "warning" } | null;
 
-export function AttendanceScanner() {
+export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: () => void }) {
   const [mode, setMode] = useState<Mode>("scan");
   const [manualCode, setManualCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result>(null);
   const [cameraError, setCameraError] = useState("");
+  const [newlyUnlocked, setNewlyUnlocked] = useState<FormMaterial[]>([]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -27,11 +30,17 @@ export function AttendanceScanner() {
 
     setBusy(true);
     setResult(null);
+    // Snapshotted right before the redemption call, same reasoning as
+    // QuestsPanel.submitQuiz() — comparing right around the actual state
+    // change that might flip a condition keeps the diff accurate.
+    const before = await fetchFormMaterialsForScholar();
     const res = await redeemAttendanceCode(code);
     setBusy(false);
     if (res.ok) {
       const label = res.kind === "time_in" ? "Timed in" : res.kind === "time_out" ? "Timed out" : "Hour credited";
       setResult({ ok: true, tone: "success", message: `${label} for "${res.activityName ?? "the activity"}".` });
+      const after = await fetchFormMaterialsForScholar();
+      setNewlyUnlocked(compareUnlockStatus(before, after));
     } else {
       const message = res.error || "Invalid QR code.";
       setResult({ ok: false, tone: /you already completed/i.test(message) ? "warning" : "error", message });
@@ -90,6 +99,7 @@ export function AttendanceScanner() {
   }
 
   return (
+    <>
     <div className="max-w-md mx-auto">
       <div className="flex gap-2 mb-4">
         <button onClick={() => setMode("scan")}
@@ -135,5 +145,7 @@ export function AttendanceScanner() {
         </div>
       )}
     </div>
+    <NewlyUnlockedModal materials={newlyUnlocked} onGoToForms={onNavigateToForms} onClose={() => setNewlyUnlocked([])} />
+    </>
   );
 }

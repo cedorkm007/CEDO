@@ -115,7 +115,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
                 />
               )}
               {panel === "sdp" && <SDPPanel scholarIdNumber={profile.scholarIdNumber} />}
-              {panel === "calendar" && <CalendarAndActivitiesPanel />}
+              {panel === "calendar" && <CalendarAndActivitiesPanel onNavigateToForms={goToForms} />}
             </>
           )}
         </div>

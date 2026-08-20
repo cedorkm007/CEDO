@@ -127,7 +127,7 @@ function ActivitiesList({ activities }: { activities: CalendarActivity[] }) {
   );
 }
 
-export function CalendarAndActivitiesPanel() {
+export function CalendarAndActivitiesPanel({ onNavigateToForms }: { onNavigateToForms: () => void }) {
   const [tab, setTab] = useState<Tab>("calendar");
   const [activities, setActivities] = useState<CalendarActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,7 +171,7 @@ export function CalendarAndActivitiesPanel() {
       ) : tab === "activities" ? (
         <ActivitiesList activities={activities} />
       ) : (
-        <AttendanceScanner />
+        <AttendanceScanner onNavigateToForms={onNavigateToForms} />
       )}
     </SectionCard>
   );
