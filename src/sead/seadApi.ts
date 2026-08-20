@@ -124,20 +124,51 @@ export interface RankingRow {
 
 /** Top scorers for one subject, optionally filtered by year level / school / cluster (via barangayIn) / barangay. */
 export async function fetchSubjectRankings(subjectId: string, filters: RankingFilters = {}): Promise<RankingRow[]> {
-  const { data: progress, error } = await supabase.from("scholar_subject_progress")
-    .select("scholar_id_number, subject_percentage, topic_count").eq("subject_id", subjectId).gt("topic_count", 0);
-  if (error || !progress || progress.length === 0) return [];
+  // scholar_subject_progress can hold more rows for a popular subject than
+  // Supabase/PostgREST's default 1,000-row response cap, so this pages
+  // through with .range() instead of a single .select() — same pattern as
+  // fetchScores() below. order() makes each page's slice deterministic.
+  const progress: { scholar_id_number: string; subject_percentage: number; topic_count: number }[] = [];
+  {
+    const pageSize = 500;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase.from("scholar_subject_progress")
+        .select("scholar_id_number, subject_percentage, topic_count")
+        .eq("subject_id", subjectId).gt("topic_count", 0)
+        .order("scholar_id_number")
+        .range(from, from + pageSize - 1);
+      if (error) return [];
+      if (!data || data.length === 0) break;
+      progress.push(...data);
+      if (data.length < pageSize) break;
+    }
+  }
+  if (progress.length === 0) return [];
 
-  let scholarQuery = supabase.from("scholars")
-    .select("scholar_id_number, first_name, last_name, school, year_level, barangay")
-    .in("scholar_id_number", progress.map(p => p.scholar_id_number));
-  if (filters.yearLevel) scholarQuery = scholarQuery.eq("year_level", filters.yearLevel);
-  if (filters.school) scholarQuery = scholarQuery.eq("school", filters.school);
-  if (filters.barangay) scholarQuery = scholarQuery.eq("barangay", filters.barangay);
-  if (filters.barangayIn) scholarQuery = scholarQuery.in("barangay", filters.barangayIn);
-
-  const { data: scholars } = await scholarQuery;
-  if (!scholars || scholars.length === 0) return [];
+  // Same response-cap reasoning applies to the matching scholars — an
+  // .in() filter is still subject to the same cap, so this pages through
+  // too rather than trusting one call to return every match.
+  const scholarIds = progress.map(p => p.scholar_id_number);
+  const scholars: { scholar_id_number: string; first_name: string; last_name: string; school: string | null; year_level: string | null; barangay: string | null }[] = [];
+  {
+    const pageSize = 500;
+    for (let from = 0; ; from += pageSize) {
+      let scholarQuery = supabase.from("scholars")
+        .select("scholar_id_number, first_name, last_name, school, year_level, barangay")
+        .in("scholar_id_number", scholarIds)
+        .order("scholar_id_number");
+      if (filters.yearLevel) scholarQuery = scholarQuery.eq("year_level", filters.yearLevel);
+      if (filters.school) scholarQuery = scholarQuery.eq("school", filters.school);
+      if (filters.barangay) scholarQuery = scholarQuery.eq("barangay", filters.barangay);
+      if (filters.barangayIn) scholarQuery = scholarQuery.in("barangay", filters.barangayIn);
+      const { data, error } = await scholarQuery.range(from, from + pageSize - 1);
+      if (error) return [];
+      if (!data || data.length === 0) break;
+      scholars.push(...data);
+      if (data.length < pageSize) break;
+    }
+  }
+  if (scholars.length === 0) return [];
 
   const progressByScholarId = new Map(progress.map(p => [p.scholar_id_number, p]));
   const rows = scholars
@@ -173,18 +204,54 @@ export interface SubjectProgressRow {
 
 /** Every scholar's aggregate percentage for one subject — backs the Scores & Progress tab's passing-rate section. */
 export async function fetchSubjectProgress(subjectId: string): Promise<SubjectProgressRow[]> {
-  const [{ data: subject }, { data: progress }] = await Promise.all([
+  // Same 1,000-row response-cap reasoning as fetchSubjectRankings() above —
+  // pages through scholar_subject_progress with .range() rather than one
+  // .select() call. Wrapped in its own function so it can still run
+  // concurrently with the passing-rate lookup below via Promise.all, same
+  // as before this change.
+  async function fetchAllProgress() {
+    const rows: { scholar_id_number: string; topic_count: number; subject_percentage: number }[] = [];
+    const pageSize = 500;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase.from("scholar_subject_progress")
+        .select("scholar_id_number, topic_count, subject_percentage")
+        .eq("subject_id", subjectId).gt("topic_count", 0)
+        .order("scholar_id_number")
+        .range(from, from + pageSize - 1);
+      if (error || !data) break;
+      rows.push(...data);
+      if (data.length < pageSize) break;
+    }
+    return rows;
+  }
+
+  const [{ data: subject }, progress] = await Promise.all([
     supabase.from("quest_subjects").select("passing_rate_min, passing_rate_max").eq("id", subjectId).maybeSingle(),
-    supabase.from("scholar_subject_progress").select("scholar_id_number, topic_count, subject_percentage").eq("subject_id", subjectId).gt("topic_count", 0),
+    fetchAllProgress(),
   ]);
-  if (!progress || progress.length === 0) return [];
+  if (progress.length === 0) return [];
 
   const min = Number(subject?.passing_rate_min ?? 75);
   const max = Number(subject?.passing_rate_max ?? 100);
 
+  // Same response-cap reasoning applies here too — page through the
+  // matching scholars instead of a single .in() call.
   const scholarIds = progress.map(p => p.scholar_id_number);
-  const { data: scholars } = await supabase.from("scholars").select("scholar_id_number, first_name, last_name").in("scholar_id_number", scholarIds);
-  const nameByScholarId = new Map((scholars ?? []).map(s => [s.scholar_id_number, `${s.first_name} ${s.last_name}`]));
+  const scholars: { scholar_id_number: string; first_name: string; last_name: string }[] = [];
+  {
+    const pageSize = 500;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase.from("scholars")
+        .select("scholar_id_number, first_name, last_name")
+        .in("scholar_id_number", scholarIds)
+        .order("scholar_id_number")
+        .range(from, from + pageSize - 1);
+      if (error || !data) break;
+      scholars.push(...data);
+      if (data.length < pageSize) break;
+    }
+  }
+  const nameByScholarId = new Map(scholars.map(s => [s.scholar_id_number, `${s.first_name} ${s.last_name}`]));
 
   return progress
     .map(p => {
