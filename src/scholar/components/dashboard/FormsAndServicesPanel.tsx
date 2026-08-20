@@ -126,8 +126,8 @@ function FormsContent() {
   );
 }
 
-export function FormsAndServicesPanel() {
-  const [tab, setTab] = useState<Tab>("forms");
+export function FormsAndServicesPanel({ initialTab = "forms" }: { initialTab?: Tab } = {}) {
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   return (
     <SectionCard icon={<Briefcase size={14} />} title="Forms and Services">
