@@ -4,6 +4,8 @@ import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle,
 import type { LucideIcon } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, getSlideEmbed, getPdfEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
+import { fetchFormMaterialsForScholar, compareUnlockStatus, type FormMaterial } from "../../formsApi";
+import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
 
 /** Which review-material panels are expanded inline on the quiz page. Independent per material — opening one doesn't close another. */
@@ -20,6 +22,7 @@ interface QuestsPanelProps {
   scores: QuestScore[];
   scholarIdNumber: string;
   onScoreSubmitted: () => void; // lets the parent refresh "Your Quest History"
+  onNavigateToForms: () => void; // takes the scholar to Forms and Services → Forms
 }
 
 type OrientationControl = {
@@ -31,7 +34,7 @@ function getOrientationControl(): OrientationControl | undefined {
   return (screen.orientation as unknown as OrientationControl | undefined);
 }
 
-export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: QuestsPanelProps) {
+export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavigateToForms }: QuestsPanelProps) {
   const [step, setStep] = useState<Step>({ view: "browse" });
   const [subjects, setSubjects] = useState<QuizSubject[]>([]);
   const [topics, setTopics] = useState<QuizTopic[]>([]);
@@ -47,6 +50,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
   const [subjectProgress, setSubjectProgress] = useState<{ percentage: number; topicCount: number } | null>(null);
   const [certBusy, setCertBusy] = useState(false);
   const [certError, setCertError] = useState("");
+  const [newlyUnlocked, setNewlyUnlocked] = useState<FormMaterial[]>([]);
 
   useEffect(() => { loadSubjects(); }, []);
 
@@ -144,15 +148,24 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
   async function submitQuiz() {
     if (step.view !== "quiz") return;
     setSubmitting(true);
+    // Snapshotted before the submit call completes, not before the whole quiz
+    // started — a scholar could pass a DIFFERENT subject's quiz in another
+    // tab/session mid-quiz; comparing right around the actual state change
+    // that might flip a condition keeps the diff accurate to this submission.
+    const before = await fetchFormMaterialsForScholar();
     const answerList = step.questions.map(q => ({ questionId: q.id, choiceId: answers[q.id] ?? null }));
     const result = await submitQuizAttempt(step.topic.id, answerList);
     setSubmitting(false);
     if (!result.ok) { setError(result.error); return; }
     setStep({ view: "results", subject: step.subject, topic: step.topic, result: result.result });
     onScoreSubmitted();
+
+    const after = await fetchFormMaterialsForScholar();
+    setNewlyUnlocked(compareUnlockStatus(before, after));
   }
 
   return (
+    <>
     <SectionCard icon={<Trophy size={14} />} title="Academic Quests">
       {step.view === "browse" && (
         <>
@@ -236,6 +249,15 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
               </div>
             );
           })()}
+
+          {subjectProgress && subjectProgress.percentage >= step.subject.passingRateMin && subjectProgress.percentage <= step.subject.passingRateMax && (
+            <button
+              onClick={onNavigateToForms}
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-[#F3BC00] to-[#e0a800] text-[#062444] rounded-xl px-4 py-3.5 mb-4 font-extrabold text-[13.5px] shadow-[0_4px_14px_rgba(243,188,0,0.35)] hover:shadow-[0_6px_18px_rgba(243,188,0,0.45)] transition-shadow"
+            >
+              <FileText size={16} /> You passed! Check your unlocked Forms
+            </button>
+          )}
 
           {error && <ErrorBox message={error} />}
           {loading ? (
@@ -439,6 +461,8 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted }: Quest
         </div>
       )}
     </SectionCard>
+    <NewlyUnlockedModal materials={newlyUnlocked} onGoToForms={onNavigateToForms} onClose={() => setNewlyUnlocked([])} />
+    </>
   );
 }
 

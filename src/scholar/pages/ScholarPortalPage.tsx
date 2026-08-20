@@ -34,6 +34,8 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showProfilePopup, setShowProfilePopup] = useState(false);
 
+  function goToForms() { setPanel("services"); }
+
   useEffect(() => {
     (async () => {
       const p = await fetchCurrentScholarProfile();
@@ -109,6 +111,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
                   scores={scores}
                   scholarIdNumber={profile.scholarIdNumber}
                   onScoreSubmitted={() => { fetchQuestScores(profile.scholarIdNumber).then(setScores); }}
+                  onNavigateToForms={goToForms}
                 />
               )}
               {panel === "sdp" && <SDPPanel scholarIdNumber={profile.scholarIdNumber} />}
