@@ -118,3 +118,65 @@ export function compareUnlockStatus(before: FormMaterial[], after: FormMaterial[
 export function hasUnlockedMaterialForSubject(materials: FormMaterial[], subjectId: string): boolean {
   return materials.some(m => m.isUnlocked && m.questSubjectIds.includes(subjectId));
 }
+
+// ── Persistent unlock notifications ──────────────────────────
+// Unlike everything above (which only ever reflects a live snapshot),
+// these track "has this scholar been told about this unlocked material
+// yet" server-side, via scholar_form_unlock_notifications
+// (supabase_migration_form_material_unlock_engine.sql, section 7) — so a
+// scholar can be notified even when nothing they personally just did
+// triggered the unlock (staff created a newly-qualifying material, staff
+// loosened/removed a condition, staff changed their year level, or they
+// simply logged in later/refreshed).
+
+export interface FormUnlockNotification {
+  notificationId: string;
+  materialId: string;
+  title: string;
+  kind: FormMaterialKind;
+  createdAt: string;
+}
+
+function rowToNotification(row: Record<string, unknown>): FormUnlockNotification {
+  return {
+    notificationId: String(row.notification_id),
+    materialId: String(row.material_id),
+    title: String(row.title ?? ""),
+    kind: (row.kind as FormMaterialKind) ?? "pdf",
+    createdAt: String(row.created_at ?? ""),
+  };
+}
+
+/**
+ * Reconciles the scholar's currently-unlocked materials against their
+ * existing notification rows (creating any missing ones server-side),
+ * then returns everything still unread — via
+ * sync_and_get_my_form_unlock_notifications() (security definer, so this
+ * can never create or return a notification for a material the scholar
+ * doesn't actually have unlocked; see the migration's own comments for
+ * why). Call this on portal load, when the Forms panel opens, after quiz
+ * submission, and after successful attendance scanning.
+ */
+export async function syncAndFetchUnreadFormUnlockNotifications(): Promise<FormUnlockNotification[]> {
+  const { data, error } = await supabase.rpc("sync_and_get_my_form_unlock_notifications");
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(rowToNotification);
+}
+
+/**
+ * Marks one or more notifications read/dismissed — call when the scholar
+ * clicks either "View in Forms" or "Maybe later" on the popup, never
+ * automatically, so a refresh never re-shows something already seen. A
+ * plain authenticated UPDATE, not an RPC: the scholar's own RLS policy
+ * (scholar_id = auth.uid(), both USING and WITH CHECK) already fully
+ * scopes this to the caller's own rows, so no security-definer wrapper is
+ * needed here the way the sync/create side needs one.
+ */
+export async function markFormUnlockNotificationsRead(notificationIds: string[]): Promise<{ ok: boolean; error?: string }> {
+  if (notificationIds.length === 0) return { ok: true };
+  const { error } = await supabase
+    .from("scholar_form_unlock_notifications")
+    .update({ read_at: new Date().toISOString() })
+    .in("id", notificationIds);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
