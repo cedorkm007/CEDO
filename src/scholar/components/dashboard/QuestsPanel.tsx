@@ -7,10 +7,25 @@ import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt
 import { fetchFormMaterialsForScholar, hasUnlockedMaterialForSubject, syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormMaterial, type FormUnlockNotification } from "../../formsApi";
 import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
+import { useUrlState } from "@/app/useUrlState";
 
 /** Which review-material panels are expanded inline on the quiz page. Independent per material — opening one doesn't close another. */
 type OpenMaterials = { video: boolean; slides: boolean; pdf: boolean };
 const CLOSED_MATERIALS: OpenMaterials = { video: false, slides: false, pdf: false };
+
+// The persisted URL state for Quests is a single value: "browse" (no
+// subject selected) or a subject's id (selected, showing its topic list —
+// the only nested view worth persisting; quiz/results are deliberately
+// never written here, see the restore effect and openSubject below for
+// why). Subject ids aren't a fixed set known at compile time, so this
+// can't use useUrlState's plain array form — this predicate only does a
+// cheap synchronous shape check (declaring intent to look like a subject
+// id at all); the REAL check against actually-loaded subjects happens in
+// the restore effect below, once `subjects` has loaded.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isPlausibleSubjectUrlValue(value: string): boolean {
+  return value === "browse" || UUID_RE.test(value);
+}
 
 type Step =
   | { view: "browse" }
@@ -66,7 +81,46 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
   // subject) — passing the subject alone is not sufficient.
   const [visitedFormsForSubject, setVisitedFormsForSubject] = useState<Set<string>>(new Set());
 
+  // Persists which subject's topic list is open (or "browse" for none) to
+  // the URL, so a refresh restores it. Deliberately the ONLY piece of
+  // Quests navigation persisted — quiz/results are never written here
+  // (see openSubject/beginQuiz/submitQuiz), so a refresh mid-quiz or
+  // mid-results naturally lands back on the last-persisted state, which
+  // is always the subject's topic list, never the quiz itself. Browser
+  // Back/Forward isn't specially wired up here (matches useUrlState's
+  // existing replaceState-only design, already established for the panel
+  // switch in ScholarPortalPage.tsx) — Back/Forward simply doesn't step
+  // through subject selections, the same way it doesn't step through
+  // dashboard panel switches; this is "reasonable" in the sense of not
+  // introducing surprising extra history entries, not in the sense of
+  // supporting undo-style navigation through them.
+  const [subjectIdUrlValue, setSubjectIdUrlValue] = useUrlState<string>("subject", "browse", isPlausibleSubjectUrlValue);
+  const restoredFromUrlRef = useRef(false);
+
   useEffect(() => { loadSubjects(); }, []);
+
+  // Once subjects have loaded, try to restore whatever subject the URL
+  // says was open. Can't do this synchronously inside useUrlState itself
+  // (see its own comment) since the real set of valid subject ids doesn't
+  // exist until this fetch completes. Runs at most once — subjects only
+  // ever loads once in this component's lifetime (see loadSubjects above),
+  // so this guard is mostly about not re-running on an unrelated re-render
+  // rather than guarding against a real repeat load.
+  useEffect(() => {
+    if (restoredFromUrlRef.current) return;
+    if (subjects.length === 0) return;
+    restoredFromUrlRef.current = true;
+    if (subjectIdUrlValue === "browse") return;
+    const matched = subjects.find(s => s.id === subjectIdUrlValue);
+    if (matched) {
+      void openSubject(matched);
+    } else {
+      // Stale/removed/never-existed subject id in the URL — fall back
+      // safely to browse rather than getting stuck or erroring.
+      setSubjectIdUrlValue("browse");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjects]);
 
   async function loadSubjects() {
     setLoading(true);
@@ -79,6 +133,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
     setLoading(true);
     setActiveLecture(null);
     setCertError("");
+    setSubjectIdUrlValue(subject.id);
     const [topicsResult, progressResult, materialsResult] = await Promise.all([
       fetchQuizTopics(subject.id, scholarIdNumber),
       fetchOwnSubjectProgress(subject.id, scholarIdNumber),
@@ -250,7 +305,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
 
       {step.view === "topics" && (
         <div>
-          <BackButton label="Back to subjects" onClick={() => setStep({ view: "browse" })} />
+          <BackButton label="Back to subjects" onClick={() => { setStep({ view: "browse" }); setSubjectIdUrlValue("browse"); }} />
           <h4 className="text-[15px] font-extrabold text-[#062444] mb-1">{step.subject.name}</h4>
           <p className="text-sm text-slate-400 mb-2">Each topic has its own daily attempt limit.</p>
 

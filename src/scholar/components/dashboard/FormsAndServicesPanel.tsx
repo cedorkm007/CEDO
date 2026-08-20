@@ -3,8 +3,10 @@ import { Briefcase, FileText, Download, BookOpen, Eye, Info, Lock } from "lucide
 import { SectionCard } from "./SectionCard";
 import { ServicesContent } from "./ServicesPanel";
 import { fetchFormMaterialsForScholar, fetchFormMaterialDownloadUrl, fetchFormMaterialPreviewUrl, syncAndFetchUnreadFormUnlockNotifications, type FormMaterial, type UnmetRequirement } from "../../formsApi";
+import { useUrlState } from "@/app/useUrlState";
 
 type Tab = "forms" | "services";
+const TABS: readonly Tab[] = ["forms", "services"];
 
 /** Friendly prefix per condition type for a locked material's requirement list. Falls back to a generic label for any future condition type this component doesn't know about yet, rather than showing nothing. */
 const REQUIREMENT_TYPE_LABELS: Record<string, string> = {
@@ -137,8 +139,8 @@ function FormsContent() {
   );
 }
 
-export function FormsAndServicesPanel({ initialTab = "forms" }: { initialTab?: Tab } = {}) {
-  const [tab, setTab] = useState<Tab>(initialTab);
+export function FormsAndServicesPanel() {
+  const [tab, setTab] = useUrlState<Tab>("formsTab", "forms", TABS);
 
   return (
     <SectionCard icon={<Briefcase size={14} />} title="Forms and Services">

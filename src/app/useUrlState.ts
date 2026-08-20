@@ -10,11 +10,30 @@ import { useEffect, useState } from "react";
  * paradigm just for this feature.
  *
  * On first render, reads `paramName` from the current URL; if present AND
- * a member of `validValues`, that becomes the initial state instead of
+ * valid per `validValues`, that becomes the initial state instead of
  * `defaultValue` — this is what actually restores state after a refresh.
  * An invalid or unrecognized value in the URL (stale link, hand-edited,
  * tag revoked since the link was saved, etc.) safely falls back to
  * `defaultValue` instead of throwing or rendering something broken.
+ *
+ * `validValues` accepts two forms:
+ *   - A fixed array, for a small closed set of tab/panel keys known at
+ *     compile time (e.g. ["forms", "services"]) — this is enough for most
+ *     callers and is checked synchronously against the array.
+ *   - A predicate function, for a value whose real valid set isn't known
+ *     until some async data has loaded (e.g. a Quest subject id — the set
+ *     of real subject ids only exists once they've been fetched). The
+ *     predicate given here should only do a cheap SYNCHRONOUS shape check
+ *     (e.g. "is this UUID-shaped"), not attempt to consult the async data
+ *     itself — this hook's own initial-state resolution runs before any
+ *     effect/fetch has had a chance to complete, so a predicate that reads
+ *     from not-yet-loaded state would always see it empty and always
+ *     reject on first render, silently breaking restoration. Callers that
+ *     need the REAL check (e.g. "does this id match an actually-loaded
+ *     subject") should do that themselves in an effect once their data is
+ *     ready, correcting the URL (calling the setter to reset to
+ *     `defaultValue`) if it turns out to be stale — see QuestsPanel.tsx
+ *     for a worked example.
  *
  * Every time the returned state changes afterward, the URL is rewritten
  * in place (replaceState — no new history entry, no page navigation) to
@@ -26,12 +45,15 @@ import { useEffect, useState } from "react";
 export function useUrlState<T extends string>(
   paramName: string,
   defaultValue: T,
-  validValues: readonly T[],
+  validValues: readonly T[] | ((value: string) => boolean),
 ): [T, (next: T) => void] {
+  const isValid = (v: string): v is T =>
+    typeof validValues === "function" ? validValues(v) : (validValues as readonly string[]).includes(v);
+
   const [value, setValue] = useState<T>(() => {
     if (typeof window === "undefined") return defaultValue;
     const fromUrl = new URLSearchParams(window.location.search).get(paramName);
-    return fromUrl && (validValues as readonly string[]).includes(fromUrl) ? (fromUrl as T) : defaultValue;
+    return fromUrl && isValid(fromUrl) ? fromUrl : defaultValue;
   });
 
   useEffect(() => {

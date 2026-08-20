@@ -4,8 +4,10 @@ import { SectionCard } from "./SectionCard";
 import { AttendanceScanner } from "./AttendanceScanner";
 import { fetchApprovedSDPActivities, SDP_CATEGORIES, type SDPActivity } from "../../sdpApi";
 import { fetchFormationActivitiesForScholar } from "../../formationActivitiesApi";
+import { useUrlState } from "@/app/useUrlState";
 
 type Tab = "calendar" | "activities" | "attendance";
+const TABS: readonly Tab[] = ["calendar", "activities", "attendance"];
 
 type CalendarActivity = {
   id: string;
@@ -128,7 +130,7 @@ function ActivitiesList({ activities }: { activities: CalendarActivity[] }) {
 }
 
 export function CalendarAndActivitiesPanel({ onNavigateToForms }: { onNavigateToForms: () => void }) {
-  const [tab, setTab] = useState<Tab>("calendar");
+  const [tab, setTab] = useUrlState<Tab>("calTab", "calendar", TABS);
   const [activities, setActivities] = useState<CalendarActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
