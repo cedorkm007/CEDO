@@ -33,14 +33,11 @@ export interface SubmissionActivityForScholar {
  * scholar's own year level, the same way form_materials relies on its own
  * RLS/RPC rather than a client-side filter.
  *
- * This is Part 2 of the feature — it only reads activities/fields so the
+ * Originally Part 2 of the feature (read-only: activities/fields so the
  * scholar can see what's being asked for and pick files locally with
- * client-side validation (see isAllowedSubmissionFileType below). There is
- * deliberately no function here to actually persist an upload yet: no
- * file-storage backend (Google Drive) exists until Parts 3-4, so nothing
- * in this part ever writes a real row to submission_uploads — the UI
- * shows a "Google Drive upload will be connected next" message instead of
- * calling a submit function that doesn't exist yet.
+ * client-side validation — see isAllowedSubmissionFileType below). As of
+ * Part 4, uploadSubmissionFile and fetchSubmissionUploadsForScholar below
+ * are the real persistence path this function's own results feed into.
  */
 export async function fetchSubmissionActivitiesForScholar(): Promise<SubmissionActivityForScholar[]> {
   const { data, error } = await supabase
@@ -70,11 +67,12 @@ export async function fetchSubmissionActivitiesForScholar(): Promise<SubmissionA
 
 /**
  * Client-side type check only — mirrors what SUBMISSION_ALLOWED_FILE_TYPES
- * documents as the eventual accepted set. This is a UX convenience (catch
- * an obviously-wrong file before the scholar even tries to submit), not a
- * security boundary — there's no upload endpoint yet for this to gate in
- * Part 2, and whenever Parts 3-4 add one, the real check has to happen
- * server-side regardless of what this function says.
+ * documents as the accepted set. This is a UX convenience (catch an
+ * obviously-wrong file before the scholar even tries to submit), not the
+ * security boundary — as of Part 4 that's
+ * isAllowedSubmissionUpload in supabase/functions/_shared/allowedFileTypes.ts,
+ * which submission-upload-file actually gates on server-side regardless
+ * of what this function says.
  */
 export function isAllowedSubmissionFileType(file: File): boolean {
   const name = file.name.toLowerCase();
@@ -85,4 +83,100 @@ export function isAllowedSubmissionFileType(file: File): boolean {
 
 export function submissionAllowedFileTypesLabel(): string {
   return SUBMISSION_ALLOWED_FILE_TYPES.map(t => t.label).join(", ");
+}
+
+// ── Part 4: real uploads ─────────────────────────────────────
+
+export interface SubmissionUploadRecord {
+  id: string;
+  fieldId: string;
+  originalFileName: string;
+  status: string;
+  createdAt: string;
+}
+
+/**
+ * Same error-unwrapping convention as seadApi.ts's invokeEdgeFunction —
+ * flagged in Part 3's handoff as worth following here too, kept as its
+ * own copy rather than importing from src/sead since that module is the
+ * staff-side surface and this is scholar-side; the two are already
+ * developed independently elsewhere in this codebase (see
+ * submissionsApi.ts's own top-of-file comment on SUBMISSION_ALLOWED_FILE_TYPES
+ * for the established precedent on which direction constants/helpers do
+ * and don't get shared across that boundary).
+ */
+async function invokeScholarEdgeFunction<T = Record<string, unknown>>(
+  name: string, body: FormData | object,
+): Promise<{ ok: boolean; error?: string; data?: T }> {
+  const { data, error } = await supabase.functions.invoke(name, { body: body as Record<string, unknown> });
+  if (error) {
+    let message = error.message;
+    const context = (error as { context?: Response }).context;
+    if (context && typeof context.json === "function") {
+      try {
+        const parsed = await context.clone().json();
+        if (parsed?.error) message = parsed.error;
+      } catch {
+        // Response body wasn't JSON (or was already consumed) — fall back to the generic message.
+      }
+    }
+    return { ok: false, error: message };
+  }
+  const payload = data as (T & { error?: string }) | null;
+  if (payload?.error) return { ok: false, error: payload.error };
+  return { ok: true, data: data as T };
+}
+
+/**
+ * Uploads one file for one activity/field through the secure
+ * submission-upload-file Edge Function (see
+ * supabase/functions/submission-upload-file/index.ts). File bytes go as
+ * multipart/form-data so the Edge Function can read them via
+ * req.formData() and stream them on to Google Drive — no Drive
+ * credential is ever present in the browser. Server-side re-validates
+ * file type and the field's max-files rule regardless of what the caller
+ * already checked client-side.
+ */
+export async function uploadSubmissionFile(
+  activityId: string, fieldId: string, file: File,
+): Promise<{
+  ok: boolean;
+  error?: string;
+  upload?: { id: string; originalFileName: string; status: string; createdAt: string };
+}> {
+  const form = new FormData();
+  form.append("activityId", activityId);
+  form.append("fieldId", fieldId);
+  form.append("file", file, file.name);
+  const result = await invokeScholarEdgeFunction<{
+    upload?: { id: string; originalFileName: string; status: string; createdAt: string };
+  }>("submission-upload-file", form);
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, upload: result.data?.upload };
+}
+
+/**
+ * The scholar's own already-uploaded files for one activity, across all
+ * its fields — used so re-opening Calendar and Activities shows real
+ * previously-uploaded files instead of resetting to an empty picker on
+ * every page load. Reads submission_uploads directly (not an Edge
+ * Function): "scholar reads own submissions" RLS
+ * (supabase_migration_submission_uploads.sql) already scopes this to the
+ * caller's own rows — the same direct-table-read pattern
+ * fetchSubmissionActivitiesForScholar above already uses for activities.
+ */
+export async function fetchSubmissionUploadsForScholar(activityId: string): Promise<SubmissionUploadRecord[]> {
+  const { data, error } = await supabase
+    .from("submission_uploads")
+    .select("id, field_id, original_file_name, status, created_at")
+    .eq("activity_id", activityId)
+    .order("created_at", { ascending: true });
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(row => ({
+    id: String(row.id),
+    fieldId: String(row.field_id ?? ""),
+    originalFileName: String(row.original_file_name ?? ""),
+    status: String(row.status ?? "uploaded"),
+    createdAt: String(row.created_at ?? ""),
+  }));
 }

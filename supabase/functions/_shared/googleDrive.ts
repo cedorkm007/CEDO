@@ -119,13 +119,28 @@ export async function getGoogleAccessToken(): Promise<string> {
  * structure copy-paste-safe if staff ever mirror/export it elsewhere.
  * Caps length defensively; Drive's real limit is far higher.
  */
-export function sanitizeDriveFolderName(name: string): string {
+function sanitizeNameComponent(name: string, maxLen: number): string {
   const cleaned = name
     .replace(/[\u0000-\u001F\u007F]/g, "")
     .replace(/[\/\\:*?"<>|]/g, "-")
     .replace(/\s+/g, " ")
     .trim();
-  return (cleaned.length > 0 ? cleaned : "Untitled").slice(0, 200);
+  return (cleaned.length > 0 ? cleaned : "Untitled").slice(0, maxLen);
+}
+
+export function sanitizeDriveFolderName(name: string): string {
+  return sanitizeNameComponent(name, 200);
+}
+
+/**
+ * Same defensive rules as sanitizeDriveFolderName, capped shorter (60
+ * chars) since this is meant for ONE component of a Part 4 renamed
+ * filename (ActivityName_ScholarLastName_ScholarFirstName) — three
+ * uncapped 200-char components could otherwise produce an unwieldy final
+ * filename.
+ */
+export function sanitizeFileNameComponent(name: string): string {
+  return sanitizeNameComponent(name, 60);
 }
 
 function escapeDriveQueryValue(value: string): string {
@@ -169,4 +184,86 @@ export async function findOrCreateFolder(accessToken: string, name: string, pare
     throw new Response(JSON.stringify({ error: "Failed to create a folder in Google Drive." }), { status: 502 });
   }
   return createJson.id as string;
+}
+
+/**
+ * Part 4. Given a desired "<base><extension>" name, returns the first
+ * name in that sequence (base, base_2, base_3, ...) that doesn't already
+ * exist as a non-trashed file directly under `parentId` — checked live
+ * against Drive itself, not just against this app's own
+ * submission_uploads rows, since the year-level folder is shared across
+ * every scholar submitting to that activity/year level and two different
+ * scholars can end up with the same
+ * ActivityName_LastName_FirstName base (same last/first name, or a
+ * manually-added file with a colliding name). This is the same
+ * search-then-act idempotent pattern findOrCreateFolder above already
+ * uses for folders, applied to files.
+ *
+ * Bounded at 200 attempts purely so a pathological case (hundreds of
+ * same-named files already in the folder) can't hang a request forever;
+ * in practice this loop runs once or twice.
+ */
+export async function findAvailableFileName(
+  accessToken: string, parentId: string, baseName: string, extension: string,
+): Promise<string> {
+  let candidate = `${baseName}${extension}`;
+  for (let suffix = 2; suffix <= 200; suffix++) {
+    const q = `name='${escapeDriveQueryValue(candidate)}' and '${parentId}' in parents and trashed=false`;
+    const listUrl =
+      `${DRIVE_FILES_URL}?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1` +
+      `&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+    const listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const listJson = await listRes.json();
+    if (!listRes.ok) {
+      console.error("Drive file-name availability search failed:", listJson);
+      throw new Response(JSON.stringify({ error: "Failed to check Google Drive for existing files." }), { status: 502 });
+    }
+    if (!listJson.files || listJson.files.length === 0) return candidate;
+    candidate = `${baseName}_${suffix}${extension}`;
+  }
+  throw new Response(JSON.stringify({ error: "Could not find an available file name in Google Drive." }), { status: 502 });
+}
+
+/**
+ * Uploads file bytes into `parentFolderId` under the given (already
+ * collision-checked) name, using Drive's multipart/related upload
+ * (metadata JSON part + raw byte part in one request) — the standard
+ * simple-upload shape for files this small; no resumable-upload session
+ * needed at this scale.
+ */
+export async function uploadFile(
+  accessToken: string, parentFolderId: string, fileName: string, mimeType: string, bytes: Uint8Array,
+): Promise<string> {
+  const boundary = `drive-upload-${crypto.randomUUID()}`;
+  const metadata = JSON.stringify({ name: fileName, parents: [parentFolderId] });
+  const encoder = new TextEncoder();
+
+  const preamble = encoder.encode(
+    `--${boundary}\r\n` +
+    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+    `${metadata}\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Type: ${mimeType || "application/octet-stream"}\r\n\r\n`,
+  );
+  const closing = encoder.encode(`\r\n--${boundary}--`);
+
+  const body = new Uint8Array(preamble.length + bytes.length + closing.length);
+  body.set(preamble, 0);
+  body.set(bytes, preamble.length);
+  body.set(closing, preamble.length + bytes.length);
+
+  const uploadRes = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+      body,
+    },
+  );
+  const uploadJson = await uploadRes.json();
+  if (!uploadRes.ok || !uploadJson.id) {
+    console.error("Drive file upload failed:", uploadJson);
+    throw new Response(JSON.stringify({ error: "Failed to upload the file to Google Drive." }), { status: 502 });
+  }
+  return uploadJson.id as string;
 }
