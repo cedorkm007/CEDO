@@ -357,6 +357,28 @@ export async function addAttendanceVouchers(sessionId: string, participantCount:
   return updateError ? { ok: false, error: updateError.message } : { ok: true };
 }
 
+/**
+ * Runs `.select(selectCols).in(column, ids)` in chunks instead of one call
+ * with every id — an unchunked .in() with a large id list risks a
+ * URL-length failure well before Supabase's 1000-row response cap would
+ * matter, since the id count here tracks DISTINCT scholars, not row
+ * count. Same fix, same reasoning, as seadApi.ts's fetchInChunks() —
+ * duplicated locally rather than shared across modules since sead/ and
+ * scholar/ config intentionally don't import from each other here.
+ */
+async function fetchInChunks(
+  table: string, selectCols: string, column: string, ids: string[], chunkSize = 150,
+): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const { data, error } = await supabase.from(table).select(selectCols).in(column, chunk);
+    if (error || !data) continue;
+    out.push(...(data as unknown as Record<string, unknown>[]));
+  }
+  return out;
+}
+
 export interface AttendanceRosterEntry {
   scholarIdNumber: string;
   scholarName: string;
@@ -372,8 +394,8 @@ export async function fetchAttendanceRoster(sessionId: string): Promise<Attendan
   if (!rows || rows.length === 0) return [];
 
   const scholarIds = [...new Set(rows.map(r => r.scholar_id_number))];
-  const { data: scholars } = await supabase.from("scholars").select("scholar_id_number, first_name, last_name").in("scholar_id_number", scholarIds);
-  const nameByScholarId = new Map((scholars ?? []).map(s => [s.scholar_id_number, `${s.first_name} ${s.last_name}`]));
+  const scholars = await fetchInChunks("scholars", "scholar_id_number, first_name, last_name", "scholar_id_number", scholarIds);
+  const nameByScholarId = new Map(scholars.map((s: Record<string, unknown>) => [s.scholar_id_number, `${s.first_name} ${s.last_name}`]));
 
   return rows.map(r => ({
     scholarIdNumber: r.scholar_id_number,

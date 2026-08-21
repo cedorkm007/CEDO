@@ -3,8 +3,12 @@ import { CalendarDays, Check, ClipboardList, Download, MapPin, Pencil, Plus, QrC
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import { FORMATION_YEAR_LEVELS, type FormationActivity } from "@/scholar/formationActivitiesApi";
-import { addFormationAttendanceCodes, createFormationActivity, deleteFormationActivity, enableFormationAttendance, fetchFormationActivities, fetchFormationAttendanceSession, updateFormationActivity } from "../formationActivitiesApi";
-import { fetchAttendanceRoster, type AttendanceCode, type AttendanceRosterEntry, type AttendanceSession, type AttendanceType } from "../sdpMonitorApi";
+import {
+  addFormationAttendanceCodes, createFormationActivity, deleteFormationActivity, enableFormationAttendance, fetchFormationActivities, updateFormationActivity,
+  fetchFormationAttendanceSummary, fetchFormationAttendanceRosterPage, fetchFormationAttendanceCodeBatchSummary, fetchFormationAttendanceCodesPage, fetchFormationAttendanceCodesForExport,
+  type FormationCodeBatchSummary,
+} from "../formationActivitiesApi";
+import type { AttendanceCode, AttendanceRosterEntry, AttendanceSession, AttendanceType } from "../sdpMonitorApi";
 
 function formatActivitySchedule(dateTime: string, endTime: string | null): string {
   const start = new Date(dateTime);
@@ -94,38 +98,101 @@ function FormationActivityModal({ activity, onClose, onCreated }: { activity: Fo
   );
 }
 
+function useDebouncedQrDataUrls(codes: AttendanceCode[]): Map<string, string> {
+  const [dataUrls, setDataUrls] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(codes.map(async code => {
+        const url = await QRCode.toDataURL(code.code, { errorCorrectionLevel: "M", margin: 1, width: 160 });
+        return [code.id, url] as const;
+      }));
+      if (!cancelled) setDataUrls(new Map(entries));
+    })();
+    return () => { cancelled = true; };
+  }, [codes]);
+  return dataUrls;
+}
+
+type PdfTarget = { batchNumber: number } | { unclaimed: true };
+
 function FormationAttendanceMonitoring({ activities }: { activities: FormationActivity[] }) {
   const monitoredActivities = activities.filter(activity => activity.attendanceEnabled);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [roster, setRoster] = useState<AttendanceRosterEntry[]>([]);
-  const [codes, setCodes] = useState<AttendanceCode[]>([]);
   const [session, setSession] = useState<AttendanceSession | null>(null);
-  const [expected, setExpected] = useState<number | null>(null);
+  const [presentCount, setPresentCount] = useState(0);
+  const [incompleteCount, setIncompleteCount] = useState(0);
+  const [batchSummary, setBatchSummary] = useState<FormationCodeBatchSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showCodes, setShowCodes] = useState(false);
-  const [showPdfMenu, setShowPdfMenu] = useState(false);
-  const [exportingPdf, setExportingPdf] = useState(false);
+  const selected = monitoredActivities.find(activity => activity.id === selectedId) ?? null;
+
+  // ── Roster: server-side paginated, 50/page ──────────────────
+  const [rosterPage, setRosterPage] = useState(1);
+  const [rosterEntries, setRosterEntries] = useState<AttendanceRosterEntry[]>([]);
+  const [rosterTotal, setRosterTotal] = useState(0);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const ROSTER_PAGE_SIZE = 50;
+
+  // ── Add more scholars ────────────────────────────────────────
   const [additionalCount, setAdditionalCount] = useState("");
   const [addingCodes, setAddingCodes] = useState(false);
   const [codeError, setCodeError] = useState("");
-  const selected = monitoredActivities.find(activity => activity.id === selectedId) ?? null;
 
-  async function loadAttendance(activityId: string) {
+  // ── QR viewing: batch + type + paginated, 50/page ───────────
+  const [showCodes, setShowCodes] = useState(false);
+  const [viewBatch, setViewBatch] = useState<number | null>(null);
+  const [viewKind, setViewKind] = useState<"time_in" | "time_out" | "voucher">("time_in");
+  const [codesPage, setCodesPage] = useState(1);
+  const [codesForView, setCodesForView] = useState<AttendanceCode[]>([]);
+  const [codesViewTotal, setCodesViewTotal] = useState(0);
+  const [codesLoading, setCodesLoading] = useState(false);
+  const CODES_PAGE_SIZE = 50;
+  const qrDataUrls = useDebouncedQrDataUrls(codesForView);
+
+  // ── Download QR PDF ──────────────────────────────────────────
+  const [showPdfMenu, setShowPdfMenu] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState<{ part: number; totalParts: number } | null>(null);
+
+  async function loadSummary(activityId: string) {
     setLoading(true);
-    const attendance = await fetchFormationAttendanceSession(activityId);
-    if (!attendance) {
+    const summary = await fetchFormationAttendanceSummary(activityId);
+    if (!summary) {
       setSession(null);
-      setRoster([]);
-      setCodes([]);
-      setExpected(null);
+      setPresentCount(0);
+      setIncompleteCount(0);
+      setBatchSummary([]);
       setLoading(false);
       return;
     }
-    setSession(attendance.session);
-    setExpected(attendance.session.expectedAttendees);
-    setCodes(attendance.codes);
-    setRoster(await fetchAttendanceRoster(attendance.session.id));
+    setSession(summary.session);
+    setPresentCount(summary.presentCount);
+    setIncompleteCount(summary.incompleteCount);
+    // Batch/kind counts are cheap (aggregated server-side, no code rows) and
+    // needed to populate both the QR viewer's Batch/Type pickers and the
+    // Download QR PDF menu — loading them alongside the summary keeps both
+    // ready without a second click-triggered round trip, and does NOT
+    // download any actual QR code data.
+    setBatchSummary(await fetchFormationAttendanceCodeBatchSummary(summary.session.id));
     setLoading(false);
+    setRosterPage(1);
+    void loadRosterPage(summary.session.id, 1);
+  }
+
+  async function loadRosterPage(sessionId: string, page: number) {
+    setRosterLoading(true);
+    const { entries, totalCount } = await fetchFormationAttendanceRosterPage(sessionId, page, ROSTER_PAGE_SIZE);
+    setRosterEntries(entries);
+    setRosterTotal(totalCount);
+    setRosterLoading(false);
+  }
+
+  async function loadCodesPage(sessionId: string, batchNumber: number, kind: AttendanceCode["kind"], page: number) {
+    setCodesLoading(true);
+    const { codes, totalCount } = await fetchFormationAttendanceCodesPage(sessionId, batchNumber, kind, page, CODES_PAGE_SIZE);
+    setCodesForView(codes);
+    setCodesViewTotal(totalCount);
+    setCodesLoading(false);
   }
 
   async function addCodes() {
@@ -144,43 +211,55 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
       return;
     }
     setAdditionalCount("");
-    // addFormationAttendanceCodes() already bumped attendance_sessions.expected_attendees —
-    // reload so the Expected card and roster reflect the new capacity/codes immediately.
-    void loadAttendance(selected.id);
+    void loadSummary(selected.id);
   }
 
-  function downloadCodesCSV() {
+  function downloadRosterPageCSV() {
     if (!selected) return;
-    const lines = ["kind,code"];
-    for (const code of codes) lines.push(`${code.kind},${code.code}`);
+    const lines = ["scholar_id_number,scholar_name,status,time_in_at,time_out_at,hours_earned"];
+    for (const entry of rosterEntries) {
+      lines.push(`${entry.scholarIdNumber},"${entry.scholarName}",${entry.status},${entry.timeInAt ?? ""},${entry.timeOutAt ?? ""},${entry.hoursEarned}`);
+    }
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${selected.name.replace(/[^a-z0-9]+/gi, "_")}_attendance_codes.csv`;
+    link.download = `${selected.name.replace(/[^a-z0-9]+/gi, "_")}_roster_page_${rosterPage}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
 
-  /** batchNumber === 0 means "unclaimed" (filtered to !redeemedByScholarId by the caller). */
-  async function downloadCodesPDF(batchNumber: number, batchCodes: AttendanceCode[]) {
-    if (!selected || exportingPdf) return;
-    if (!batchCodes.length) {
-      window.alert(batchNumber === 0 ? "There are no unclaimed QR codes." : "This batch has no QR codes.");
-      return;
-    }
+  function pdfTargetLabel(target: PdfTarget, kind: "time_in" | "time_out" | "voucher"): string {
+    const kindLabel = kind === "time_in" ? "Time-in" : kind === "time_out" ? "Time-out" : "Voucher";
+    return "unclaimed" in target ? `Unclaimed ${kindLabel} QR PDF` : `Batch ${target.batchNumber} — ${kindLabel} QR PDF`;
+  }
+
+  /** Fetches exactly the requested batch+kind (or unclaimed+kind) — never
+   * an unrelated batch or the other type — then builds one or more PDFs,
+   * 200 codes per file, with visible part-by-part progress. */
+  async function downloadQrPdf(target: PdfTarget, kind: "time_in" | "time_out" | "voucher") {
+    if (!selected || !session || exportingPdf) return;
     setExportingPdf(true);
+    setPdfProgress(null);
     try {
+      const scope = "unclaimed" in target ? { unclaimed: true as const } : { batchNumber: target.batchNumber };
+      const batchCodes = await fetchFormationAttendanceCodesForExport(session.id, scope, kind);
+      if (!batchCodes.length) {
+        const kindWord = kind === "time_in" ? "time-in" : kind === "time_out" ? "time-out" : "voucher";
+        window.alert("unclaimed" in target ? `There are no unclaimed ${kindWord} QR codes.` : "This batch has no QR codes of that type.");
+        return;
+      }
       const margin = 8, columns = 4, rows = 5, gap = 2;
       const cellWidth = (210 - margin * 2 - gap * (columns - 1)) / columns;
       const cellHeight = (297 - margin * 2 - gap * (rows - 1)) / rows;
-      const suffix = batchNumber === 0 ? "unclaimed" : `batch_${batchNumber}`;
-      // Large batches can contain thousands of QR images. Keeping each PDF to
-      // 200 codes (10 pages) prevents jsPDF from holding a huge document in
-      // memory and lets the browser stay responsive while printing.
+      const suffix = "unclaimed" in target ? `unclaimed_${kind}` : `batch_${target.batchNumber}_${kind}`;
+      // Large batches can contain thousands of QR images. Keeping each PDF
+      // to 200 codes (10 pages) prevents jsPDF from holding a huge document
+      // in memory and lets the browser stay responsive while printing.
       const codesPerFile = 200;
       const fileCount = Math.ceil(batchCodes.length / codesPerFile);
       for (let fileIndex = 0; fileIndex < fileCount; fileIndex++) {
+        setPdfProgress({ part: fileIndex + 1, totalParts: fileCount });
         const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
         const fileCodes = batchCodes.slice(fileIndex * codesPerFile, (fileIndex + 1) * codesPerFile);
         for (let index = 0; index < fileCodes.length; index++) {
@@ -203,7 +282,9 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
           pdf.setFont("helvetica", "normal");
           pdf.setFontSize(6.5);
           pdf.setTextColor(100, 116, 139);
-          pdf.text(code.kind.replace("_", " ").toUpperCase(), x + cellWidth / 2, y + 51, { align: "center" });
+          const batchLabel = "unclaimed" in target ? `Batch ${code.batchNumber}` : `Batch ${target.batchNumber}`;
+          const kindLabel = kind === "time_in" ? "TIME-IN" : kind === "time_out" ? "TIME-OUT" : "VOUCHER";
+          pdf.text(`${batchLabel} · ${kindLabel}`, x + cellWidth / 2, y + 51, { align: "center" });
           if (index % 10 === 9) await new Promise<void>(resolve => window.setTimeout(resolve, 0));
         }
         const partSuffix = fileCount === 1 ? "" : `_part_${fileIndex + 1}_of_${fileCount}`;
@@ -214,6 +295,7 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
       window.alert("Could not create the QR code PDF. Please try again.");
     } finally {
       setExportingPdf(false);
+      setPdfProgress(null);
     }
   }
 
@@ -222,8 +304,29 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
   }, [monitoredActivities, selectedId]);
 
   useEffect(() => {
-    if (selectedId) void loadAttendance(selectedId);
+    if (selectedId) void loadSummary(selectedId);
+    setShowCodes(false);
+    setViewBatch(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
+
+  useEffect(() => {
+    if (session) void loadRosterPage(session.id, rosterPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rosterPage]);
+
+  useEffect(() => {
+    if (session && showCodes && viewBatch !== null) {
+      setCodesPage(1);
+      void loadCodesPage(session.id, viewBatch, viewKind, 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCodes, viewBatch, viewKind]);
+
+  useEffect(() => {
+    if (session && showCodes && viewBatch !== null) void loadCodesPage(session.id, viewBatch, viewKind, codesPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codesPage]);
 
   if (monitoredActivities.length === 0) {
     return (
@@ -233,10 +336,13 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
     );
   }
 
-  const present = roster.filter(entry => entry.status === "present").length;
-  const batches = Array.from(new Set(codes.map(code => code.batchNumber)))
-    .sort((a, b) => a - b)
-    .map(number => ({ number, codes: codes.filter(code => code.batchNumber === number) }));
+  const batchNumbers = Array.from(new Set(batchSummary.map(b => b.batchNumber))).sort((a, b) => a - b);
+  const kindsInBatch = (batch: number) => batchSummary.filter(b => b.batchNumber === batch).map(b => b.kind);
+  const currentBatchKindSummary = batchSummary.find(b => b.batchNumber === viewBatch && b.kind === viewKind);
+  const unclaimedByKind = (kind: "time_in" | "time_out" | "voucher") =>
+    batchSummary.filter(b => b.kind === kind).reduce((sum, b) => sum + (b.total - b.claimed), 0);
+  const rosterTotalPages = Math.max(1, Math.ceil(rosterTotal / ROSTER_PAGE_SIZE));
+  const codesTotalPages = Math.max(1, Math.ceil(codesViewTotal / CODES_PAGE_SIZE));
 
   return (
     <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
@@ -262,7 +368,7 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
                 <p className="mt-1 text-[12px] text-slate-500">Use Refresh to retrieve the latest attendance data.</p>
               </div>
               <button
-                onClick={() => void loadAttendance(selected.id)}
+                onClick={() => void loadSummary(selected.id)}
                 disabled={loading}
                 className="rounded-lg p-2 text-[#0088cc] hover:bg-[#eef7fc] disabled:opacity-50"
                 aria-label="Refresh attendance"
@@ -278,33 +384,54 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
                 <div className="mt-4 grid grid-cols-3 gap-2">
                   <div className="rounded-lg bg-[#f8fafd] p-3">
                     <p className="text-[10px] font-bold uppercase text-slate-400">Expected</p>
-                    <p className="mt-1 text-lg font-extrabold text-[#062444]">{expected ?? "—"}</p>
+                    <p className="mt-1 text-lg font-extrabold text-[#062444]">{session?.expectedAttendees ?? "—"}</p>
                   </div>
                   <div className="rounded-lg bg-green-50 p-3">
                     <p className="text-[10px] font-bold uppercase text-green-600">Present</p>
-                    <p className="mt-1 text-lg font-extrabold text-green-700">{present}</p>
+                    <p className="mt-1 text-lg font-extrabold text-green-700">{presentCount}</p>
                   </div>
                   <div className="rounded-lg bg-orange-50 p-3">
                     <p className="text-[10px] font-bold uppercase text-orange-600">Incomplete</p>
-                    <p className="mt-1 text-lg font-extrabold text-orange-700">{roster.length - present}</p>
+                    <p className="mt-1 text-lg font-extrabold text-orange-700">{incompleteCount}</p>
                   </div>
                 </div>
 
                 <div className="mt-5">
-                  <h4 className="mb-2 text-[11px] font-bold uppercase text-slate-400">Live roster</h4>
-                  {roster.length === 0 ? (
+                  <div className="mb-2 flex items-center justify-between">
+                    <h4 className="text-[11px] font-bold uppercase text-slate-400">Roster</h4>
+                    {rosterTotal > 0 && (
+                      <button onClick={downloadRosterPageCSV} className="flex items-center gap-1 text-[11.5px] font-semibold text-[#0088cc] hover:underline">
+                        <Download size={12} /> Export this page (CSV)
+                      </button>
+                    )}
+                  </div>
+                  {rosterLoading ? (
+                    <p className="text-[12.5px] text-slate-400">Loading roster…</p>
+                  ) : rosterEntries.length === 0 ? (
                     <p className="text-[12.5px] text-slate-400">No attendance has been recorded yet.</p>
                   ) : (
-                    <div className="space-y-1.5">
-                      {roster.map(entry => (
-                        <div key={entry.scholarIdNumber} className="flex items-center justify-between rounded-lg bg-[#f8fafd] px-3 py-2 text-[12px]">
-                          <span className="font-semibold text-[#062444]">{entry.scholarName}</span>
-                          <span className={entry.status === "present" ? "font-bold text-green-600" : "font-bold text-orange-600"}>
-                            {entry.status === "present" ? "Present" : "Incomplete"}
-                          </span>
+                    <>
+                      <div className="space-y-1.5">
+                        {rosterEntries.map(entry => (
+                          <div key={entry.scholarIdNumber} className="flex items-center justify-between rounded-lg bg-[#f8fafd] px-3 py-2 text-[12px]">
+                            <span className="font-semibold text-[#062444]">{entry.scholarName}</span>
+                            <span className={entry.status === "present" ? "font-bold text-green-600" : "font-bold text-orange-600"}>
+                              {entry.status === "present" ? "Present" : "Incomplete"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <span className="text-[11.5px] text-slate-500">
+                          Showing {(rosterPage - 1) * ROSTER_PAGE_SIZE + 1}–{Math.min(rosterPage * ROSTER_PAGE_SIZE, rosterTotal)} of {rosterTotal}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => setRosterPage(p => Math.max(1, p - 1))} disabled={rosterPage <= 1} className="rounded-lg border border-[#e6ecf5] px-2.5 py-1 text-[11.5px] font-semibold text-[#062444] disabled:opacity-40">Previous</button>
+                          <span className="text-[11.5px] text-slate-500">Page {rosterPage} of {rosterTotalPages}</span>
+                          <button onClick={() => setRosterPage(p => Math.min(rosterTotalPages, p + 1))} disabled={rosterPage >= rosterTotalPages} className="rounded-lg border border-[#e6ecf5] px-2.5 py-1 text-[11.5px] font-semibold text-[#062444] disabled:opacity-40">Next</button>
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    </>
                   )}
                 </div>
 
@@ -334,11 +461,11 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
                 </div>
 
                 <div className="mt-5 flex flex-wrap items-center gap-3">
-                  <button onClick={() => setShowCodes(value => !value)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">
-                    {showCodes ? "Hide QR codes" : `View QR codes (${codes.length})`}
-                  </button>
-                  <button onClick={downloadCodesCSV} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
-                    <Download size={13} /> Export CSV
+                  <button
+                    onClick={() => { const next = !showCodes; setShowCodes(next); if (next && viewBatch === null && batchNumbers[0] !== undefined) setViewBatch(batchNumbers[0]); }}
+                    className="text-[12.5px] font-semibold text-[#0088cc] hover:underline"
+                  >
+                    {showCodes ? "Hide QR codes" : "View QR codes"}
                   </button>
                   <div className="relative">
                     <button
@@ -346,53 +473,113 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
                       disabled={exportingPdf}
                       className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline disabled:opacity-50"
                     >
-                      <Download size={13} /> {exportingPdf ? "Creating PDF…" : "Download QR PDF"}
+                      <Download size={13} /> {exportingPdf ? (pdfProgress ? `Creating PDF (part ${pdfProgress.part} of ${pdfProgress.totalParts})…` : "Creating PDF…") : "Download QR PDF"}
                     </button>
                     {showPdfMenu && (
-                      <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-[#e6ecf5] bg-white p-1 shadow-lg">
-                        {batches.map(batch => (
-                          <button
-                            key={batch.number}
-                            onClick={() => { setShowPdfMenu(false); void downloadCodesPDF(batch.number, batch.codes); }}
-                            className="block w-full rounded px-3 py-2 text-left text-[12px] hover:bg-[#f8fafd]"
-                          >
-                            Batch {batch.number} QR PDF
-                          </button>
-                        ))}
-                        <button
-                          onClick={() => { setShowPdfMenu(false); void downloadCodesPDF(0, codes.filter(code => !code.redeemedByScholarId)); }}
-                          className="block w-full rounded px-3 py-2 text-left text-[12px] font-semibold text-[#0088cc] hover:bg-[#f8fafd]"
-                        >
-                          Unclaimed QR codes PDF
-                        </button>
+                      <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-[#e6ecf5] bg-white p-1 shadow-lg">
+                        {session?.type === "time_in_time_out" ? (
+                          <>
+                            {batchNumbers.map(batchNumber => (
+                              <div key={batchNumber}>
+                                {(["time_in", "time_out"] as const).filter(k => kindsInBatch(batchNumber).includes(k)).map(kind => (
+                                  <button
+                                    key={`${batchNumber}-${kind}`}
+                                    onClick={() => { setShowPdfMenu(false); void downloadQrPdf({ batchNumber }, kind); }}
+                                    className="block w-full rounded px-3 py-2 text-left text-[12px] hover:bg-[#f8fafd]"
+                                  >
+                                    {pdfTargetLabel({ batchNumber }, kind)}
+                                  </button>
+                                ))}
+                              </div>
+                            ))}
+                            <div className="my-1 border-t border-[#f0f3f8]" />
+                            <button onClick={() => { setShowPdfMenu(false); void downloadQrPdf({ unclaimed: true }, "time_in"); }} className="block w-full rounded px-3 py-2 text-left text-[12px] font-semibold text-[#0088cc] hover:bg-[#f8fafd]">
+                              Unclaimed Time-in QR PDF ({unclaimedByKind("time_in")})
+                            </button>
+                            <button onClick={() => { setShowPdfMenu(false); void downloadQrPdf({ unclaimed: true }, "time_out"); }} className="block w-full rounded px-3 py-2 text-left text-[12px] font-semibold text-[#0088cc] hover:bg-[#f8fafd]">
+                              Unclaimed Time-out QR PDF ({unclaimedByKind("time_out")})
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {batchNumbers.map(batchNumber => (
+                              <button
+                                key={batchNumber}
+                                onClick={() => { setShowPdfMenu(false); void downloadQrPdf({ batchNumber }, "voucher"); }}
+                                className="block w-full rounded px-3 py-2 text-left text-[12px] hover:bg-[#f8fafd]"
+                              >
+                                Batch {batchNumber} — Voucher QR PDF
+                              </button>
+                            ))}
+                            <div className="my-1 border-t border-[#f0f3f8]" />
+                            <button onClick={() => { setShowPdfMenu(false); void downloadQrPdf({ unclaimed: true }, "voucher"); }} className="block w-full rounded px-3 py-2 text-left text-[12px] font-semibold text-[#0088cc] hover:bg-[#f8fafd]">
+                              Unclaimed Voucher QR PDF ({unclaimedByKind("voucher")})
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
 
                 {showCodes && (
-                  <div className="mt-3 max-h-72 space-y-4 overflow-y-auto p-1">
-                    {batches.map(batch => (
-                      <div key={batch.number}>
-                        <p className="mb-2 text-[11px] font-bold uppercase text-slate-500">Batch {batch.number}</p>
+                  <div className="mt-3 rounded-lg border border-[#e6ecf5] p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="text-[11px] font-bold uppercase text-slate-400">Batch</label>
+                      <select value={viewBatch ?? ""} onChange={event => setViewBatch(Number(event.target.value))} className="rounded-lg border border-[#062444]/15 px-2 py-1 text-[12px] outline-none">
+                        {batchNumbers.map(n => <option key={n} value={n}>Batch {n}</option>)}
+                      </select>
+                      {session?.type === "time_in_time_out" ? (
+                        <>
+                          <label className="ml-2 text-[11px] font-bold uppercase text-slate-400">Type</label>
+                          <div className="flex gap-1">
+                            <button onClick={() => setViewKind("time_in")} className={`rounded-lg border px-2.5 py-1 text-[11.5px] font-bold ${viewKind === "time_in" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}>Time-in</button>
+                            <button onClick={() => setViewKind("time_out")} className={`rounded-lg border px-2.5 py-1 text-[11.5px] font-bold ${viewKind === "time_out" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}>Time-out</button>
+                          </div>
+                        </>
+                      ) : (
+                        <input type="hidden" />
+                      )}
+                      {currentBatchKindSummary && (
+                        <span className="ml-auto text-[11px] text-slate-400">{currentBatchKindSummary.claimed} / {currentBatchKindSummary.total} claimed</span>
+                      )}
+                    </div>
+
+                    <div className="mt-3 max-h-96 overflow-y-auto">
+                      {codesLoading ? (
+                        <p className="py-6 text-center text-[12.5px] text-slate-400">Loading QR codes…</p>
+                      ) : codesForView.length === 0 ? (
+                        <p className="py-6 text-center text-[12.5px] text-slate-400">No QR codes for this batch/type.</p>
+                      ) : (
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                          {batch.codes.map(code => (
+                          {codesForView.map(code => (
                             <div key={code.id} className={`rounded-lg border p-2 text-center ${code.redeemedByScholarId ? "border-green-300 bg-green-50" : "border-[#e6ecf5]"}`}>
-                              <img
-                                src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(code.code)}`}
-                                alt={`QR code ${code.code}`}
-                                className="mx-auto mb-1"
-                                width={80}
-                                height={80}
-                              />
+                              {qrDataUrls.get(code.id) ? (
+                                <img src={qrDataUrls.get(code.id)} alt={`QR code ${code.code}`} className="mx-auto mb-1" width={80} height={80} />
+                              ) : (
+                                <div className="mx-auto mb-1 h-20 w-20 animate-pulse rounded bg-slate-100" />
+                              )}
                               <p className="text-[11px] font-mono font-bold text-[#062444]">{code.code}</p>
                               <p className="text-[9.5px] uppercase text-slate-400">{code.kind.replace("_", " ")}</p>
-                              {code.redeemedByScholarId && <p className="mt-0.5 text-[9px] font-semibold text-green-600">Redeemed</p>}
+                              {code.redeemedByScholarId ? <p className="mt-0.5 text-[9px] font-semibold text-green-600">Redeemed</p> : <p className="mt-0.5 text-[9px] font-semibold text-slate-400">Unclaimed</p>}
                             </div>
                           ))}
                         </div>
+                      )}
+                    </div>
+
+                    {codesViewTotal > 0 && (
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <span className="text-[11.5px] text-slate-500">
+                          Showing {(codesPage - 1) * CODES_PAGE_SIZE + 1}–{Math.min(codesPage * CODES_PAGE_SIZE, codesViewTotal)} of {codesViewTotal}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => setCodesPage(p => Math.max(1, p - 1))} disabled={codesPage <= 1} className="rounded-lg border border-[#e6ecf5] px-2.5 py-1 text-[11.5px] font-semibold text-[#062444] disabled:opacity-40">Previous</button>
+                          <span className="text-[11.5px] text-slate-500">Page {codesPage} of {codesTotalPages}</span>
+                          <button onClick={() => setCodesPage(p => Math.min(codesTotalPages, p + 1))} disabled={codesPage >= codesTotalPages} className="rounded-lg border border-[#e6ecf5] px-2.5 py-1 text-[11.5px] font-semibold text-[#062444] disabled:opacity-40">Next</button>
+                        </div>
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
               </>
