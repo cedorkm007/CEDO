@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { UploadCloud, CheckCircle2, AlertCircle, RotateCw, MessageSquareWarning } from "lucide-react";
+import { UploadCloud, CheckCircle2, AlertCircle, RotateCw, MessageSquareWarning, Lock } from "lucide-react";
 import {
   fetchSubmissionActivitiesForScholar, isAllowedSubmissionFileType, submissionAllowedFileTypesLabel,
   uploadSubmissionFile, fetchSubmissionUploadsForScholar, overallSubmissionStatus,
@@ -58,8 +58,9 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
   const [fileStatuses, setFileStatuses] = useState<Record<string, { status: FileUploadStatus; error?: string }>>({});
 
   useEffect(() => {
-    fetchSubmissionUploadsForScholar(activity.id).then(setExistingUploads);
-  }, [activity.id]);
+    if (activity.isUnlocked) fetchSubmissionUploadsForScholar(activity.id).then(setExistingUploads);
+    else setExistingUploads([]);
+  }, [activity.id, activity.isUnlocked]);
 
   function uploadedCountFor(fieldId: string): number {
     return existingUploads.filter(u => u.fieldId === fieldId).length;
@@ -126,11 +127,18 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
     <div className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-3.5">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <p className="text-[13.5px] font-bold text-[#062444]">{activity.name}</p>
-        <OverallStatusBadge uploads={existingUploads} />
+        {activity.isUnlocked ? <OverallStatusBadge uploads={existingUploads} /> : <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-bold text-amber-700"><Lock size={10} /> Locked</span>}
       </div>
       {activity.description && <p className="mt-1 text-[12px] text-slate-500">{activity.description}</p>}
 
-      <div className="mt-3 space-y-3">
+      {!activity.isUnlocked ? (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="flex items-center gap-1.5 text-[12px] font-bold text-amber-800"><Lock size={13} /> Complete these requirements to unlock uploads</p>
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-[11.5px] text-amber-800">
+            {activity.unmetRequirements.map((requirement, index) => <li key={index}>{requirement.label}</li>)}
+          </ul>
+        </div>
+      ) : <div className="mt-3 space-y-3">
         {activity.uploadFields.map(field => {
           const uploaded = existingUploads.filter(u => u.fieldId === field.id);
           const remaining = remainingSlotsFor(field);
@@ -202,16 +210,16 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
             </div>
           );
         })}
-      </div>
+      </div>}
 
-      <button
+      {activity.isUnlocked && <button
         type="button"
         onClick={handleSubmit}
         disabled={submitting}
         className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#062444] py-2 text-[12.5px] font-bold text-[#F3BC00] disabled:opacity-60"
       >
         <UploadCloud size={14} /> {submitting ? "Uploading…" : "Submit"}
-      </button>
+      </button>}
     </div>
   );
 }

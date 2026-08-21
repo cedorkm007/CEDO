@@ -93,6 +93,17 @@ Deno.serve(async (req: Request) => {
     const isApplicable = Boolean(activity.all_year_levels) || targetYearLevels.includes(yearLevel);
     if (!isApplicable) return jsonResponse({ error: "This activity does not apply to your year level." }, 403);
 
+    // The UI can show a locked activity so scholars understand what remains,
+    // but it is never the security boundary. This service-role RPC evaluates
+    // every configured Quest/attendance/course/year-level rule for the
+    // verified caller before any Drive folder or file is created.
+    const { data: unlocked, error: unlockError } = await admin.rpc(
+      "is_submission_activity_unlocked_for_scholar",
+      { p_activity_id: activityId, p_scholar_id: scholar.id },
+    );
+    if (unlockError) return jsonResponse({ error: "Could not verify activity requirements." }, 500);
+    if (!unlocked) return jsonResponse({ error: "This submission activity is locked. Complete all listed requirements before uploading." }, 403);
+
     const { data: field, error: fieldError } = await admin
       .from("submission_upload_fields")
       .select("id, label, max_files")

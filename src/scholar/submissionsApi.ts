@@ -21,6 +21,8 @@ export interface SubmissionActivityForScholar {
   id: string;
   name: string;
   description: string;
+  isUnlocked: boolean;
+  unmetRequirements: { type: string; label: string }[];
   uploadFields: SubmissionUploadFieldForScholar[];
 }
 
@@ -40,13 +42,11 @@ export interface SubmissionActivityForScholar {
  * are the real persistence path this function's own results feed into.
  */
 export async function fetchSubmissionActivitiesForScholar(): Promise<SubmissionActivityForScholar[]> {
-  const { data, error } = await supabase
-    .from("submission_activities")
-    .select("id, name, description, submission_upload_fields (id, label, is_required, max_files, sort_order)")
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.rpc("get_my_submission_activities");
   if (error || !data) return [];
   return (data as Record<string, unknown>[]).map(row => {
-    const fieldRows = (row.submission_upload_fields as Record<string, unknown>[] | null) ?? [];
+    const fieldRows = (row.upload_fields as Record<string, unknown>[] | null) ?? [];
+    const unmetRequirements = (row.unmet_requirements as { type?: unknown; label?: unknown }[] | null) ?? [];
     const sortedFields = fieldRows
       .map(f => ({
         id: String(f.id),
@@ -60,6 +60,8 @@ export async function fetchSubmissionActivitiesForScholar(): Promise<SubmissionA
       id: String(row.id),
       name: String(row.name ?? ""),
       description: String(row.description ?? ""),
+      isUnlocked: Boolean(row.is_unlocked),
+      unmetRequirements: unmetRequirements.map(requirement => ({ type: String(requirement.type ?? ""), label: String(requirement.label ?? "") })),
       uploadFields: sortedFields.map(({ sortOrder, ...field }) => field),
     };
   });

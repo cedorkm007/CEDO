@@ -37,6 +37,14 @@ export interface SubmissionActivity {
   updatedAt: string;
 }
 
+/** Rules are ANDed: scholars must meet every saved condition to unlock an activity. */
+export type SubmissionActivityCondition =
+  | { type: "quest_subject"; subjectId: string; subjectName?: string }
+  | { type: "formation_activity"; formationActivityId: string; formationActivityName?: string }
+  | { type: "sdp_activity"; sdpActivityId: string; sdpActivityName?: string }
+  | { type: "course"; course: string }
+  | { type: "year_level"; allYearLevels: boolean; yearLevels: string[] };
+
 function rowToUploadField(row: Record<string, unknown>): SubmissionUploadField {
   return {
     id: String(row.id),
@@ -59,6 +67,16 @@ function rowToActivity(row: Record<string, unknown>): SubmissionActivity {
     createdAt: String(row.created_at ?? ""),
     updatedAt: String(row.updated_at ?? ""),
   };
+}
+
+function rowToCondition(row: Record<string, unknown>): SubmissionActivityCondition {
+  switch (row.condition_type as string) {
+    case "quest_subject": return { type: "quest_subject", subjectId: String(row.subject_id), subjectName: (row.quest_subjects as { name?: string } | null)?.name };
+    case "formation_activity": return { type: "formation_activity", formationActivityId: String(row.formation_activity_id), formationActivityName: (row.formation_activities as { name?: string } | null)?.name };
+    case "sdp_activity": return { type: "sdp_activity", sdpActivityId: String(row.sdp_activity_id), sdpActivityName: (row.sdp_activities as { name?: string } | null)?.name };
+    case "course": return { type: "course", course: String(row.course ?? "") };
+    default: return { type: "year_level", allYearLevels: Boolean(row.all_year_levels), yearLevels: (row.target_year_levels as string[] | null) ?? [] };
+  }
 }
 
 // ── Read ──────────────────────────────────────────────────────
@@ -161,6 +179,33 @@ export async function updateSubmissionActivity(id: string, input: SubmissionActi
 
 export async function deleteSubmissionActivity(id: string): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.from("submission_activities").delete().eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function fetchSubmissionActivityConditions(activityId: string): Promise<SubmissionActivityCondition[]> {
+  const { data, error } = await supabase.from("submission_activity_conditions")
+    .select("condition_type, subject_id, formation_activity_id, sdp_activity_id, course, target_year_levels, all_year_levels, quest_subjects ( name ), formation_activities ( name ), sdp_activities ( name )")
+    .eq("activity_id", activityId).order("created_at");
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(rowToCondition);
+}
+
+/** Replaces all unlock rules in one save. An empty list means no extra unlock requirement. */
+export async function setSubmissionActivityConditions(activityId: string, conditions: SubmissionActivityCondition[]): Promise<{ ok: boolean; error?: string }> {
+  const { error: removeError } = await supabase.from("submission_activity_conditions").delete().eq("activity_id", activityId);
+  if (removeError) return { ok: false, error: removeError.message };
+  if (!conditions.length) return { ok: true };
+  const rows = conditions.map(condition => {
+    const base = { activity_id: activityId, target_year_levels: [] as string[], all_year_levels: false };
+    switch (condition.type) {
+      case "quest_subject": return { ...base, condition_type: "quest_subject", subject_id: condition.subjectId };
+      case "formation_activity": return { ...base, condition_type: "formation_activity", formation_activity_id: condition.formationActivityId };
+      case "sdp_activity": return { ...base, condition_type: "sdp_activity", sdp_activity_id: condition.sdpActivityId };
+      case "course": return { ...base, condition_type: "course", course: condition.course };
+      case "year_level": return { ...base, condition_type: "year_level", all_year_levels: condition.allYearLevels, target_year_levels: condition.yearLevels };
+    }
+  });
+  const { error } = await supabase.from("submission_activity_conditions").insert(rows);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
