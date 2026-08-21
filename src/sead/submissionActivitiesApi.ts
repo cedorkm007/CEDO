@@ -247,7 +247,7 @@ export async function fetchSubmissionsForActivity(activityId: string): Promise<S
     .eq("activity_id", activityId)
     .order("created_at", { ascending: true });
   if (error || !data) return [];
-  return (data as Record<string, unknown>[]).map(row => {
+  return (data as unknown as Record<string, unknown>[]).map(row => {
     const scholar = (row.scholars as Record<string, unknown> | null) ?? {};
     const driveFileId = String(row.drive_file_id ?? "");
     return {

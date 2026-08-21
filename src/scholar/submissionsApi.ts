@@ -79,7 +79,7 @@ export async function fetchSubmissionActivitiesForScholar(): Promise<SubmissionA
 export function isAllowedSubmissionFileType(file: File): boolean {
   const name = file.name.toLowerCase();
   return SUBMISSION_ALLOWED_FILE_TYPES.some(
-    t => t.mimeTypes.includes(file.type) || (file.type === "" && t.extensions.some(ext => name.endsWith(ext)))
+    t => (t.mimeTypes as readonly string[]).includes(file.type) || (file.type === "" && t.extensions.some(ext => name.endsWith(ext)))
   );
 }
 
