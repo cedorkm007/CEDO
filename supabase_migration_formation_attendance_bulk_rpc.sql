@@ -87,14 +87,30 @@ begin
 
   while v_remaining > 0 and v_round < v_max_rounds loop
     v_round := v_round + 1;
+    -- Each candidate row must get its OWN independently-random code. An
+    -- uncorrelated scalar subquery here (e.g. `(select string_agg(...)
+    -- from generate_series(1,7))` with no reference back to the outer
+    -- row) risks PostgreSQL evaluating it once and reusing the same
+    -- cached result for every row in this INSERT ... SELECT — silently
+    -- generating one code repeated v_remaining times instead of
+    -- v_remaining distinct codes. ON CONFLICT DO NOTHING would then
+    -- insert only the first of those (all others collide with it),
+    -- making large batches fail the shortfall-retry loop entirely.
+    -- Grouping by the candidate row's own number and aggregating a
+    -- per-row generate_series(1,7) of individually-random characters
+    -- forces one independent 7-character code per candidate row.
     insert into public.attendance_codes (session_id, code, kind, batch_number)
     select
       p_session_id,
-      (select string_agg(substr(v_alphabet, (floor(random() * length(v_alphabet)) + 1)::int, 1), '')
-       from generate_series(1, 7)),
+      string_agg(
+        substr(v_alphabet, (floor(random() * length(v_alphabet)) + 1)::int, 1),
+        '' order by character_position.n
+      ),
       p_kind,
       p_batch_number
-    from generate_series(1, v_remaining)
+    from generate_series(1, v_remaining) as candidate(n)
+    cross join generate_series(1, 7) as character_position(n)
+    group by candidate.n
     on conflict (code) do nothing;
 
     select count(*) into v_have from public.attendance_codes
@@ -108,14 +124,14 @@ begin
   end if;
 end;
 $$;
--- Deliberately no `grant execute ... to authenticated` here. This is a
--- low-level primitive meant to be called only from the two staff-facing
--- RPCs below, which each do their own authorization check first — a
--- function's OWNER can always call its own other functions regardless of
--- grants, so the wrapper RPCs work fine without this grant, and omitting
--- it means no authenticated user (staff or scholar) can call this
--- directly to inject codes into an arbitrary session, bypassing the
--- wrapper's auth check.
+-- PostgreSQL grants EXECUTE to PUBLIC on every newly created function by
+-- default — simply never issuing `grant ... to authenticated` does NOT
+-- prevent an authenticated (or even anon) caller from invoking this
+-- directly, since PUBLIC already covers them. The revoke below is what
+-- actually enforces "only the two wrapper RPCs can call this" — the
+-- comment that used to be here relying on the grant's absence alone was
+-- not sufficient on its own.
+revoke all on function public.generate_attendance_codes(uuid, text, integer, integer) from public;
 
 -- Creates a Formation attendance session AND all of its QR codes in one
 -- atomic call. Returns the new session id.
@@ -173,6 +189,7 @@ begin
 end;
 $$;
 
+revoke all on function public.create_formation_attendance_session_with_codes(uuid, text, integer, integer) from public;
 grant execute on function public.create_formation_attendance_session_with_codes(uuid, text, integer, integer) to authenticated;
 
 -- Adds a new batch of codes to an EXISTING Formation attendance session —
@@ -206,6 +223,15 @@ begin
     raise exception 'Formation attendance session not found.';
   end if;
 
+  -- Transaction-scoped advisory lock, released automatically when this
+  -- function's transaction ends (commit or rollback) — no explicit
+  -- unlock needed. Without this, two staff adding scholars to the same
+  -- session at nearly the same moment could both read the same
+  -- max(batch_number) before either one's insert commits, and both
+  -- would then generate codes under the SAME "next" batch number
+  -- instead of two distinct ones.
+  perform pg_advisory_xact_lock(hashtext(p_session_id::text));
+
   select coalesce(max(batch_number), 0) + 1 into v_batch_number
     from public.attendance_codes where session_id = p_session_id;
 
@@ -224,6 +250,7 @@ begin
 end;
 $$;
 
+revoke all on function public.add_formation_attendance_codes(uuid, text, integer) from public;
 grant execute on function public.add_formation_attendance_codes(uuid, text, integer) to authenticated;
 
 -- ── B. Lightweight aggregate reads (no code/roster rows) ────
@@ -249,6 +276,7 @@ as $$
 $$;
 
 grant execute on function public.attendance_session_counts(uuid) to authenticated;
+revoke all on function public.attendance_session_counts(uuid) from public;
 
 -- Per batch/kind totals and claimed counts — this is what lets the QR
 -- viewer and Download QR PDF menu present "Batch 2, Time-in: 340 codes,
@@ -273,3 +301,4 @@ as $$
 $$;
 
 grant execute on function public.attendance_code_batch_summary(uuid) to authenticated;
+revoke all on function public.attendance_code_batch_summary(uuid) from public;

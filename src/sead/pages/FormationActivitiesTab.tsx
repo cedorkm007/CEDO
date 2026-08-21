@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CalendarDays, Check, ClipboardList, Download, MapPin, Pencil, Plus, QrCode, RefreshCw, Trash2, Users, X } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
+import JSZip from "jszip";
 import { FORMATION_YEAR_LEVELS, type FormationActivity } from "@/scholar/formationActivitiesApi";
 import {
   addFormationAttendanceCodes, createFormationActivity, deleteFormationActivity, enableFormationAttendance, fetchFormationActivities, updateFormationActivity,
@@ -152,7 +153,7 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
   // ── Download QR PDF ──────────────────────────────────────────
   const [showPdfMenu, setShowPdfMenu] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [pdfProgress, setPdfProgress] = useState<{ part: number; totalParts: number } | null>(null);
+  const [pdfProgress, setPdfProgress] = useState<{ part: number; totalParts: number; zipping?: boolean } | null>(null);
 
   async function loadSummary(activityId: string) {
     setLoading(true);
@@ -236,7 +237,12 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
 
   /** Fetches exactly the requested batch+kind (or unclaimed+kind) — never
    * an unrelated batch or the other type — then builds one or more PDFs,
-   * 200 codes per file, with visible part-by-part progress. */
+   * 200 codes per file, with visible part-by-part progress. A single
+   * click never triggers more than ONE browser download: if the export
+   * fits in one PDF, that PDF downloads directly; if it needs multiple
+   * parts, they're bundled into a single .zip instead of firing off
+   * several pdf.save() calls back to back (which browsers commonly
+   * throttle or block as look-alike-spam after the first few). */
   async function downloadQrPdf(target: PdfTarget, kind: "time_in" | "time_out" | "voucher") {
     if (!selected || !session || exportingPdf) return;
     setExportingPdf(true);
@@ -253,11 +259,19 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
       const cellWidth = (210 - margin * 2 - gap * (columns - 1)) / columns;
       const cellHeight = (297 - margin * 2 - gap * (rows - 1)) / rows;
       const suffix = "unclaimed" in target ? `unclaimed_${kind}` : `batch_${target.batchNumber}_${kind}`;
+      const baseName = selected.name.replace(/[^a-z0-9]+/gi, "_");
       // Large batches can contain thousands of QR images. Keeping each PDF
       // to 200 codes (10 pages) prevents jsPDF from holding a huge document
       // in memory and lets the browser stay responsive while printing.
       const codesPerFile = 200;
       const fileCount = Math.ceil(batchCodes.length / codesPerFile);
+      // Shown before any generation starts, so staff know up front what a
+      // multi-part export will produce (a single .zip), not just a moving
+      // "part X of Y" counter with no context for what happens at the end.
+      setPdfProgress({ part: 0, totalParts: fileCount });
+
+      const zip = fileCount > 1 ? new JSZip() : null;
+
       for (let fileIndex = 0; fileIndex < fileCount; fileIndex++) {
         setPdfProgress({ part: fileIndex + 1, totalParts: fileCount });
         const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -287,9 +301,25 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
           pdf.text(`${batchLabel} · ${kindLabel}`, x + cellWidth / 2, y + 51, { align: "center" });
           if (index % 10 === 9) await new Promise<void>(resolve => window.setTimeout(resolve, 0));
         }
-        const partSuffix = fileCount === 1 ? "" : `_part_${fileIndex + 1}_of_${fileCount}`;
-        pdf.save(`${selected.name.replace(/[^a-z0-9]+/gi, "_")}_${suffix}${partSuffix}_qr_codes.pdf`);
-        await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+
+        if (zip) {
+          const partSuffix = `_part_${fileIndex + 1}_of_${fileCount}`;
+          zip.file(`${baseName}_${suffix}${partSuffix}_qr_codes.pdf`, pdf.output("arraybuffer"));
+          await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+        } else {
+          pdf.save(`${baseName}_${suffix}_qr_codes.pdf`);
+        }
+      }
+
+      if (zip) {
+        setPdfProgress({ part: fileCount, totalParts: fileCount, zipping: true });
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(zipBlob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${baseName}_${suffix}_qr_codes_${fileCount}_parts.zip`;
+        link.click();
+        URL.revokeObjectURL(url);
       }
     } catch {
       window.alert("Could not create the QR code PDF. Please try again.");
@@ -473,7 +503,12 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
                       disabled={exportingPdf}
                       className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline disabled:opacity-50"
                     >
-                      <Download size={13} /> {exportingPdf ? (pdfProgress ? `Creating PDF (part ${pdfProgress.part} of ${pdfProgress.totalParts})…` : "Creating PDF…") : "Download QR PDF"}
+                      <Download size={13} /> {exportingPdf ? (
+                        pdfProgress?.zipping ? "Bundling into ZIP…"
+                        : pdfProgress && pdfProgress.part === 0 ? `Preparing ${pdfProgress.totalParts} PDF part${pdfProgress.totalParts === 1 ? "" : "s"}…`
+                        : pdfProgress ? `Creating PDF (part ${pdfProgress.part} of ${pdfProgress.totalParts})…`
+                        : "Creating PDF…"
+                      ) : "Download QR PDF"}
                     </button>
                     {showPdfMenu && (
                       <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-[#e6ecf5] bg-white p-1 shadow-lg">
