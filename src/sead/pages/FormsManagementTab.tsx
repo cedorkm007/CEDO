@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileText, Link2, Plus, Pencil, Trash2, X, Check, UploadCloud, Eye, ShieldCheck, ShieldAlert, SlidersHorizontal } from "lucide-react";
+import { FileText, Link2, Plus, Pencil, Trash2, X, Check, UploadCloud, Eye, ShieldCheck, ShieldAlert, SlidersHorizontal, FolderOpen, ClipboardList } from "lucide-react";
 import {
   fetchFormMaterials, createFormMaterial, updateFormMaterial, deleteFormMaterial,
   uploadFormMaterialFile, removeFormMaterialFile, fetchFormMaterialPreviewUrl, setFormMaterialConditions,
@@ -11,6 +11,7 @@ import type { QuestSubject } from "../types";
 import { fetchFormationActivities } from "../formationActivitiesApi";
 import { FORMATION_YEAR_LEVELS, type FormationActivity } from "@/scholar/formationActivitiesApi";
 import { fetchAllSDPActivities, type SDPActivity } from "../sdpMonitorApi";
+import { SubmissionActivitiesSection } from "./SubmissionActivitiesSection";
 
 /**
  * Staff-side list + create/edit UI for the materials scholars see under
@@ -323,6 +324,13 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
 }
 
 export function FormsManagementTab() {
+  // Plain local state, not URL-persisted — this file's internal section
+  // switch is a new addition here and wasn't in scope for the staff-app
+  // refresh-persistence work done elsewhere (App.tsx / ScholarManagement-
+  // ToolsPage.tsx / SDPMonitoringTab.tsx / FormationToolsTab.tsx); adding
+  // it now would be scope creep beyond this task. Flagged as a possible
+  // small follow-up if refresh persistence should extend here too.
+  const [section, setSection] = useState<"materials" | "submission-activities">("materials");
   const [materials, setMaterials] = useState<FormMaterial[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
@@ -347,6 +355,19 @@ export function FormsManagementTab() {
   }
 
   return (
+    <div>
+      <div className="mb-5 flex gap-2">
+        <button onClick={() => setSection("materials")}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-bold ${section === "materials" ? "bg-[#062444] text-white" : "bg-[#f7f9fc] text-slate-500 hover:bg-[#eef3fb]"}`}>
+          <FolderOpen size={14} /> Materials
+        </button>
+        <button onClick={() => setSection("submission-activities")}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-bold ${section === "submission-activities" ? "bg-[#062444] text-white" : "bg-[#f7f9fc] text-slate-500 hover:bg-[#eef3fb]"}`}>
+          <ClipboardList size={14} /> Submission Activities
+        </button>
+      </div>
+
+      {section === "submission-activities" ? <SubmissionActivitiesSection /> : (
     <div>
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
@@ -398,6 +419,8 @@ export function FormsManagementTab() {
       {showNew && <FormMaterialModal material={null} onClose={() => setShowNew(false)} onSaved={() => void load()} />}
       {editing && <FormMaterialModal material={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />}
       {managingConditions && <FormMaterialConditionsModal material={managingConditions} onClose={() => setManagingConditions(null)} onSaved={() => void load()} />}
+    </div>
+      )}
     </div>
   );
 }
