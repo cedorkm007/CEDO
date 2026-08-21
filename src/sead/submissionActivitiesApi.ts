@@ -79,23 +79,54 @@ export interface SubmissionActivityInput {
   description: string;
   allYearLevels: boolean;
   targetYearLevels: string[];
-  /** Full desired field list, in display order. On create, all get inserted; on update, this fully replaces the activity's existing fields (see setSubmissionUploadFields). */
-  uploadFields: { label: string; isRequired: boolean; maxFiles: number }[];
+  /**
+   * Full desired field list, in display order. An existing field keeps
+   * its `id` so submission_uploads.field_id (Part 2 onward) survives
+   * edits/reorders instead of being silently orphaned — see
+   * setSubmissionUploadFields below. A field with no `id` is a new one
+   * being added. Any existing field whose id isn't present here gets
+   * deleted (its past submission_uploads rows survive via ON DELETE SET
+   * NULL + their own field_label_snapshot, per
+   * supabase_migration_submission_uploads.sql).
+   */
+  uploadFields: { id?: string; label: string; isRequired: boolean; maxFiles: number }[];
 }
 
 async function setSubmissionUploadFields(activityId: string, fields: SubmissionActivityInput["uploadFields"]): Promise<{ ok: boolean; error?: string }> {
-  // Simplest correct approach for "add, remove, and reorder": replace the
-  // full set every save rather than diffing individual field edits. These
-  // rows carry no data beyond their own label/required/max/order (no
-  // scholar submissions reference them yet in Part 1 — that only starts
-  // in Part 2), so there's nothing meaningful lost by not diffing.
-  const { error: deleteError } = await supabase.from("submission_upload_fields").delete().eq("activity_id", activityId);
-  if (deleteError) return { ok: false, error: deleteError.message };
-  if (fields.length === 0) return { ok: true };
-  const { error: insertError } = await supabase.from("submission_upload_fields").insert(
-    fields.map((f, index) => ({ activity_id: activityId, label: f.label, is_required: f.isRequired, max_files: f.maxFiles, sort_order: index }))
-  );
-  return insertError ? { ok: false, error: insertError.message } : { ok: true };
+  // Upsert-and-prune, NOT delete-all-then-insert-all: submission_uploads
+  // rows (Part 2 onward) reference a field by id, so blowing away and
+  // recreating every field on every save — Part 1's original approach —
+  // would silently orphan/misattribute every scholar's existing uploads
+  // the next time staff so much as reorders a field. An existing field
+  // (identified by a present `id` that's still in `fields`) is updated in
+  // place; a field with no `id` is a new insert; any existing field id no
+  // longer present in `fields` is deleted.
+  const { data: existingRows, error: fetchError } = await supabase
+    .from("submission_upload_fields").select("id").eq("activity_id", activityId);
+  if (fetchError) return { ok: false, error: fetchError.message };
+  const existingIds = new Set((existingRows ?? []).map(r => r.id as string));
+  const keepIds = new Set(fields.map(f => f.id).filter((id): id is string => !!id));
+
+  const idsToDelete = [...existingIds].filter(id => !keepIds.has(id));
+  if (idsToDelete.length > 0) {
+    const { error: deleteError } = await supabase.from("submission_upload_fields").delete().in("id", idsToDelete);
+    if (deleteError) return { ok: false, error: deleteError.message };
+  }
+
+  for (let index = 0; index < fields.length; index++) {
+    const f = fields[index];
+    if (f.id && existingIds.has(f.id)) {
+      const { error: updateError } = await supabase.from("submission_upload_fields")
+        .update({ label: f.label, is_required: f.isRequired, max_files: f.maxFiles, sort_order: index })
+        .eq("id", f.id);
+      if (updateError) return { ok: false, error: updateError.message };
+    } else {
+      const { error: insertError } = await supabase.from("submission_upload_fields")
+        .insert({ activity_id: activityId, label: f.label, is_required: f.isRequired, max_files: f.maxFiles, sort_order: index });
+      if (insertError) return { ok: false, error: insertError.message };
+    }
+  }
+  return { ok: true };
 }
 
 export async function createSubmissionActivity(input: SubmissionActivityInput): Promise<{ ok: boolean; error?: string; id?: string }> {

@@ -6,15 +6,18 @@ import {
 } from "../submissionActivitiesApi";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 
-type DraftField = { label: string; isRequired: boolean; maxFiles: number };
+type DraftField = { id?: string; label: string; isRequired: boolean; maxFiles: number };
 
 /**
  * Create/edit modal for one Submission Activity. Upload fields are edited
- * as a local draft list (add/remove/reorder), then the WHOLE list is sent
- * on save — setSubmissionUploadFields() in submissionActivitiesApi.ts
- * replaces the activity's full field set in one call rather than diffing
- * individual field edits, since Part 1 has no scholar submissions
- * referencing these fields yet.
+ * as a local draft list (add/remove/reorder). On save, the whole list is
+ * sent to setSubmissionUploadFields() in submissionActivitiesApi.ts,
+ * which upserts-and-prunes by each field's `id` rather than replacing the
+ * whole set — an existing field (loaded with its real `id` below) keeps
+ * that id across edits/reorders, a newly-added field has no `id` until
+ * it's saved. This matters starting Part 2: submission_uploads rows
+ * reference a field by id, so field ids need to stay stable across
+ * ordinary staff edits.
  */
 function SubmissionActivityModal({ activity, onClose, onSaved }: { activity: SubmissionActivity | null; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(activity?.name ?? "");
@@ -22,7 +25,7 @@ function SubmissionActivityModal({ activity, onClose, onSaved }: { activity: Sub
   const [allYearLevels, setAllYearLevels] = useState(activity?.allYearLevels ?? true);
   const [yearLevels, setYearLevels] = useState<string[]>(activity?.targetYearLevels ?? []);
   const [fields, setFields] = useState<DraftField[]>(
-    activity ? activity.uploadFields.map(f => ({ label: f.label, isRequired: f.isRequired, maxFiles: f.maxFiles })) : []
+    activity ? activity.uploadFields.map(f => ({ id: f.id, label: f.label, isRequired: f.isRequired, maxFiles: f.maxFiles })) : []
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -51,7 +54,7 @@ function SubmissionActivityModal({ activity, onClose, onSaved }: { activity: Sub
     const input: SubmissionActivityInput = {
       name: name.trim(), description: description.trim(),
       allYearLevels, targetYearLevels: allYearLevels ? [] : yearLevels,
-      uploadFields: fields.map(f => ({ label: f.label.trim(), isRequired: f.isRequired, maxFiles: f.maxFiles })),
+      uploadFields: fields.map(f => ({ id: f.id, label: f.label.trim(), isRequired: f.isRequired, maxFiles: f.maxFiles })),
     };
     const result = activity ? await updateSubmissionActivity(activity.id, input) : await createSubmissionActivity(input);
     setBusy(false);

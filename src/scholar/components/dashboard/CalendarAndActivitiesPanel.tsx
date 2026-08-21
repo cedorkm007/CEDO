@@ -4,6 +4,7 @@ import { SectionCard } from "./SectionCard";
 import { AttendanceScanner } from "./AttendanceScanner";
 import { fetchApprovedSDPActivities, SDP_CATEGORIES, type SDPActivity } from "../../sdpApi";
 import { fetchFormationActivitiesForScholar } from "../../formationActivitiesApi";
+import { SubmissionActivitiesList } from "./SubmissionActivitiesList";
 import { useUrlState } from "@/app/useUrlState";
 
 type Tab = "calendar" | "activities" | "attendance";
@@ -171,7 +172,10 @@ export function CalendarAndActivitiesPanel({ onNavigateToForms }: { onNavigateTo
       ) : tab === "calendar" ? (
         <CalendarGrid activities={activities} />
       ) : tab === "activities" ? (
-        <ActivitiesList activities={activities} />
+        <>
+          <SubmissionActivitiesList />
+          <ActivitiesList activities={activities} />
+        </>
       ) : (
         <AttendanceScanner onNavigateToForms={onNavigateToForms} />
       )}
