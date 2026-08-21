@@ -163,3 +163,88 @@ export async function deleteSubmissionActivity(id: string): Promise<{ ok: boolea
   const { error } = await supabase.from("submission_activities").delete().eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+
+// ── Part 5: staff review ─────────────────────────────────────
+
+/**
+ * One uploaded file, for the staff review panel — one activity's
+ * submission_uploads joined with the uploading scholar's identity/year
+ * level (submission_uploads.scholar_id -> scholars.id, the same FK every
+ * scholar-facing RLS policy in this feature already relies on). Direct
+ * table read, not an Edge Function: "staff read" RLS on submission_uploads
+ * (supabase_migration_submission_uploads.sql) already lets any SEAD staff
+ * account read every row, matching fetchSubmissionActivities above.
+ */
+export interface SubmissionForReview {
+  id: string;
+  scholarId: string;
+  scholarIdNumber: string;
+  scholarName: string;
+  yearLevel: string;
+  fieldId: string;
+  fieldLabel: string;
+  originalFileName: string;
+  mimeType: string;
+  /** https://drive.google.com/file/d/{id}/view — empty if the row somehow has no Drive file id. */
+  driveViewUrl: string;
+  status: string;
+  staffComment: string;
+  createdAt: string;
+}
+
+export async function fetchSubmissionsForActivity(activityId: string): Promise<SubmissionForReview[]> {
+  const { data, error } = await supabase
+    .from("submission_uploads")
+    .select(
+      "id, scholar_id, field_id, field_label_snapshot, original_file_name, mime_type, drive_file_id, status, staff_comment, created_at, " +
+      "scholars (scholar_id_number, first_name, last_name, year_level)"
+    )
+    .eq("activity_id", activityId)
+    .order("created_at", { ascending: true });
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(row => {
+    const scholar = (row.scholars as Record<string, unknown> | null) ?? {};
+    const driveFileId = String(row.drive_file_id ?? "");
+    return {
+      id: String(row.id),
+      scholarId: String(row.scholar_id ?? ""),
+      scholarIdNumber: String(scholar.scholar_id_number ?? ""),
+      scholarName: `${scholar.first_name ?? ""} ${scholar.last_name ?? ""}`.trim(),
+      yearLevel: String(scholar.year_level ?? ""),
+      fieldId: String(row.field_id ?? ""),
+      fieldLabel: String(row.field_label_snapshot ?? ""),
+      originalFileName: String(row.original_file_name ?? ""),
+      mimeType: String(row.mime_type ?? ""),
+      driveViewUrl: driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : "",
+      status: String(row.status ?? "uploaded"),
+      staffComment: String(row.staff_comment ?? ""),
+      createdAt: String(row.created_at ?? ""),
+    };
+  });
+}
+
+/**
+ * Applies one review outcome to every row in uploadIds at once — the
+ * review panel's unit of review is "this scholar's whole submission for
+ * this activity" (per spec: "mark a scholar submission as ... accepted
+ * / needs resubmission"), not one uploaded file at a time. Still backed
+ * by the same per-file status/staff_comment columns Part 4 introduced
+ * (see supabase_migration_submission_review.sql's header comment) rather
+ * than a separate per-scholar review table — this function is simply
+ * called with every upload id belonging to one scholar's one activity.
+ * reviewed_by is taken from the caller's own session, never passed in.
+ */
+export async function reviewSubmissionUploads(
+  uploadIds: string[], status: "accepted" | "needs_resubmission", staffComment: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (uploadIds.length === 0) return { ok: true };
+  const { data: auth } = await supabase.auth.getUser();
+  const { error } = await supabase
+    .from("submission_uploads")
+    .update({
+      status, staff_comment: staffComment,
+      reviewed_by: auth.user?.id ?? null, reviewed_at: new Date().toISOString(),
+    })
+    .in("id", uploadIds);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}

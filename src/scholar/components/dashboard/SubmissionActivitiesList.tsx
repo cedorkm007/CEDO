@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { UploadCloud, CheckCircle2, AlertCircle, RotateCw } from "lucide-react";
+import { UploadCloud, CheckCircle2, AlertCircle, RotateCw, MessageSquareWarning } from "lucide-react";
 import {
   fetchSubmissionActivitiesForScholar, isAllowedSubmissionFileType, submissionAllowedFileTypesLabel,
-  uploadSubmissionFile, fetchSubmissionUploadsForScholar,
+  uploadSubmissionFile, fetchSubmissionUploadsForScholar, overallSubmissionStatus,
   SUBMISSION_ALLOWED_FILE_TYPES, type SubmissionActivityForScholar, type SubmissionUploadFieldForScholar,
   type SubmissionUploadRecord,
 } from "../../submissionsApi";
@@ -14,6 +14,30 @@ function fileKey(fieldId: string, file: File): string {
   return `${fieldId}::${file.name}::${file.size}`;
 }
 
+/** Badge for the activity-level Not Started / Submitted / Needs Resubmission overview (see overallSubmissionStatus in submissionsApi.ts). */
+function OverallStatusBadge({ uploads }: { uploads: SubmissionUploadRecord[] }) {
+  const status = overallSubmissionStatus(uploads);
+  if (status === "not_started") return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-bold text-slate-500">Not Started</span>;
+  if (status === "needs_resubmission") return <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10.5px] font-bold text-red-700">Needs Resubmission</span>;
+  return <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700">Submitted</span>;
+}
+
+/** Per-file review outcome from staff (Part 5) — nothing shown once a file is just pending review, since the field's own "N/max files" count already covers that. */
+function UploadReviewNote({ upload }: { upload: SubmissionUploadRecord }) {
+  if (upload.status === "accepted") {
+    return <span className="ml-4 flex items-center gap-1 text-[11px] text-emerald-600"><CheckCircle2 size={11} className="shrink-0" /> Accepted</span>;
+  }
+  if (upload.status === "needs_resubmission") {
+    return (
+      <span className="ml-4 flex items-start gap-1 text-[11px] text-red-600">
+        <MessageSquareWarning size={11} className="mt-[1px] shrink-0" />
+        Needs resubmission{upload.staffComment ? `: ${upload.staffComment}` : ""}
+      </span>
+    );
+  }
+  return null;
+}
+
 /**
  * One activity's upload form. Part 4 wires this to the real
  * submission-upload-file Edge Function — no more "Google Drive upload
@@ -22,7 +46,8 @@ function fileKey(fieldId: string, file: File): string {
  * tracked individually so one failing file doesn't block or hide the
  * others, and a failed file can be retried in place without re-picking
  * it. Already-uploaded files are fetched on mount so reopening this tab
- * shows real prior submissions instead of an empty picker.
+ * shows real prior submissions instead of an empty picker. Part 5 adds
+ * the activity-level status badge and per-file staff review notes.
  */
 function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForScholar }) {
   const [existingUploads, setExistingUploads] = useState<SubmissionUploadRecord[]>([]);
@@ -71,6 +96,7 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
         fieldId,
         originalFileName: result.upload!.originalFileName,
         status: result.upload!.status,
+        staffComment: "", // a fresh upload is always pending review — nothing for staff to have commented on yet
         createdAt: result.upload!.createdAt,
       }]);
       setFilesByField(prev => ({ ...prev, [fieldId]: (prev[fieldId] ?? []).filter(f => f !== file) }));
@@ -98,7 +124,10 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
 
   return (
     <div className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-3.5">
-      <p className="text-[13.5px] font-bold text-[#062444]">{activity.name}</p>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <p className="text-[13.5px] font-bold text-[#062444]">{activity.name}</p>
+        <OverallStatusBadge uploads={existingUploads} />
+      </div>
       {activity.description && <p className="mt-1 text-[12px] text-slate-500">{activity.description}</p>}
 
       <div className="mt-3 space-y-3">
@@ -119,8 +148,11 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
               {uploaded.length > 0 && (
                 <ul className="mb-1.5 space-y-1">
                   {uploaded.map(u => (
-                    <li key={u.id} className="flex items-center gap-1.5 text-[11.5px] text-emerald-700">
-                      <CheckCircle2 size={13} className="shrink-0" /> {u.originalFileName}
+                    <li key={u.id}>
+                      <div className="flex items-center gap-1.5 text-[11.5px] text-emerald-700">
+                        <CheckCircle2 size={13} className="shrink-0" /> {u.originalFileName}
+                      </div>
+                      <UploadReviewNote upload={u} />
                     </li>
                   ))}
                 </ul>

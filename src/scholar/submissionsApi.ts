@@ -91,7 +91,10 @@ export interface SubmissionUploadRecord {
   id: string;
   fieldId: string;
   originalFileName: string;
+  /** 'uploaded' (pending review), 'accepted', or 'needs_resubmission' — see Part 5's supabase_migration_submission_review.sql. */
   status: string;
+  /** Set by staff alongside a 'needs_resubmission' status (Part 5) — empty otherwise. */
+  staffComment: string;
   createdAt: string;
 }
 
@@ -168,7 +171,7 @@ export async function uploadSubmissionFile(
 export async function fetchSubmissionUploadsForScholar(activityId: string): Promise<SubmissionUploadRecord[]> {
   const { data, error } = await supabase
     .from("submission_uploads")
-    .select("id, field_id, original_file_name, status, created_at")
+    .select("id, field_id, original_file_name, status, staff_comment, created_at")
     .eq("activity_id", activityId)
     .order("created_at", { ascending: true });
   if (error || !data) return [];
@@ -177,6 +180,23 @@ export async function fetchSubmissionUploadsForScholar(activityId: string): Prom
     fieldId: String(row.field_id ?? ""),
     originalFileName: String(row.original_file_name ?? ""),
     status: String(row.status ?? "uploaded"),
+    staffComment: String(row.staff_comment ?? ""),
     createdAt: String(row.created_at ?? ""),
   }));
+}
+
+/**
+ * Not started / Submitted / Needs Resubmission — the three-state overview
+ * the original spec asked SubmissionActivityCard to show (Part 2's own
+ * implementation never actually rendered this; Part 5 adds it since it's
+ * now driven by real staff review data). "Submitted" covers both a
+ * pending-review upload and a staff-accepted one — the per-file badges
+ * elsewhere on the card distinguish those two further.
+ */
+export type SubmissionOverallStatus = "not_started" | "submitted" | "needs_resubmission";
+
+export function overallSubmissionStatus(uploads: SubmissionUploadRecord[]): SubmissionOverallStatus {
+  if (uploads.length === 0) return "not_started";
+  if (uploads.some(u => u.status === "needs_resubmission")) return "needs_resubmission";
+  return "submitted";
 }

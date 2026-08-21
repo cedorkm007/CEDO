@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, Check, GripVertical, ClipboardList } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, GripVertical, ClipboardList, ClipboardCheck } from "lucide-react";
 import {
   fetchSubmissionActivities, createSubmissionActivity, updateSubmissionActivity, deleteSubmissionActivity,
   type SubmissionActivity, type SubmissionActivityInput,
 } from "../submissionActivitiesApi";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
+import { SubmissionReviewPanel } from "./SubmissionReviewPanel";
 
 type DraftField = { id?: string; label: string; isRequired: boolean; maxFiles: number };
 
@@ -137,6 +138,7 @@ export function SubmissionActivitiesSection() {
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [editing, setEditing] = useState<SubmissionActivity | null>(null);
+  const [reviewing, setReviewing] = useState<SubmissionActivity | null>(null);
 
   async function load() { setLoading(true); setActivities(await fetchSubmissionActivities()); setLoading(false); }
   useEffect(() => { void load(); }, []);
@@ -153,7 +155,7 @@ export function SubmissionActivitiesSection() {
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-[15px] font-extrabold text-[#062444]">Submission Activities</h2>
-          <p className="mt-1 text-[12.5px] text-slate-500">Define activities that ask scholars to upload files, shown under Calendar and Activities → Activities. File uploads themselves aren't wired up yet.</p>
+          <p className="mt-1 text-[12.5px] text-slate-500">Define activities that ask scholars to upload files, shown under Calendar and Activities → Activities. Use the review icon on an activity to see and act on what scholars have submitted.</p>
         </div>
         <button onClick={() => setShowNew(true)} className="shrink-0 flex items-center gap-1.5 rounded-lg bg-[#062444] px-3 py-2 text-[12.5px] font-bold text-[#F3BC00]"><Plus size={15} /> New Activity</button>
       </div>
@@ -174,6 +176,7 @@ export function SubmissionActivitiesSection() {
                   {activity.description && <p className="mt-1 text-[12px] text-slate-500">{activity.description}</p>}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <button onClick={() => setReviewing(activity)} className="text-slate-400 hover:text-[#0088cc]" aria-label={`Review submissions for ${activity.name}`}><ClipboardCheck size={15} /></button>
                   <button onClick={() => setEditing(activity)} className="text-slate-400 hover:text-[#0088cc]" aria-label={`Edit ${activity.name}`}><Pencil size={15} /></button>
                   <button onClick={() => void handleDelete(activity)} className="text-slate-400 hover:text-red-600" aria-label={`Delete ${activity.name}`}><Trash2 size={15} /></button>
                 </div>
@@ -191,6 +194,7 @@ export function SubmissionActivitiesSection() {
 
       {showNew && <SubmissionActivityModal activity={null} onClose={() => setShowNew(false)} onSaved={() => void load()} />}
       {editing && <SubmissionActivityModal activity={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />}
+      {reviewing && <SubmissionReviewPanel activity={reviewing} activities={activities} onClose={() => setReviewing(null)} />}
     </div>
   );
 }
