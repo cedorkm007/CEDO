@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Search, Filter, Award, CheckCircle2, XCircle } from "lucide-react";
-import { fetchSubjects, fetchTopics, fetchScores, fetchSubjectProgress, type SubjectProgressRow } from "../seadApi";
+import { fetchSubjects, fetchTopics, searchQuestScores, fetchSubjectProgress, type SubjectProgressRow } from "../seadApi";
 import type { QuestSubject, QuestTopic, ScoreRow } from "../types";
 import { ListPagination } from "@/app/components/PaginatedList";
 
@@ -13,6 +13,9 @@ export function ScoresTab() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [rows, setRows] = useState<ScoreRow[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [scholarCount, setScholarCount] = useState(0);
+  const [avgPct, setAvgPct] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<SubjectProgressRow[]>([]);
   const [progressLoading, setProgressLoading] = useState(false);
@@ -30,24 +33,36 @@ export function ScoresTab() {
     }
   }, [subjectId]);
 
-  async function runFilter() {
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
+  async function loadScores(requestedPage: number) {
     setLoading(true);
-    setRows(await fetchScores({ subjectId: subjectId || undefined, topicId: topicId || undefined, scholarSearch: scholarSearch || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }));
+    const result = await searchQuestScores({
+      subjectId: subjectId || undefined, topicId: topicId || undefined,
+      scholarSearch: scholarSearch || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
+    }, requestedPage, pageSize);
+    setRows(result.rows);
+    setTotalCount(result.totalCount);
+    setScholarCount(result.distinctScholarCount);
+    setAvgPct(result.totalCount > 0 ? result.avgPercentage : null);
     setLoading(false);
   }
 
-  useEffect(() => { runFilter(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  function runFilter() {
+    setPage(1);
+    void loadScores(1);
+  }
 
-  const avgPct = rows.length
-    ? Math.round((rows.reduce((sum, r) => sum + (r.maxScore ? (r.score ?? 0) / r.maxScore : 0), 0) / rows.filter(r => r.maxScore).length) * 100) || 0
-    : 0;
+  function changePage(nextPage: number) {
+    setPage(nextPage);
+    void loadScores(nextPage);
+  }
 
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  useEffect(() => { void loadScores(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pagedRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
-  useEffect(() => { setPage(1); }, [rows]);
 
   return (
     <div>
@@ -125,9 +140,9 @@ export function ScoresTab() {
       })()}
 
       <div className="grid grid-cols-3 gap-3 mb-4">
-        <StatCard label="Results" value={String(rows.length)} />
-        <StatCard label="Scholars" value={String(new Set(rows.map(r => r.scholarIdNumber)).size)} />
-        <StatCard label="Average" value={rows.length ? `${avgPct}%` : "—"} />
+        <StatCard label="Results" value={String(totalCount)} />
+        <StatCard label="Scholars" value={String(scholarCount)} />
+        <StatCard label="Average" value={avgPct === null ? "—" : String(avgPct) + "%"} />
       </div>
 
       <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden">
@@ -148,7 +163,7 @@ export function ScoresTab() {
             ) : rows.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No results for these filters.</td></tr>
             ) : (
-              pagedRows.map(r => (
+              rows.map(r => (
                 <tr key={r.id} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
                   <td className="px-4 py-3">
                     <div className="font-medium text-[#062444]">{r.scholarName}</div>
@@ -165,7 +180,7 @@ export function ScoresTab() {
           </tbody>
         </table>
       </div>
-      <ListPagination page={safePage} totalPages={totalPages} onPageChange={setPage} filteredCount={rows.length} pageSize={pageSize} itemLabel="attempt records" />
+      <ListPagination page={safePage} totalPages={totalPages} onPageChange={changePage} filteredCount={totalCount} pageSize={pageSize} itemLabel="attempt records" />
     </div>
   );
 }

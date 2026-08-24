@@ -857,7 +857,7 @@ export async function searchQuestScores(filters: ScoreFilters, page: number, pag
   });
   if (error || !data) return { rows: [], totalCount: 0, distinctScholarCount: 0, avgPercentage: 0 };
 
-  const rowsData = data as Record<string, unknown>[];
+  const rowsData = data as unknown as Record<string, unknown>[];
   const rows: ScoreRow[] = rowsData.map(r => ({
     id: String(r.id),
     scholarIdNumber: String(r.scholar_id_number),
