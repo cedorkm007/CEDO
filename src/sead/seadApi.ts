@@ -488,8 +488,32 @@ export async function fetchScholars(search: string, page: number = 1): Promise<S
     p_limit: SCHOLARS_PAGE_SIZE,
     p_offset: (page - 1) * SCHOLARS_PAGE_SIZE,
   });
-  if (error || !data) return { items: [], total: 0 };
-  const rows = data as Record<string, unknown>[];
+  // Keep the Scholars tab usable until the matching RPC migration has been
+  // applied. The primary path remains the RPC because it supports reliable
+  // full-name matching; this fallback prevents a missing/stale function from
+  // turning the entire roster into an unexplained empty list.
+  if (error || !data) {
+    const term = search.trim().replace(/[,.()]/g, " ");
+    let query = supabase.from("scholars")
+      .select("id, scholar_id_number, first_name, last_name, middle_name, school, status", { count: "exact" })
+      .order("last_name").order("first_name");
+    if (term) {
+      const pattern = "%" + term + "%";
+      query = query.or("scholar_id_number.ilike." + pattern + ",first_name.ilike." + pattern + ",last_name.ilike." + pattern);
+    }
+    const from = (page - 1) * SCHOLARS_PAGE_SIZE;
+    const { data: fallbackRows, error: fallbackError, count } = await query.range(from, from + SCHOLARS_PAGE_SIZE - 1);
+    if (fallbackError || !fallbackRows) return { items: [], total: 0 };
+    return {
+      items: fallbackRows.map(r => ({
+        id: String(r.id), scholarIdNumber: String(r.scholar_id_number), firstName: String(r.first_name),
+        lastName: String(r.last_name), middleName: String(r.middle_name ?? ""), school: String(r.school ?? ""),
+        status: r.status as ScholarListItem["status"],
+      })),
+      total: count ?? fallbackRows.length,
+    };
+  }
+  const rows = data as unknown as Record<string, unknown>[];
   return {
     items: rows.map(r => ({
       id: String(r.id), scholarIdNumber: String(r.scholar_id_number), firstName: String(r.first_name),
