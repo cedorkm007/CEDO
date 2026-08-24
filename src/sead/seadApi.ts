@@ -474,24 +474,29 @@ export interface ScholarPage {
 
 const SCHOLARS_PAGE_SIZE = 50;
 
+/**
+ * Server-side search + pagination via search_scholars()
+ * (supabase_migration_scholar_search_rpc.sql) — fixes the old
+ * .or(`first_name.ilike...,last_name.ilike...`) query, which checked
+ * each column separately and so could never match a full name search
+ * (e.g. "Juan Dela Cruz") since no single column contains the
+ * concatenated string. See the migration's own header comment.
+ */
 export async function fetchScholars(search: string, page: number = 1): Promise<ScholarPage> {
-  let query = supabase.from("scholars")
-    .select("id, scholar_id_number, first_name, last_name, middle_name, school, status", { count: "exact" })
-    .order("last_name");
-  if (search.trim()) {
-    const s = search.trim();
-    query = query.or(`scholar_id_number.ilike.%${s}%,first_name.ilike.%${s}%,last_name.ilike.%${s}%`);
-  }
-  const from = (page - 1) * SCHOLARS_PAGE_SIZE;
-  const to = from + SCHOLARS_PAGE_SIZE - 1;
-  const { data, error, count } = await query.range(from, to);
+  const { data, error } = await supabase.rpc("search_scholars", {
+    p_search: search.trim() || "",
+    p_limit: SCHOLARS_PAGE_SIZE,
+    p_offset: (page - 1) * SCHOLARS_PAGE_SIZE,
+  });
   if (error || !data) return { items: [], total: 0 };
+  const rows = data as Record<string, unknown>[];
   return {
-    items: data.map(r => ({
-      id: r.id, scholarIdNumber: r.scholar_id_number, firstName: r.first_name, lastName: r.last_name,
-      middleName: r.middle_name ?? "", school: r.school ?? "", status: r.status,
+    items: rows.map(r => ({
+      id: String(r.id), scholarIdNumber: String(r.scholar_id_number), firstName: String(r.first_name),
+      lastName: String(r.last_name), middleName: String(r.middle_name ?? ""), school: String(r.school ?? ""),
+      status: r.status as ScholarListItem["status"],
     })),
-    total: count ?? data.length,
+    total: rows[0] ? Number(rows[0].total_count ?? 0) : 0,
   };
 }
 
@@ -609,9 +614,29 @@ const BULK_UPDATE_FIELD_MAP: Record<keyof Omit<BulkScholarUpdateInput, "scholarI
  * left blank simply isn't included in that row's object, so it's never
  * sent in the update and the scholar's existing value is left alone.
  */
+/** Best-effort — falls back to a generic label rather than ever blocking
+ * the actual account action if this lookup fails or isn't permitted. */
+async function currentStaffDisplayName(): Promise<string> {
+  try {
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) return "Staff";
+    const { data } = await supabase.from("users").select("first_name, last_name").eq("id", auth.user.id).maybeSingle();
+    if (!data) return "Staff";
+    return `${data.first_name ?? ""} ${data.last_name ?? ""}`.trim() || "Staff";
+  } catch {
+    return "Staff";
+  }
+}
+
 export async function bulkUpdateScholars(rows: BulkScholarUpdateInput[]): Promise<{ updated: number; results: BulkScholarUpdateRowResult[] }> {
   const results: BulkScholarUpdateRowResult[] = [];
   let updated = 0;
+  // One shared batch id for every log entry this call produces — lets
+  // Account History group a bulk update together the same way bulk
+  // create/reset already do, even though each row is its own UPDATE.
+  const batchId = rows.length > 1 ? crypto.randomUUID() : null;
+  let staffName: string | null = null;
+  let staffId: string | null = null;
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -627,7 +652,7 @@ export async function bulkUpdateScholars(rows: BulkScholarUpdateInput[]): Promis
     }
 
     patch.updated_at = new Date().toISOString();
-    const { data, error } = await supabase.from("scholars").update(patch).eq("scholar_id_number", r.scholarIdNumber).select("id");
+    const { data, error } = await supabase.from("scholars").update(patch).eq("scholar_id_number", r.scholarIdNumber).select("id, first_name, last_name");
     if (error) {
       results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: false, fieldsChanged: 0, error: error.message });
       continue;
@@ -638,7 +663,34 @@ export async function bulkUpdateScholars(rows: BulkScholarUpdateInput[]): Promis
     }
 
     updated++;
-    results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: true, fieldsChanged: Object.keys(patch).length - 1 });
+    const fieldsChanged = Object.keys(patch).length - 1;
+    results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: true, fieldsChanged });
+
+    // Resolved once, reused for every row — avoids a redundant auth/name
+    // lookup per scholar in what can be a large batch.
+    if (staffName === null) {
+      const { data: auth } = await supabase.auth.getUser();
+      staffId = auth.user?.id ?? null;
+      staffName = await currentStaffDisplayName();
+    }
+    if (staffId) {
+      const changedFieldLabels = Object.keys(patch).filter(k => k !== "updated_at").join(", ");
+      const { error: logError } = await supabase.from("sead_scholar_account_log").insert({
+        action: "updated",
+        scholar_id: data[0].id,
+        scholar_id_number: r.scholarIdNumber,
+        scholar_name: `${data[0].first_name} ${data[0].last_name}`,
+        performed_by: staffId,
+        performed_by_name: staffName,
+        batch_id: batchId,
+        source: rows.length > 1 ? "bulk" : "single",
+        description: `Updated ${fieldsChanged} field${fieldsChanged === 1 ? "" : "s"} (${changedFieldLabels}).`,
+      });
+      // Never blocks/fails the actual update on a logging error — the
+      // scholar record change already succeeded and shouldn't be masked
+      // by an audit-trail write failing.
+      if (logError) console.error("Failed to write scholar account log entry:", logError.message);
+    }
   }
 
   return { updated, results };
@@ -690,6 +742,11 @@ export async function resetAllScholarPasswords(
   let succeeded = 0;
   let failed = 0;
   const failures: { scholarIdNumber: string; error: string }[] = [];
+  // Generated once and sent on every batch call, so every 'reset' log
+  // entry this whole run produces shares one batch_id — Account History
+  // can group the entire reset-all action together even though it's
+  // actually many separate Edge Function invocations under the hood.
+  const batchId = crypto.randomUUID();
 
   // Safety cap so a server-side bug (e.g. nextOffset never advancing)
   // can't spin the browser in an infinite loop — comfortably above any
@@ -698,7 +755,7 @@ export async function resetAllScholarPasswords(
 
   for (let batchCount = 0; batchCount < MAX_BATCHES; batchCount++) {
     const result = await invokeEdgeFunction<ResetAllPasswordsBatchResponse>(
-      "sead-reset-all-scholar-passwords", { offset }
+      "sead-reset-all-scholar-passwords", { offset, batchId }
     );
     if (!result.ok) return { ok: false, error: result.error, total, succeeded, failed, failures };
 
@@ -721,16 +778,17 @@ export async function resetAllScholarPasswords(
 // ── Scholar account history (audit log) ──────────────────────
 export interface ScholarLogFilters {
   search?: string;      // matches scholar id number or name
-  action?: "added" | "removed";
+  action?: "added" | "removed" | "reset" | "updated";
   dateFrom?: string;
   dateTo?: string;
 }
 
-export async function fetchScholarAccountLog(filters: ScholarLogFilters = {}): Promise<ScholarAccountLogEntry[]> {
+const ACCOUNT_LOG_PAGE_SIZE = 50;
+
+export async function fetchScholarAccountLog(filters: ScholarLogFilters = {}, page: number = 1): Promise<{ items: ScholarAccountLogEntry[]; total: number }> {
   let query = supabase.from("sead_scholar_account_log")
-    .select("id, created_at, action, scholar_id_number, scholar_name, performed_by_name, batch_id, source")
-    .order("created_at", { ascending: false })
-    .limit(500);
+    .select("id, created_at, action, scholar_id_number, scholar_name, performed_by_name, batch_id, source, description", { count: "exact" })
+    .order("created_at", { ascending: false });
 
   if (filters.action) query = query.eq("action", filters.action);
   if (filters.dateFrom) query = query.gte("created_at", filters.dateFrom);
@@ -740,19 +798,26 @@ export async function fetchScholarAccountLog(filters: ScholarLogFilters = {}): P
     query = query.or(`scholar_id_number.ilike.%${s}%,scholar_name.ilike.%${s}%`);
   }
 
-  const { data, error } = await query;
-  if (error || !data) return [];
-  return data.map(r => ({
-    id: r.id,
-    createdAt: r.created_at,
-    action: r.action,
-    scholarIdNumber: r.scholar_id_number,
-    scholarName: r.scholar_name,
-    performedByName: r.performed_by_name,
-    batchId: r.batch_id,
-    source: r.source,
-  }));
+  const from = (page - 1) * ACCOUNT_LOG_PAGE_SIZE;
+  const { data, error, count } = await query.range(from, from + ACCOUNT_LOG_PAGE_SIZE - 1);
+  if (error || !data) return { items: [], total: 0 };
+  return {
+    items: data.map(r => ({
+      id: r.id,
+      createdAt: r.created_at,
+      action: r.action,
+      scholarIdNumber: r.scholar_id_number,
+      scholarName: r.scholar_name,
+      performedByName: r.performed_by_name,
+      batchId: r.batch_id,
+      source: r.source,
+      description: r.description ?? "",
+    })),
+    total: count ?? data.length,
+  };
 }
+
+export { ACCOUNT_LOG_PAGE_SIZE };
 
 // ── Scores & progress monitoring ─────────────────────────────
 export interface ScoreFilters {
@@ -763,83 +828,53 @@ export interface ScoreFilters {
   dateTo?: string;
 }
 
-/**
- * Runs `.select(selectCols).in(column, ids)` in chunks instead of one call
- * with every id — an unchunked .in() with a very large id list risks a
- * URL-length failure (GET request query string) well before Supabase's
- * 1000-row response cap would ever matter, since the number of ids here
- * scales with the number of DISTINCT scholars/subjects/topics in a result
- * set, not the row count itself. A failed/truncated lookup here doesn't
- * throw — the existing `?? id` fallback in every caller means it would
- * otherwise silently show raw id numbers instead of names for however many
- * scholars fell outside whatever the single query happened to return. This
- * is the actual fix for that: chunk small enough that a single request
- * never risks the URL-length limit, so the fallback path is never hit for
- * this reason.
- */
-async function fetchInChunks(
-  table: string, selectCols: string, column: string, ids: string[], chunkSize = 150,
-): Promise<Record<string, unknown>[]> {
-  const out: Record<string, unknown>[] = [];
-  for (let i = 0; i < ids.length; i += chunkSize) {
-    const chunk = ids.slice(i, i + chunkSize);
-    const { data, error } = await supabase.from(table).select(selectCols).in(column, chunk);
-    if (error || !data) continue; // best-effort per chunk, matching every caller's existing `?? id` fallback for whatever didn't resolve
-    out.push(...(data as unknown as Record<string, unknown>[]));
-  }
-  return out;
+export interface ScoreSearchResult {
+  rows: ScoreRow[];
+  totalCount: number;
+  distinctScholarCount: number;
+  avgPercentage: number;
 }
 
-export async function fetchScores(filters: ScoreFilters): Promise<ScoreRow[]> {
-  const rows: Record<string, unknown>[] = [];
-  const pageSize = 500;
-  for (let from = 0; ; from += pageSize) {
-    let query = supabase
-      .from("scholar_quest_scores")
-      .select("id, scholar_id_number, quest_name, score, max_score, date_taken, subject_id, topic_id")
-      .order("date_taken", { ascending: false })
-      .order("id");
+/**
+ * Server-side paginated + aggregated score search, backed by
+ * search_quest_scores() (supabase_migration_quest_scores_search_rpc.sql).
+ * Replaces fetchScores(), which loaded every matching row just to compute
+ * the Results/Scholars/Average cards and paginate in the browser — the
+ * RPC computes those three values as real Postgres aggregates over the
+ * FULL filtered set and returns only one page of display-ready
+ * (already-joined) rows. Table meaning is unchanged: rows are still
+ * individual attempt records, not unique scholars.
+ */
+export async function searchQuestScores(filters: ScoreFilters, page: number, pageSize: number): Promise<ScoreSearchResult> {
+  const { data, error } = await supabase.rpc("search_quest_scores", {
+    p_subject_id: filters.subjectId || null,
+    p_topic_id: filters.topicId || null,
+    p_scholar_search: filters.scholarSearch?.trim() || null,
+    p_date_from: filters.dateFrom || null,
+    p_date_to: filters.dateTo || null,
+    p_limit: pageSize,
+    p_offset: (page - 1) * pageSize,
+  });
+  if (error || !data) return { rows: [], totalCount: 0, distinctScholarCount: 0, avgPercentage: 0 };
 
-    if (filters.subjectId) query = query.eq("subject_id", filters.subjectId);
-    if (filters.topicId) query = query.eq("topic_id", filters.topicId);
-    if (filters.dateFrom) query = query.gte("date_taken", filters.dateFrom);
-    if (filters.dateTo) query = query.lte("date_taken", filters.dateTo);
-
-    const { data, error } = await query.range(from, from + pageSize - 1);
-    if (error || !data) return [];
-    rows.push(...(data as Record<string, unknown>[]));
-    if (data.length < pageSize) break;
-  }
-
-  const scholarIds = Array.from(new Set(rows.map(r => String(r.scholar_id_number))));
-  const scholars = scholarIds.length
-    ? await fetchInChunks("scholars", "scholar_id_number, first_name, last_name", "scholar_id_number", scholarIds)
-    : [];
-  const nameByScholarId = new Map(scholars.map((s: Record<string, unknown>) => [s.scholar_id_number, `${s.first_name} ${s.last_name}`]));
-
-  const subjectIds = Array.from(new Set(rows.map(r => String(r.subject_id ?? "")).filter(Boolean)));
-  const topicIds = Array.from(new Set(rows.map(r => String(r.topic_id ?? "")).filter(Boolean)));
-  const subjects = subjectIds.length ? await fetchInChunks("quest_subjects", "id, name", "id", subjectIds) : [];
-  const topics = topicIds.length ? await fetchInChunks("quest_topics", "id, name", "id", topicIds) : [];
-  const subjectNameById = new Map(subjects.map((s: Record<string, unknown>) => [s.id, s.name]));
-  const topicNameById = new Map(topics.map((t: Record<string, unknown>) => [t.id, t.name]));
-
-  let result: ScoreRow[] = rows.map(r => ({
+  const rowsData = data as Record<string, unknown>[];
+  const rows: ScoreRow[] = rowsData.map(r => ({
     id: String(r.id),
     scholarIdNumber: String(r.scholar_id_number),
-    scholarName: nameByScholarId.get(String(r.scholar_id_number)) ?? String(r.scholar_id_number),
-    subjectName: r.subject_id ? (subjectNameById.get(String(r.subject_id)) as string) ?? null : null,
-    topicName: r.topic_id ? (topicNameById.get(String(r.topic_id)) as string) ?? null : null,
+    scholarName: String(r.scholar_name ?? r.scholar_id_number),
+    subjectName: r.subject_name ? String(r.subject_name) : null,
+    topicName: r.topic_name ? String(r.topic_name) : null,
     questName: String(r.quest_name ?? ""),
     score: r.score == null ? null : Number(r.score),
     maxScore: r.max_score == null ? null : Number(r.max_score),
     dateTaken: String(r.date_taken ?? ""),
   }));
 
-  if (filters.scholarSearch?.trim()) {
-    const s = filters.scholarSearch.trim().toLowerCase();
-    result = result.filter(r => r.scholarName.toLowerCase().includes(s) || r.scholarIdNumber.toLowerCase().includes(s));
-  }
-
-  return result;
+  const first = rowsData[0];
+  return {
+    rows,
+    totalCount: first ? Number(first.total_count ?? 0) : 0,
+    distinctScholarCount: first ? Number(first.distinct_scholar_count ?? 0) : 0,
+    avgPercentage: first?.avg_percentage != null ? Math.round(Number(first.avg_percentage)) : 0,
+  };
 }

@@ -18,12 +18,16 @@ export const SUBMISSION_ALLOWED_FILE_TYPES = [
   { label: "Excel/CSV", extensions: [".xls", ".xlsx", ".csv"], mimeTypes: ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv"] },
 ] as const;
 
+/** The exact set of category labels a field will accept — a subset of SUBMISSION_ALLOWED_FILE_TYPES's labels. */
+export type SubmissionFileCategory = typeof SUBMISSION_ALLOWED_FILE_TYPES[number]["label"];
+
 export interface SubmissionUploadField {
   id: string;
   label: string;
   isRequired: boolean;
   maxFiles: number;
   sortOrder: number;
+  allowedCategories: SubmissionFileCategory[];
 }
 
 export interface SubmissionActivity {
@@ -45,13 +49,21 @@ export type SubmissionActivityCondition =
   | { type: "course"; course: string }
   | { type: "year_level"; allYearLevels: boolean; yearLevels: string[] };
 
+const ALL_SUBMISSION_CATEGORIES = SUBMISSION_ALLOWED_FILE_TYPES.map(t => t.label);
+
 function rowToUploadField(row: Record<string, unknown>): SubmissionUploadField {
+  const categories = Array.isArray(row.allowed_categories) ? (row.allowed_categories as unknown[]).map(String) : [];
   return {
     id: String(row.id),
     label: String(row.label ?? ""),
     isRequired: Boolean(row.is_required),
     maxFiles: Number(row.max_files ?? 1),
     sortOrder: Number(row.sort_order ?? 0),
+    // Falls back to "all categories" rather than an empty list — an
+    // empty/missing value here should never silently mean "nothing is
+    // accepted." The migration backfills this for existing rows anyway;
+    // this is a second, independent safety net at the read layer.
+    allowedCategories: (categories.length > 0 ? categories : ALL_SUBMISSION_CATEGORIES) as SubmissionFileCategory[],
   };
 }
 
@@ -84,7 +96,7 @@ function rowToCondition(row: Record<string, unknown>): SubmissionActivityConditi
 export async function fetchSubmissionActivities(): Promise<SubmissionActivity[]> {
   const { data, error } = await supabase
     .from("submission_activities")
-    .select("id, name, description, all_year_levels, target_year_levels, created_at, updated_at, submission_upload_fields (id, label, is_required, max_files, sort_order)")
+    .select("id, name, description, all_year_levels, target_year_levels, created_at, updated_at, submission_upload_fields (id, label, is_required, max_files, sort_order, allowed_categories)")
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return (data as Record<string, unknown>[]).map(rowToActivity);
@@ -107,7 +119,7 @@ export interface SubmissionActivityInput {
    * NULL + their own field_label_snapshot, per
    * supabase_migration_submission_uploads.sql).
    */
-  uploadFields: { id?: string; label: string; isRequired: boolean; maxFiles: number }[];
+  uploadFields: { id?: string; label: string; isRequired: boolean; maxFiles: number; allowedCategories: SubmissionFileCategory[] }[];
 }
 
 async function setSubmissionUploadFields(activityId: string, fields: SubmissionActivityInput["uploadFields"]): Promise<{ ok: boolean; error?: string }> {
@@ -133,14 +145,22 @@ async function setSubmissionUploadFields(activityId: string, fields: SubmissionA
 
   for (let index = 0; index < fields.length; index++) {
     const f = fields[index];
+    // Never persist an empty category list — that would silently reject
+    // every file for this field, which is exactly the "existing activity
+    // becomes broken or impossible to submit" outcome the categories
+    // feature is required to avoid. Falls back to "all categories" if a
+    // caller somehow sends an empty array (the staff UI itself blocks
+    // saving with zero categories selected, but this is a second,
+    // independent safety net at the API layer).
+    const allowedCategories = f.allowedCategories.length > 0 ? f.allowedCategories : ALL_SUBMISSION_CATEGORIES;
     if (f.id && existingIds.has(f.id)) {
       const { error: updateError } = await supabase.from("submission_upload_fields")
-        .update({ label: f.label, is_required: f.isRequired, max_files: f.maxFiles, sort_order: index })
+        .update({ label: f.label, is_required: f.isRequired, max_files: f.maxFiles, sort_order: index, allowed_categories: allowedCategories })
         .eq("id", f.id);
       if (updateError) return { ok: false, error: updateError.message };
     } else {
       const { error: insertError } = await supabase.from("submission_upload_fields")
-        .insert({ activity_id: activityId, label: f.label, is_required: f.isRequired, max_files: f.maxFiles, sort_order: index });
+        .insert({ activity_id: activityId, label: f.label, is_required: f.isRequired, max_files: f.maxFiles, sort_order: index, allowed_categories: allowedCategories });
       if (insertError) return { ok: false, error: insertError.message };
     }
   }

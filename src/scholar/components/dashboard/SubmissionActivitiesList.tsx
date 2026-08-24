@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { UploadCloud, CheckCircle2, AlertCircle, RotateCw, MessageSquareWarning, Lock } from "lucide-react";
 import {
-  fetchSubmissionActivitiesForScholar, isAllowedSubmissionFileType, submissionAllowedFileTypesLabel,
+  fetchSubmissionActivitiesForScholar, isAllowedSubmissionFileType, submissionFieldAllowedTypesLabel,
   uploadSubmissionFile, fetchSubmissionUploadsForScholar, overallSubmissionStatus,
   SUBMISSION_ALLOWED_FILE_TYPES, type SubmissionActivityForScholar, type SubmissionUploadFieldForScholar,
   type SubmissionUploadRecord,
@@ -79,8 +79,8 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
         ? `You've already reached the limit of ${field.maxFiles} file${field.maxFiles === 1 ? "" : "s"} here.`
         : `You can select up to ${remaining} more file${remaining === 1 ? "" : "s"} here.`;
     } else {
-      const badFile = selected.find(f => !isAllowedSubmissionFileType(f));
-      if (badFile) error = `"${badFile.name}" isn't an accepted file type. Allowed: ${submissionAllowedFileTypesLabel()}.`;
+      const badFile = selected.find(f => !isAllowedSubmissionFileType(f, field.allowedCategories));
+      if (badFile) error = `"${badFile.name}" isn't an accepted file type for this field. Allowed: ${submissionFieldAllowedTypesLabel(field.allowedCategories)}.`;
     }
     setFilesByField(prev => ({ ...prev, [field.id]: error ? [] : selected }));
     setFieldErrors(prev => ({ ...prev, [field.id]: error }));
@@ -167,15 +167,18 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
               )}
 
               {remaining > 0 && (
-                <input
-                  type="file"
-                  multiple={remaining > 1}
-                  accept={SUBMISSION_ALLOWED_FILE_TYPES.flatMap(t => t.extensions).join(",")}
-                  onChange={event => handleFilesSelected(field, event.target.files)}
-                  aria-label={field.label}
-                  disabled={submitting}
-                  className="block w-full text-[12px] text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[#eef3fb] file:px-3 file:py-1.5 file:text-[11.5px] file:font-bold file:text-[#0088cc] disabled:opacity-60"
-                />
+                <>
+                  <p className="mb-1 text-[10.5px] text-slate-400">Accepted: {submissionFieldAllowedTypesLabel(field.allowedCategories)}</p>
+                  <input
+                    type="file"
+                    multiple={remaining > 1}
+                    accept={SUBMISSION_ALLOWED_FILE_TYPES.filter(t => field.allowedCategories.includes(t.label)).flatMap(t => t.extensions).join(",")}
+                    onChange={event => handleFilesSelected(field, event.target.files)}
+                    aria-label={field.label}
+                    disabled={submitting}
+                    className="block w-full text-[12px] text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[#eef3fb] file:px-3 file:py-1.5 file:text-[11.5px] file:font-bold file:text-[#0088cc] disabled:opacity-60"
+                  />
+                </>
               )}
               {fieldErrors[field.id] && <p className="mt-1 text-[11.5px] text-red-600">{fieldErrors[field.id]}</p>}
               {submitAttempted && field.isRequired && uploaded.length === 0 && selected.length === 0 && !fieldErrors[field.id] && (

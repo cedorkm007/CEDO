@@ -15,6 +15,7 @@ export interface SubmissionUploadFieldForScholar {
   label: string;
   isRequired: boolean;
   maxFiles: number;
+  allowedCategories: string[];
 }
 
 export interface SubmissionActivityForScholar {
@@ -47,14 +48,28 @@ export async function fetchSubmissionActivitiesForScholar(): Promise<SubmissionA
   return (data as Record<string, unknown>[]).map(row => {
     const fieldRows = (row.upload_fields as Record<string, unknown>[] | null) ?? [];
     const unmetRequirements = (row.unmet_requirements as { type?: unknown; label?: unknown }[] | null) ?? [];
+    // NOTE: get_my_submission_activities() (supabase_migration_submission_activity_unlock_conditions.sql)
+    // builds each field via jsonb_build_object with camelCase keys
+    // ('isRequired', 'maxFiles') — reading snake_case here (is_required,
+    // max_files) was a pre-existing bug that silently made every field
+    // read as isRequired: false and maxFiles: 1 regardless of the real
+    // configured values, since those keys never existed in the response.
+    // Fixed as part of adding allowedCategories below, which needed this
+    // block touched anyway.
     const sortedFields = fieldRows
-      .map(f => ({
-        id: String(f.id),
-        label: String(f.label ?? ""),
-        isRequired: Boolean(f.is_required),
-        maxFiles: Number(f.max_files ?? 1),
-        sortOrder: Number(f.sort_order ?? 0),
-      }))
+      .map(f => {
+        const categories = Array.isArray(f.allowedCategories) ? (f.allowedCategories as unknown[]).map(String) : [];
+        return {
+          id: String(f.id),
+          label: String(f.label ?? ""),
+          isRequired: Boolean(f.isRequired),
+          maxFiles: Number(f.maxFiles ?? 1),
+          sortOrder: 0, // the RPC already orders this array server-side (order by u.sort_order inside jsonb_agg) and doesn't include sort_order as its own key — nothing to read here, .sort() below is a harmless no-op preserving that order
+          // Same non-empty fallback as the staff-side rowToUploadField —
+          // an empty/missing value must never mean "nothing is accepted."
+          allowedCategories: categories.length > 0 ? categories : SUBMISSION_ALLOWED_FILE_TYPES.map(t => t.label),
+        };
+      })
       .sort((a, b) => a.sortOrder - b.sortOrder);
     return {
       id: String(row.id),
@@ -62,7 +77,7 @@ export async function fetchSubmissionActivitiesForScholar(): Promise<SubmissionA
       description: String(row.description ?? ""),
       isUnlocked: Boolean(row.is_unlocked),
       unmetRequirements: unmetRequirements.map(requirement => ({ type: String(requirement.type ?? ""), label: String(requirement.label ?? "") })),
-      uploadFields: sortedFields.map(({ sortOrder, ...field }) => field),
+      uploadFields: sortedFields.map(({ sortOrder: _sortOrder, ...field }) => field),
     };
   });
 }
@@ -76,11 +91,19 @@ export async function fetchSubmissionActivitiesForScholar(): Promise<SubmissionA
  * which submission-upload-file actually gates on server-side regardless
  * of what this function says.
  */
-export function isAllowedSubmissionFileType(file: File): boolean {
+export function isAllowedSubmissionFileType(file: File, allowedCategories?: string[]): boolean {
   const name = file.name.toLowerCase();
-  return SUBMISSION_ALLOWED_FILE_TYPES.some(
+  const candidates = allowedCategories && allowedCategories.length > 0
+    ? SUBMISSION_ALLOWED_FILE_TYPES.filter(t => allowedCategories.includes(t.label))
+    : SUBMISSION_ALLOWED_FILE_TYPES;
+  return candidates.some(
     t => (t.mimeTypes as readonly string[]).includes(file.type) || (file.type === "" && t.extensions.some(ext => name.endsWith(ext)))
   );
+}
+
+/** Human-readable label for one field's configured categories, e.g. "PDF, JPEG, PNG" — for the scholar-facing file picker hint text. */
+export function submissionFieldAllowedTypesLabel(allowedCategories: string[]): string {
+  return allowedCategories.length > 0 ? allowedCategories.join(", ") : SUBMISSION_ALLOWED_FILE_TYPES.map(t => t.label).join(", ");
 }
 
 export function submissionAllowedFileTypesLabel(): string {

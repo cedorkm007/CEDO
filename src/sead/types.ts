@@ -59,12 +59,13 @@ export interface ScoreRow {
 export interface ScholarAccountLogEntry {
   id: string;
   createdAt: string;
-  action: "added" | "removed";
+  action: "added" | "removed" | "reset" | "updated";
   scholarIdNumber: string;
   scholarName: string;
   performedByName: string;
   batchId: string | null;
   source: "single" | "bulk" | "undo";
+  description: string;
 }
 
 export type SeadTab = "scholars" | "question-bank" | "quests-monitoring" | "formation-activities" | "history" | "forms-management";

@@ -68,12 +68,6 @@ Deno.serve(async (req: Request) => {
     if (file.size > MAX_UPLOAD_BYTES) {
       return jsonResponse({ error: `File is too large — the limit is ${Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024))} MB.` }, 400);
     }
-    if (!isAllowedSubmissionUpload(file.name, file.type)) {
-      return jsonResponse(
-        { error: `"${file.name}" isn't an accepted file type. Allowed: ${SUBMISSION_ALLOWED_FILE_TYPES_LABEL}.` },
-        400,
-      );
-    }
 
     // Re-derive activity + applicability server-side — same check as
     // submission-ensure-drive-folder, duplicated rather than imported
@@ -106,11 +100,29 @@ Deno.serve(async (req: Request) => {
 
     const { data: field, error: fieldError } = await admin
       .from("submission_upload_fields")
-      .select("id, label, max_files")
+      .select("id, label, max_files, allowed_categories")
       .eq("id", fieldId)
       .eq("activity_id", activityId)
       .maybeSingle();
     if (fieldError || !field) return jsonResponse({ error: "Upload field not found for this activity." }, 404);
+
+    // Field-scoped type check — the actual security boundary for this
+    // rule, checked here (after the field is known) rather than earlier
+    // with a blanket "any accepted type" check, since a field can accept
+    // a subset of SUBMISSION_ALLOWED_FILE_TYPES
+    // (supabase_migration_submission_upload_field_categories.sql).
+    // Existing fields created before that migration default to every
+    // category server-side too (see that migration's own backfill), so
+    // this doesn't change behavior for anything created before this
+    // update.
+    const allowedCategories = (Array.isArray(field.allowed_categories) ? field.allowed_categories as string[] : null) ?? undefined;
+    if (!isAllowedSubmissionUpload(file.name, file.type, allowedCategories)) {
+      const allowedLabel = allowedCategories && allowedCategories.length > 0 ? allowedCategories.join(", ") : SUBMISSION_ALLOWED_FILE_TYPES_LABEL;
+      return jsonResponse(
+        { error: `"${file.name}" isn't an accepted file type for "${field.label}". Allowed: ${allowedLabel}.` },
+        400,
+      );
+    }
 
     // Server-side re-check of the max-files rule for THIS scholar/field —
     // the real boundary; the UI's own count is only a convenience.

@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Plus, Pencil, Trash2, X, Check, GripVertical, ClipboardList, ClipboardCheck, SlidersHorizontal } from "lucide-react";
 import {
   fetchSubmissionActivities, createSubmissionActivity, updateSubmissionActivity, deleteSubmissionActivity,
-  fetchSubmissionActivityConditions, setSubmissionActivityConditions, type SubmissionActivity, type SubmissionActivityInput, type SubmissionActivityCondition,
+  fetchSubmissionActivityConditions, setSubmissionActivityConditions, SUBMISSION_ALLOWED_FILE_TYPES,
+  type SubmissionActivity, type SubmissionActivityInput, type SubmissionActivityCondition, type SubmissionFileCategory,
 } from "../submissionActivitiesApi";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { SubmissionReviewPanel } from "./SubmissionReviewPanel";
@@ -12,7 +13,8 @@ import { fetchFormationActivities } from "../formationActivitiesApi";
 import type { FormationActivity } from "@/scholar/formationActivitiesApi";
 import { fetchAllSDPActivities, type SDPActivity } from "../sdpMonitorApi";
 
-type DraftField = { id?: string; label: string; isRequired: boolean; maxFiles: number };
+const ALL_CATEGORY_LABELS = SUBMISSION_ALLOWED_FILE_TYPES.map(t => t.label);
+type DraftField = { id?: string; label: string; isRequired: boolean; maxFiles: number; allowedCategories: SubmissionFileCategory[] };
 
 function SubmissionActivityConditionsModal({ activity, onClose, onSaved }: { activity: SubmissionActivity; onClose: () => void; onSaved: () => void }) {
   const [conditions, setConditions] = useState<SubmissionActivityCondition[]>([]);
@@ -92,12 +94,12 @@ function SubmissionActivityModal({ activity, onClose, onSaved }: { activity: Sub
   const [allYearLevels, setAllYearLevels] = useState(activity?.allYearLevels ?? true);
   const [yearLevels, setYearLevels] = useState<string[]>(activity?.targetYearLevels ?? []);
   const [fields, setFields] = useState<DraftField[]>(
-    activity ? activity.uploadFields.map(f => ({ id: f.id, label: f.label, isRequired: f.isRequired, maxFiles: f.maxFiles })) : []
+    activity ? activity.uploadFields.map(f => ({ id: f.id, label: f.label, isRequired: f.isRequired, maxFiles: f.maxFiles, allowedCategories: f.allowedCategories })) : []
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  function addField() { setFields(fs => [...fs, { label: "", isRequired: true, maxFiles: 1 }]); }
+  function addField() { setFields(fs => [...fs, { label: "", isRequired: true, maxFiles: 1, allowedCategories: [...ALL_CATEGORY_LABELS] }]); }
   function removeField(index: number) { setFields(fs => fs.filter((_, i) => i !== index)); }
   function updateField(index: number, patch: Partial<DraftField>) { setFields(fs => fs.map((f, i) => i === index ? { ...f, ...patch } : f)); }
   function moveField(index: number, direction: -1 | 1) {
@@ -115,13 +117,14 @@ function SubmissionActivityModal({ activity, onClose, onSaved }: { activity: Sub
     if (!allYearLevels && yearLevels.length === 0) { setError('Select at least one year level, or check "All Year Levels."'); return; }
     if (fields.some(f => !f.label.trim())) { setError("Every upload field needs a label."); return; }
     if (fields.some(f => f.maxFiles < 1)) { setError("Max files must be at least 1 for every field."); return; }
+    if (fields.some(f => f.allowedCategories.length === 0)) { setError("Every upload field needs at least one allowed document type."); return; }
 
     setBusy(true);
     setError("");
     const input: SubmissionActivityInput = {
       name: name.trim(), description: description.trim(),
       allYearLevels, targetYearLevels: allYearLevels ? [] : yearLevels,
-      uploadFields: fields.map(f => ({ id: f.id, label: f.label.trim(), isRequired: f.isRequired, maxFiles: f.maxFiles })),
+      uploadFields: fields.map(f => ({ id: f.id, label: f.label.trim(), isRequired: f.isRequired, maxFiles: f.maxFiles, allowedCategories: f.allowedCategories })),
     };
     const result = activity ? await updateSubmissionActivity(activity.id, input) : await createSubmissionActivity(input);
     setBusy(false);
@@ -185,6 +188,30 @@ function SubmissionActivityModal({ activity, onClose, onSaved }: { activity: Sub
                       <input type="number" min={1} max={20} value={field.maxFiles} onChange={event => updateField(index, { maxFiles: Math.max(1, Number(event.target.value) || 1) })} className="w-14 rounded-md border border-[#062444]/15 bg-white px-1.5 py-1 text-center outline-none focus:border-[#0088cc]" />
                     </label>
                     <button type="button" onClick={() => moveField(index, 1)} disabled={index === fields.length - 1} className="ml-auto text-slate-400 disabled:opacity-30">Move down</button>
+                  </div>
+                  <div className="mt-2 pl-[18px]">
+                    <p className="mb-1 text-[10.5px] font-bold uppercase text-slate-400">Allowed document types</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ALL_CATEGORY_LABELS.map(category => {
+                        const isChecked = field.allowedCategories.includes(category);
+                        return (
+                          <label
+                            key={category}
+                            className={`cursor-pointer rounded-md border px-2 py-1 text-[11px] font-semibold ${isChecked ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] bg-white text-slate-500"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="hidden"
+                              checked={isChecked}
+                              onChange={() => updateField(index, {
+                                allowedCategories: isChecked ? field.allowedCategories.filter(c => c !== category) : [...field.allowedCategories, category],
+                              })}
+                            />
+                            {category}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               ))}

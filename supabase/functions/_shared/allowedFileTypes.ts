@@ -36,9 +36,12 @@ export const SUBMISSION_ALLOWED_FILE_TYPES_LABEL = SUBMISSION_ALLOWED_FILE_TYPES
  * reported a blank/generic MIME type" logic as the frontend check, kept
  * consistent on purpose.
  */
-export function isAllowedSubmissionUpload(fileName: string, mimeType: string): boolean {
+export function isAllowedSubmissionUpload(fileName: string, mimeType: string, allowedCategories?: string[]): boolean {
   const name = fileName.toLowerCase();
-  return SUBMISSION_ALLOWED_FILE_TYPES.some(
+  const candidates = allowedCategories && allowedCategories.length > 0
+    ? SUBMISSION_ALLOWED_FILE_TYPES.filter(t => allowedCategories.includes(t.label))
+    : SUBMISSION_ALLOWED_FILE_TYPES;
+  return candidates.some(
     t => t.mimeTypes.includes(mimeType) || (!mimeType && t.extensions.some(ext => name.endsWith(ext))),
   );
 }

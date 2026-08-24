@@ -1,5 +1,6 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { requireSeadStaff } from "../_shared/verifySeadStaff.ts";
+import { getStaffName, logScholarChange } from "../_shared/scholarLog.ts";
 
 const DEFAULT_PASSWORD = "123456";
 
@@ -7,7 +8,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { admin } = await requireSeadStaff(req);
+    const { admin, callerId } = await requireSeadStaff(req);
 
     const body = await req.json();
     const scholarIdNumber = String(body.scholarIdNumber ?? "").trim();
@@ -35,6 +36,18 @@ Deno.serve(async (req: Request) => {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const staffName = await getStaffName(admin, callerId);
+    await logScholarChange(admin, {
+      action: "reset",
+      scholarId: scholar.id,
+      scholarIdNumber,
+      scholarName: `${scholar.first_name} ${scholar.last_name}`,
+      performedBy: callerId,
+      performedByName: staffName,
+      source: "single",
+      description: `Password reset to the default (${DEFAULT_PASSWORD}).`,
+    });
 
     return new Response(JSON.stringify({ ok: true, name: `${scholar.first_name} ${scholar.last_name}`, newPassword: DEFAULT_PASSWORD }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
