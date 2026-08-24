@@ -129,6 +129,7 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
 
   // ── Roster: server-side paginated, 50/page ──────────────────
   const [rosterPage, setRosterPage] = useState(1);
+  const [rosterStatusFilter, setRosterStatusFilter] = useState<"" | "present" | "incomplete">("");
   const [rosterEntries, setRosterEntries] = useState<AttendanceRosterEntry[]>([]);
   const [rosterTotal, setRosterTotal] = useState(0);
   const [rosterLoading, setRosterLoading] = useState(false);
@@ -182,7 +183,7 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
 
   async function loadRosterPage(sessionId: string, page: number) {
     setRosterLoading(true);
-    const { entries, totalCount } = await fetchFormationAttendanceRosterPage(sessionId, page, ROSTER_PAGE_SIZE);
+    const { entries, totalCount } = await fetchFormationAttendanceRosterPage(sessionId, page, ROSTER_PAGE_SIZE, rosterStatusFilter || undefined);
     setRosterEntries(entries);
     setRosterTotal(totalCount);
     setRosterLoading(false);
@@ -337,6 +338,7 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
     if (selectedId) void loadSummary(selectedId);
     setShowCodes(false);
     setViewBatch(null);
+    setRosterStatusFilter("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
@@ -344,6 +346,17 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
     if (session) void loadRosterPage(session.id, rosterPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rosterPage]);
+
+  // Filter change resets to page 1 — same pattern used everywhere else in this
+  // project (the roster's page 1 "means something different" once the filter
+  // changes, since it's now a page of a different, smaller result set).
+  useEffect(() => {
+    if (session) {
+      if (rosterPage === 1) void loadRosterPage(session.id, 1);
+      else setRosterPage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rosterStatusFilter]);
 
   useEffect(() => {
     if (session && showCodes && viewBatch !== null) {
@@ -416,29 +429,45 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
                     <p className="text-[10px] font-bold uppercase text-slate-400">Expected</p>
                     <p className="mt-1 text-lg font-extrabold text-[#062444]">{session?.expectedAttendees ?? "—"}</p>
                   </div>
-                  <div className="rounded-lg bg-green-50 p-3">
-                    <p className="text-[10px] font-bold uppercase text-green-600">Present</p>
-                    <p className="mt-1 text-lg font-extrabold text-green-700">{presentCount}</p>
-                  </div>
-                  <div className="rounded-lg bg-orange-50 p-3">
-                    <p className="text-[10px] font-bold uppercase text-orange-600">Incomplete</p>
-                    <p className="mt-1 text-lg font-extrabold text-orange-700">{incompleteCount}</p>
-                  </div>
+                  <button onClick={() => setRosterStatusFilter(f => f === "present" ? "" : "present")}
+                    className={`rounded-lg p-3 text-left transition-colors ${rosterStatusFilter === "present" ? "bg-green-600 ring-2 ring-green-700" : "bg-green-50 hover:bg-green-100"}`}>
+                    <p className={`text-[10px] font-bold uppercase ${rosterStatusFilter === "present" ? "text-green-100" : "text-green-600"}`}>Present</p>
+                    <p className={`mt-1 text-lg font-extrabold ${rosterStatusFilter === "present" ? "text-white" : "text-green-700"}`}>{presentCount}</p>
+                  </button>
+                  <button onClick={() => setRosterStatusFilter(f => f === "incomplete" ? "" : "incomplete")}
+                    className={`rounded-lg p-3 text-left transition-colors ${rosterStatusFilter === "incomplete" ? "bg-orange-600 ring-2 ring-orange-700" : "bg-orange-50 hover:bg-orange-100"}`}>
+                    <p className={`text-[10px] font-bold uppercase ${rosterStatusFilter === "incomplete" ? "text-orange-100" : "text-orange-600"}`}>Incomplete</p>
+                    <p className={`mt-1 text-lg font-extrabold ${rosterStatusFilter === "incomplete" ? "text-white" : "text-orange-700"}`}>{incompleteCount}</p>
+                  </button>
                 </div>
 
                 <div className="mt-5">
-                  <div className="mb-2 flex items-center justify-between">
+                  <div className="mb-2 flex items-center justify-between flex-wrap gap-2">
                     <h4 className="text-[11px] font-bold uppercase text-slate-400">Roster</h4>
-                    {rosterTotal > 0 && (
-                      <button onClick={downloadRosterPageCSV} className="flex items-center gap-1 text-[11.5px] font-semibold text-[#0088cc] hover:underline">
-                        <Download size={12} /> Export this page (CSV)
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 rounded-lg border border-[#e6ecf5] bg-white p-0.5">
+                        {(["", "present", "incomplete"] as const).map(v => (
+                          <button key={v || "all"} onClick={() => setRosterStatusFilter(v)}
+                            className={`text-[11px] font-semibold px-2.5 py-1 rounded-md ${
+                              rosterStatusFilter === v ? "bg-[#062444] text-white" : "text-slate-500 hover:bg-[#f8fafd]"
+                            }`}>
+                            {v === "" ? "All" : v === "present" ? "Present" : "Incomplete"}
+                          </button>
+                        ))}
+                      </div>
+                      {rosterTotal > 0 && (
+                        <button onClick={downloadRosterPageCSV} className="flex items-center gap-1 text-[11.5px] font-semibold text-[#0088cc] hover:underline">
+                          <Download size={12} /> Export this page (CSV)
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {rosterLoading ? (
                     <p className="text-[12.5px] text-slate-400">Loading roster…</p>
                   ) : rosterEntries.length === 0 ? (
-                    <p className="text-[12.5px] text-slate-400">No attendance has been recorded yet.</p>
+                    <p className="text-[12.5px] text-slate-400">
+                      {rosterStatusFilter ? `No ${rosterStatusFilter} scholars on this roster.` : "No attendance has been recorded yet."}
+                    </p>
                   ) : (
                     <>
                       <div className="space-y-1.5">

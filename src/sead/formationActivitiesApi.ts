@@ -123,10 +123,12 @@ export async function fetchFormationAttendanceSummary(activityId: string): Promi
 /** One server-paginated page of the roster (default 50/page), with a chunked scholar-name lookup and a total count for "Showing X-Y of Z". */
 export async function fetchFormationAttendanceRosterPage(
   sessionId: string, page: number, pageSize: number = ROSTER_PAGE_SIZE_DEFAULT,
+  statusFilter?: "present" | "incomplete",
 ): Promise<{ entries: AttendanceRosterEntry[]; totalCount: number }> {
   const from = (page - 1) * pageSize;
-  const { data: rows, count } = await supabase.from("attendance_records").select("*", { count: "exact" })
-    .eq("session_id", sessionId).order("updated_at", { ascending: false }).range(from, from + pageSize - 1);
+  let query = supabase.from("attendance_records").select("*", { count: "exact" }).eq("session_id", sessionId);
+  if (statusFilter) query = query.eq("status", statusFilter);
+  const { data: rows, count } = await query.order("updated_at", { ascending: false }).range(from, from + pageSize - 1);
   if (!rows || rows.length === 0) return { entries: [], totalCount: count ?? 0 };
 
   const scholarIds = [...new Set(rows.map(r => r.scholar_id_number))];
