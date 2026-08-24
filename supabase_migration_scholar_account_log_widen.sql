@@ -21,8 +21,29 @@
 -- built; this is not a bug on its own.
 -- ─────────────────────────────────────────────────────────────
 
-alter table public.sead_scholar_account_log
-  drop constraint if exists sead_scholar_account_log_action_check;
+-- The original migration declared this check inline, so PostgreSQL normally
+-- names it `sead_scholar_account_log_action_check`.  Do not depend on that
+-- default, though: a manually-created database or an earlier migration may
+-- have given the same action check a different name.  Leaving that old check
+-- in place would still reject the new `reset` and `updated` values.
+do $$
+declare
+  existing_constraint record;
+begin
+  for existing_constraint in
+    select c.conname
+    from pg_constraint c
+    where c.conrelid = 'public.sead_scholar_account_log'::regclass
+      and c.contype = 'c'
+      and pg_get_constraintdef(c.oid) ilike '%action%'
+  loop
+    execute format(
+      'alter table public.sead_scholar_account_log drop constraint %I',
+      existing_constraint.conname
+    );
+  end loop;
+end;
+$$;
 
 alter table public.sead_scholar_account_log
   add constraint sead_scholar_account_log_action_check
