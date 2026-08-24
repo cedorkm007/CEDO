@@ -7,7 +7,7 @@ export async function getStaffName(admin: SupabaseClient, staffId: string): Prom
   return `${data.first_name ?? ""} ${data.last_name ?? ""}`.trim() || "Unknown staff";
 }
 
-export type ScholarLogAction = "added" | "removed";
+export type ScholarLogAction = "added" | "removed" | "reset" | "updated";
 export type ScholarLogSource = "single" | "bulk" | "undo";
 
 /**
@@ -24,6 +24,7 @@ export async function logScholarChange(admin: SupabaseClient, entry: {
   performedByName: string;
   batchId?: string | null;
   source: ScholarLogSource;
+  description?: string;
 }): Promise<void> {
   const { error } = await admin.from("sead_scholar_account_log").insert({
     action: entry.action,
@@ -34,6 +35,7 @@ export async function logScholarChange(admin: SupabaseClient, entry: {
     performed_by_name: entry.performedByName,
     batch_id: entry.batchId ?? null,
     source: entry.source,
+    description: entry.description ?? null,
   });
   if (error) console.error("Failed to write scholar account log entry:", error.message);
 }
