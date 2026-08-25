@@ -90,6 +90,15 @@ export async function fetchSubmissionActivitiesForScholar(): Promise<SubmissionA
  * isAllowedSubmissionUpload in supabase/functions/_shared/allowedFileTypes.ts,
  * which submission-upload-file actually gates on server-side regardless
  * of what this function says.
+ *
+ * BUG FIX: used to fall back to extension matching only when file.type was
+ * completely blank — real browsers commonly report a non-blank but WRONG
+ * MIME type for legitimate files (.csv as "text/plain" or
+ * "application/vnd.ms-excel" depending on OS/browser, .docx/.xlsx as
+ * generic "application/octet-stream" with no local file association),
+ * which used to reject those outright. See the matching fix + full
+ * explanation in supabase/functions/_shared/allowedFileTypes.ts's own
+ * isAllowedSubmissionUpload — kept consistent with that on purpose.
  */
 export function isAllowedSubmissionFileType(file: File, allowedCategories?: string[]): boolean {
   const name = file.name.toLowerCase();
@@ -97,7 +106,7 @@ export function isAllowedSubmissionFileType(file: File, allowedCategories?: stri
     ? SUBMISSION_ALLOWED_FILE_TYPES.filter(t => allowedCategories.includes(t.label))
     : SUBMISSION_ALLOWED_FILE_TYPES;
   return candidates.some(
-    t => (t.mimeTypes as readonly string[]).includes(file.type) || (file.type === "" && t.extensions.some(ext => name.endsWith(ext)))
+    t => (t.mimeTypes as readonly string[]).includes(file.type) || t.extensions.some(ext => name.endsWith(ext))
   );
 }
 

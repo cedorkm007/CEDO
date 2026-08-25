@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { throwJsonError } from "./cors.ts";
 
 /**
  * Every scholar-facing Edge Function needs to answer the same question
@@ -26,7 +27,7 @@ export interface VerifiedScholar {
 export async function requireScholar(req: Request): Promise<{ admin: SupabaseClient; scholar: VerifiedScholar }> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) {
-    throw new Response(JSON.stringify({ error: "Missing Authorization header." }), { status: 401 });
+    throwJsonError("Missing Authorization header.", 401);
   }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -38,7 +39,7 @@ export async function requireScholar(req: Request): Promise<{ admin: SupabaseCli
   });
   const { data: { user }, error: userError } = await callerClient.auth.getUser();
   if (userError || !user) {
-    throw new Response(JSON.stringify({ error: "Invalid or expired session." }), { status: 401 });
+    throwJsonError("Invalid or expired session.", 401);
   }
 
   // Admin client — service role, bypasses RLS. Only used from here on for
@@ -52,7 +53,7 @@ export async function requireScholar(req: Request): Promise<{ admin: SupabaseCli
     .maybeSingle();
 
   if (scholarError || !scholarRow) {
-    throw new Response(JSON.stringify({ error: "This account is not a scholar account." }), { status: 403 });
+    throwJsonError("This account is not a scholar account.", 403);
   }
 
   return {

@@ -9,6 +9,7 @@
 // unchanged from Part 3.
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { findOrCreateFolder, sanitizeDriveFolderName } from "./googleDrive.ts";
+import { throwJsonError } from "./cors.ts";
 
 export interface DriveFolders {
   activityFolderId: string;
@@ -40,7 +41,7 @@ export async function ensureSubmissionDriveFolders(
     .eq("year_level", yearLevel)
     .maybeSingle();
   if (cacheReadError) {
-    throw new Response(JSON.stringify({ error: cacheReadError.message }), { status: 500 });
+    throwJsonError(cacheReadError.message, 500);
   }
   if (cached) {
     return { activityFolderId: cached.activity_folder_id, yearLevelFolderId: cached.year_level_folder_id, cached: true };
@@ -59,7 +60,7 @@ export async function ensureSubmissionDriveFolders(
     .limit(1)
     .maybeSingle();
   if (siblingError) {
-    throw new Response(JSON.stringify({ error: siblingError.message }), { status: 500 });
+    throwJsonError(siblingError.message, 500);
   }
 
   const activityFolderName = sanitizeDriveFolderName(activityName);
@@ -89,10 +90,7 @@ export async function ensureSubmissionDriveFolders(
     if (raceRow) {
       return { activityFolderId: raceRow.activity_folder_id, yearLevelFolderId: raceRow.year_level_folder_id, cached: true };
     }
-    throw new Response(
-      JSON.stringify({ error: `Folder ready in Drive but failed to cache it: ${insertError.message}` }),
-      { status: 500 },
-    );
+    throwJsonError(`Folder ready in Drive but failed to cache it: ${insertError.message}`, 500);
   }
 
   return { activityFolderId, yearLevelFolderId, cached: false };

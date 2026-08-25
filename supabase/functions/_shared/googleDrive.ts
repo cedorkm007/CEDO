@@ -23,6 +23,8 @@
 // Never expose these secrets, or this module, to the frontend — it only
 // ever runs inside an Edge Function.
 
+import { throwJsonError } from "./cors.ts";
+
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
@@ -65,9 +67,7 @@ export async function getGoogleAccessToken(): Promise<string> {
   const email = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL");
   const privateKeyPem = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
   if (!email || !privateKeyPem) {
-    throw new Response(JSON.stringify({ error: "Google Drive credentials are not configured yet." }), {
-      status: 500,
-    });
+    throwJsonError("Google Drive credentials are not configured yet.", 500);
   }
 
   const header = { alg: "RS256", typ: "JWT" };
@@ -88,7 +88,7 @@ export async function getGoogleAccessToken(): Promise<string> {
     );
   } catch (thrown) {
     console.error("Failed to import Google service account private key:", thrown);
-    throw new Response(JSON.stringify({ error: "Google Drive credentials are misconfigured." }), { status: 500 });
+    throwJsonError("Google Drive credentials are misconfigured.", 500);
   }
 
   const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, encoder.encode(unsigned));
@@ -105,7 +105,7 @@ export async function getGoogleAccessToken(): Promise<string> {
   const tokenJson = await tokenRes.json();
   if (!tokenRes.ok || !tokenJson.access_token) {
     console.error("Google token exchange failed:", tokenJson);
-    throw new Response(JSON.stringify({ error: "Failed to authenticate with Google Drive." }), { status: 502 });
+    throwJsonError("Failed to authenticate with Google Drive.", 502);
   }
 
   cachedToken = { value: tokenJson.access_token, expiresAt: now + (tokenJson.expires_in ?? 3600) };
@@ -168,7 +168,7 @@ export async function findOrCreateFolder(accessToken: string, name: string, pare
   const listJson = await listRes.json();
   if (!listRes.ok) {
     console.error("Drive folder search failed:", listJson);
-    throw new Response(JSON.stringify({ error: "Failed to search Google Drive." }), { status: 502 });
+    throwJsonError("Failed to search Google Drive.", 502);
   }
   const existingId = listJson.files?.[0]?.id;
   if (existingId) return existingId as string;
@@ -181,7 +181,7 @@ export async function findOrCreateFolder(accessToken: string, name: string, pare
   const createJson = await createRes.json();
   if (!createRes.ok || !createJson.id) {
     console.error("Drive folder create failed:", createJson);
-    throw new Response(JSON.stringify({ error: "Failed to create a folder in Google Drive." }), { status: 502 });
+    throwJsonError("Failed to create a folder in Google Drive.", 502);
   }
   return createJson.id as string;
 }
@@ -216,12 +216,12 @@ export async function findAvailableFileName(
     const listJson = await listRes.json();
     if (!listRes.ok) {
       console.error("Drive file-name availability search failed:", listJson);
-      throw new Response(JSON.stringify({ error: "Failed to check Google Drive for existing files." }), { status: 502 });
+      throwJsonError("Failed to check Google Drive for existing files.", 502);
     }
     if (!listJson.files || listJson.files.length === 0) return candidate;
     candidate = `${baseName}_${suffix}${extension}`;
   }
-  throw new Response(JSON.stringify({ error: "Could not find an available file name in Google Drive." }), { status: 502 });
+  throwJsonError("Could not find an available file name in Google Drive.", 502);
 }
 
 /**
@@ -263,7 +263,7 @@ export async function uploadFile(
   const uploadJson = await uploadRes.json();
   if (!uploadRes.ok || !uploadJson.id) {
     console.error("Drive file upload failed:", uploadJson);
-    throw new Response(JSON.stringify({ error: "Failed to upload the file to Google Drive." }), { status: 502 });
+    throwJsonError("Failed to upload the file to Google Drive.", 502);
   }
   return uploadJson.id as string;
 }
