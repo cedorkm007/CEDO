@@ -453,3 +453,111 @@ export async function generatePassSlipForm(opts: PassSlipFormOptions): Promise<v
   const blob = await Packer.toBlob(doc)
   saveAs(blob, `Pass_Slip_${opts.staffName.replace(/\s+/g,'_')}.docx`)
 }
+
+// ── 5. Scholars Information Report ───────────────────────────
+// Milestone 4b. Unlike 1-4 above, this isn't reproducing a fixed
+// official template — it's a dynamic-width data table (landscape A4,
+// letterhead header, one row per scholar), closest in structure to
+// Accomplishment History's ACCOMPLISHMENTS | DATE table above, just with
+// a caller-supplied column set instead of two fixed columns. Column
+// labels/order/values are entirely supplied by the caller
+// (buildExportColumns() in ScholarsTab.tsx) so this function has no
+// knowledge of ScholarInformationRow, filters, or Supabase — it only
+// lays out already-formatted string cells, the same separation of
+// concerns Accomplishment Report/History already keep from their own
+// callers.
+
+export interface ScholarsInformationReportOptions {
+  columns: string[]
+  /**
+   * Relative width per column, same length/order as `columns` — e.g.
+   * passing 1.6 for the Name column and 1 for every other one mirrors
+   * the Milestone 4a PDF export's own column-weighting exactly, so a
+   * downloaded Word table reads with the same proportions as the PDF.
+   * Defaults to equal weight per column if omitted or mismatched in length.
+   */
+  columnWeights?: number[]
+  rows: string[][]
+  /** Display-formatted, e.g. "August 25, 2026, 3:45 PM". */
+  generatedAt: string
+  /** e.g. "Filters: none" — the same describeAppliedFilters() output the PDF export's header block already uses, for a consistent "what this file does/doesn't include" summary across formats. */
+  filtersSummary: string
+}
+
+export async function generateScholarsInformationReport(opts: ScholarsInformationReportOptions): Promise<void> {
+  // Usable width (DXA) for landscape A4 with the same 720-DXA side
+  // margins Accomplishment Report already uses below: 16838 - 720 - 720.
+  const TABLE_WIDTH = 15398
+  const weights = opts.columnWeights && opts.columnWeights.length === opts.columns.length
+    ? opts.columnWeights
+    : opts.columns.map(() => 1)
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0)
+  const rawWidths = weights.map(w => (w / totalWeight) * TABLE_WIDTH)
+  // Round every column except the last, then let the last absorb whatever
+  // rounding remainder is left so the row still sums to exactly
+  // TABLE_WIDTH — docx expects a table's declared width to match its
+  // columns' widths.
+  const colWidths = rawWidths.map((w, i) =>
+    i === rawWidths.length - 1
+      ? TABLE_WIDTH - rawWidths.slice(0, -1).reduce((sum, x) => sum + Math.round(x), 0)
+      : Math.round(w)
+  )
+
+  const tableRows: TableRow[] = [
+    new TableRow({
+      tableHeader: true, // repeats this row on every page — same convention as every other table above
+      children: opts.columns.map((label, i) => headerCell(label, colWidths[i])),
+    }),
+    ...opts.rows.map(row => new TableRow({
+      children: row.map((value, i) => cell(
+        // Body text at 20 (10pt) rather than the usual 24 (12pt) default —
+        // deliberate size step-down from the header, matching the same
+        // header/body distinction the Milestone 4a PDF export already
+        // makes for the same reason: up to 9 columns need to stay
+        // readable without any one column becoming too narrow to hold a
+        // typical value.
+        [new Paragraph({ children: [normal(value, 20)] })],
+        { width: colWidths[i] },
+      )),
+    })),
+  ]
+
+  const header = await buildLetterheadHeader()
+
+  const doc = new Document({
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 16838, height: 11906 },   // A4 landscape (DXA), same as Accomplishment Report
+          margin: { top: 1440, right: 720, bottom: 431, left: 720, header: 720, footer: 720 },
+        },
+      },
+      headers: { default: header },
+      children: [
+        new Paragraph({
+          children: [bold('SCHOLARS INFORMATION REPORT', 36)],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 120 },
+        }),
+        new Paragraph({
+          children: [normal(`Generated ${opts.generatedAt} • ${opts.rows.length} scholar${opts.rows.length === 1 ? '' : 's'}`, 20)],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 60 },
+        }),
+        new Paragraph({
+          children: [normal(opts.filtersSummary, 20)],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
+        }),
+        new Table({
+          width: { size: TABLE_WIDTH, type: WidthType.DXA },
+          columnWidths: colWidths,
+          rows: tableRows,
+        }),
+      ],
+    }],
+  })
+
+  const blob = await Packer.toBlob(doc)
+  saveAs(blob, `Scholars_Information_${new Date().toISOString().slice(0, 10)}.docx`)
+}

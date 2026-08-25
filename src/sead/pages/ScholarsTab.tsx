@@ -8,6 +8,7 @@ import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { toCsv, downloadCsv } from "../csvUtils";
 import { jsPDF } from "jspdf";
+import { generateScholarsInformationReport } from "@/lib/docGenerator";
 import type { ScholarListItem } from "../types";
 
 type ScholarsSubtab = "account" | "information";
@@ -243,13 +244,19 @@ function computeAge(birthdayIso: string): string {
 
 /**
  * Milestone 4a: the single place that turns a row + column key into the
- * displayed/exported string, used by the on-screen table body AND both
- * export paths below — so a CSV/PDF cell can never silently show
+ * displayed/exported string, used by the on-screen table body AND all
+ * three export paths below — so an exported cell can never silently show
  * something different from what's on screen for the same column.
- * `blank` lets each caller pick its own placeholder for a missing value
- * (the on-screen table and the PDF use "—" to match the existing display
- * convention; CSV uses "" since a literal em dash in a spreadsheet cell
- * meant for further data processing is more surprising than useful).
+ * `blank` lets each caller pick its own placeholder for a missing value:
+ * the on-screen table passes "—" directly (see the table body below);
+ * buildExportColumns() below passes "" for every export format (CSV,
+ * PDF, and Word) — a literal em dash in a cell meant for further data
+ * processing or a formal report seemed more surprising than useful.
+ * (Corrected this comment during Milestone 4b — it previously claimed
+ * PDF matched the on-screen "—", which the actual buildExportColumns()
+ * call never did; both CSV and PDF have always used "" via that shared
+ * function. No functional change, just the comment now matching what
+ * the code has actually done since Milestone 4a.)
  */
 function formatInfoColumnValue(row: ScholarInformationRow, key: keyof ScholarInformationRow, blank: string): string {
   if (key === "birthday") {
@@ -291,15 +298,17 @@ const EMPTY_FILTERS: ScholarInformationFilters = {};
 
 /**
  * Shell + column picker (Milestone 2) + combinable filters (Milestone 3)
- * + CSV/PDF export (Milestone 4a). Scholar ID and Full Name always show;
- * the other 7 columns are toggleable (remembered via localStorage).
- * Filters (name, barangay, course, school, year level, age range) all AND
- * together — see fetchScholarsInformationPage in seadApi.ts for where the
- * actual combining happens. Export covers the FULL currently-filtered
- * result set (not just the 50-row page on screen) and respects the
- * column picker's current visible-columns selection — both confirmed
- * directly with the person before building this milestone. Word export
- * is a separate milestone (4b), not part of this one.
+ * + CSV/PDF/Word export (Milestones 4a/4b). Scholar ID and Full Name
+ * always show; the other 7 columns are toggleable (remembered via
+ * localStorage). Filters (name, barangay, course, school, year level,
+ * age range) all AND together — see fetchScholarsInformationPage in
+ * seadApi.ts for where the actual combining happens. All three export
+ * formats cover the FULL currently-filtered result set (not just the
+ * 50-row page on screen) and respect the column picker's current
+ * visible-columns selection — confirmed directly with the person for
+ * 4a, then reconfirmed for 4b's Word export specifically (formal
+ * letterhead styling matching docGenerator.ts's other Word documents,
+ * same full-set-plus-visible-columns behavior as CSV/PDF).
  */
 function ScholarsInformationSubtab() {
   const [rows, setRows] = useState<ScholarInformationRow[]>([]);
@@ -331,6 +340,7 @@ function ScholarsInformationSubtab() {
   const [appliedFilters, setAppliedFilters] = useState<ScholarInformationFilters>(EMPTY_FILTERS);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingWord, setExportingWord] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const activeFilterCount = Object.keys(appliedFilters).length;
@@ -414,7 +424,7 @@ function ScholarsInformationSubtab() {
   }
 
   async function handleExportCsv() {
-    if (exportingCsv || exportingPdf || total === 0) return;
+    if (exportingCsv || exportingPdf || exportingWord || total === 0) return;
     setExportError(null);
     setExportingCsv(true);
     try {
@@ -439,7 +449,7 @@ function ScholarsInformationSubtab() {
    * once the final page count is known.
    */
   async function handleExportPdf() {
-    if (exportingCsv || exportingPdf || total === 0) return;
+    if (exportingCsv || exportingPdf || exportingWord || total === 0) return;
     setExportError(null);
     setExportingPdf(true);
     try {
@@ -526,6 +536,40 @@ function ScholarsInformationSubtab() {
     }
   }
 
+  /**
+   * Milestone 4b. Reuses the exact same full-set fetch and buildExportColumns()
+   * column set as CSV/PDF (per the person's answer: same behavior as
+   * 4a), but hands the formatted string grid off to
+   * generateScholarsInformationReport() in docGenerator.ts, which builds
+   * a letterhead-styled Word table (per the person's answer: formal
+   * styling matching the project's other Word documents, not a plain
+   * table). Column weighting (Name gets 1.6x width, same as the PDF
+   * export) is passed through so the Word table's column proportions
+   * match the PDF's, even though the two are laid out by entirely
+   * different libraries (jsPDF hand-drawn vs. docx table cells).
+   */
+  async function handleExportWord() {
+    if (exportingCsv || exportingPdf || exportingWord || total === 0) return;
+    setExportError(null);
+    setExportingWord(true);
+    try {
+      const allRows = await fetchAllScholarsInformationForExport(appliedFilters);
+      const exportColumns = buildExportColumns();
+      const columnWeights = exportColumns.map(c => (c.label === "Name" ? 1.6 : 1));
+      await generateScholarsInformationReport({
+        columns: exportColumns.map(c => c.label),
+        columnWeights,
+        rows: allRows.map(r => exportColumns.map(c => c.value(r))),
+        generatedAt: new Date().toLocaleString(),
+        filtersSummary: describeAppliedFilters(appliedFilters),
+      });
+    } catch {
+      setExportError("Word export failed — please try again.");
+    } finally {
+      setExportingWord(false);
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
@@ -541,13 +585,17 @@ function ScholarsInformationSubtab() {
           </button>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={handleExportCsv} disabled={exportingCsv || exportingPdf || total === 0}
+          <button onClick={handleExportCsv} disabled={exportingCsv || exportingPdf || exportingWord || total === 0}
             className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
             <Download size={13} /> {exportingCsv ? "Exporting…" : "Export CSV"}
           </button>
-          <button onClick={handleExportPdf} disabled={exportingCsv || exportingPdf || total === 0}
+          <button onClick={handleExportPdf} disabled={exportingCsv || exportingPdf || exportingWord || total === 0}
             className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
             <Download size={13} /> {exportingPdf ? "Exporting…" : "Export PDF"}
+          </button>
+          <button onClick={handleExportWord} disabled={exportingCsv || exportingPdf || exportingWord || total === 0}
+            className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
+            <Download size={13} /> {exportingWord ? "Exporting…" : "Export Word"}
           </button>
         </div>
       </div>
