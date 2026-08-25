@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Trophy, ChevronLeft, ChevronRight, Medal } from "lucide-react";
+import { Trophy, ChevronLeft, ChevronRight, Medal, AlertTriangle } from "lucide-react";
 import { fetchSubjects, fetchSubjectRankings, fetchDistinctYearLevels, type RankingRow } from "../seadApi";
 import { fetchDistinctSchools } from "../formationApi";
 import { CLUSTERS, namedBarangaysInCluster, NUMBERED_BARANGAYS, type ClusterCode } from "@/lib/cdoBarangays";
@@ -22,6 +22,7 @@ export function RankingsTab() {
 
   const [rows, setRows] = useState<RankingRow[]>([]);
   const [rowsLoading, setRowsLoading] = useState(false);
+  const [rowsError, setRowsError] = useState<string | null>(null);
   const [topN, setTopN] = useState<number | "all">(10);
   const [yearLevel, setYearLevel] = useState("");
   const [school, setSchool] = useState("");
@@ -54,12 +55,11 @@ export function RankingsTab() {
       barangay: locationMode === "barangay" && barangay ? barangay : undefined,
       barangayIn: clusterBarangays,
     });
-    // Milestone 5 (backend error channel) changed this function's return
-    // shape from a bare array to { rows, error }. This is the minimal
-    // change needed to keep compiling — result.error is intentionally not
-    // surfaced anywhere yet; that's Milestone 6 (UI error display), not
-    // this one.
+    // Milestone 6 (this round): surface result.error, which Milestone 5
+    // added to this function's return shape but deliberately left unused
+    // until this milestone.
     setRows(result.rows);
+    setRowsError(result.error);
     setRowsLoading(false);
   }
 
@@ -130,6 +130,13 @@ export function RankingsTab() {
             </div>
           </div>
         </div>
+
+        {rowsError && (
+          <p className="mb-3 flex items-center gap-1.5 text-[12px] font-semibold text-red-600">
+            <AlertTriangle size={13} /> {rowsError}
+            <button onClick={() => loadRankings()} className="underline font-semibold ml-1">Retry</button>
+          </p>
+        )}
 
         <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden">
           <table className="w-full text-sm">

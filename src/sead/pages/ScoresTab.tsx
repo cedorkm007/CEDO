@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Search, Filter, Award, CheckCircle2, XCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Filter, Award, CheckCircle2, XCircle, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import { fetchSubjects, fetchTopics, searchQuestScores, fetchSubjectProgressPage, type PassedFilter } from "../seadApi";
 import type { QuestSubject, QuestTopic, ScoreRow } from "../types";
 import { ListPagination } from "@/app/components/PaginatedList";
@@ -26,6 +26,7 @@ export function ScoresTab() {
   const [progressLoading, setProgressLoading] = useState(false);
   const [passedFilter, setPassedFilter] = useState<PassedFilter>("all");
   const [progressPage, setProgressPage] = useState(1);
+  const [progressError, setProgressError] = useState<string | null>(null);
   const PROGRESS_PAGE_SIZE = 10;
 
   async function loadProgressPage(subject: string, filter: PassedFilter, page: number) {
@@ -37,6 +38,13 @@ export function ScoresTab() {
     setProgressNotPassedCount(result.notPassedCount);
     setProgressPassingMin(result.passingRateMin);
     setProgressPassingMax(result.passingRateMax);
+    // Milestone 6: surface the fetch failure rather than letting the
+    // passing-rate range silently sit at its 75/100 fallback with no
+    // indication anything went wrong — Milestone 4's audit flagged this as
+    // the more misleading of the two failure cases (a scholar or staff
+    // member could otherwise trust a WRONG range shown with total
+    // confidence).
+    setProgressError(result.error);
     setProgressLoading(false);
   }
 
@@ -70,6 +78,7 @@ export function ScoresTab() {
 
   const [page, setPage] = useState(1);
   const pageSize = 10;
+  const [scoresError, setScoresError] = useState<string | null>(null);
 
   async function loadScores(requestedPage: number) {
     setLoading(true);
@@ -81,6 +90,7 @@ export function ScoresTab() {
     setTotalCount(result.totalCount);
     setScholarCount(result.distinctScholarCount);
     setAvgPct(result.totalCount > 0 ? result.avgPercentage : null);
+    setScoresError(result.error);
     setLoading(false);
   }
 
@@ -142,6 +152,13 @@ export function ScoresTab() {
                 <span className="text-[11px] font-semibold text-green-700 bg-green-100 rounded-full px-2.5 py-1 flex items-center gap-1">Certificate attached</span>
               )}
             </div>
+
+            {progressError && (
+              <p className="mb-3 flex items-center gap-1.5 text-[12px] font-semibold text-red-600">
+                <AlertTriangle size={13} /> {progressError}
+                <button onClick={() => loadProgressPage(subjectId, passedFilter, progressPage)} className="underline font-semibold ml-1">Retry</button>
+              </p>
+            )}
 
             <div className="flex items-center gap-1 bg-[#f8fafd] border border-[#e6ecf5] rounded-lg p-1 mb-3 w-fit">
               {([
@@ -210,6 +227,13 @@ export function ScoresTab() {
         <StatCard label="Scholars" value={String(scholarCount)} />
         <StatCard label="Average" value={avgPct === null ? "—" : String(avgPct) + "%"} />
       </div>
+
+      {scoresError && (
+        <p className="mb-3 flex items-center gap-1.5 text-[12px] font-semibold text-red-600">
+          <AlertTriangle size={13} /> {scoresError}
+          <button onClick={() => loadScores(page)} className="underline font-semibold ml-1">Retry</button>
+        </p>
+      )}
 
       <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden">
         <table className="w-full text-sm">
