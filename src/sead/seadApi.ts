@@ -561,7 +561,34 @@ export interface ScholarInformationFilters {
   yearLevel?: string; // exact match — sourced from FORMATION_YEAR_LEVELS (src/scholar/formationActivitiesApi.ts), the same canonical list scholars.year_level values already come from elsewhere in this app
   ageMin?: number;
   ageMax?: number;
+  /**
+   * Thread C Milestone 2 — generic "field is empty" filter. Rows where
+   * ANY ONE of the listed fields is blank (null or empty string) match —
+   * an OR across fields, not a stricter "missing every listed field"
+   * AND — matching the common "find incomplete records to fix" data-
+   * quality use case an admin table like this exists for. Milestone 3
+   * (the UI for this) can flip this to per-field AND semantics easily if
+   * that turns out to be what's actually wanted; flagging the choice
+   * here since the spec this came from didn't say which. Age/birthday
+   * deliberately excluded — not a valid key here — per an out-of-session
+   * finding taken as given in Milestone 1's own handoff.
+   */
+  emptyFields?: ScholarInformationEmptyableField[];
 }
+
+/** The exact six fields Milestone 2's spec named as eligible for the
+ * "field is empty" filter — Age/birthday is deliberately not included. */
+export type ScholarInformationEmptyableField =
+  | "yearLevel" | "school" | "barangay" | "course" | "civilStatus" | "contactNo";
+
+const SCHOLAR_INFORMATION_EMPTYABLE_COLUMNS: Record<ScholarInformationEmptyableField, string> = {
+  yearLevel: "year_level",
+  school: "school",
+  barangay: "barangay",
+  course: "course",
+  civilStatus: "civil_status",
+  contactNo: "contact_no",
+};
 
 function isoDateYearsAgo(years: number): string {
   const now = new Date();
@@ -582,7 +609,8 @@ const SCHOLAR_INFORMATION_SELECT =
  * one place this filter logic lives, shared by fetchScholarsInformationPage
  * (Milestone 3, paginated) and fetchAllScholarsInformationForExport
  * (Milestone 4a, unpaginated) below, so the two can never drift on what
- * "combinable filters" actually means.
+ * "combinable filters" actually means. Also now the one place Thread C
+ * Milestone 2's "field is empty" filter lives, for the same reason.
  *
  * `query`/return type is `any` rather than a generic Q constrained to
  * `{ eq, ilike, or, gt, lte }` (which is what this function originally
@@ -627,6 +655,26 @@ function applyScholarInformationFilters(query: any, filters: ScholarInformationF
   // turned ageMax+1.
   if (filters.ageMin !== undefined) query = query.lte("birthday", isoDateYearsAgo(filters.ageMin));
   if (filters.ageMax !== undefined) query = query.gt("birthday", isoDateYearsAgo(filters.ageMax + 1));
+  // Milestone 2 — "field is empty" filter. A second, separate .or() call
+  // from the name filter's above — confirmed safe rather than assumed:
+  // chained .or() calls on a PostgrestFilterBuilder AND together (each is
+  // its own top-level condition; only the terms WITHIN one .or() call are
+  // OR'd), so this correctly ANDs with the name filter and every .eq/
+  // .ilike/.gt/.lte filter elsewhere in this function, while still OR-ing
+  // together the fields *within* this one call as intended.
+  if (filters.emptyFields && filters.emptyFields.length > 0) {
+    const conditions = filters.emptyFields.flatMap(field => {
+      const column = SCHOLAR_INFORMATION_EMPTYABLE_COLUMNS[field];
+      // "Empty" covers both storage conventions actually seen in this
+      // codebase for these columns — sead-create-scholar-account/index.ts
+      // always writes a string (String(x ?? "").trim()), so a blank value
+      // is normally '', but a null is also possible via any other write
+      // path (direct SQL, a future bulk-update, etc.) — checking both is
+      // defensive, not redundant.
+      return [`${column}.is.null`, `${column}.eq.`];
+    });
+    query = query.or(conditions.join(","));
+  }
   return query;
 }
 
