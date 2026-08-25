@@ -551,10 +551,67 @@ export interface ScholarInformationRow {
   contactNo: string;
 }
 
-export async function fetchScholarsInformationPage(page: number): Promise<{ items: ScholarInformationRow[]; total: number }> {
+/** Combinable filters for the Scholars Information subtab (Milestone 3) —
+ * every field ANDs together, all optional/omittable. */
+export interface ScholarInformationFilters {
+  name?: string; // partial match against first/last/middle name
+  barangay?: string; // exact match — sourced from ALL_BARANGAYS (src/lib/cdoBarangays.ts), the same canonical list used elsewhere in this app
+  course?: string; // partial match — course is free text everywhere else in this codebase (no fixed enum exists), so this stays consistent with that
+  school?: string; // partial match
+  yearLevel?: string; // exact match — sourced from FORMATION_YEAR_LEVELS (src/scholar/formationActivitiesApi.ts), the same canonical list scholars.year_level values already come from elsewhere in this app
+  ageMin?: number;
+  ageMax?: number;
+}
+
+function isoDateYearsAgo(years: number): string {
+  const now = new Date();
+  // Built from now's UTC components specifically (not local-time
+  // components) so this doesn't drift by a day depending on the server's
+  // timezone vs. the stored date column's — birthday is a plain DATE
+  // column with no time/timezone component, so the cutoff needs to be
+  // computed the same context-free way.
+  const target = new Date(Date.UTC(now.getUTCFullYear() - years, now.getUTCMonth(), now.getUTCDate()));
+  return target.toISOString().slice(0, 10);
+}
+
+export async function fetchScholarsInformationPage(
+  page: number, filters: ScholarInformationFilters = {}
+): Promise<{ items: ScholarInformationRow[]; total: number }> {
   const from = (page - 1) * SCHOLARS_PAGE_SIZE;
-  const { data, error, count } = await supabase.from("scholars")
-    .select("scholar_id_number, first_name, last_name, middle_name, year_level, school, barangay, course, birthday, civil_status, contact_no", { count: "exact" })
+  let query = supabase.from("scholars")
+    .select("scholar_id_number, first_name, last_name, middle_name, year_level, school, barangay, course, birthday, civil_status, contact_no", { count: "exact" });
+
+  // Every filter below is ANDed together (chaining .eq/.ilike/.gte/.lte on
+  // one PostgREST query builder is AND by default) — "combinable filters"
+  // per the task, not a set of mutually-exclusive views.
+  const name = filters.name?.trim();
+  if (name) {
+    // One OR-group (matches ANY of the three name columns) that still ANDs
+    // with everything else below — same .or() pattern already used by
+    // fetchScholars()'s own fallback path elsewhere in this file, for
+    // consistency, and the same reasoning: a single stored column never
+    // contains the full concatenated name, so a search has to check all
+    // three columns for a match.
+    const pattern = `%${name.replace(/[,.()]/g, " ")}%`;
+    query = query.or(`first_name.ilike.${pattern},last_name.ilike.${pattern},middle_name.ilike.${pattern}`);
+  }
+  if (filters.barangay) query = query.eq("barangay", filters.barangay);
+  if (filters.course?.trim()) query = query.ilike("course", `%${filters.course.trim()}%`);
+  if (filters.school?.trim()) query = query.ilike("school", `%${filters.school.trim()}%`);
+  if (filters.yearLevel) query = query.eq("year_level", filters.yearLevel);
+  // Age is a value COMPUTED from birthday (see computeAge() in
+  // ScholarsTab.tsx), not a stored column, so a WHERE clause can't filter
+  // on it directly — translate the requested age range into a birthday
+  // date range instead, using the exact same "has this year's birthday
+  // happened yet" logic computeAge() uses for display, just inverted into
+  // a cutoff date: being at least ageMin years old today means born on or
+  // before (today − ageMin years); being at most ageMax years old today
+  // means born after (today − (ageMax+1) years), i.e. not yet having
+  // turned ageMax+1.
+  if (filters.ageMin !== undefined) query = query.lte("birthday", isoDateYearsAgo(filters.ageMin));
+  if (filters.ageMax !== undefined) query = query.gt("birthday", isoDateYearsAgo(filters.ageMax + 1));
+
+  const { data, error, count } = await query
     .order("last_name").order("first_name")
     .range(from, from + SCHOLARS_PAGE_SIZE - 1);
   if (error || !data) return { items: [], total: 0 };

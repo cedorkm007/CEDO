@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, AlertTriangle, X, Users, Info, SlidersHorizontal } from "lucide-react";
-import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, type ScholarInformationRow } from "../seadApi";
+import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw } from "lucide-react";
+import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, type ScholarInformationRow, type ScholarInformationFilters } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
 import { BulkScholarUploadModal } from "../components/BulkScholarUploadModal";
 import { BulkScholarUpdateModal } from "../components/BulkScholarUpdateModal";
+import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
+import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import type { ScholarListItem } from "../types";
 
 type ScholarsSubtab = "account" | "information";
@@ -237,12 +239,15 @@ function computeAge(birthdayIso: string): string {
   return String(age);
 }
 
+const EMPTY_FILTERS: ScholarInformationFilters = {};
+
 /**
- * Shell + column picker only (Milestone 2 of this task list) — no combinable
- * filters yet (Milestone 3) and no export yet (Milestone 4). Scholar ID and
- * Full Name always show; the other 7 columns are toggleable, defaulting to
- * all-on so the picker's effect is immediately visible, and remembered
- * across visits via localStorage so staff don't have to re-pick every time.
+ * Shell + column picker (Milestone 2) + combinable filters (Milestone 3).
+ * Scholar ID and Full Name always show; the other 7 columns are toggleable
+ * (remembered via localStorage). Filters (name, barangay, course, school,
+ * year level, age range) all AND together — see fetchScholarsInformationPage
+ * in seadApi.ts for where the actual combining happens. Export (PDF/CSV/
+ * Word) is a separate milestone, not part of this one.
  */
 function ScholarsInformationSubtab() {
   const [rows, setRows] = useState<ScholarInformationRow[]>([]);
@@ -250,6 +255,7 @@ function ScholarsInformationSubtab() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [showPicker, setShowPicker] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<Set<keyof ScholarInformationRow>>(() => {
     try {
       const saved = window.localStorage.getItem(INFO_COLUMNS_STORAGE_KEY);
@@ -258,23 +264,72 @@ function ScholarsInformationSubtab() {
     return new Set(INFO_COLUMNS.map(c => c.key));
   });
 
+  // Draft filter field values, edited freely in the UI before being
+  // debounced into `appliedFilters` below (mirrors ScholarsAccountSubtab's
+  // own search/debounce pattern for consistency). Kept separate from
+  // appliedFilters so e.g. typing in the Course field doesn't refire a
+  // fetch on every keystroke.
+  const [nameFilter, setNameFilter] = useState("");
+  const [barangayFilter, setBarangayFilter] = useState("");
+  const [courseFilter, setCourseFilter] = useState("");
+  const [schoolFilter, setSchoolFilter] = useState("");
+  const [yearLevelFilter, setYearLevelFilter] = useState("");
+  const [ageMinFilter, setAgeMinFilter] = useState("");
+  const [ageMaxFilter, setAgeMaxFilter] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState<ScholarInformationFilters>(EMPTY_FILTERS);
+
+  const activeFilterCount = Object.keys(appliedFilters).length;
+
   const totalPages = Math.max(1, Math.ceil(total / SCHOLARS_PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * SCHOLARS_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * SCHOLARS_PAGE_SIZE, total);
 
-  async function load(pageToLoad: number) {
+  async function load(pageToLoad: number, filters: ScholarInformationFilters) {
     setLoading(true);
-    const result = await fetchScholarsInformationPage(pageToLoad);
+    const result = await fetchScholarsInformationPage(pageToLoad, filters);
     setRows(result.items);
     setTotal(result.total);
     setLoading(false);
   }
-  useEffect(() => { load(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  useEffect(() => { load(1, EMPTY_FILTERS); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  // Debounce draft filter fields into appliedFilters, and drop any field
+  // that's blank/unset from the object entirely (rather than sending e.g.
+  // course: "") — keeps activeFilterCount and fetchScholarsInformationPage's
+  // own per-field `if (filters.x)` checks both meaningful.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const ageMin = ageMinFilter.trim() === "" ? undefined : Number(ageMinFilter);
+      const ageMax = ageMaxFilter.trim() === "" ? undefined : Number(ageMaxFilter);
+      const next: ScholarInformationFilters = {};
+      if (nameFilter.trim()) next.name = nameFilter.trim();
+      if (barangayFilter) next.barangay = barangayFilter;
+      if (courseFilter.trim()) next.course = courseFilter.trim();
+      if (schoolFilter.trim()) next.school = schoolFilter.trim();
+      if (yearLevelFilter) next.yearLevel = yearLevelFilter;
+      if (ageMin !== undefined && !Number.isNaN(ageMin)) next.ageMin = ageMin;
+      if (ageMax !== undefined && !Number.isNaN(ageMax)) next.ageMax = ageMax;
+      setAppliedFilters(next);
+      setPage(1);
+      load(1, next);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nameFilter, barangayFilter, courseFilter, schoolFilter, yearLevelFilter, ageMinFilter, ageMaxFilter]);
+
+  function clearFilters() {
+    setNameFilter(""); setBarangayFilter(""); setCourseFilter(""); setSchoolFilter("");
+    setYearLevelFilter(""); setAgeMinFilter(""); setAgeMaxFilter("");
+    // The debounce effect above will pick this up and reload with empty
+    // filters — no need to duplicate that call here.
+  }
 
   function goToPage(p: number) {
     const clamped = Math.min(Math.max(1, p), totalPages);
     setPage(clamped);
-    load(clamped);
+    load(clamped, appliedFilters);
   }
 
   function toggleColumn(key: keyof ScholarInformationRow) {
@@ -290,6 +345,66 @@ function ScholarsInformationSubtab() {
 
   return (
     <div>
+      <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <button onClick={() => setShowFilters(v => !v)}
+          className={`flex items-center gap-1.5 text-[12.5px] font-semibold border rounded-lg px-3.5 py-2 ${
+            activeFilterCount > 0 ? "bg-[#0088cc]/10 border-[#0088cc] text-[#0088cc]" : "bg-white border-[#e6ecf5] text-[#062444] hover:bg-[#f8fafd]"
+          }`}>
+          <Filter size={13} /> Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
+        </button>
+        {activeFilterCount > 0 && (
+          <button onClick={clearFilters} className="flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-[#062444]">
+            <RotateCcw size={12} /> Clear filters
+          </button>
+        )}
+      </div>
+
+      {showFilters && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4 bg-white border border-[#e6ecf5] rounded-xl p-4">
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Name</label>
+            <input value={nameFilter} onChange={e => setNameFilter(e.target.value)} placeholder="Search name…"
+              className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Barangay</label>
+            <select value={barangayFilter} onChange={e => setBarangayFilter(e.target.value)}
+              className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc] bg-white">
+              <option value="">Any</option>
+              {ALL_BARANGAYS.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Course</label>
+            <input value={courseFilter} onChange={e => setCourseFilter(e.target.value)} placeholder="e.g. BSIT"
+              className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">School</label>
+            <input value={schoolFilter} onChange={e => setSchoolFilter(e.target.value)} placeholder="Search school…"
+              className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Year Level</label>
+            <select value={yearLevelFilter} onChange={e => setYearLevelFilter(e.target.value)}
+              className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc] bg-white">
+              <option value="">Any</option>
+              {FORMATION_YEAR_LEVELS.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Age (min)</label>
+            <input type="number" min={0} value={ageMinFilter} onChange={e => setAgeMinFilter(e.target.value)} placeholder="e.g. 18"
+              className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Age (max)</label>
+            <input type="number" min={0} value={ageMaxFilter} onChange={e => setAgeMaxFilter(e.target.value)} placeholder="e.g. 25"
+              className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc]" />
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-2 px-1 relative">
         <p className="text-[12.5px] text-slate-500">
           {loading ? "Loading…" : total === 0 ? "No scholars found." : `Showing ${rangeStart}–${rangeEnd} of ${total.toLocaleString()}`}
