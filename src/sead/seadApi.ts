@@ -582,21 +582,25 @@ const SCHOLAR_INFORMATION_SELECT =
  * one place this filter logic lives, shared by fetchScholarsInformationPage
  * (Milestone 3, paginated) and fetchAllScholarsInformationForExport
  * (Milestone 4a, unpaginated) below, so the two can never drift on what
- * "combinable filters" actually means. Generic over Q (rather than typed
- * against the concrete Supabase PostgrestFilterBuilder type) purely so
- * this file doesn't need to import that type by name; every one of these
- * methods returns `this` on the real query builder, which satisfies the
- * constraint below structurally.
+ * "combinable filters" actually means.
+ *
+ * `query`/return type is `any` rather than a generic Q constrained to
+ * `{ eq, ilike, or, gt, lte }` (which is what this function originally
+ * used, to avoid importing Supabase's PostgrestFilterBuilder type by
+ * name). That structural constraint broke the real `npm run build`:
+ * TypeScript has to check whether the actual query builder's type —
+ * which is deeply recursive/generic internally in @supabase/supabase-js
+ * — structurally satisfies Q, and that check is what blew up into
+ * "TS2589: Type instantiation is excessively deep and possibly
+ * infinite." Using `any` here sidesteps that check entirely; it doesn't
+ * lose type safety at either call site below, because assigning an
+ * `any` return value back into a `let query = supabase.from(...)...`
+ * variable doesn't widen that variable's own already-inferred type —
+ * every method called on `query` after this function returns (.order,
+ * .range, etc.) is still checked against the real, specific query
+ * builder type from `supabase.from(...)`, not against `any`.
  */
-function applyScholarInformationFilters<
-  Q extends {
-    eq: (...args: any[]) => Q;
-    ilike: (...args: any[]) => Q;
-    or: (...args: any[]) => Q;
-    gt: (...args: any[]) => Q;
-    lte: (...args: any[]) => Q;
-  },
->(query: Q, filters: ScholarInformationFilters): Q {
+function applyScholarInformationFilters(query: any, filters: ScholarInformationFilters): any {
   const name = filters.name?.trim();
   if (name) {
     // One OR-group (matches ANY of the three name columns) that still ANDs
