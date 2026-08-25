@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw, Download } from "lucide-react";
-import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, fetchAllScholarsInformationForExport, type ScholarInformationRow, type ScholarInformationFilters } from "../seadApi";
+import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, fetchAllScholarsInformationForExport, type ScholarInformationRow, type ScholarInformationFilters, type ScholarInformationEmptyableField } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
 import { BulkScholarUploadModal } from "../components/BulkScholarUploadModal";
 import { BulkScholarUpdateModal } from "../components/BulkScholarUpdateModal";
@@ -230,6 +230,22 @@ const INFO_COLUMNS: { key: keyof ScholarInformationRow; label: string }[] = [
 ];
 const INFO_COLUMNS_STORAGE_KEY = "cedo_scholars_information_columns";
 
+/** Milestone 3 — the same six fields Milestone 2's backend
+ * ScholarInformationEmptyableField covers, in the same order as
+ * INFO_COLUMNS (minus Age, which Milestone 1's own handoff excluded from
+ * this filter) — kept as its own list rather than filtering INFO_COLUMNS
+ * at render time, since INFO_COLUMNS' keys are the broader
+ * `keyof ScholarInformationRow` and this needs the narrower emptyable
+ * type checkboxes actually bind to. */
+const EMPTY_FIELD_OPTIONS: { key: ScholarInformationEmptyableField; label: string }[] = [
+  { key: "yearLevel", label: "Year Level" },
+  { key: "school", label: "School" },
+  { key: "barangay", label: "Barangay" },
+  { key: "course", label: "Course" },
+  { key: "civilStatus", label: "Civil Status" },
+  { key: "contactNo", label: "Contact Number" },
+];
+
 function computeAge(birthdayIso: string): string {
   if (!birthdayIso) return "—";
   const birthDate = new Date(birthdayIso);
@@ -281,6 +297,10 @@ function describeAppliedFilters(filters: ScholarInformationFilters): string {
   if (filters.ageMin !== undefined && filters.ageMax !== undefined) parts.push(`Age ${filters.ageMin}–${filters.ageMax}`);
   else if (filters.ageMin !== undefined) parts.push(`Age ≥ ${filters.ageMin}`);
   else if (filters.ageMax !== undefined) parts.push(`Age ≤ ${filters.ageMax}`);
+  if (filters.emptyFields?.length) {
+    const labels = filters.emptyFields.map(key => EMPTY_FIELD_OPTIONS.find(o => o.key === key)?.label ?? key);
+    parts.push(`Missing any of: ${labels.join(", ")}`);
+  }
   return parts.length ? `Filters: ${parts.join("; ")}` : "Filters: none";
 }
 
@@ -297,12 +317,14 @@ function truncateToWidth(pdf: jsPDF, text: string, maxWidth: number): string {
 const EMPTY_FILTERS: ScholarInformationFilters = {};
 
 /**
- * Shell + column picker (Milestone 2) + combinable filters (Milestone 3)
- * + CSV/PDF/Word export (Milestones 4a/4b). Scholar ID and Full Name
- * always show; the other 7 columns are toggleable (remembered via
- * localStorage). Filters (name, barangay, course, school, year level,
- * age range) all AND together — see fetchScholarsInformationPage in
- * seadApi.ts for where the actual combining happens. All three export
+ * Shell + column picker (Milestone 2 of the earlier ScholarsTab-internal
+ * numbering) + combinable filters (Milestone 3 of that same earlier
+ * numbering) + CSV/PDF/Word export (Milestones 4a/4b). Scholar ID and
+ * Full Name always show; the other 7 columns are toggleable (remembered
+ * via localStorage). Filters (name, barangay, course, school, year
+ * level, age range, and — Thread C Milestone 3 — missing/empty fields)
+ * all AND together — see fetchScholarsInformationPage in seadApi.ts for
+ * where the actual combining happens. All three export formats cover the
  * formats cover the FULL currently-filtered result set (not just the
  * 50-row page on screen) and respect the column picker's current
  * visible-columns selection — confirmed directly with the person for
@@ -337,6 +359,11 @@ function ScholarsInformationSubtab() {
   const [yearLevelFilter, setYearLevelFilter] = useState("");
   const [ageMinFilter, setAgeMinFilter] = useState("");
   const [ageMaxFilter, setAgeMaxFilter] = useState("");
+  // Milestone 3 — a Set (not an array) so toggling one checkbox doesn't
+  // need to search-then-splice an array; converted to the array
+  // ScholarInformationFilters.emptyFields actually wants only where it
+  // leaves this component, in the debounce effect below.
+  const [emptyFieldsFilter, setEmptyFieldsFilter] = useState<Set<ScholarInformationEmptyableField>>(new Set());
   const [appliedFilters, setAppliedFilters] = useState<ScholarInformationFilters>(EMPTY_FILTERS);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -387,6 +414,7 @@ function ScholarsInformationSubtab() {
       if (yearLevelFilter) next.yearLevel = yearLevelFilter;
       if (ageMin !== undefined && !Number.isNaN(ageMin)) next.ageMin = ageMin;
       if (ageMax !== undefined && !Number.isNaN(ageMax)) next.ageMax = ageMax;
+      if (emptyFieldsFilter.size > 0) next.emptyFields = [...emptyFieldsFilter];
       setAppliedFilters(next);
       setPage(1);
       load(1, next);
@@ -394,11 +422,19 @@ function ScholarsInformationSubtab() {
     }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nameFilter, barangayFilter, courseFilter, schoolFilter, yearLevelFilter, ageMinFilter, ageMaxFilter]);
+  }, [nameFilter, barangayFilter, courseFilter, schoolFilter, yearLevelFilter, ageMinFilter, ageMaxFilter, emptyFieldsFilter]);
+
+  function toggleEmptyField(key: ScholarInformationEmptyableField) {
+    setEmptyFieldsFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   function clearFilters() {
     setNameFilter(""); setBarangayFilter(""); setCourseFilter(""); setSchoolFilter("");
-    setYearLevelFilter(""); setAgeMinFilter(""); setAgeMaxFilter("");
+    setYearLevelFilter(""); setAgeMinFilter(""); setAgeMaxFilter(""); setEmptyFieldsFilter(new Set());
     // The debounce effect above will pick this up and reload with empty
     // filters — no need to duplicate that call here.
   }
@@ -687,6 +723,20 @@ function ScholarsInformationSubtab() {
             <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Age (max)</label>
             <input type="number" min={0} value={ageMaxFilter} onChange={e => setAgeMaxFilter(e.target.value)} placeholder="e.g. 25"
               className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc]" />
+          </div>
+          <div className="col-span-1 sm:col-span-2 lg:col-span-4">
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1.5">
+              Missing / Empty Fields <span className="normal-case font-normal text-slate-400">— shows scholars missing any one of the checked fields</span>
+            </label>
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {EMPTY_FIELD_OPTIONS.map(o => (
+                <label key={o.key} className="flex items-center gap-1.5 text-[12.5px] text-[#062444] cursor-pointer">
+                  <input type="checkbox" checked={emptyFieldsFilter.has(o.key)} onChange={() => toggleEmptyField(o.key)}
+                    className="w-3.5 h-3.5 accent-[#062444]" />
+                  {o.label}
+                </label>
+              ))}
+            </div>
           </div>
         </div>
       )}
