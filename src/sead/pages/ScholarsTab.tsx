@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw, Download } from "lucide-react";
 import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, fetchAllScholarsInformationForExport, type ScholarInformationRow, type ScholarInformationFilters } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
@@ -343,6 +343,18 @@ function ScholarsInformationSubtab() {
   const [exportingWord, setExportingWord] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
+  // Milestone 1: a second, thin horizontal scrollbar synced to the table's
+  // own overflow-x-auto wrapper, positioned above the table — so scrolling
+  // horizontally doesn't require scrolling all the way down to the bottom
+  // edge of a long results table first. topScrollRef's inner spacer div is
+  // kept at the table's real scrollWidth purely so its scrollbar thumb is
+  // correctly sized; isSyncingScroll guards against the two onScroll
+  // handlers feeding back into each other infinitely.
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  const isSyncingScroll = useRef(false);
+  const [scrollWidth, setScrollWidth] = useState(0);
+
   const activeFilterCount = Object.keys(appliedFilters).length;
 
   const totalPages = Math.max(1, Math.ceil(total / SCHOLARS_PAGE_SIZE));
@@ -407,6 +419,34 @@ function ScholarsInformationSubtab() {
   }
 
   const activeColumns = INFO_COLUMNS.filter(c => visibleColumns.has(c.key));
+
+  // Re-measure whenever anything that could change the table's rendered
+  // width happens — a new page of rows, a different set of visible
+  // columns, or the browser window resizing. Deliberately NOT gated on
+  // `loading`'s value changing to false only — measuring during/after
+  // every relevant state change is cheap and keeps this from ever going
+  // stale (e.g. toggling a column while already on a loaded page).
+  useEffect(() => {
+    function measure() {
+      if (tableWrapRef.current) setScrollWidth(tableWrapRef.current.scrollWidth);
+    }
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [rows, activeColumns, loading]);
+
+  function syncScrollFromTop() {
+    if (isSyncingScroll.current || !topScrollRef.current || !tableWrapRef.current) return;
+    isSyncingScroll.current = true;
+    tableWrapRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    isSyncingScroll.current = false;
+  }
+  function syncScrollFromTable() {
+    if (isSyncingScroll.current || !topScrollRef.current || !tableWrapRef.current) return;
+    isSyncingScroll.current = true;
+    topScrollRef.current.scrollLeft = tableWrapRef.current.scrollLeft;
+    isSyncingScroll.current = false;
+  }
 
   /**
    * Milestone 4a. Both exports share this same "Scholar ID, Name, then
@@ -677,7 +717,10 @@ function ScholarsInformationSubtab() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden overflow-x-auto">
+      <div ref={topScrollRef} onScroll={syncScrollFromTop} className="overflow-x-auto overflow-y-hidden h-3 bg-white rounded-t-2xl border border-b-0 border-[#e6ecf5]">
+        <div style={{ width: scrollWidth, height: 1 }} />
+      </div>
+      <div ref={tableWrapRef} onScroll={syncScrollFromTable} className="bg-white rounded-b-2xl border border-[#e6ecf5] overflow-hidden overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
