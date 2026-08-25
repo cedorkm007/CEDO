@@ -202,6 +202,58 @@ export interface SubjectProgressRow {
   passed: boolean;
 }
 
+export interface SubjectProgressPageResult {
+  rows: SubjectProgressRow[];
+  totalCount: number;
+  passedCount: number;
+  notPassedCount: number;
+  passingRateMin: number;
+  passingRateMax: number;
+}
+
+export type PassedFilter = "all" | "passed" | "not_passed";
+
+/**
+ * Server-side paginated + aggregated + passed/not-passed-filterable
+ * replacement for fetchSubjectProgress() at the Passing Rate Progress
+ * panel — computes the pass/fail split as a real Postgres aggregate over
+ * the full enrolled set (subject_progress_page RPC,
+ * supabase_migration_subject_progress_page_rpc.sql) and returns only one
+ * page of already-joined rows, instead of loading every enrolled
+ * scholar's progress row plus a separate scholar-name .in() lookup built
+ * from potentially hundreds/thousands of ids. fetchSubjectProgress()
+ * itself is left in place — nothing else references it, and replacing it
+ * outright wasn't necessary to fix this.
+ */
+export async function fetchSubjectProgressPage(
+  subjectId: string, passedFilter: PassedFilter, page: number, pageSize = 10,
+): Promise<SubjectProgressPageResult> {
+  const { data, error } = await supabase.rpc("subject_progress_page", {
+    p_subject_id: subjectId,
+    p_passed_filter: passedFilter,
+    p_limit: pageSize,
+    p_offset: (page - 1) * pageSize,
+  });
+  if (error || !data) return { rows: [], totalCount: 0, passedCount: 0, notPassedCount: 0, passingRateMin: 75, passingRateMax: 100 };
+
+  const rows = (data as Record<string, unknown>[]).map(r => ({
+    scholarIdNumber: String(r.scholar_id_number),
+    scholarName: String(r.scholar_name ?? r.scholar_id_number),
+    topicCount: Number(r.topic_count ?? 0),
+    subjectPercentage: Number(r.subject_percentage ?? 0),
+    passed: Boolean(r.passed),
+  }));
+  const first = (data as Record<string, unknown>[])[0];
+  return {
+    rows,
+    totalCount: Number(first?.total_count ?? 0),
+    passedCount: Number(first?.passed_count ?? 0),
+    notPassedCount: Number(first?.not_passed_count ?? 0),
+    passingRateMin: Number(first?.passing_rate_min ?? 75),
+    passingRateMax: Number(first?.passing_rate_max ?? 100),
+  };
+}
+
 /** Every scholar's aggregate percentage for one subject — backs the Scores & Progress tab's passing-rate section. */
 export async function fetchSubjectProgress(subjectId: string): Promise<SubjectProgressRow[]> {
   // Same 1,000-row response-cap reasoning as fetchSubjectRankings() above —
