@@ -86,6 +86,16 @@ $$;
 revoke all on function public.subject_progress_page(uuid, text, integer, integer) from public;
 grant execute on function public.subject_progress_page(uuid, text, integer, integer) to authenticated;
 
--- Supports both this RPC's filter/join and fetchSubjectRankings()'s
--- existing queries against the same table.
-create index if not exists idx_scholar_subject_progress_subject_pct on public.scholar_subject_progress(subject_id, subject_percentage desc) where topic_count > 0;
+-- NOTE: no CREATE INDEX here. scholar_subject_progress is a VIEW
+-- (supabase_migration_subject_passing_rate.sql — `create or replace view
+-- public.scholar_subject_progress ... avg(best_pct) as subject_percentage`),
+-- not a table — subject_percentage is a live aggregate, not a stored
+-- column, and PostgreSQL cannot index a plain view directly. An earlier
+-- version of this file had a `create index ... on
+-- public.scholar_subject_progress(...)` line here, which is exactly what
+-- failed when this migration was run — that line has been removed. This
+-- RPC still works correctly without it; a real index to speed up
+-- sorting/filtering on subject_percentage at scale would require
+-- converting this view to a materialized view with a refresh strategy,
+-- which is a bigger, deliberate change than this migration intended —
+-- worth deciding separately, not silently bundled in here.

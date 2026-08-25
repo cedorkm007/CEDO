@@ -534,6 +534,41 @@ const SCHOLARS_PAGE_SIZE = 50;
  * (e.g. "Juan Dela Cruz") since no single column contains the
  * concatenated string. See the migration's own header comment.
  */
+/** One row for the Scholars Information subtab — includes every column its
+ * column picker can toggle. No search/filter param yet (Milestone 2 scope
+ * is the shell + column picker only; combinable filters are Milestone 3). */
+export interface ScholarInformationRow {
+  scholarIdNumber: string;
+  firstName: string;
+  lastName: string;
+  middleName: string;
+  yearLevel: string;
+  school: string;
+  barangay: string;
+  course: string;
+  birthday: string; // ISO date, or "" — the UI computes age from this rather than storing age separately
+  civilStatus: string;
+  contactNo: string;
+}
+
+export async function fetchScholarsInformationPage(page: number): Promise<{ items: ScholarInformationRow[]; total: number }> {
+  const from = (page - 1) * SCHOLARS_PAGE_SIZE;
+  const { data, error, count } = await supabase.from("scholars")
+    .select("scholar_id_number, first_name, last_name, middle_name, year_level, school, barangay, course, birthday, civil_status, contact_no", { count: "exact" })
+    .order("last_name").order("first_name")
+    .range(from, from + SCHOLARS_PAGE_SIZE - 1);
+  if (error || !data) return { items: [], total: 0 };
+  return {
+    items: data.map(r => ({
+      scholarIdNumber: String(r.scholar_id_number), firstName: String(r.first_name), lastName: String(r.last_name),
+      middleName: String(r.middle_name ?? ""), yearLevel: String(r.year_level ?? ""), school: String(r.school ?? ""),
+      barangay: String(r.barangay ?? ""), course: String(r.course ?? ""), birthday: String(r.birthday ?? ""),
+      civilStatus: String(r.civil_status ?? ""), contactNo: String(r.contact_no ?? ""),
+    })),
+    total: count ?? data.length,
+  };
+}
+
 export async function fetchScholars(search: string, page: number = 1): Promise<ScholarPage> {
   const { data, error } = await supabase.rpc("search_scholars", {
     p_search: search.trim() || "",

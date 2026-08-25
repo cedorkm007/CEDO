@@ -1,12 +1,33 @@
 import { useEffect, useState } from "react";
-import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, AlertTriangle, X } from "lucide-react";
-import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, SCHOLARS_PAGE_SIZE } from "../seadApi";
+import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, AlertTriangle, X, Users, Info, SlidersHorizontal } from "lucide-react";
+import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, type ScholarInformationRow } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
 import { BulkScholarUploadModal } from "../components/BulkScholarUploadModal";
 import { BulkScholarUpdateModal } from "../components/BulkScholarUpdateModal";
 import type { ScholarListItem } from "../types";
 
+type ScholarsSubtab = "account" | "information";
+
 export function ScholarsTab() {
+  const [subtab, setSubtab] = useState<ScholarsSubtab>("account");
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <button onClick={() => setSubtab("account")}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-bold ${subtab === "account" ? "bg-[#062444] text-white" : "bg-white border border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
+          <Users size={14} /> Scholars Account
+        </button>
+        <button onClick={() => setSubtab("information")}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-bold ${subtab === "information" ? "bg-[#062444] text-white" : "bg-white border border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
+          <Info size={14} /> Scholars Information
+        </button>
+      </div>
+      {subtab === "account" ? <ScholarsAccountSubtab /> : <ScholarsInformationSubtab />}
+    </div>
+  );
+}
+
+function ScholarsAccountSubtab() {
   const [scholars, setScholars] = useState<ScholarListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -189,6 +210,146 @@ export function ScholarsTab() {
       {showBulkUpload && <BulkScholarUploadModal onClose={() => setShowBulkUpload(false)} onDone={() => load(page)} />}
       {showBulkUpdate && <BulkScholarUpdateModal onClose={() => setShowBulkUpdate(false)} onDone={() => load(page)} />}
       {showResetAll && <ResetAllPasswordsModal onClose={() => setShowResetAll(false)} onDone={handleAllPasswordsReset} />}
+    </div>
+  );
+}
+
+const INFO_COLUMNS: { key: keyof ScholarInformationRow; label: string }[] = [
+  { key: "yearLevel", label: "Year Level" },
+  { key: "school", label: "School" },
+  { key: "barangay", label: "Barangay" },
+  { key: "course", label: "Course" },
+  { key: "birthday", label: "Age" }, // displayed as a computed age, stored/fetched as birthday
+  { key: "civilStatus", label: "Civil Status" },
+  { key: "contactNo", label: "Contact Number" },
+];
+const INFO_COLUMNS_STORAGE_KEY = "cedo_scholars_information_columns";
+
+function computeAge(birthdayIso: string): string {
+  if (!birthdayIso) return "—";
+  const birthDate = new Date(birthdayIso);
+  if (Number.isNaN(birthDate.getTime())) return "—";
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const hasHadBirthdayThisYear = today.getMonth() > birthDate.getMonth() ||
+    (today.getMonth() === birthDate.getMonth() && today.getDate() >= birthDate.getDate());
+  if (!hasHadBirthdayThisYear) age -= 1;
+  return String(age);
+}
+
+/**
+ * Shell + column picker only (Milestone 2 of this task list) — no combinable
+ * filters yet (Milestone 3) and no export yet (Milestone 4). Scholar ID and
+ * Full Name always show; the other 7 columns are toggleable, defaulting to
+ * all-on so the picker's effect is immediately visible, and remembered
+ * across visits via localStorage so staff don't have to re-pick every time.
+ */
+function ScholarsInformationSubtab() {
+  const [rows, setRows] = useState<ScholarInformationRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [showPicker, setShowPicker] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<Set<keyof ScholarInformationRow>>(() => {
+    try {
+      const saved = window.localStorage.getItem(INFO_COLUMNS_STORAGE_KEY);
+      if (saved) return new Set(JSON.parse(saved) as (keyof ScholarInformationRow)[]);
+    } catch { /* fall through to default */ }
+    return new Set(INFO_COLUMNS.map(c => c.key));
+  });
+
+  const totalPages = Math.max(1, Math.ceil(total / SCHOLARS_PAGE_SIZE));
+  const rangeStart = total === 0 ? 0 : (page - 1) * SCHOLARS_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * SCHOLARS_PAGE_SIZE, total);
+
+  async function load(pageToLoad: number) {
+    setLoading(true);
+    const result = await fetchScholarsInformationPage(pageToLoad);
+    setRows(result.items);
+    setTotal(result.total);
+    setLoading(false);
+  }
+  useEffect(() => { load(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  function goToPage(p: number) {
+    const clamped = Math.min(Math.max(1, p), totalPages);
+    setPage(clamped);
+    load(clamped);
+  }
+
+  function toggleColumn(key: keyof ScholarInformationRow) {
+    setVisibleColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      try { window.localStorage.setItem(INFO_COLUMNS_STORAGE_KEY, JSON.stringify([...next])); } catch { /* non-fatal */ }
+      return next;
+    });
+  }
+
+  const activeColumns = INFO_COLUMNS.filter(c => visibleColumns.has(c.key));
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2 px-1 relative">
+        <p className="text-[12.5px] text-slate-500">
+          {loading ? "Loading…" : total === 0 ? "No scholars found." : `Showing ${rangeStart}–${rangeEnd} of ${total.toLocaleString()}`}
+        </p>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <button onClick={() => setShowPicker(v => !v)}
+              className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-1.5 hover:bg-[#f8fafd]">
+              <SlidersHorizontal size={13} /> Columns
+            </button>
+            {showPicker && (
+              <div className="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-[#e6ecf5] bg-white p-2 shadow-lg">
+                <p className="text-[10.5px] font-bold uppercase text-slate-400 px-1 mb-1">Scholar ID and Name always shown</p>
+                {INFO_COLUMNS.map(c => (
+                  <label key={c.key} className="flex items-center gap-2 px-1 py-1.5 text-[12.5px] text-[#062444] cursor-pointer hover:bg-[#f8fafd] rounded">
+                    <input type="checkbox" checked={visibleColumns.has(c.key)} onChange={() => toggleColumn(c.key)} className="w-3.5 h-3.5 accent-[#062444]" />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <PaginationControls page={page} totalPages={totalPages} onGoTo={goToPage} disabled={loading} />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
+              <th className="px-4 py-3 whitespace-nowrap">Scholar ID</th>
+              <th className="px-4 py-3 whitespace-nowrap">Name</th>
+              {activeColumns.map(c => <th key={c.key} className="px-4 py-3 whitespace-nowrap">{c.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={2 + activeColumns.length} className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={2 + activeColumns.length} className="px-4 py-8 text-center text-slate-400">No scholars found.</td></tr>
+            ) : (
+              rows.map(r => (
+                <tr key={r.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
+                  <td className="px-4 py-3 font-medium text-[#062444] whitespace-nowrap">{r.scholarIdNumber}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{r.lastName}, {r.firstName} {r.middleName}</td>
+                  {activeColumns.map(c => (
+                    <td key={c.key} className="px-4 py-3 text-slate-500 whitespace-nowrap">
+                      {c.key === "birthday" ? computeAge(r.birthday) : (r[c.key] || "—")}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex justify-end mt-3">
+        <PaginationControls page={page} totalPages={totalPages} onGoTo={goToPage} disabled={loading} />
+      </div>
     </div>
   );
 }
