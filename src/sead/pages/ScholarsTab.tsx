@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw } from "lucide-react";
-import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, type ScholarInformationRow, type ScholarInformationFilters } from "../seadApi";
+import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw, Download } from "lucide-react";
+import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, fetchAllScholarsInformationForExport, type ScholarInformationRow, type ScholarInformationFilters } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
 import { BulkScholarUploadModal } from "../components/BulkScholarUploadModal";
 import { BulkScholarUpdateModal } from "../components/BulkScholarUpdateModal";
 import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
+import { toCsv, downloadCsv } from "../csvUtils";
+import { jsPDF } from "jspdf";
 import type { ScholarListItem } from "../types";
 
 type ScholarsSubtab = "account" | "information";
@@ -239,15 +241,65 @@ function computeAge(birthdayIso: string): string {
   return String(age);
 }
 
+/**
+ * Milestone 4a: the single place that turns a row + column key into the
+ * displayed/exported string, used by the on-screen table body AND both
+ * export paths below — so a CSV/PDF cell can never silently show
+ * something different from what's on screen for the same column.
+ * `blank` lets each caller pick its own placeholder for a missing value
+ * (the on-screen table and the PDF use "—" to match the existing display
+ * convention; CSV uses "" since a literal em dash in a spreadsheet cell
+ * meant for further data processing is more surprising than useful).
+ */
+function formatInfoColumnValue(row: ScholarInformationRow, key: keyof ScholarInformationRow, blank: string): string {
+  if (key === "birthday") {
+    const age = computeAge(row.birthday);
+    return age === "—" ? blank : age;
+  }
+  return row[key] || blank;
+}
+
+function formatScholarName(row: ScholarInformationRow): string {
+  return `${row.lastName}, ${row.firstName} ${row.middleName}`.trim();
+}
+
+/** One human-readable line summarizing the currently applied filters, for the PDF export's header block — so a downloaded report is self-describing about what it does and doesn't include. */
+function describeAppliedFilters(filters: ScholarInformationFilters): string {
+  const parts: string[] = [];
+  if (filters.name) parts.push(`Name contains "${filters.name}"`);
+  if (filters.barangay) parts.push(`Barangay = ${filters.barangay}`);
+  if (filters.course) parts.push(`Course contains "${filters.course}"`);
+  if (filters.school) parts.push(`School contains "${filters.school}"`);
+  if (filters.yearLevel) parts.push(`Year Level = ${filters.yearLevel}`);
+  if (filters.ageMin !== undefined && filters.ageMax !== undefined) parts.push(`Age ${filters.ageMin}–${filters.ageMax}`);
+  else if (filters.ageMin !== undefined) parts.push(`Age ≥ ${filters.ageMin}`);
+  else if (filters.ageMax !== undefined) parts.push(`Age ≤ ${filters.ageMax}`);
+  return parts.length ? `Filters: ${parts.join("; ")}` : "Filters: none";
+}
+
+/** Truncates `text` (appending "…") so it fits within `maxWidth` mm at the pdf's current font — used by the PDF export's hand-drawn table cells since this project has no jspdf-autotable plugin installed to wrap/measure text automatically. */
+function truncateToWidth(pdf: jsPDF, text: string, maxWidth: number): string {
+  if (pdf.getTextWidth(text) <= maxWidth) return text;
+  let truncated = text;
+  while (truncated.length > 1 && pdf.getTextWidth(`${truncated}…`) > maxWidth) {
+    truncated = truncated.slice(0, -1);
+  }
+  return truncated.length < text.length ? `${truncated}…` : text;
+}
+
 const EMPTY_FILTERS: ScholarInformationFilters = {};
 
 /**
- * Shell + column picker (Milestone 2) + combinable filters (Milestone 3).
- * Scholar ID and Full Name always show; the other 7 columns are toggleable
- * (remembered via localStorage). Filters (name, barangay, course, school,
- * year level, age range) all AND together — see fetchScholarsInformationPage
- * in seadApi.ts for where the actual combining happens. Export (PDF/CSV/
- * Word) is a separate milestone, not part of this one.
+ * Shell + column picker (Milestone 2) + combinable filters (Milestone 3)
+ * + CSV/PDF export (Milestone 4a). Scholar ID and Full Name always show;
+ * the other 7 columns are toggleable (remembered via localStorage).
+ * Filters (name, barangay, course, school, year level, age range) all AND
+ * together — see fetchScholarsInformationPage in seadApi.ts for where the
+ * actual combining happens. Export covers the FULL currently-filtered
+ * result set (not just the 50-row page on screen) and respects the
+ * column picker's current visible-columns selection — both confirmed
+ * directly with the person before building this milestone. Word export
+ * is a separate milestone (4b), not part of this one.
  */
 function ScholarsInformationSubtab() {
   const [rows, setRows] = useState<ScholarInformationRow[]>([]);
@@ -277,6 +329,9 @@ function ScholarsInformationSubtab() {
   const [ageMinFilter, setAgeMinFilter] = useState("");
   const [ageMaxFilter, setAgeMaxFilter] = useState("");
   const [appliedFilters, setAppliedFilters] = useState<ScholarInformationFilters>(EMPTY_FILTERS);
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const activeFilterCount = Object.keys(appliedFilters).length;
 
@@ -343,6 +398,134 @@ function ScholarsInformationSubtab() {
 
   const activeColumns = INFO_COLUMNS.filter(c => visibleColumns.has(c.key));
 
+  /**
+   * Milestone 4a. Both exports share this same "Scholar ID, Name, then
+   * whatever's currently visible" column shape, built fresh from
+   * `activeColumns` on every call so a toggle in the column picker is
+   * reflected the next time either export button is pressed — never a
+   * stale snapshot of columns from an earlier open of the picker.
+   */
+  function buildExportColumns(): { label: string; value: (r: ScholarInformationRow) => string }[] {
+    return [
+      { label: "Scholar ID", value: (r: ScholarInformationRow) => r.scholarIdNumber },
+      { label: "Name", value: formatScholarName },
+      ...activeColumns.map(c => ({ label: c.label, value: (r: ScholarInformationRow) => formatInfoColumnValue(r, c.key, "") })),
+    ];
+  }
+
+  async function handleExportCsv() {
+    if (exportingCsv || exportingPdf || total === 0) return;
+    setExportError(null);
+    setExportingCsv(true);
+    try {
+      const allRows = await fetchAllScholarsInformationForExport(appliedFilters);
+      const columns = buildExportColumns();
+      const csvRows = allRows.map(r => columns.map(c => c.value(r)));
+      downloadCsv(`scholars-information-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(columns.map(c => c.label), csvRows));
+    } catch {
+      setExportError("CSV export failed — please try again.");
+    } finally {
+      setExportingCsv(false);
+    }
+  }
+
+  /**
+   * Hand-drawn table (no jspdf-autotable in this project — see the
+   * truncateToWidth helper above) rather than a table-plugin call.
+   * Landscape A4 to fit up to 9 columns (Scholar ID + Name + all 7
+   * optional columns) without cramming; Name gets extra column width
+   * since it's typically the longest value. Paginates automatically,
+   * repeating the header row on every new page, and stamps "Page X of Y"
+   * once the final page count is known.
+   */
+  async function handleExportPdf() {
+    if (exportingCsv || exportingPdf || total === 0) return;
+    setExportError(null);
+    setExportingPdf(true);
+    try {
+      const allRows = await fetchAllScholarsInformationForExport(appliedFilters);
+      const exportColumns = buildExportColumns();
+      const weights = exportColumns.map(c => (c.label === "Name" ? 1.6 : 1));
+
+      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const usableWidth = pageWidth - margin * 2;
+      const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+      const colWidths = weights.map(w => (w / totalWeight) * usableWidth);
+      const headerRowHeight = 7;
+      const dataRowHeight = 6.5;
+
+      function drawColumnHeader(y: number): number {
+        pdf.setFillColor(248, 250, 253);
+        pdf.rect(margin, y, usableWidth, headerRowHeight, "F");
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(8);
+        pdf.setTextColor(0, 136, 204);
+        let x = margin;
+        exportColumns.forEach((c, i) => {
+          pdf.text(truncateToWidth(pdf, c.label, colWidths[i] - 3), x + 1.5, y + headerRowHeight - 2);
+          x += colWidths[i];
+        });
+        return y + headerRowHeight;
+      }
+
+      // Title block.
+      let y = margin;
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(12);
+      pdf.setTextColor(6, 36, 68);
+      pdf.text("Scholars Information", margin, y);
+      y += 6;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(`Generated ${new Date().toLocaleString()} • ${allRows.length} scholar${allRows.length === 1 ? "" : "s"}`, margin, y);
+      y += 5;
+      pdf.text(describeAppliedFilters(appliedFilters), margin, y);
+      y += 6;
+
+      y = drawColumnHeader(y);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(51, 65, 85);
+
+      for (const row of allRows) {
+        if (y + dataRowHeight > pageHeight - margin) {
+          pdf.addPage();
+          y = drawColumnHeader(margin);
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(7.5);
+          pdf.setTextColor(51, 65, 85);
+        }
+        let x = margin;
+        exportColumns.forEach((c, i) => {
+          pdf.text(truncateToWidth(pdf, c.value(row), colWidths[i] - 3), x + 1.5, y + dataRowHeight - 2);
+          x += colWidths[i];
+        });
+        pdf.setDrawColor(240, 243, 248);
+        pdf.line(margin, y + dataRowHeight, margin + usableWidth, y + dataRowHeight);
+        y += dataRowHeight;
+      }
+
+      const pageCount = pdf.getNumberOfPages();
+      for (let p = 1; p <= pageCount; p++) {
+        pdf.setPage(p);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7.5);
+        pdf.setTextColor(148, 163, 184);
+        pdf.text(`Page ${p} of ${pageCount}`, pageWidth - margin, pageHeight - 4, { align: "right" });
+      }
+
+      pdf.save(`scholars-information-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch {
+      setExportError("PDF export failed — please try again.");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
@@ -357,7 +540,22 @@ function ScholarsInformationSubtab() {
             <RotateCcw size={12} /> Clear filters
           </button>
         )}
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={handleExportCsv} disabled={exportingCsv || exportingPdf || total === 0}
+            className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
+            <Download size={13} /> {exportingCsv ? "Exporting…" : "Export CSV"}
+          </button>
+          <button onClick={handleExportPdf} disabled={exportingCsv || exportingPdf || total === 0}
+            className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
+            <Download size={13} /> {exportingPdf ? "Exporting…" : "Export PDF"}
+          </button>
+        </div>
       </div>
+      {exportError && (
+        <p className="mb-3 flex items-center gap-1.5 text-[12px] font-semibold text-red-600">
+          <AlertTriangle size={13} /> {exportError}
+        </p>
+      )}
 
       {showFilters && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4 bg-white border border-[#e6ecf5] rounded-xl p-4">
@@ -449,10 +647,10 @@ function ScholarsInformationSubtab() {
               rows.map(r => (
                 <tr key={r.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
                   <td className="px-4 py-3 font-medium text-[#062444] whitespace-nowrap">{r.scholarIdNumber}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{r.lastName}, {r.firstName} {r.middleName}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{formatScholarName(r)}</td>
                   {activeColumns.map(c => (
                     <td key={c.key} className="px-4 py-3 text-slate-500 whitespace-nowrap">
-                      {c.key === "birthday" ? computeAge(r.birthday) : (r[c.key] || "—")}
+                      {formatInfoColumnValue(r, c.key, "—")}
                     </td>
                   ))}
                 </tr>

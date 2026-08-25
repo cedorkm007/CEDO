@@ -574,16 +574,29 @@ function isoDateYearsAgo(years: number): string {
   return target.toISOString().slice(0, 10);
 }
 
-export async function fetchScholarsInformationPage(
-  page: number, filters: ScholarInformationFilters = {}
-): Promise<{ items: ScholarInformationRow[]; total: number }> {
-  const from = (page - 1) * SCHOLARS_PAGE_SIZE;
-  let query = supabase.from("scholars")
-    .select("scholar_id_number, first_name, last_name, middle_name, year_level, school, barangay, course, birthday, civil_status, contact_no", { count: "exact" });
+const SCHOLAR_INFORMATION_SELECT =
+  "scholar_id_number, first_name, last_name, middle_name, year_level, school, barangay, course, birthday, civil_status, contact_no";
 
-  // Every filter below is ANDed together (chaining .eq/.ilike/.gte/.lte on
-  // one PostgREST query builder is AND by default) — "combinable filters"
-  // per the task, not a set of mutually-exclusive views.
+/**
+ * Applies every ScholarInformationFilters field to a query builder — the
+ * one place this filter logic lives, shared by fetchScholarsInformationPage
+ * (Milestone 3, paginated) and fetchAllScholarsInformationForExport
+ * (Milestone 4a, unpaginated) below, so the two can never drift on what
+ * "combinable filters" actually means. Generic over Q (rather than typed
+ * against the concrete Supabase PostgrestFilterBuilder type) purely so
+ * this file doesn't need to import that type by name; every one of these
+ * methods returns `this` on the real query builder, which satisfies the
+ * constraint below structurally.
+ */
+function applyScholarInformationFilters<
+  Q extends {
+    eq: (...args: any[]) => Q;
+    ilike: (...args: any[]) => Q;
+    or: (...args: any[]) => Q;
+    gt: (...args: any[]) => Q;
+    lte: (...args: any[]) => Q;
+  },
+>(query: Q, filters: ScholarInformationFilters): Q {
   const name = filters.name?.trim();
   if (name) {
     // One OR-group (matches ANY of the three name columns) that still ANDs
@@ -610,20 +623,73 @@ export async function fetchScholarsInformationPage(
   // turned ageMax+1.
   if (filters.ageMin !== undefined) query = query.lte("birthday", isoDateYearsAgo(filters.ageMin));
   if (filters.ageMax !== undefined) query = query.gt("birthday", isoDateYearsAgo(filters.ageMax + 1));
+  return query;
+}
+
+function mapScholarInformationRow(r: Record<string, unknown>): ScholarInformationRow {
+  return {
+    scholarIdNumber: String(r.scholar_id_number), firstName: String(r.first_name), lastName: String(r.last_name),
+    middleName: String(r.middle_name ?? ""), yearLevel: String(r.year_level ?? ""), school: String(r.school ?? ""),
+    barangay: String(r.barangay ?? ""), course: String(r.course ?? ""), birthday: String(r.birthday ?? ""),
+    civilStatus: String(r.civil_status ?? ""), contactNo: String(r.contact_no ?? ""),
+  };
+}
+
+export async function fetchScholarsInformationPage(
+  page: number, filters: ScholarInformationFilters = {}
+): Promise<{ items: ScholarInformationRow[]; total: number }> {
+  const from = (page - 1) * SCHOLARS_PAGE_SIZE;
+  let query = supabase.from("scholars").select(SCHOLAR_INFORMATION_SELECT, { count: "exact" });
+
+  // Every filter below is ANDed together (chaining .eq/.ilike/.gte/.lte on
+  // one PostgREST query builder is AND by default) — "combinable filters"
+  // per the task, not a set of mutually-exclusive views.
+  query = applyScholarInformationFilters(query, filters);
 
   const { data, error, count } = await query
     .order("last_name").order("first_name")
     .range(from, from + SCHOLARS_PAGE_SIZE - 1);
   if (error || !data) return { items: [], total: 0 };
-  return {
-    items: data.map(r => ({
-      scholarIdNumber: String(r.scholar_id_number), firstName: String(r.first_name), lastName: String(r.last_name),
-      middleName: String(r.middle_name ?? ""), yearLevel: String(r.year_level ?? ""), school: String(r.school ?? ""),
-      barangay: String(r.barangay ?? ""), course: String(r.course ?? ""), birthday: String(r.birthday ?? ""),
-      civilStatus: String(r.civil_status ?? ""), contactNo: String(r.contact_no ?? ""),
-    })),
-    total: count ?? data.length,
-  };
+  return { items: data.map(mapScholarInformationRow), total: count ?? data.length };
+}
+
+// Batch size for fetchAllScholarsInformationForExport below — deliberately
+// NOT the same as SCHOLARS_PAGE_SIZE (50). This isn't a UI page size, it's
+// how many rows one request pulls while looping to assemble a full export;
+// larger batches mean fewer round trips for a big filtered set.
+const EXPORT_FETCH_BATCH_SIZE = 1000;
+
+/**
+ * Milestone 4a (CSV/PDF export) — every row matching `filters`, not just
+ * one page. Confirmed with the person that export should cover the FULL
+ * filtered result set (could be far more than one page), not just the 50
+ * rows currently on screen.
+ *
+ * Loops in EXPORT_FETCH_BATCH_SIZE-row batches via the same
+ * applyScholarInformationFilters + .range() pattern
+ * fetchScholarsInformationPage uses, rather than a single unbounded query
+ * — PostgREST enforces its own default max-rows-per-request cap
+ * server-side regardless of what's asked for, so one .range()-less query
+ * would silently truncate once the filtered result set exceeds that cap.
+ * Looping keeps this correct at any roster size.
+ */
+export async function fetchAllScholarsInformationForExport(
+  filters: ScholarInformationFilters = {}
+): Promise<ScholarInformationRow[]> {
+  const all: ScholarInformationRow[] = [];
+  let from = 0;
+  for (;;) {
+    let query = supabase.from("scholars").select(SCHOLAR_INFORMATION_SELECT);
+    query = applyScholarInformationFilters(query, filters);
+    const { data, error } = await query
+      .order("last_name").order("first_name")
+      .range(from, from + EXPORT_FETCH_BATCH_SIZE - 1);
+    if (error || !data || data.length === 0) break;
+    all.push(...data.map(mapScholarInformationRow));
+    if (data.length < EXPORT_FETCH_BATCH_SIZE) break; // last (partial) batch — nothing more to fetch
+    from += EXPORT_FETCH_BATCH_SIZE;
+  }
+  return all;
 }
 
 export async function fetchScholars(search: string, page: number = 1): Promise<ScholarPage> {
