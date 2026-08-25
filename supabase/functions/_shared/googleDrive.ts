@@ -1,39 +1,26 @@
 // Minimal Google Drive folder find-or-create helper — Part 3 of the
-// Submission Activity feature (foundation only; actual file upload is
-// Part 4, not implemented here).
+// Submission Activity feature. This helper is shared by the folder-creation
+// and file-upload Edge Functions.
 //
-// Hand-rolls the service-account JWT-bearer OAuth exchange with Deno's
-// built-in Web Crypto instead of pulling in the googleapis npm package:
-// Edge Functions run on Deno, this sandbox has no network to verify an
-// esm.sh dependency actually resolves/works here, and the flow itself is
-// a few dozen lines — not worth the dependency risk for that.
+// Uses an OAuth 2 refresh-token exchange. A personal Gmail account cannot
+// give a bare service account its own Drive storage quota, whereas this
+// exchange acts as the office Google account that granted the application
+// access. Keep this module server-only: none of these secrets may reach the
+// browser.
 //
-// Requires three secrets (see docs/GOOGLE_DRIVE_SETUP.md for exact setup
+// Requires four secrets (see docs/GOOGLE_DRIVE_SETUP.md for exact setup
 // steps and placeholder values):
-//   GOOGLE_SERVICE_ACCOUNT_EMAIL
-//   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY   (PEM; see setup doc for the
-//     newline-escaping `supabase secrets set` needs for a multi-line value)
+//   GOOGLE_OAUTH_CLIENT_ID
+//   GOOGLE_OAUTH_CLIENT_SECRET
+//   GOOGLE_OAUTH_REFRESH_TOKEN
 //   GOOGLE_DRIVE_PARENT_FOLDER_ID
-//
-// The parent Drive folder must be shared with the service account's own
-// email as an Editor — a service account has no Drive storage of its own
-// to create anything in otherwise; sharing a real user's/Shared Drive
-// folder with it is the standard way around that.
-//
-// Never expose these secrets, or this module, to the frontend — it only
-// ever runs inside an Edge Function.
+// The parent folder must be created by this OAuth application while using
+// the `drive.file` scope; see docs/GOOGLE_DRIVE_SETUP.md.
 
 import { throwJsonError } from "./cors.ts";
 
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
-
-function base64UrlEncode(bytes: Uint8Array): string {
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
 
 /**
  * Google's API error responses share one shape: `{ error: { code,
@@ -41,7 +28,7 @@ function base64UrlEncode(bytes: Uint8Array): string {
  * driven by a Drive/OAuth response appends this to its own generic
  * message — e.g. "Failed to search Google Drive. (File not found:
  * 1AbC... .)" — so the actual cause (bad credentials, a parent folder ID
- * the service account can't see, a malformed request, a transient API
+ * the OAuth app cannot access, a malformed request, a transient API
  * error, etc.) is visible directly in the client-facing error message
  * instead of only in server-side logs a person may not have dashboard
  * access to check. Falls back to a JSON dump of whatever shape the
@@ -58,80 +45,43 @@ function driveErrorDetail(json: unknown): string {
   }
 }
 
-function pemToArrayBuffer(pem: string): ArrayBuffer {
-  // `supabase secrets set` stores whatever string it's given; a PEM's real
-  // newlines are commonly passed through as literal "\n" so the value
-  // survives as one line — accept either form.
-  const cleaned = pem
-    .replace(/\\n/g, "\n")
-    .replace(/-----BEGIN PRIVATE KEY-----/, "")
-    .replace(/-----END PRIVATE KEY-----/, "")
-    .replace(/\s+/g, "");
-  const binary = atob(cleaned);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
-}
-
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
 /**
- * Signs a short-lived service-account JWT and exchanges it for a Drive
- * access token. Cached in-memory for this function instance's lifetime as
- * a pure optimization for back-to-back calls on a warm instance — always
- * re-checked against its own expiry first, never assumed valid, and a
- * cold/new instance just re-fetches with no correctness difference either
- * way.
+ * Exchanges the long-lived OAuth refresh token for a short-lived Drive access
+ * token. The scope is deliberately chosen during the one-time OAuth consent
+ * setup (`drive.file`), not requested here. Cache only for this warm Edge
+ * Function instance and always leave one minute of expiry headroom.
  */
 export async function getGoogleAccessToken(): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   if (cachedToken && cachedToken.expiresAt - 60 > now) return cachedToken.value;
 
-  const email = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL");
-  const privateKeyPem = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
-  if (!email || !privateKeyPem) {
+  const clientId = Deno.env.get("GOOGLE_OAUTH_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_OAUTH_CLIENT_SECRET");
+  const refreshToken = Deno.env.get("GOOGLE_OAUTH_REFRESH_TOKEN");
+  if (!clientId || !clientSecret || !refreshToken) {
     throwJsonError("Google Drive credentials are not configured yet.", 500);
   }
-
-  const header = { alg: "RS256", typ: "JWT" };
-  const claim = { iss: email, scope: DRIVE_SCOPE, aud: TOKEN_URL, iat: now, exp: now + 3600 };
-  const encoder = new TextEncoder();
-  const unsigned =
-    `${base64UrlEncode(encoder.encode(JSON.stringify(header)))}.` +
-    `${base64UrlEncode(encoder.encode(JSON.stringify(claim)))}`;
-
-  let key: CryptoKey;
-  try {
-    key = await crypto.subtle.importKey(
-      "pkcs8",
-      pemToArrayBuffer(privateKeyPem),
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["sign"],
-    );
-  } catch (thrown) {
-    console.error("Failed to import Google service account private key:", thrown);
-    throwJsonError("Google Drive credentials are misconfigured.", 500);
-  }
-
-  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, encoder.encode(unsigned));
-  const jwt = `${unsigned}.${base64UrlEncode(new Uint8Array(signature))}`;
 
   const tokenRes = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
+      grant_type: "refresh_token",
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
     }),
   });
-  const tokenJson = await tokenRes.json();
-  if (!tokenRes.ok || !tokenJson.access_token) {
+  const tokenJson: { access_token?: unknown; expires_in?: unknown } = await tokenRes.json().catch(() => ({}));
+  if (!tokenRes.ok || typeof tokenJson.access_token !== "string" || !tokenJson.access_token) {
     console.error("Google token exchange failed:", tokenJson);
     throwJsonError(`Failed to authenticate with Google Drive. (${driveErrorDetail(tokenJson)})`, 502);
   }
 
-  cachedToken = { value: tokenJson.access_token, expiresAt: now + (tokenJson.expires_in ?? 3600) };
+  const expiresIn = Number(tokenJson.expires_in);
+  cachedToken = { value: tokenJson.access_token, expiresAt: now + (Number.isFinite(expiresIn) ? expiresIn : 3600) };
   return cachedToken.value;
 }
 
