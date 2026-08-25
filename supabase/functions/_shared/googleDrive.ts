@@ -35,6 +35,29 @@ function base64UrlEncode(bytes: Uint8Array): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+/**
+ * Google's API error responses share one shape: `{ error: { code,
+ * message, errors: [...] } }`. Every throwJsonError call below that's
+ * driven by a Drive/OAuth response appends this to its own generic
+ * message — e.g. "Failed to search Google Drive. (File not found:
+ * 1AbC... .)" — so the actual cause (bad credentials, a parent folder ID
+ * the service account can't see, a malformed request, a transient API
+ * error, etc.) is visible directly in the client-facing error message
+ * instead of only in server-side logs a person may not have dashboard
+ * access to check. Falls back to a JSON dump of whatever shape the
+ * response actually had if it doesn't match Google's usual one, rather
+ * than silently dropping the detail.
+ */
+function driveErrorDetail(json: unknown): string {
+  const message = (json as { error?: { message?: unknown } } | null)?.error?.message;
+  if (typeof message === "string" && message.trim()) return message;
+  try {
+    return JSON.stringify(json);
+  } catch {
+    return "unknown error";
+  }
+}
+
 function pemToArrayBuffer(pem: string): ArrayBuffer {
   // `supabase secrets set` stores whatever string it's given; a PEM's real
   // newlines are commonly passed through as literal "\n" so the value
@@ -105,7 +128,7 @@ export async function getGoogleAccessToken(): Promise<string> {
   const tokenJson = await tokenRes.json();
   if (!tokenRes.ok || !tokenJson.access_token) {
     console.error("Google token exchange failed:", tokenJson);
-    throwJsonError("Failed to authenticate with Google Drive.", 502);
+    throwJsonError(`Failed to authenticate with Google Drive. (${driveErrorDetail(tokenJson)})`, 502);
   }
 
   cachedToken = { value: tokenJson.access_token, expiresAt: now + (tokenJson.expires_in ?? 3600) };
@@ -168,7 +191,7 @@ export async function findOrCreateFolder(accessToken: string, name: string, pare
   const listJson = await listRes.json();
   if (!listRes.ok) {
     console.error("Drive folder search failed:", listJson);
-    throwJsonError("Failed to search Google Drive.", 502);
+    throwJsonError(`Failed to search Google Drive. (${driveErrorDetail(listJson)})`, 502);
   }
   const existingId = listJson.files?.[0]?.id;
   if (existingId) return existingId as string;
@@ -181,7 +204,7 @@ export async function findOrCreateFolder(accessToken: string, name: string, pare
   const createJson = await createRes.json();
   if (!createRes.ok || !createJson.id) {
     console.error("Drive folder create failed:", createJson);
-    throwJsonError("Failed to create a folder in Google Drive.", 502);
+    throwJsonError(`Failed to create a folder in Google Drive. (${driveErrorDetail(createJson)})`, 502);
   }
   return createJson.id as string;
 }
@@ -216,7 +239,7 @@ export async function findAvailableFileName(
     const listJson = await listRes.json();
     if (!listRes.ok) {
       console.error("Drive file-name availability search failed:", listJson);
-      throwJsonError("Failed to check Google Drive for existing files.", 502);
+      throwJsonError(`Failed to check Google Drive for existing files. (${driveErrorDetail(listJson)})`, 502);
     }
     if (!listJson.files || listJson.files.length === 0) return candidate;
     candidate = `${baseName}_${suffix}${extension}`;
@@ -263,7 +286,7 @@ export async function uploadFile(
   const uploadJson = await uploadRes.json();
   if (!uploadRes.ok || !uploadJson.id) {
     console.error("Drive file upload failed:", uploadJson);
-    throwJsonError("Failed to upload the file to Google Drive.", 502);
+    throwJsonError(`Failed to upload the file to Google Drive. (${driveErrorDetail(uploadJson)})`, 502);
   }
   return uploadJson.id as string;
 }

@@ -60,7 +60,17 @@ function rowToMaterial(row: Record<string, unknown>): FormMaterial {
  */
 export async function fetchFormMaterialsForScholar(): Promise<FormMaterial[]> {
   const { data, error } = await supabase.rpc("get_my_form_materials");
-  if (error || !data) return [];
+  if (error || !data) {
+    // Surfaced to the console (not to the scholar — a failed background
+    // fetch degrading to "no materials shown" is the right silent
+    // fallback for them), matching the same "don't silently swallow the
+    // real error" fix already applied to the Submission Activities
+    // Google Drive chain. Without this, a real RPC/Postgres error (wrong
+    // column, missing function, RLS issue, etc.) was previously
+    // indistinguishable from "the scholar genuinely has zero materials."
+    if (error) console.error("get_my_form_materials failed:", error);
+    return [];
+  }
   return (data as Record<string, unknown>[]).map(rowToMaterial);
 }
 
@@ -144,7 +154,15 @@ function rowToNotification(row: Record<string, unknown>): FormUnlockNotification
  */
 export async function syncAndFetchUnreadFormUnlockNotifications(): Promise<FormUnlockNotification[]> {
   const { data, error } = await supabase.rpc("sync_and_get_my_form_unlock_notifications");
-  if (error || !data) return [];
+  if (error || !data) {
+    // Same fix as fetchFormMaterialsForScholar above, and for the same
+    // reason: this specific 400 is exactly what this line was hiding
+    // before this fix — the real Postgrest/Postgres error was being
+    // discarded, so it never reached the browser console at all, only a
+    // generic network-level "400" with no body shown anywhere.
+    if (error) console.error("sync_and_get_my_form_unlock_notifications failed:", error);
+    return [];
+  }
   return (data as Record<string, unknown>[]).map(rowToNotification);
 }
 
