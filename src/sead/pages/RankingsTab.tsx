@@ -54,7 +54,12 @@ export function RankingsTab() {
       barangay: locationMode === "barangay" && barangay ? barangay : undefined,
       barangayIn: clusterBarangays,
     });
-    setRows(result);
+    // Milestone 5 (backend error channel) changed this function's return
+    // shape from a bare array to { rows, error }. This is the minimal
+    // change needed to keep compiling — result.error is intentionally not
+    // surfaced anywhere yet; that's Milestone 6 (UI error display), not
+    // this one.
+    setRows(result.rows);
     setRowsLoading(false);
   }
 

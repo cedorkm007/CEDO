@@ -123,7 +123,7 @@ export interface RankingRow {
 }
 
 /** Top scorers for one subject, optionally filtered by year level / school / cluster (via barangayIn) / barangay. */
-export async function fetchSubjectRankings(subjectId: string, filters: RankingFilters = {}): Promise<RankingRow[]> {
+export async function fetchSubjectRankings(subjectId: string, filters: RankingFilters = {}): Promise<{ rows: RankingRow[]; error: string | null }> {
   // scholar_subject_progress can hold more rows for a popular subject than
   // Supabase/PostgREST's default 1,000-row response cap, so this pages
   // through with .range() instead of a single .select() — same pattern as
@@ -137,13 +137,13 @@ export async function fetchSubjectRankings(subjectId: string, filters: RankingFi
         .eq("subject_id", subjectId).gt("topic_count", 0)
         .order("scholar_id_number")
         .range(from, from + pageSize - 1);
-      if (error) return [];
+      if (error) return { rows: [], error: error.message };
       if (!data || data.length === 0) break;
       progress.push(...data);
       if (data.length < pageSize) break;
     }
   }
-  if (progress.length === 0) return [];
+  if (progress.length === 0) return { rows: [], error: null };
 
   // Same response-cap reasoning applies to the matching scholars — an
   // .in() filter is still subject to the same cap, so this pages through
@@ -162,13 +162,13 @@ export async function fetchSubjectRankings(subjectId: string, filters: RankingFi
       if (filters.barangay) scholarQuery = scholarQuery.eq("barangay", filters.barangay);
       if (filters.barangayIn) scholarQuery = scholarQuery.in("barangay", filters.barangayIn);
       const { data, error } = await scholarQuery.range(from, from + pageSize - 1);
-      if (error) return [];
+      if (error) return { rows: [], error: error.message };
       if (!data || data.length === 0) break;
       scholars.push(...data);
       if (data.length < pageSize) break;
     }
   }
-  if (scholars.length === 0) return [];
+  if (scholars.length === 0) return { rows: [], error: null };
 
   const progressByScholarId = new Map(progress.map(p => [p.scholar_id_number, p]));
   const rows = scholars
@@ -183,7 +183,7 @@ export async function fetchSubjectRankings(subjectId: string, filters: RankingFi
     .sort((a, b) => b.subjectPercentage - a.subjectPercentage)
     .map((r, i) => ({ ...r, rank: i + 1 }));
 
-  return filters.topN ? rows.slice(0, filters.topN) : rows;
+  return { rows: filters.topN ? rows.slice(0, filters.topN) : rows, error: null };
 }
 
 /** Distinct year levels already on scholars' profiles, for the Rankings filter dropdown. */
@@ -209,6 +209,12 @@ export interface SubjectProgressPageResult {
   notPassedCount: number;
   passingRateMin: number;
   passingRateMax: number;
+  /** null on success. Distinguishes a real failure from "nobody's enrolled
+   * yet" — see ScoreSearchResult.error for why this matters here specifically:
+   * on failure, passingRateMin/Max used to silently fall back to 75/100,
+   * which could show a WRONG passing-rate range next to a subject that has a
+   * different configured one, not just an empty list. */
+  error: string | null;
 }
 
 export type PassedFilter = "all" | "passed" | "not_passed";
@@ -234,7 +240,12 @@ export async function fetchSubjectProgressPage(
     p_limit: pageSize,
     p_offset: (page - 1) * pageSize,
   });
-  if (error || !data) return { rows: [], totalCount: 0, passedCount: 0, notPassedCount: 0, passingRateMin: 75, passingRateMax: 100 };
+  if (error || !data) {
+    return {
+      rows: [], totalCount: 0, passedCount: 0, notPassedCount: 0, passingRateMin: 75, passingRateMax: 100,
+      error: error?.message ?? "Something went wrong loading passing rate progress. Please try again.",
+    };
+  }
 
   const rows = (data as Record<string, unknown>[]).map(r => ({
     scholarIdNumber: String(r.scholar_id_number),
@@ -251,6 +262,7 @@ export async function fetchSubjectProgressPage(
     notPassedCount: Number(first?.not_passed_count ?? 0),
     passingRateMin: Number(first?.passing_rate_min ?? 75),
     passingRateMax: Number(first?.passing_rate_max ?? 100),
+    error: null,
   };
 }
 
@@ -1119,6 +1131,12 @@ export interface ScoreSearchResult {
   totalCount: number;
   distinctScholarCount: number;
   avgPercentage: number;
+  /** null on success. A real RPC failure (network, migration not run, bad
+   * params, etc.) now reaches the caller distinguishably from "zero attempt
+   * records genuinely match these filters" — both used to collapse into the
+   * exact same empty-looking result, which a staff member had no way to
+   * tell apart from the UI. */
+  error: string | null;
 }
 
 /**
@@ -1141,7 +1159,12 @@ export async function searchQuestScores(filters: ScoreFilters, page: number, pag
     p_limit: pageSize,
     p_offset: (page - 1) * pageSize,
   });
-  if (error || !data) return { rows: [], totalCount: 0, distinctScholarCount: 0, avgPercentage: 0 };
+  if (error || !data) {
+    return {
+      rows: [], totalCount: 0, distinctScholarCount: 0, avgPercentage: 0,
+      error: error?.message ?? "Something went wrong loading scores. Please try again.",
+    };
+  }
 
   const rowsData = data as unknown as Record<string, unknown>[];
   const rows: ScoreRow[] = rowsData.map(r => ({
@@ -1162,5 +1185,6 @@ export async function searchQuestScores(filters: ScoreFilters, page: number, pag
     totalCount: first ? Number(first.total_count ?? 0) : 0,
     distinctScholarCount: first ? Number(first.distinct_scholar_count ?? 0) : 0,
     avgPercentage: first?.avg_percentage != null ? Math.round(Number(first.avg_percentage)) : 0,
+    error: null,
   };
 }
