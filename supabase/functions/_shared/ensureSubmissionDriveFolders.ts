@@ -1,12 +1,18 @@
-// Part 4. Shared "find or create the Parent Folder / Activity Name /
-// Scholar Year Level / structure, using the submission_drive_folders
-// cache table" logic — originally written inline in Part 3's
-// submission-ensure-drive-folder/index.ts. Extracted here so Part 4's
-// submission-upload-file can reuse the exact same idempotent
+// Shared "find or create the Parent Folder / Activity Name / Scholar
+// Year Level / structure, using the submission_drive_folders cache
+// table" logic — originally written inline in Part 3's now-removed
+// submission-ensure-drive-folder Edge Function, then extracted here so
+// Part 4's submission-upload-file could reuse the exact same idempotent
 // find-or-create + cache + race-handling behavior instead of a second,
-// possibly-drifting copy. submission-ensure-drive-folder has been
-// refactored to call this too — its request/response contract is
-// unchanged from Part 3.
+// possibly-drifting copy.
+//
+// submission-ensure-drive-folder itself was REMOVED in Milestone 2 of
+// the OAuth2 migration task: nothing in the frontend ever called it
+// (grepped and confirmed twice, across two separate sessions) — folder
+// creation has always actually happened lazily, inside
+// submission-upload-file's own call to this file, on first upload. This
+// file's own logic and this function's contract are unchanged by that
+// removal; it's called from exactly one place now instead of two.
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { findOrCreateFolder, sanitizeDriveFolderName } from "./googleDrive.ts";
 import { throwJsonError } from "./cors.ts";

@@ -5,14 +5,19 @@
 -- FOUNDATION only (per this round's scope): no scholar file upload yet,
 -- that's Part 4. This migration adds exactly one table:
 --
---   submission_drive_folders — caches the Google Drive folder ids the new
---     submission-ensure-drive-folder Edge Function creates/reuses, one row
---     per (activity, scholar year level) pair. Repeated calls — a second
---     scholar in the same year level, the same scholar calling again, or
---     a second year level under the same activity — never create
---     duplicate "Activity Name" or "Year Level" folders in Drive.
+--   submission_drive_folders — caches the Google Drive folder ids
+--     supabase/functions/_shared/ensureSubmissionDriveFolders.ts
+--     creates/reuses (called from submission-upload-file on first
+--     upload — Milestone 2 of the OAuth2 migration task removed the
+--     separate submission-ensure-drive-folder Edge Function this
+--     originally referenced, since nothing in the frontend ever called
+--     it), one row per (activity, scholar year level) pair. Repeated
+--     calls — a second scholar in the same year level, the same scholar
+--     calling again, or a second year level under the same activity —
+--     never create duplicate "Activity Name" or "Year Level" folders in
+--     Drive.
 --
--- The real duplicate-prevention mechanism is the Edge Function's
+-- The real duplicate-prevention mechanism is that helper's own
 -- search-by-name-before-create call into the Drive API itself (see
 -- supabase/functions/_shared/googleDrive.ts's findOrCreateFolder) — this
 -- table is a fast path that skips the Drive API entirely on a cache hit,

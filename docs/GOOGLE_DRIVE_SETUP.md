@@ -87,15 +87,20 @@ publishing does not require restricted-scope verification.
 
 ## 5. Deploy the Edge Functions
 
-Deploy both functions after the secrets are configured:
+Deploy the function after the secrets are configured:
 
 ```powershell
-supabase functions deploy submission-ensure-drive-folder
 supabase functions deploy submission-upload-file
 ```
 
-Both import `supabase/functions/_shared/googleDrive.ts`, so both must be
-redeployed. No database migration is required for this authentication change.
+Only `submission-upload-file` needs deploying — it imports
+`supabase/functions/_shared/googleDrive.ts` directly, and it's the only
+Edge Function that does (the separate `submission-ensure-drive-folder`
+function from earlier in this project was removed: nothing in the
+frontend ever called it, so it never actually pre-warmed anything —
+Drive folder creation has always happened lazily, on first upload,
+inside `submission-upload-file` itself). No database migration is
+required for this authentication change.
 
 ## Verify the result
 

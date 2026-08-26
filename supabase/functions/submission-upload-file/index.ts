@@ -8,8 +8,12 @@
 //      boundary that actually matters (spec: "Enforce file type and
 //      file-count rules again on the server, not only in the UI").
 //   3. Ensures the Parent Folder / Activity Name / Scholar Year Level /
-//      structure exists (shared with Part 3's submission-ensure-drive-folder
-//      via ../_shared/ensureSubmissionDriveFolders.ts).
+//      structure exists, lazily, on this first upload (see
+//      ../_shared/ensureSubmissionDriveFolders.ts — this is the ONLY
+//      caller of that shared helper as of Milestone 2 of the OAuth2
+//      migration task, which removed the separate
+//      submission-ensure-drive-folder Edge Function since nothing in the
+//      frontend ever called it).
 //   4. Renames the file to ActivityName_ScholarLastName_ScholarFirstName
 //      (+ extension), appending _2/_3/... if that name is already taken
 //      in the destination folder (checked live against Drive — see
@@ -69,10 +73,8 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: `File is too large — the limit is ${Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024))} MB.` }, 400);
     }
 
-    // Re-derive activity + applicability server-side — same check as
-    // submission-ensure-drive-folder, duplicated rather than imported
-    // from there since that function's own job is folder-ensuring, not
-    // being a general-purpose "check applicability" library call.
+    // Re-derive activity + applicability server-side — never trust the
+    // client's word for either.
     const { data: activity, error: activityError } = await admin
       .from("submission_activities")
       .select("id, name, all_year_levels, target_year_levels")

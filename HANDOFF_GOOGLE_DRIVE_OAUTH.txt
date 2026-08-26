@@ -1,0 +1,92 @@
+HANDOFF NOTE — Google Drive OAuth2 delegation for Submission Activities
+
+STATUS: CODE AND DOCUMENTATION COMPLETE; LIVE GOOGLE/SUPABASE SETUP PENDING.
+
+WHY THIS CHANGE WAS NEEDED
+The previous Google Drive upload setup used a service account. A personal Gmail
+account cannot give a bare service account Drive storage quota, which caused
+Google's “Service Accounts do not have storage quota” upload error.
+
+WHAT WAS CHANGED IN THIS WORKSPACE
+1. supabase/functions/_shared/googleDrive.ts
+   - Replaced the service-account JWT/PEM authentication flow with a standard
+     OAuth2 refresh-token exchange against https://oauth2.googleapis.com/token.
+   - Removed the old service-account-only code:
+       GOOGLE_SERVICE_ACCOUNT_EMAIL  
+       GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+       DRIVE_SCOPE
+       pemToArrayBuffer()
+       base64UrlEncode()
+   - The shared helper now reads these four server-side Supabase secrets:
+       GOOGLE_OAUTH_CLIENT_ID
+       GOOGLE_OAUTH_CLIENT_SECRET
+       GOOGLE_OAUTH_REFRESH_TOKEN
+       GOOGLE_DRIVE_PARENT_FOLDER_ID
+   - The existing folder creation, Drive upload, duplicate filename handling,
+     and Drive API error reporting were intentionally left unchanged.
+
+2. docs/GOOGLE_DRIVE_SETUP.md
+   - Rewritten with the full personal-Gmail OAuth2 setup process.
+   - Uses the non-sensitive scope:
+       https://www.googleapis.com/auth/drive.file
+   - Explains that the parent folder must be created through the same OAuth
+     client/token flow, rather than reusing the old manually-created or
+     service-account folder.
+
+NO DATABASE MIGRATION IS NEEDED FOR THIS AUTHENTICATION CHANGE.
+
+USER ACTIONS STILL REQUIRED
+These actions need the office Google account and Supabase project access; no AI
+can perform them without those credentials.
+
+1. Follow docs/GOOGLE_DRIVE_SETUP.md exactly:
+   - Enable Google Drive API.
+   - Create an External OAuth Web Application client.
+   - Add https://developers.google.com/oauthplayground as its redirect URI.
+   - Configure ONLY https://www.googleapis.com/auth/drive.file.
+   - Use OAuth Playground with “Use your own OAuth credentials”.
+   - Authorize the office Google account and copy the refresh token.
+   - Create a NEW top-level parent folder through that OAuth Playground
+     session and copy the returned folder id.
+   - Publish the OAuth consent screen to Production.
+
+2. Set the four Supabase secrets:
+   supabase secrets set GOOGLE_OAUTH_CLIENT_ID="..."
+   supabase secrets set GOOGLE_OAUTH_CLIENT_SECRET="..."
+   supabase secrets set GOOGLE_OAUTH_REFRESH_TOKEN="..."
+   supabase secrets set GOOGLE_DRIVE_PARENT_FOLDER_ID="..."
+
+3. Redeploy BOTH Edge Functions, because both import the shared helper:
+   supabase functions deploy submission-ensure-drive-folder
+   supabase functions deploy submission-upload-file
+
+4. After one successful upload, remove the obsolete service-account secrets
+   from Supabase if they remain configured.
+
+HOW TO VERIFY AFTER DEPLOYMENT
+1. Sign in as a scholar who has an unlocked Submission Activity.
+2. Select an allowed document and click Submit.
+3. Confirm a Drive structure is created:
+   <OAuth-created parent folder>/<Activity Name>/<Year Level>/<renamed file>
+4. Confirm rows appear in both public.submission_drive_folders and
+   public.submission_uploads.
+5. Confirm the Scholar Portal shows the upload after a page refresh.
+6. Test one invalid file type and confirm it is rejected before/at upload.
+
+IF UPLOAD STILL FAILS
+Give the next AI the exact browser/API error text. Check, in order:
+1. The OAuth client ID, secret, refresh token, and parent folder ID are set in
+   the SAME Supabase project as the deployed Edge Functions.
+2. The refresh token came from the office account using this OAuth client, not
+   OAuth Playground's default client.
+3. The parent folder is the NEW folder created through that same OAuth session.
+4. Both Edge Functions were redeployed after the secrets were set.
+5. The OAuth consent screen is published to Production.
+
+VERIFICATION COMPLETED LOCALLY
+- git diff --check passed.
+- Search confirmed no runtime code still reads the old service-account secret
+  names. They only appear in the setup guide as removal instructions.
+- npm/Vercel build was NOT run locally because node_modules is absent.
+- No live Google Drive or Supabase verification was possible because OAuth
+  credentials and project access are not available in this workspace.
