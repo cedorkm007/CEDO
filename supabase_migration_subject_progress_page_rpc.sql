@@ -48,7 +48,7 @@ declare
   v_min numeric;
   v_max numeric;
 begin
-  select coalesce(passing_rate_min, 75), coalesce(passing_rate_max, 100)
+  select coalesce(quest_subjects.passing_rate_min, 75), coalesce(quest_subjects.passing_rate_max, 100)
     into v_min, v_max
     from quest_subjects where id = p_subject_id;
 
