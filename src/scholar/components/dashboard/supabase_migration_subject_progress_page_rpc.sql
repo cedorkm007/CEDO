@@ -18,8 +18,16 @@
 -- reinterpreted — so results before and after this migration match for
 -- the same data.
 --
--- Safe to re-run — create or replace throughout.
+-- Safe to re-run — the DROP below uses IF EXISTS and everything after it
+-- is create or replace / revoke-then-grant.
 -- ─────────────────────────────────────────────────────────────
+
+-- Required specifically because this version changes topic_count's
+-- declared type (integer -> bigint, to match what count(*) actually
+-- returns from the underlying view) — CREATE OR REPLACE FUNCTION cannot
+-- change an existing function's OUT-parameter row type on its own;
+-- Postgres requires the old signature dropped first.
+drop function if exists public.subject_progress_page(uuid, text, integer, integer);
 
 create or replace function public.subject_progress_page(
   p_subject_id uuid,
@@ -30,7 +38,7 @@ create or replace function public.subject_progress_page(
 returns table (
   scholar_id_number text,
   scholar_name text,
-  topic_count integer,
+  topic_count bigint,
   subject_percentage numeric,
   passed boolean,
   total_count bigint,
