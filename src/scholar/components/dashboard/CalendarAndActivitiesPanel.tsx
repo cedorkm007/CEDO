@@ -154,16 +154,16 @@ export function CalendarAndActivitiesPanel({ onNavigateToForms }: { onNavigateTo
     <SectionCard icon={<CalendarIcon size={14} />} title="Calendar and Activities">
       <div className="flex gap-2 mb-5">
         <button onClick={() => setTab("calendar")}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-bold ${tab === "calendar" ? "bg-[#062444] text-white" : "bg-[#f7f9fc] text-slate-500 hover:bg-[#eef3fb]"}`}>
-          <CalendarIcon size={14} /> Calendar
+          className={`flex flex-1 items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[12.5px] font-bold ${tab === "calendar" ? "bg-[#062444] text-white" : "bg-[#f7f9fc] text-slate-500 hover:bg-[#eef3fb]"}`}>
+          <CalendarIcon size={14} className="shrink-0" /> Calendar
         </button>
         <button onClick={() => setTab("activities")}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-bold ${tab === "activities" ? "bg-[#062444] text-white" : "bg-[#f7f9fc] text-slate-500 hover:bg-[#eef3fb]"}`}>
-          <ClipboardList size={14} /> Activities
+          className={`flex flex-1 items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[12.5px] font-bold ${tab === "activities" ? "bg-[#062444] text-white" : "bg-[#f7f9fc] text-slate-500 hover:bg-[#eef3fb]"}`}>
+          <ClipboardList size={14} className="shrink-0" /> Activities
         </button>
         <button onClick={() => setTab("attendance")}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-bold ${tab === "attendance" ? "bg-[#062444] text-white" : "bg-[#f7f9fc] text-slate-500 hover:bg-[#eef3fb]"}`}>
-          <QrCode size={14} /> Attendance
+          className={`flex flex-1 items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[12.5px] font-bold ${tab === "attendance" ? "bg-[#062444] text-white" : "bg-[#f7f9fc] text-slate-500 hover:bg-[#eef3fb]"}`}>
+          <QrCode size={14} className="shrink-0" /> Attendance
         </button>
       </div>
 
