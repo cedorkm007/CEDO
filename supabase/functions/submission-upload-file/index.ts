@@ -8,12 +8,15 @@
 //      boundary that actually matters (spec: "Enforce file type and
 //      file-count rules again on the server, not only in the UI").
 //   3. Ensures the Parent Folder / Activity Name / Scholar Year Level /
-//      structure exists, lazily, on this first upload (see
+//      School / structure exists, lazily, on this first upload (see
 //      ../_shared/ensureSubmissionDriveFolders.ts — this is the ONLY
 //      caller of that shared helper as of Milestone 2 of the OAuth2
 //      migration task, which removed the separate
 //      submission-ensure-drive-folder Edge Function since nothing in the
-//      frontend ever called it).
+//      frontend ever called it). The School level was added in
+//      Milestone 1 of the "Drive folder reorganization + submission
+//      monitoring" task — see that migration's own header comment for
+//      why the underlying cache table's `school` column is nullable.
 //   4. Renames the file to ActivityName_ScholarLastName_ScholarFirstName
 //      (+ extension), appending _2/_3/... if that name is already taken
 //      in the destination folder (checked live against Drive — see
@@ -84,6 +87,7 @@ Deno.serve(async (req: Request) => {
 
     const yearLevel = scholar.yearLevel.trim();
     if (!yearLevel) return jsonResponse({ error: "Your account has no year level set — contact SEAD staff." }, 400);
+    const school = scholar.school.trim();
 
     const targetYearLevels = (activity.target_year_levels as string[] | null) ?? [];
     const isApplicable = Boolean(activity.all_year_levels) || targetYearLevels.includes(yearLevel);
@@ -150,8 +154,8 @@ Deno.serve(async (req: Request) => {
     // already-resolved thunk instead of letting it fetch a second one on
     // a miss.
     const accessToken = await getGoogleAccessToken();
-    const { yearLevelFolderId } = await ensureSubmissionDriveFolders(
-      admin, parentFolderId, activityId, activity.name as string, yearLevel, () => Promise.resolve(accessToken),
+    const { schoolFolderId } = await ensureSubmissionDriveFolders(
+      admin, parentFolderId, activityId, activity.name as string, yearLevel, school, () => Promise.resolve(accessToken),
     );
 
     const extension = fileExtension(file.name);
@@ -161,11 +165,11 @@ Deno.serve(async (req: Request) => {
       sanitizeFileNameComponent(scholar.firstName),
     ].filter(Boolean).join("_") || "Submission";
 
-    const renamedFileName = await findAvailableFileName(accessToken, yearLevelFolderId, baseName, extension);
+    const renamedFileName = await findAvailableFileName(accessToken, schoolFolderId, baseName, extension);
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     const mimeType = file.type || "application/octet-stream";
-    const driveFileId = await uploadFile(accessToken, yearLevelFolderId, renamedFileName, mimeType, bytes);
+    const driveFileId = await uploadFile(accessToken, schoolFolderId, renamedFileName, mimeType, bytes);
 
     const { data: inserted, error: insertError } = await admin
       .from("submission_uploads")

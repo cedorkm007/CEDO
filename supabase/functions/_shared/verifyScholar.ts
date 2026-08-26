@@ -22,6 +22,8 @@ export interface VerifiedScholar {
   firstName: string;
   lastName: string;
   yearLevel: string;
+  /** scholars.school, exactly as stored — '' if unset, never null/undefined. Not pre-trimmed, matching yearLevel's own convention (trimmed by the caller instead — see submission-upload-file/index.ts). */
+  school: string;
 }
 
 export async function requireScholar(req: Request): Promise<{ admin: SupabaseClient; scholar: VerifiedScholar }> {
@@ -48,7 +50,7 @@ export async function requireScholar(req: Request): Promise<{ admin: SupabaseCli
 
   const { data: scholarRow, error: scholarError } = await admin
     .from("scholars")
-    .select("id, first_name, last_name, year_level")
+    .select("id, first_name, last_name, year_level, school")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -63,6 +65,7 @@ export async function requireScholar(req: Request): Promise<{ admin: SupabaseCli
       firstName: (scholarRow.first_name as string) ?? "",
       lastName: (scholarRow.last_name as string) ?? "",
       yearLevel: (scholarRow.year_level as string) ?? "",
+      school: (scholarRow.school as string) ?? "",
     },
   };
 }
