@@ -48,7 +48,7 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
-type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "staffAccounts";
+export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "staffAccounts";
 
 /** "Scholar Management Tools" (question bank + scholar accounts) is now gated by
  *  the "scholar_management" tag (see src/app/staffToolTags.ts) instead of a fixed
@@ -95,7 +95,7 @@ type DailyStatus = "pending" | "submitted" | "approved" | "returned" | "finished
  *  super_admin = department-wide admin (sees/manages every division). */
 export type UserRole = "staff" | "division_admin" | "super_admin";
 
-interface UserProfile {
+export interface UserProfile {
   id: string; username: string; lastName: string; firstName: string;
   middleName: string; suffix: string; nickname: string; designation: string;
   position: string; natureOfWork: string; mobilePhone: string; email: string;
