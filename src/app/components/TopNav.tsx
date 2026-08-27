@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { Home, Bell, LogOut } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
+import { SidebarTrigger } from "@/app/components/ui/sidebar";
 import { DIVISIONS, type Page, type UserProfile } from "@/app/App";
 
 /**
@@ -30,6 +31,17 @@ import { DIVISIONS, type Page, type UserProfile } from "@/app/App";
  * wire it in as-is once the sidebar exists, or wire it in now alongside a
  * temporary interim access path for the relocated items, without
  * touching this file's own logic either way.
+ *
+ * Milestone 3 addition: now renders <SidebarTrigger /> (hamburger button,
+ * mobile-only) from the shadcn sidebar primitive at
+ * src/app/components/ui/sidebar.tsx — see src/app/components/Sidebar.tsx
+ * for why context (not new isOpen/onClose props) is the coordination
+ * mechanism. RUNTIME DEPENDENCY worth knowing before wiring this in:
+ * SidebarTrigger calls useSidebar() internally, which throws if this
+ * component is ever rendered outside a <SidebarProvider> ancestor. Not an
+ * issue yet — this file isn't live-rendered anywhere this round either —
+ * but whichever milestone wires both this and <AppSidebar /> into App.tsx
+ * must wrap both inside one shared <SidebarProvider>.
  */
 export function TopNav({ user, page, setPage, onSignOut, unreadCount }: {
   user: UserProfile; page: Page; setPage: (p: Page) => void; onSignOut: () => void; unreadCount: number;
@@ -46,6 +58,10 @@ export function TopNav({ user, page, setPage, onSignOut, unreadCount }: {
     <header className="fixed top-0 left-0 right-0 z-40 bg-primary shadow-lg">
       <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
         <div className="flex items-center gap-2.5 min-w-0">
+          {/* Hidden at md+ (same breakpoint the sidebar itself switches
+              on) — desktop shows the sidebar permanently, so there's
+              nothing to toggle there. */}
+          <SidebarTrigger className="md:hidden text-white/70 hover:text-white hover:bg-white/10 [&_svg]:text-white/70 [&:hover_svg]:text-white" />
           <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-accent flex-shrink-0 bg-white">
             <ImageWithFallback src={division.logo} alt={division.shortName} className="w-full h-full object-cover" />
           </div>
