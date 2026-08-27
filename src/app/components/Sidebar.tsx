@@ -121,6 +121,29 @@ import { DIVISIONS, FORM_TYPES, IT_ADMIN_USERNAME, type Page, type UserProfile }
  * check too, exactly like Admin Management inside Region B's own
  * `user.isAdmin` gate — a user can have any subset of these 5 tags, not
  * all-or-nothing.
+ *
+ * Post-Milestone-7 browser-review revisions (Revisions 1, 2, 6): "My
+ * Tasks" is now ALSO in the top nav (TopNav.tsx) — kept here too, per
+ * the review note's own stated default of keeping both rather than
+ * moving it. Every SidebarMenuItem/SidebarMenuSubItem now has
+ * `min-w-0`, and every label is now wrapped in `<span className=
+ * "truncate">` — this was the actual root cause of the horizontal
+ * scrollbar: SidebarMenuButton's own CSS already had a
+ * `[&>span:last-child]:truncate` rule, but it was completely inert
+ * because no label here was ever wrapped in a span, so a long label
+ * like "Scholars' Formation Tools" could force the whole sidebar wider
+ * than its container instead of truncating. Fixed at the source (the
+ * labels), not by hiding overflow with CSS. Every SidebarMenuButton/
+ * SidebarMenuSubButton also now carries an explicit
+ * `data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900`
+ * className, overriding the primitive's much subtler default
+ * `data-[active=true]:bg-sidebar-accent` for a clearly visible
+ * light-blue active state (confirmed this override actually works,
+ * not just assumed: src/app/components/ui/utils.ts's `cn()` uses
+ * `tailwind-merge`, which correctly resolves the conflict in favor of
+ * whichever same-property utility class is passed later — the
+ * primitive's own `cn(sidebarMenuButtonVariants(...), className)`
+ * already passes the consumer's className last).
  */
 export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: Page; setPage: (page: Page) => void }) {
   const [formsOpen, setFormsOpen] = useState(page === "forms");
@@ -157,40 +180,41 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton isActive={page === "profile"} onClick={() => setPage("profile")}>
-                  <User /> Profile
+              <SidebarMenuItem className="min-w-0">
+                <SidebarMenuButton isActive={page === "profile"} onClick={() => setPage("profile")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                  <User /> <span className="truncate">Profile</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton isActive={page === "tasks"} onClick={() => setPage("tasks")}>
-                  <CheckSquare /> My Tasks
+              <SidebarMenuItem className="min-w-0">
+                <SidebarMenuButton isActive={page === "tasks"} onClick={() => setPage("tasks")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                  <CheckSquare /> <span className="truncate">My Tasks</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton isActive={page === "accomplishments"} onClick={() => setPage("accomplishments")}>
-                  <Award /> My Accomplishments
+              <SidebarMenuItem className="min-w-0">
+                <SidebarMenuButton isActive={page === "accomplishments"} onClick={() => setPage("accomplishments")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                  <Award /> <span className="truncate">My Accomplishments</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
               <Collapsible open={formsOpen} onOpenChange={setFormsOpen} className="group/forms">
-                <SidebarMenuItem>
+                <SidebarMenuItem className="min-w-0">
                   <CollapsibleTrigger asChild>
-                    <SidebarMenuButton isActive={page === "forms"}>
-                      <FileText /> Forms
-                      <ChevronDown className="ml-auto transition-transform group-data-[state=open]/forms:rotate-180" />
+                    <SidebarMenuButton isActive={page === "forms"} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                      <FileText /> <span className="truncate">Forms</span>
+                      <ChevronDown className="ml-auto shrink-0 transition-transform group-data-[state=open]/forms:rotate-180" />
                     </SidebarMenuButton>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <SidebarMenuSub>
                       {FORM_TYPES.map(form => (
-                        <SidebarMenuSubItem key={form.key}>
+                        <SidebarMenuSubItem key={form.key} className="min-w-0">
                           <SidebarMenuSubButton
                             href="#"
                             isActive={page === "forms"}
                             onClick={e => { e.preventDefault(); setPage("forms"); }}
+                            className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900"
                           >
-                            {form.icon} {form.label}
+                            {form.icon} <span className="truncate">{form.label}</span>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                       ))}
@@ -221,20 +245,20 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
               <SidebarGroupLabel>Division Head</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton isActive={page === "monitoring"} onClick={() => setPage("monitoring")}>
-                      <Users /> {user.role === "super_admin" ? "Department Monitoring" : `${DIVISIONS[user.division].shortName} Monitoring`}
+                  <SidebarMenuItem className="min-w-0">
+                    <SidebarMenuButton isActive={page === "monitoring"} onClick={() => setPage("monitoring")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                      <Users /> <span className="truncate">{user.role === "super_admin" ? "Department Monitoring" : `${DIVISIONS[user.division].shortName} Monitoring`}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton isActive={page === "history"} onClick={() => setPage("history")}>
-                      <ClipboardCheck /> History
+                  <SidebarMenuItem className="min-w-0">
+                    <SidebarMenuButton isActive={page === "history"} onClick={() => setPage("history")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                      <ClipboardCheck /> <span className="truncate">History</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   {user.role === "super_admin" && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton isActive={page === "admin"} onClick={() => setPage("admin")}>
-                        <Lock /> Admin Management
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "admin"} onClick={() => setPage("admin")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <Lock /> <span className="truncate">Admin Management</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
@@ -257,37 +281,37 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
               <SidebarGroupContent>
                 <SidebarMenu>
                   {user.tags.includes("scholar_management") && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton isActive={page === "scholarManagement"} onClick={() => setPage("scholarManagement")}>
-                        <GraduationCap /> Scholar Management Tools
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "scholarManagement"} onClick={() => setPage("scholarManagement")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <GraduationCap /> <span className="truncate">Scholar Management Tools</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
                   {user.tags.includes("sdp_monitoring") && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton isActive={page === "sdpMonitoring"} onClick={() => setPage("sdpMonitoring")}>
-                        <Lightbulb /> SDP Monitoring
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "sdpMonitoring"} onClick={() => setPage("sdpMonitoring")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <Lightbulb /> <span className="truncate">SDP Monitoring</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
                   {user.tags.includes("scholars_formation") && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton isActive={page === "formationTools"} onClick={() => setPage("formationTools")}>
-                        <Users2 /> Scholars' Formation Tools
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "formationTools"} onClick={() => setPage("formationTools")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <Users2 /> <span className="truncate">Scholars' Formation Tools</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
                   {user.tags.includes("forms_management") && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton isActive={page === "formsManagement"} onClick={() => setPage("formsManagement")}>
-                        <FileText /> Forms Management
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "formsManagement"} onClick={() => setPage("formsManagement")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <FileText /> <span className="truncate">Forms Management</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
                   {user.username.toLowerCase() === IT_ADMIN_USERNAME && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton isActive={page === "staffAccounts"} onClick={() => setPage("staffAccounts")}>
-                        <Lock /> Staff Accounts
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "staffAccounts"} onClick={() => setPage("staffAccounts")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <Lock /> <span className="truncate">Staff Accounts</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}

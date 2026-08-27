@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Home, Bell, LogOut } from "lucide-react";
+import { Home, CheckSquare, Bell, LogOut } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import { SidebarTrigger } from "@/app/components/ui/sidebar";
 import { DIVISIONS, type Page, type UserProfile } from "@/app/App";
@@ -51,6 +51,15 @@ export function TopNav({ user, page, setPage, onSignOut, unreadCount }: {
 
   const items: { key: Page; label: string; icon: React.ReactNode }[] = [
     { key: "home", label: "Home", icon: <Home size={14} /> },
+    // Revision 1 (post-M7 browser review): "My Tasks" now also appears in
+    // the top nav, between Home and Notifications, per the requested tab
+    // order. Default decision (handoff note's own stated default, since
+    // the person only said "put it on the top nav" without specifying
+    // whether to also remove it from the sidebar): KEPT in both places —
+    // the sidebar's own "My Tasks" item (Region A, Sidebar.tsx) is
+    // unchanged. Easy to remove from one side later if duplication turns
+    // out to be unwanted.
+    { key: "tasks", label: "My Tasks", icon: <CheckSquare size={14} /> },
     { key: "notifications", label: "Notifications", icon: <Bell size={14} /> },
   ];
 

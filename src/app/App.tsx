@@ -3352,7 +3352,55 @@ export default function App() {
       <TopNav user={currentUser} page={page} setPage={setPage} onSignOut={handleSignOut} unreadCount={unreadCount}/>
       <AppSidebar user={currentUser} page={page} setPage={setPage}/>
       <SidebarInset>
-        <div className="max-w-4xl mx-auto px-4 pb-12" style={{paddingTop:"4.5rem"}}>
+        {/* Revisions 3+4+5 (post-M7 browser review): widened from max-w-4xl
+            (896px) to max-w-[68rem] (1088px) — exactly "1 inch wider each
+            side" (1in = 96px, so +192px total) off the old baseline, per
+            the review's own explicit formula. This single wrapper is
+            shared by EVERY page (confirmed by reading the whole render
+            tree below, not assumed), so widening it here uniformly widens
+            every tab/tool at once — no per-page changes needed, and no
+            page can end up a different width than another by construction.
+            `w-full` (not a fixed width) means this can never force
+            overflow — at a narrow viewport it just shrinks to whatever
+            space is actually available instead of forcing scroll.
+
+            Centering: `mx-auto` alone (the old behavior) only centers
+            within SidebarInset's OWN box, which already excludes the
+            sidebar's 16rem — that's why content looked shifted left,
+            centered in the post-sidebar region instead of the full
+            window. At md+ (where the sidebar is a permanent 16rem column,
+            not an overlay), md:ml-[...] explicitly computes the margin
+            needed to center against the FULL viewport instead: half the
+            leftover space after subtracting this box's own width, minus
+            the sidebar's 16rem (since this box's local coordinate origin
+            already starts 16rem in from the real viewport edge). Wrapped
+            in max(0px, ...) so it can never go negative at a tight
+            viewport (e.g. exactly md's 768px breakpoint with the sidebar
+            visible) — it simply falls back to sitting flush against the
+            sidebar with 0 extra margin instead, still governed by the
+            w-full/max-w cap above so it still never overflows.
+            md:mr-0 is written as its own explicit longhand (not folded
+            into an `mx-*` shorthand at the same breakpoint) specifically
+            to avoid a same-specificity Tailwind cascade-order ambiguity
+            between a shorthand and a longhand utility targeting the same
+            property at the same breakpoint.
+            Below md, the sidebar is an off-canvas overlay (doesn't occupy
+            layout space), so SidebarInset's box already spans the full
+            viewport there — plain `mx-auto` alone is correct and
+            sufficient at that size, which is why the md:-prefixed rules
+            don't apply below that breakpoint.
+
+            This same fix is also expected to resolve Revision 3 (several
+            pages silently falling back to their own internal MOBILE
+            responsive breakpoint) as a side effect, per the investigation
+            that diagnosed it: those pages' own sm:/md: breakpoints were
+            never touched or aware of the sidebar at all — they were just
+            reacting normally to less available width than before, which
+            this fix restores. Not independently re-verified in a browser
+            (no browser available in this sandbox) — flagging clearly
+            rather than claiming stronger confirmation than a static
+            review can actually provide. */}
+        <div className="w-full max-w-[68rem] mx-auto md:mr-0 md:ml-[max(0px,calc((100vw-68rem)/2-16rem))] px-4 pb-12" style={{paddingTop:"4.5rem"}}>
           {page==="home" && <HomePage user={currentUser} tasks={myTasks} leaveRequests={leaveRequests} allUsers={users} onSubmitLeave={handleSubmitLeave} onRetractLeave={handleRetractLeave} onEvidenceSubmit={handleEvidenceSubmit} accomplishmentLogs={accomplishmentLogs} onAddAccomplishment={handleAddAccomplishment}/>}
           {page==="profile" && <ProfilePage user={currentUser} onUpdate={handleUpdateProfile}/>}
           {page==="tasks" && <MyTasksPage tasks={myTasks} onUpdateTasks={handleUpdateMyTasks}/>}
