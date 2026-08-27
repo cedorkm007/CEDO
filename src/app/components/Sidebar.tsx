@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2 } from "lucide-react";
 import {
-  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarSeparator,
+  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarSeparator,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
 } from "./ui/sidebar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./ui/collapsible";
@@ -174,7 +174,7 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
     // rendering, so no z-index override was added on top of this.
     <Sidebar className="top-14 h-[calc(100svh-3.5rem)]">
       <SidebarHeader />
-      <SidebarContent>
+      <SidebarContent className="overflow-x-hidden!">
         {/* Region A — "Common Tabs" (Milestone 4). No visible label per
             the spec (visual separation only) — a plain styled box for now. */}
         <SidebarGroup>
@@ -242,7 +242,6 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
           <>
             <SidebarSeparator />
             <SidebarGroup>
-              <SidebarGroupLabel>Division Head</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem className="min-w-0">
@@ -277,7 +276,6 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
           <>
             <SidebarSeparator />
             <SidebarGroup>
-              <SidebarGroupLabel>Specific Tools</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {user.tags.includes("scholar_management") && (
