@@ -169,6 +169,8 @@ function Sidebar({
     return (
       <div
         data-slot="sidebar"
+        role="navigation"
+        aria-label="Main navigation"
         className={cn(
           "bg-sidebar text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col",
           className,
@@ -213,6 +215,8 @@ function Sidebar({
       data-variant={variant}
       data-side={side}
       data-slot="sidebar"
+      role="navigation"
+      aria-label="Main navigation"
     >
       {/* This is what handles the sidebar gap on desktop */}
       <div
