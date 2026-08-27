@@ -448,7 +448,7 @@ function SignInPage({ users, onSignIn }: { users: UserProfile[]; onSignIn: (u: U
 // ─────────────────────────────────────────────────────────────
 // TOP NAV
 // ─────────────────────────────────────────────────────────────
-const FORM_TYPES: { key: "cto" | "pass_slip"; label: string; icon: React.ReactNode }[] = [
+export const FORM_TYPES: { key: "cto" | "pass_slip"; label: string; icon: React.ReactNode }[] = [
   { key: "cto", label: "CTO Application", icon: <ClipboardCheck size={14}/> },
   { key: "pass_slip", label: "Pass Slip", icon: <FileText size={14}/> },
 ];
@@ -460,7 +460,7 @@ function TopNav({ user, page, setPage, onSignOut, unreadCount }: { user: UserPro
   const formsRef = useRef<HTMLDivElement>(null);
   const division = DIVISIONS[user.division];
 
-  const primaryItems: { key: Page; label: string; icon: React.ReactNode }[] = [
+  const primaryItems: { key: Page; label: string; icon: React.ReactNode }[] = [  const primaryItems: { key: Page; label: string; icon: React.ReactNode }[] = [
     { key:"home", label:"Home", icon:<Home size={14}/> },
     { key:"tasks", label:"My Tasks", icon:<CheckSquare size={14}/> },
   ];

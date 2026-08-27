@@ -1,10 +1,17 @@
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarSeparator } from "./ui/sidebar";
+import { useState } from "react";
+import { User, CheckSquare, Award, FileText, ChevronDown } from "lucide-react";
+import {
+  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarSeparator,
+  SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
+} from "./ui/sidebar";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./ui/collapsible";
+import { FORM_TYPES, type Page, type UserProfile } from "@/app/App";
 
 /**
  * Admin UI Restructuring, Milestone 3: the left sidebar's structural
  * shell — three visually-separated regions that Milestones 4-6 will
  * populate with the actual relocated nav items (Common Tabs, Division
- * Head, Specific Tools). No nav items yet this round, just the boxes.
+ * Head, Specific Tools).
  *
  * IMPORTANT DESIGN NOTE, worth reading before wiring this in: this does
  * NOT hand-roll open/close state, mobile drawer behavior, or the
@@ -22,8 +29,8 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHead
  * theme colors are already defined in src/styles/theme.css (light + dark),
  * so no new CSS was needed either.
  *
- * Practical effect: AppSidebar below takes NO isOpen/onClose props at all
- * — that state lives entirely in SidebarProvider's context instead, which
+ * Practical effect: AppSidebar takes NO isOpen/onClose props at all —
+ * that state lives entirely in SidebarProvider's context instead, which
  * resolves the handoff's open "Context vs. props" question in favor of
  * context, because a real, tested implementation of exactly that pattern
  * was already sitting in the repo unused. This is a smaller, safer
@@ -35,18 +42,107 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHead
  * <TopNav /> (which now renders <SidebarTrigger /> — see that file) MUST
  * be rendered somewhere inside a single shared <SidebarProvider> in
  * App.tsx, or TopNav's hamburger button will throw at runtime
- * ("useSidebar must be used within a SidebarProvider"). Not done this
- * round — App.tsx has no changes this round, per Option B.
+ * ("useSidebar must be used within a SidebarProvider").
+ *
+ * Milestone 4 addition: AppSidebar now takes `user`, `page`, `setPage`
+ * (this is the key architectural change from M3's pure-shell version)
+ * and Region A ("Common Tabs") is populated: Profile, My Tasks, My
+ * Accomplishments, and a Forms group. These four are deliberately
+ * ungated — confirmed against the old inline TopNav in App.tsx that
+ * `primaryItems`/`menuItems` never gate "tasks", "profile",
+ * "accomplishments", or the Forms dropdown behind any tag/role check
+ * (only Monitoring/History/Admin Management are role-gated, and those
+ * belong to Region B, "Division Head" — Milestone 5, not this one).
+ *
+ * IMPORTANT CORRECTION vs. the plan this milestone was handed: that
+ * note's Section 5 described the Forms submenu as a single
+ * "CTO/Pass Slip" entry. The actual old TopNav (verified directly, not
+ * assumed) has TWO separate Forms dropdown entries — "CTO Application"
+ * and "Pass Slip" (App.tsx's own FORM_TYPES constant, now exported so
+ * this file can reuse the same list instead of a second hand-copied
+ * one) — both of which currently navigate to the same "forms" page (the
+ * Forms page itself doesn't yet distinguish which was clicked; that's
+ * pre-existing behavior, not something this milestone changed). Built to
+ * match the real two-item structure, not the note's shorthand, per this
+ * project's own standing practice of verifying against actual code
+ * before building.
+ *
+ * The Forms group's expand/collapse uses the existing (already installed,
+ * already unused-until-now) Collapsible/CollapsibleTrigger/
+ * CollapsibleContent wrapper at src/app/components/ui/collapsible.tsx —
+ * same reasoning as reusing the sidebar primitive itself in Milestone 3:
+ * a working, tested implementation of exactly this was already sitting in
+ * the repo unused, so no hand-rolled open-state toggle was written.
  */
-export function AppSidebar() {
+export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: Page; setPage: (page: Page) => void }) {
+  const [formsOpen, setFormsOpen] = useState(page === "forms");
+
   return (
-    <Sidebar>
+    // top-14 + an explicit height (rather than the primitive's own default
+    // inset-y-0, which spans the full viewport from y=0) pushes the
+    // sidebar's own content below TopNav's fixed h-14 header instead of
+    // being visually covered by it. A prior round's notes described this
+    // as already resolved via z-index alone (sidebar z-50 "above" TopNav
+    // z-40) — checked directly against both files (TopNav.tsx is z-40,
+    // the sidebar primitive's own default is z-10, no z-50 override
+    // exists anywhere) and that wasn't actually true; z-index ordering
+    // alone doesn't fix this regardless, since the header would still
+    // physically overlap/hide the sidebar's own top region rather than
+    // the two occupying separate vertical bands. Fixed here via
+    // positioning instead — once top/height keep them from overlapping at
+    // all, which one has the higher z-index stops mattering for normal
+    // rendering, so no z-index override was added on top of this.
+    <Sidebar className="top-14 h-[calc(100svh-3.5rem)]">
       <SidebarHeader />
       <SidebarContent>
         {/* Region A — "Common Tabs" (Milestone 4). No visible label per
             the spec (visual separation only) — a plain styled box for now. */}
         <SidebarGroup>
-          <SidebarGroupContent className="min-h-20 rounded-lg border border-sidebar-border bg-sidebar-accent/40" />
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton isActive={page === "profile"} onClick={() => setPage("profile")}>
+                  <User /> Profile
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton isActive={page === "tasks"} onClick={() => setPage("tasks")}>
+                  <CheckSquare /> My Tasks
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton isActive={page === "accomplishments"} onClick={() => setPage("accomplishments")}>
+                  <Award /> My Accomplishments
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <Collapsible open={formsOpen} onOpenChange={setFormsOpen} className="group/forms">
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton isActive={page === "forms"}>
+                      <FileText /> Forms
+                      <ChevronDown className="ml-auto transition-transform group-data-[state=open]/forms:rotate-180" />
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {FORM_TYPES.map(form => (
+                        <SidebarMenuSubItem key={form.key}>
+                          <SidebarMenuSubButton
+                            href="#"
+                            isActive={page === "forms"}
+                            onClick={e => { e.preventDefault(); setPage("forms"); }}
+                          >
+                            {form.icon} {form.label}
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
+            </SidebarMenu>
+          </SidebarGroupContent>
         </SidebarGroup>
 
         <SidebarSeparator />
