@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { User, CheckSquare, Award, FileText, ChevronDown } from "lucide-react";
+import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock } from "lucide-react";
 import {
-  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarSeparator,
+  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarSeparator,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
 } from "./ui/sidebar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./ui/collapsible";
-import { FORM_TYPES, type Page, type UserProfile } from "@/app/App";
+import { DIVISIONS, FORM_TYPES, type Page, type UserProfile } from "@/app/App";
 
 /**
  * Admin UI Restructuring, Milestone 3: the left sidebar's structural
@@ -53,6 +53,18 @@ import { FORM_TYPES, type Page, type UserProfile } from "@/app/App";
  * "accomplishments", or the Forms dropdown behind any tag/role check
  * (only Monitoring/History/Admin Management are role-gated, and those
  * belong to Region B, "Division Head" — Milestone 5, not this one).
+ *
+ * Milestone 5 addition: Region B ("Division Head") is populated —
+ * Monitoring, History, and Admin Management, matching the old inline
+ * TopNav's `menuItems` gating exactly (re-verified directly against
+ * App.tsx, not assumed from the Milestone 4 handoff's own description):
+ * Monitoring and History are gated on `user.isAdmin`
+ * (division_admin OR super_admin); Admin Management is gated on
+ * `user.role === "super_admin"` specifically, one level stricter. Per
+ * Milestone 4's own explicit decision (option (c): hold off wiring
+ * until BOTH Milestone 5 AND 6 are done), this region is built and
+ * verified but still NOT wired in — Region C ("Specific Tools",
+ * Milestone 6) is the one remaining region before wiring can happen.
  *
  * IMPORTANT CORRECTION vs. the plan this milestone was handed: that
  * note's Section 5 described the Forms submenu as a single
@@ -145,12 +157,47 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarSeparator />
-
-        {/* Region B — "Division Head" (Milestone 5). */}
-        <SidebarGroup>
-          <SidebarGroupContent className="min-h-20 rounded-lg border border-sidebar-border bg-sidebar-accent/40" />
-        </SidebarGroup>
+        {/* Region B — "Division Head" (Milestone 5) — only rendered at
+            all (including its own separators) for admins; a non-admin
+            staff member sees Common Tabs flow straight into whatever
+            Region C ends up being, with no empty gap/double-separator
+            left behind where this region would have been. Visible
+            group label used here (unlike Region A) since this group is
+            meaningfully distinct — role-gated, not shown to every staff
+            member — and a label makes that legible at a glance for the
+            admins who DO see it. A minor UX choice, not dictated by any
+            spec seen so far (the mapping doc this project would
+            normally check is missing from the zip, per Milestone 4's
+            own note) — easy to remove if undesired. */}
+        {user.isAdmin && (
+          <>
+            <SidebarSeparator />
+            <SidebarGroup>
+              <SidebarGroupLabel>Division Head</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton isActive={page === "monitoring"} onClick={() => setPage("monitoring")}>
+                      <Users /> {user.role === "super_admin" ? "Department Monitoring" : `${DIVISIONS[user.division].shortName} Monitoring`}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton isActive={page === "history"} onClick={() => setPage("history")}>
+                      <ClipboardCheck /> History
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  {user.role === "super_admin" && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton isActive={page === "admin"} onClick={() => setPage("admin")}>
+                        <Lock /> Admin Management
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </>
+        )}
 
         <SidebarSeparator />
 

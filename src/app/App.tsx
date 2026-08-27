@@ -460,7 +460,7 @@ function TopNav({ user, page, setPage, onSignOut, unreadCount }: { user: UserPro
   const formsRef = useRef<HTMLDivElement>(null);
   const division = DIVISIONS[user.division];
 
-  const primaryItems: { key: Page; label: string; icon: React.ReactNode }[] = [  const primaryItems: { key: Page; label: string; icon: React.ReactNode }[] = [
+  const primaryItems: { key: Page; label: string; icon: React.ReactNode }[] = [
     { key:"home", label:"Home", icon:<Home size={14}/> },
     { key:"tasks", label:"My Tasks", icon:<CheckSquare size={14}/> },
   ];
