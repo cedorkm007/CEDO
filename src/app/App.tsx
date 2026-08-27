@@ -8,11 +8,11 @@ import {
   type AccomplishmentItem, type HistoryRow,
 } from "@/lib/docGenerator";
 import {
-  Home, User, CheckSquare, Award, LogOut, ChevronLeft, ChevronRight,
+  CheckSquare, ChevronLeft, ChevronRight,
   Plus, Edit2, Check, Eye, Camera, Upload, FileText, ChevronDown, ChevronUp,
-  X, Users, Trash2, Clock, CheckCircle2, Circle, AlertCircle,
+  X, Trash2, Clock, CheckCircle2, Circle, AlertCircle,
   Printer, Calendar as CalendarIcon, Sparkles, Bell, RotateCcw,
-  ClipboardCheck, Plane, MessageCircle, Send, Lock, GraduationCap, Lightbulb, Users2,
+  ClipboardCheck, Plane, MessageCircle, Send, Lock,
 } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import LITMLogo from "@/imports/LITM_Logo_Circular.png";
@@ -25,6 +25,9 @@ import { SDPMonitoringTab } from "@/sead/pages/SDPMonitoringTab";
 import { FormationToolsTab } from "@/sead/pages/FormationToolsTab";
 import { FormsManagementTab } from "@/sead/pages/FormsManagementTab";
 import { StaffAccountsPage } from "@/itadmin/StaffAccountsPage";
+import { TopNav } from "@/app/components/TopNav";
+import { AppSidebar } from "@/app/components/Sidebar";
+import { SidebarProvider, SidebarInset } from "@/app/components/ui/sidebar";
 
 // ─────────────────────────────────────────────────────────────
 // DIVISIONS — CEDO has 4 divisions. Every account belongs to exactly
@@ -451,134 +454,17 @@ function SignInPage({ users, onSignIn }: { users: UserProfile[]; onSignIn: (u: U
 }
 
 // ─────────────────────────────────────────────────────────────
-// TOP NAV
+// FORM_TYPES — the old inline TopNav's own Forms dropdown used this.
+// After Milestone 7's wiring, the new TopNav.tsx has no Forms dropdown
+// at all (Forms moved into the sidebar for good, per the mapping this
+// whole restructuring follows) — Sidebar.tsx's own Forms group is FORM_
+// TYPES' only remaining consumer now. Kept exported here regardless,
+// since Sidebar.tsx already imported it this way since Milestone 4.
 // ─────────────────────────────────────────────────────────────
 export const FORM_TYPES: { key: "cto" | "pass_slip"; label: string; icon: React.ReactNode }[] = [
   { key: "cto", label: "CTO Application", icon: <ClipboardCheck size={14}/> },
   { key: "pass_slip", label: "Pass Slip", icon: <FileText size={14}/> },
 ];
-
-function TopNav({ user, page, setPage, onSignOut, unreadCount }: { user: UserProfile; page: Page; setPage: (p: Page) => void; onSignOut: () => void; unreadCount: number }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [formsOpen, setFormsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const formsRef = useRef<HTMLDivElement>(null);
-  const division = DIVISIONS[user.division];
-
-  const primaryItems: { key: Page; label: string; icon: React.ReactNode }[] = [
-    { key:"home", label:"Home", icon:<Home size={14}/> },
-    { key:"tasks", label:"My Tasks", icon:<CheckSquare size={14}/> },
-  ];
-  if (user.tags.includes("scholar_management")) {
-    primaryItems.push({ key:"scholarManagement", label:"Scholar Management Tools", icon:<GraduationCap size={14}/> });
-  }
-  if (user.tags.includes("sdp_monitoring")) {
-    primaryItems.push({ key:"sdpMonitoring", label:"SDP Monitoring", icon:<Lightbulb size={14}/> });
-  }
-  if (user.tags.includes("scholars_formation")) {
-    primaryItems.push({ key:"formationTools", label:"Scholars' Formation Tools", icon:<Users2 size={14}/> });
-  }
-  if (user.tags.includes("forms_management")) {
-    primaryItems.push({ key:"formsManagement", label:"Forms Management", icon:<FileText size={14}/> });
-  }
-  if (user.username.toLowerCase() === IT_ADMIN_USERNAME) {
-    primaryItems.push({ key:"staffAccounts", label:"Staff Accounts", icon:<Lock size={14}/> });
-  }
-  primaryItems.push({ key:"notifications", label:"Notifications", icon:<Bell size={14}/> });
-  const menuItems: { key: Page; label: string; icon: React.ReactNode }[] = [
-    { key:"profile", label:"Profile", icon:<User size={14}/> },
-    { key:"accomplishments", label:"My Accomplishments", icon:<Award size={14}/> },
-  ];
-  if (user.isAdmin) {
-    menuItems.push({ key:"monitoring", label: user.role==="super_admin" ? "Department Monitoring" : `${division.shortName} Monitoring`, icon:<Users size={14}/> });
-    menuItems.push({ key:"history", label:"History", icon:<ClipboardCheck size={14}/> });
-  }
-  if (user.role === "super_admin") { menuItems.push({ key:"admin", label:"Admin Management", icon:<Lock size={14}/> }); }
-
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-      if (formsRef.current && !formsRef.current.contains(e.target as Node)) setFormsOpen(false);
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
-
-  function goTo(p: Page) { setPage(p); setMenuOpen(false); }
-
-  return (
-    <header className="fixed top-0 left-0 right-0 z-40 bg-primary shadow-lg">
-      <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-accent flex-shrink-0 bg-white"><ImageWithFallback src={division.logo} alt={division.shortName} className="w-full h-full object-cover" /></div>
-          <span className="text-white font-bold text-sm tracking-wide hidden sm:inline">{division.shortName} Task Tracker</span>
-        </div>
-        <nav className="hidden md:flex items-center gap-0.5">
-          {primaryItems.map(item => (
-            <button key={item.key} onClick={() => setPage(item.key)}
-              className={`relative flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${page===item.key ? "bg-accent text-accent-foreground font-semibold" : "text-white/70 hover:text-white hover:bg-white/10"}`}>
-              {item.icon} {item.label}
-              {item.key==="notifications" && unreadCount > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{unreadCount > 9 ? "9+" : unreadCount}</span>}
-            </button>
-          ))}
-          <div className="relative" ref={formsRef}>
-            <button onClick={() => setFormsOpen(o=>!o)}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${page==="forms" ? "bg-accent text-accent-foreground font-semibold" : "text-white/70 hover:text-white hover:bg-white/10"}`}>
-              <FileText size={14}/> Forms <ChevronDown size={12} className={`transition-transform ${formsOpen?"rotate-180":""}`}/>
-            </button>
-            {formsOpen && (
-              <div className="absolute left-0 top-full mt-2 w-52 bg-card rounded-xl border border-border shadow-xl overflow-hidden py-1.5 z-50">
-                {FORM_TYPES.map(f => (
-                  <button key={f.key} onClick={() => { setPage("forms"); setFormsOpen(false); }}
-                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-foreground/80 hover:bg-muted transition-all">
-                    {f.icon} {f.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </nav>
-        <div className="flex items-center gap-2">
-          {unreadCount > 0 && <button onClick={() => setPage("notifications")} className="relative md:hidden p-2 text-white/70 hover:text-white"><Bell size={18}/><span className="absolute top-0 right-0 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{unreadCount}</span></button>}
-          <div className="relative" ref={menuRef}>
-            <button onClick={() => setMenuOpen(o=>!o)} className={`flex items-center gap-2 pl-1 pr-2 py-1 rounded-full border-l border-white/20 transition-all ${menuOpen ? "bg-white/10" : "hover:bg-white/10"}`}>
-              {user.profilePicture ? <img src={user.profilePicture} className="w-7 h-7 rounded-full object-cover ring-2 ring-accent/60" alt="avatar" /> : <div className="w-7 h-7 rounded-full bg-accent flex items-center justify-center text-accent-foreground text-xs font-bold flex-shrink-0">{user.firstName.charAt(0)}{user.lastName.charAt(0)}</div>}
-              <span className="text-white/85 text-sm hidden sm:inline">{user.nickname||user.firstName}</span>
-              <ChevronDown size={14} className={`text-white/60 transition-transform ${menuOpen?"rotate-180":""}`}/>
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-card rounded-xl border border-border shadow-xl overflow-hidden py-1.5 z-50">
-                <div className="px-3.5 py-2 border-b border-border">
-                  <p className="text-sm font-semibold text-foreground truncate">{getFullName(user)}</p>
-                  <p className="text-xs text-muted-foreground truncate">{user.designation}</p>
-                </div>
-                {menuItems.map(item => (
-                  <button key={item.key} onClick={() => goTo(item.key)} className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-sm transition-all ${page===item.key ? "bg-secondary text-foreground font-semibold" : "text-foreground/80 hover:bg-muted"}`}>
-                    {item.icon} {item.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button onClick={onSignOut} className="flex items-center gap-1.5 text-white/60 hover:text-white text-sm px-2 py-1.5 rounded-lg hover:bg-white/10 transition-all"><LogOut size={14}/> <span className="hidden sm:inline">Sign Out</span></button>
-        </div>
-      </div>
-      <div className="md:hidden flex overflow-x-auto gap-0.5 px-4 pb-2">
-        {primaryItems.map(item => (
-          <button key={item.key} onClick={() => setPage(item.key)}
-            className={`relative flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${page===item.key ? "bg-accent text-accent-foreground font-semibold" : "text-white/55 hover:text-white hover:bg-white/10"}`}>
-            {item.icon} {item.label}
-            {item.key==="notifications" && unreadCount > 0 && <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">{unreadCount}</span>}
-          </button>
-        ))}
-        <button onClick={() => setPage("forms")}
-          className={`relative flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${page==="forms" ? "bg-accent text-accent-foreground font-semibold" : "text-white/55 hover:text-white hover:bg-white/10"}`}>
-          <FileText size={14}/> Forms
-        </button>
-      </div>
-    </header>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────
 // PASS SLIP MODAL
@@ -3462,54 +3348,57 @@ export default function App() {
   const scopedAllTasks: TasksData = Object.fromEntries(Object.entries(allTasks).filter(([uid]) => scopedUserIds.has(uid)));
 
   return (
-    <div className="min-h-screen bg-background">
+    <SidebarProvider className="bg-background">
       <TopNav user={currentUser} page={page} setPage={setPage} onSignOut={handleSignOut} unreadCount={unreadCount}/>
-      <main className="max-w-4xl mx-auto px-4 pb-12" style={{paddingTop:"4.5rem"}}>
-        {page==="home" && <HomePage user={currentUser} tasks={myTasks} leaveRequests={leaveRequests} allUsers={users} onSubmitLeave={handleSubmitLeave} onRetractLeave={handleRetractLeave} onEvidenceSubmit={handleEvidenceSubmit} accomplishmentLogs={accomplishmentLogs} onAddAccomplishment={handleAddAccomplishment}/>}
-        {page==="profile" && <ProfilePage user={currentUser} onUpdate={handleUpdateProfile}/>}
-        {page==="tasks" && <MyTasksPage tasks={myTasks} onUpdateTasks={handleUpdateMyTasks}/>}
-        {page==="accomplishments" && <MyAccomplishmentsPage tasks={myTasks} currentUser={currentUser} accomplishmentLogs={accomplishmentLogs}/>}
-        {page==="forms" && <FormsPage currentUser={currentUser} leaveRequests={leaveRequests} onSubmitLeave={handleSubmitLeave}/>}
-        {page==="monitoring" && currentUser.isAdmin && <MonitoringPage users={scopedUsers} allTasks={scopedAllTasks} leaveRequests={scopedLeaveRequests}/>}
-        {page==="history" && currentUser.isAdmin && <HistoryPage submissions={scopedSubmissions} allUsers={scopedUsers}/>}
-        {page==="notifications" && currentUser.isAdmin && (
-          <AdminNotificationsPage
-            notifications={scopedNotifications} submissions={scopedSubmissions} leaveRequests={scopedLeaveRequests}
-            allTasks={scopedAllTasks} allUsers={scopedUsers}
-            onApproveSubmission={handleApproveSubmission} onReturnSubmission={handleReturnSubmission}
-            onApproveLeave={handleApproveLeave} onReturnLeave={handleReturnLeave}
-            onMarkRead={handleMarkRead} onDelete={handleDeleteNotification}
-          />
-        )}
-        {page==="notifications" && !currentUser.isAdmin && (
-          <StaffNotificationsPage
-            userId={currentUser.id}
-            notifications={notifications}
-            submissions={submissions}
-            onMarkRead={handleMarkRead}
-            onDelete={handleDeleteNotification}
-          />
-        )}
-        {page==="admin" && currentUser.role==="super_admin" && (
-          <AdminManagementPage users={users} currentUser={currentUser} onChangeRole={handleChangeUserRole}/>
-        )}
-        {page==="scholarManagement" && currentUser.tags.includes("scholar_management") && (
-          <ScholarManagementToolsPage />
-        )}
-        {page==="sdpMonitoring" && currentUser.tags.includes("sdp_monitoring") && (
-          <SDPMonitoringTab/>
-        )}
-        {page==="formationTools" && currentUser.tags.includes("scholars_formation") && (
-          <FormationToolsTab/>
-        )}
-        {page==="formsManagement" && currentUser.tags.includes("forms_management") && (
-          <FormsManagementTab/>
-        )}
-        {page==="staffAccounts" && currentUser.username.toLowerCase()===IT_ADMIN_USERNAME && (
-          <StaffAccountsPage/>
-        )}
-      </main>
-      <FloatingChatWidget currentUser={currentUser} allUsers={users}/>
-    </div>
+      <AppSidebar user={currentUser} page={page} setPage={setPage}/>
+      <SidebarInset>
+        <div className="max-w-4xl mx-auto px-4 pb-12" style={{paddingTop:"4.5rem"}}>
+          {page==="home" && <HomePage user={currentUser} tasks={myTasks} leaveRequests={leaveRequests} allUsers={users} onSubmitLeave={handleSubmitLeave} onRetractLeave={handleRetractLeave} onEvidenceSubmit={handleEvidenceSubmit} accomplishmentLogs={accomplishmentLogs} onAddAccomplishment={handleAddAccomplishment}/>}
+          {page==="profile" && <ProfilePage user={currentUser} onUpdate={handleUpdateProfile}/>}
+          {page==="tasks" && <MyTasksPage tasks={myTasks} onUpdateTasks={handleUpdateMyTasks}/>}
+          {page==="accomplishments" && <MyAccomplishmentsPage tasks={myTasks} currentUser={currentUser} accomplishmentLogs={accomplishmentLogs}/>}
+          {page==="forms" && <FormsPage currentUser={currentUser} leaveRequests={leaveRequests} onSubmitLeave={handleSubmitLeave}/>}
+          {page==="monitoring" && currentUser.isAdmin && <MonitoringPage users={scopedUsers} allTasks={scopedAllTasks} leaveRequests={scopedLeaveRequests}/>}
+          {page==="history" && currentUser.isAdmin && <HistoryPage submissions={scopedSubmissions} allUsers={scopedUsers}/>}
+          {page==="notifications" && currentUser.isAdmin && (
+            <AdminNotificationsPage
+              notifications={scopedNotifications} submissions={scopedSubmissions} leaveRequests={scopedLeaveRequests}
+              allTasks={scopedAllTasks} allUsers={scopedUsers}
+              onApproveSubmission={handleApproveSubmission} onReturnSubmission={handleReturnSubmission}
+              onApproveLeave={handleApproveLeave} onReturnLeave={handleReturnLeave}
+              onMarkRead={handleMarkRead} onDelete={handleDeleteNotification}
+            />
+          )}
+          {page==="notifications" && !currentUser.isAdmin && (
+            <StaffNotificationsPage
+              userId={currentUser.id}
+              notifications={notifications}
+              submissions={submissions}
+              onMarkRead={handleMarkRead}
+              onDelete={handleDeleteNotification}
+            />
+          )}
+          {page==="admin" && currentUser.role==="super_admin" && (
+            <AdminManagementPage users={users} currentUser={currentUser} onChangeRole={handleChangeUserRole}/>
+          )}
+          {page==="scholarManagement" && currentUser.tags.includes("scholar_management") && (
+            <ScholarManagementToolsPage />
+          )}
+          {page==="sdpMonitoring" && currentUser.tags.includes("sdp_monitoring") && (
+            <SDPMonitoringTab/>
+          )}
+          {page==="formationTools" && currentUser.tags.includes("scholars_formation") && (
+            <FormationToolsTab/>
+          )}
+          {page==="formsManagement" && currentUser.tags.includes("forms_management") && (
+            <FormsManagementTab/>
+          )}
+          {page==="staffAccounts" && currentUser.username.toLowerCase()===IT_ADMIN_USERNAME && (
+            <StaffAccountsPage/>
+          )}
+        </div>
+        <FloatingChatWidget currentUser={currentUser} allUsers={users}/>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
