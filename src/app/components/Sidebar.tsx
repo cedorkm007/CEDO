@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock } from "lucide-react";
+import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarSeparator,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
 } from "./ui/sidebar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./ui/collapsible";
-import { DIVISIONS, FORM_TYPES, type Page, type UserProfile } from "@/app/App";
+import { DIVISIONS, FORM_TYPES, IT_ADMIN_USERNAME, type Page, type UserProfile } from "@/app/App";
 
 /**
  * Admin UI Restructuring, Milestone 3: the left sidebar's structural
@@ -63,8 +63,10 @@ import { DIVISIONS, FORM_TYPES, type Page, type UserProfile } from "@/app/App";
  * `user.role === "super_admin"` specifically, one level stricter. Per
  * Milestone 4's own explicit decision (option (c): hold off wiring
  * until BOTH Milestone 5 AND 6 are done), this region is built and
- * verified but still NOT wired in — Region C ("Specific Tools",
- * Milestone 6) is the one remaining region before wiring can happen.
+ * verified but still NOT wired in — Region C ("Specific Tools") is now
+ * also built (Milestone 6, see below), satisfying both conditions; an
+ * explicit go-ahead from the person is still needed before writing any
+ * wiring code, per this project's own standing practice.
  *
  * IMPORTANT CORRECTION vs. the plan this milestone was handed: that
  * note's Section 5 described the Forms submenu as a single
@@ -85,9 +87,52 @@ import { DIVISIONS, FORM_TYPES, type Page, type UserProfile } from "@/app/App";
  * same reasoning as reusing the sidebar primitive itself in Milestone 3:
  * a working, tested implementation of exactly this was already sitting in
  * the repo unused, so no hand-rolled open-state toggle was written.
+ *
+ * Milestone 6 addition: Region C ("Specific Tools") is populated — the
+ * 5 items previously living in the old inline TopNav's `primaryItems`
+ * beyond Home/My Tasks/Notifications (those three relocated elsewhere —
+ * My Tasks into Region A, Home/Notifications into the new TopNav.tsx).
+ * Re-derived directly from BOTH primaryItems AND App.tsx's own
+ * `isPageAuthorizedFor` switch (the single source of truth the codebase
+ * already uses to re-validate a page restored from a URL) rather than
+ * trusting either the Milestone 5 handoff's shorthand ("4 tag-gated
+ * tools + IT admin's Staff Accounts page") or assuming a round number —
+ * both sources agree exactly: 4 tag-gated tools (Scholar Management
+ * Tools/scholar_management, SDP Monitoring/sdp_monitoring, Scholars'
+ * Formation Tools/scholars_formation, Forms Management/forms_management)
+ * plus one differently-gated 5th (Staff Accounts, gated on
+ * `user.username.toLowerCase() === IT_ADMIN_USERNAME`, a hardcoded
+ * account check, not a tag) — 5 total, matching TopNav.tsx's own
+ * Milestone 2 comment ("all 5 Specific Tools") exactly. IT_ADMIN_USERNAME
+ * needed a new export from App.tsx (unlike DIVISIONS/FORM_TYPES, which
+ * were already exported when Milestones 4/5 checked) — that's the one
+ * other change this milestone made outside this file.
+ *
+ * Same "gate the whole region, separator included" pattern as Region B,
+ * for the same reason (no empty boxed gap for a user with none of these
+ * 5), computed once as `hasAnySpecificTool` rather than inlined at the
+ * render site — Region B's own gate is a single existing field
+ * (`user.isAdmin`), but this region's is a 5-way OR across raw tag
+ * checks plus a username comparison, long and repetitive enough that a
+ * named variable reads more clearly than inlining it, and avoids
+ * evaluating the same checks twice (once for the outer gate, again for
+ * defensive clarity) if this render function ever gets reused elsewhere.
+ * Each of the 5 items is then independently gated inside that outer
+ * check too, exactly like Admin Management inside Region B's own
+ * `user.isAdmin` gate — a user can have any subset of these 5 tags, not
+ * all-or-nothing.
  */
 export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: Page; setPage: (page: Page) => void }) {
   const [formsOpen, setFormsOpen] = useState(page === "forms");
+
+  // See the top doc comment's "Milestone 6 addition" paragraph for why
+  // this is a named variable rather than inlined at the render site.
+  const hasAnySpecificTool =
+    user.tags.includes("scholar_management")
+    || user.tags.includes("sdp_monitoring")
+    || user.tags.includes("scholars_formation")
+    || user.tags.includes("forms_management")
+    || user.username.toLowerCase() === IT_ADMIN_USERNAME;
 
   return (
     // top-14 + an explicit height (rather than the primitive's own default
@@ -199,12 +244,58 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
           </>
         )}
 
-        <SidebarSeparator />
-
-        {/* Region C — "Specific Tools" (Milestone 6). */}
-        <SidebarGroup>
-          <SidebarGroupContent className="min-h-20 rounded-lg border border-sidebar-border bg-sidebar-accent/40" />
-        </SidebarGroup>
+        {/* Region C — "Specific Tools" (Milestone 6) — same "gate the
+            whole block, separator included" pattern as Region B, for
+            the same no-empty-gap reason. Visible group label used here
+            too, for the same reasoning as Region B's — role/tag-gated,
+            not shown to every staff member. */}
+        {hasAnySpecificTool && (
+          <>
+            <SidebarSeparator />
+            <SidebarGroup>
+              <SidebarGroupLabel>Specific Tools</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {user.tags.includes("scholar_management") && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton isActive={page === "scholarManagement"} onClick={() => setPage("scholarManagement")}>
+                        <GraduationCap /> Scholar Management Tools
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {user.tags.includes("sdp_monitoring") && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton isActive={page === "sdpMonitoring"} onClick={() => setPage("sdpMonitoring")}>
+                        <Lightbulb /> SDP Monitoring
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {user.tags.includes("scholars_formation") && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton isActive={page === "formationTools"} onClick={() => setPage("formationTools")}>
+                        <Users2 /> Scholars' Formation Tools
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {user.tags.includes("forms_management") && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton isActive={page === "formsManagement"} onClick={() => setPage("formsManagement")}>
+                        <FileText /> Forms Management
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {user.username.toLowerCase() === IT_ADMIN_USERNAME && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton isActive={page === "staffAccounts"} onClick={() => setPage("staffAccounts")}>
+                        <Lock /> Staff Accounts
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </>
+        )}
       </SidebarContent>
     </Sidebar>
   );

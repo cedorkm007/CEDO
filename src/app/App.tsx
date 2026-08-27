@@ -62,7 +62,12 @@ export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitorin
  *  been retired entirely (see: removed RegisterPage); this is now the only way new
  *  staff accounts get created. CHANGE THIS to whatever username you actually
  *  register for your IT admin account. */
-const IT_ADMIN_USERNAME = "it.admin1";
+// Exported for Sidebar.tsx (Region C, "Specific Tools", Milestone 6 of
+// the Admin UI Restructuring task) — its staffAccounts item needs the
+// exact same username check isPageAuthorizedFor and the old inline
+// primaryItems construction below both already use, so it isn't
+// hand-copied a third time into a different file.
+export const IT_ADMIN_USERNAME = "it.admin1";
 
 const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "sdpMonitoring", "formationTools", "formsManagement", "staffAccounts"];
 
