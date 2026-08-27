@@ -53,12 +53,11 @@ export function TopNav({ user, page, setPage, onSignOut, unreadCount }: {
     { key: "home", label: "Home", icon: <Home size={14} /> },
     // Revision 1 (post-M7 browser review): "My Tasks" now also appears in
     // the top nav, between Home and Notifications, per the requested tab
-    // order. Default decision (handoff note's own stated default, since
-    // the person only said "put it on the top nav" without specifying
-    // whether to also remove it from the sidebar): KEPT in both places —
-    // the sidebar's own "My Tasks" item (Region A, Sidebar.tsx) is
-    // unchanged. Easy to remove from one side later if duplication turns
-    // out to be unwanted.
+    // order. Initially kept in the sidebar too (Region A, Sidebar.tsx) as
+    // that round's own stated default, since the person only said "put it
+    // on the top nav" without specifying whether to also remove it from
+    // the sidebar. Later removed from the sidebar once the duplication was
+    // confirmed unwanted — "My Tasks" now lives here only.
     { key: "tasks", label: "My Tasks", icon: <CheckSquare size={14} /> },
     { key: "notifications", label: "Notifications", icon: <Bell size={14} /> },
   ];
