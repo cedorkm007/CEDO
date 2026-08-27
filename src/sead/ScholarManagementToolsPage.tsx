@@ -36,12 +36,12 @@ export function ScholarManagementToolsPage() {
       <h1 className="text-xl font-bold text-foreground mb-1">Scholar Management Tools</h1>
       <p className="text-sm text-muted-foreground mb-5">Manage scholar accounts and the Quests question bank.</p>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-border mb-5">
+      <div className="flex w-full gap-1 border-b border-border mb-5">
         {TABS.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`shrink-0 flex items-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
               tab === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >

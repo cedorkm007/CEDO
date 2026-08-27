@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Lightbulb, X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download } from "lucide-react";
+import { X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
@@ -807,15 +807,16 @@ export function SDPMonitoringTab() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-foreground mb-1 flex items-center gap-2"><Lightbulb size={20} className="text-[#F3BC00]" /> SDP Monitoring</h1>
-      <div className="flex gap-1 border-b border-border mb-5">
+      <h1 className="text-xl font-bold text-foreground mb-1">SDP Monitoring</h1>
+      <p className="text-sm text-muted-foreground mb-5">Track SDP activities and credit scholars' attendance and compliance.</p>
+      <div className="flex w-full gap-1 border-b border-border mb-5">
         {([
           { key: "activities" as const, label: "SDP Activities" },
           { key: "checklist" as const, label: "SDP Checklist" },
         ]).map(t => (
           <button key={t.key} onClick={() => setSection(t.key)}
-            className={`px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
-              section === t.key ? "border-[#062444] text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
+              section === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}>
             {t.label}
           </button>

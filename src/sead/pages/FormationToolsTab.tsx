@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users2, School, Building2, Shield, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { School, Building2, Shield, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { fetchDistinctSchools } from "../formationApi";
 import { PositionSlotsEditor } from "../components/PositionSlotsEditor";
 import { MembersListEditor } from "../components/MembersListEditor";
@@ -217,14 +217,14 @@ export function FormationToolsTab() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-foreground mb-1 flex items-center gap-2"><Users2 size={20} className="text-[#F3BC00]" /> Scholars' Formation Tools</h1>
+      <h1 className="text-xl font-bold text-foreground mb-1">Scholars' Formation Tools</h1>
       <p className="text-sm text-muted-foreground mb-5">Tag scholars with leadership positions in each organizational structure.</p>
 
-      <div className="flex gap-1 border-b border-border mb-5 flex-wrap">
+      <div className="flex w-full gap-1 border-b border-border mb-5">
         {TABS.map(t => (
           <button key={t.key} onClick={() => setSection(t.key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-[13px] font-bold border-b-2 transition-colors ${
-              section === t.key ? "border-[#062444] text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
+              section === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}>
             {t.icon} {t.label}
           </button>

@@ -356,13 +356,19 @@ export function FormsManagementTab() {
 
   return (
     <div>
-      <div className="mb-5 flex gap-2">
+      <h1 className="text-xl font-bold text-foreground mb-1">Forms Management</h1>
+      <p className="text-sm text-muted-foreground mb-5">Manage downloadable materials and submission activities for scholars.</p>
+      <div className="flex w-full gap-1 border-b border-border mb-5">
         <button onClick={() => setSection("materials")}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-bold ${section === "materials" ? "bg-[#062444] text-white" : "bg-[#f7f9fc] text-slate-500 hover:bg-[#eef3fb]"}`}>
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
+            section === "materials" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}>
           <FolderOpen size={14} /> Materials
         </button>
         <button onClick={() => setSection("submission-activities")}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-bold ${section === "submission-activities" ? "bg-[#062444] text-white" : "bg-[#f7f9fc] text-slate-500 hover:bg-[#eef3fb]"}`}>
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
+            section === "submission-activities" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}>
           <ClipboardList size={14} /> Submission Activities
         </button>
       </div>
