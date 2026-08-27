@@ -5,43 +5,20 @@ import { SidebarTrigger } from "@/app/components/ui/sidebar";
 import { DIVISIONS, type Page, type UserProfile } from "@/app/App";
 
 /**
- * Admin UI Restructuring, Milestone 2: the new fixed top nav — exactly 3
- * items (Home, Notifications, a Profile/Sign-out control), replacing the
- * old TopNav's much longer primaryItems list + avatar dropdown + separate
- * Forms dropdown. See MILESTONE_1_navigation_mapping.md for the full
- * target mapping this follows.
+ * Admin UI Restructuring: the fixed top nav — 3 items (Home, My Tasks,
+ * Notifications) plus a Profile/Sign-out control, wired in alongside
+ * AppSidebar inside a shared SidebarProvider in App.tsx (see that file's
+ * render tree). Renders <SidebarTrigger /> (hamburger button, mobile-only
+ * — hidden at md+ since desktop shows the sidebar permanently) from the
+ * shadcn sidebar primitive at src/app/components/ui/sidebar.tsx.
  *
- * NOT YET WIRED IN. App.tsx still renders its own local `TopNav` function
- * (unchanged) — this file exists as a real, verified, ready-to-swap-in
- * replacement, but swapping it in is being deliberately held back for one
- * reason worth flagging clearly: the items this design removes from the
- * top nav (Profile, My Tasks, My Accomplishments, Monitoring, History,
- * Admin Management, Forms, and all 5 Specific Tools) don't have anywhere
- * to go yet — the sidebar that's supposed to hold them is Milestones 3-6,
- * not built yet. Swapping this in today, before the sidebar exists, would
- * make all of those pages unreachable via navigation for however long it
- * takes to build the sidebar — a real functional regression, not just a
- * cosmetic change. That tradeoff needs a decision from the person, not an
- * assumption either way — see the accompanying report/handoff for the
- * two options laid out.
- *
- * Kept as a genuinely standalone, drop-in-compatible component (same
- * prop shape as the current TopNav) specifically so that whichever way
- * that decision goes, this piece doesn't need to be rebuilt — either
- * wire it in as-is once the sidebar exists, or wire it in now alongside a
- * temporary interim access path for the relocated items, without
- * touching this file's own logic either way.
- *
- * Milestone 3 addition: now renders <SidebarTrigger /> (hamburger button,
- * mobile-only) from the shadcn sidebar primitive at
- * src/app/components/ui/sidebar.tsx — see src/app/components/Sidebar.tsx
- * for why context (not new isOpen/onClose props) is the coordination
- * mechanism. RUNTIME DEPENDENCY worth knowing before wiring this in:
- * SidebarTrigger calls useSidebar() internally, which throws if this
- * component is ever rendered outside a <SidebarProvider> ancestor. Not an
- * issue yet — this file isn't live-rendered anywhere this round either —
- * but whichever milestone wires both this and <AppSidebar /> into App.tsx
- * must wrap both inside one shared <SidebarProvider>.
+ * Milestone 8 accessibility pass: every button here hides its text label
+ * below the `sm` breakpoint (icon-only on narrow screens) via `hidden
+ * sm:inline` — CSS `display:none` removes that text from the
+ * accessibility tree entirely, not just visually, so every one of those
+ * buttons now carries an explicit `aria-label` as a fallback accessible
+ * name. Without this, a screen reader on a narrow viewport would announce
+ * these controls with no name at all.
  */
 export function TopNav({ user, page, setPage, onSignOut, unreadCount }: {
   user: UserProfile; page: Page; setPage: (p: Page) => void; onSignOut: () => void; unreadCount: number;
@@ -86,7 +63,8 @@ export function TopNav({ user, page, setPage, onSignOut, unreadCount }: {
               key={item.key}
               onClick={() => setPage(item.key)}
               aria-current={page === item.key ? "page" : undefined}
-              className={`relative flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
+              aria-label={item.label}
+              className={`relative flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-primary ${
                 page === item.key ? "bg-accent text-accent-foreground font-semibold" : "text-white/70 hover:text-white hover:bg-white/10"
               }`}
             >
@@ -111,12 +89,13 @@ export function TopNav({ user, page, setPage, onSignOut, unreadCount }: {
             ref={avatarRef}
             onClick={() => setPage("profile")}
             aria-current={page === "profile" ? "page" : undefined}
-            className={`flex items-center gap-2 pl-1 pr-2 py-1 rounded-full border-l border-white/20 transition-all ${
+            aria-label={`Profile — ${user.nickname || user.firstName}`}
+            className={`flex items-center gap-2 pl-1 pr-2 py-1 rounded-full border-l border-white/20 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-primary ${
               page === "profile" ? "bg-white/10" : "hover:bg-white/10"
             }`}
           >
             {user.profilePicture ? (
-              <img src={user.profilePicture} className="w-7 h-7 rounded-full object-cover ring-2 ring-accent/60" alt="avatar" />
+              <img src={user.profilePicture} className="w-7 h-7 rounded-full object-cover ring-2 ring-accent/60" alt="" />
             ) : (
               <div className="w-7 h-7 rounded-full bg-accent flex items-center justify-center text-accent-foreground text-xs font-bold flex-shrink-0">
                 {user.firstName.charAt(0)}{user.lastName.charAt(0)}
@@ -124,7 +103,7 @@ export function TopNav({ user, page, setPage, onSignOut, unreadCount }: {
             )}
             <span className="text-white/85 text-sm hidden sm:inline">{user.nickname || user.firstName}</span>
           </button>
-          <button onClick={onSignOut} className="flex items-center gap-1.5 text-white/60 hover:text-white text-sm px-2 py-1.5 rounded-lg hover:bg-white/10 transition-all">
+          <button onClick={onSignOut} aria-label="Sign Out" className="flex items-center gap-1.5 text-white/60 hover:text-white text-sm px-2 py-1.5 rounded-lg hover:bg-white/10 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-primary">
             <LogOut size={14} /> <span className="hidden sm:inline">Sign Out</span>
           </button>
         </div>
