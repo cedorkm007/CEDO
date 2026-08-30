@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, Check, GripVertical, ClipboardList, ClipboardCheck, SlidersHorizontal } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, GripVertical, ClipboardList, ClipboardCheck, SlidersHorizontal, FolderSync, Users } from "lucide-react";
 import {
   fetchSubmissionActivities, createSubmissionActivity, updateSubmissionActivity, deleteSubmissionActivity,
   fetchSubmissionActivityConditions, setSubmissionActivityConditions, SUBMISSION_ALLOWED_FILE_TYPES,
+  reorganizeActivityDriveFiles,
   type SubmissionActivity, type SubmissionActivityInput, type SubmissionActivityCondition, type SubmissionFileCategory,
 } from "../submissionActivitiesApi";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { SubmissionReviewPanel } from "./SubmissionReviewPanel";
+import { SubmissionRosterPanel } from "./SubmissionRosterPanel";
 import { fetchSubjects } from "../seadApi";
 import type { QuestSubject } from "../types";
 import { fetchFormationActivities } from "../formationActivitiesApi";
@@ -232,7 +234,14 @@ export function SubmissionActivitiesSection() {
   const [showNew, setShowNew] = useState(false);
   const [editing, setEditing] = useState<SubmissionActivity | null>(null);
   const [reviewing, setReviewing] = useState<SubmissionActivity | null>(null);
+  const [monitoring, setMonitoring] = useState<SubmissionActivity | null>(null);
   const [managingConditions, setManagingConditions] = useState<SubmissionActivity | null>(null);
+  // Tracks which single activity's Drive reorganization is in flight —
+  // scoped per-activity (not one global busy flag) since Milestone 2's
+  // Edge Function is itself scoped to one activity per call, and staff
+  // may reasonably want to trigger it for one activity while a previous
+  // one is still running for another.
+  const [reorganizingId, setReorganizingId] = useState<string | null>(null);
 
   async function load() { setLoading(true); setActivities(await fetchSubmissionActivities()); setLoading(false); }
   useEffect(() => { void load(); }, []);
@@ -242,6 +251,41 @@ export function SubmissionActivitiesSection() {
     const result = await deleteSubmissionActivity(activity.id);
     if (!result.ok) window.alert(result.error || "Couldn't delete the activity.");
     else void load();
+  }
+
+  /**
+   * Milestone 2's frontend trigger. Confirms first since this moves real
+   * files in Drive (even though it's safely re-runnable — see the Edge
+   * Function's own header comment) — staff should still know what
+   * they're kicking off, not have it fire silently. Reports the outcome
+   * via window.alert, matching this component's own existing convention
+   * for reporting delete's outcome above, rather than introducing a new
+   * result-modal pattern just for this one action.
+   */
+  async function handleReorganize(activity: SubmissionActivity) {
+    if (!window.confirm(
+      `Move "${activity.name}"'s already-uploaded files into the new School subfolder structure? This reorganizes files already in Google Drive.`
+    )) return;
+    setReorganizingId(activity.id);
+    const result = await reorganizeActivityDriveFiles(activity.id);
+    setReorganizingId(null);
+    if (!result.ok || !result.result) {
+      window.alert(result.error || "Couldn't reorganize this activity's files.");
+      return;
+    }
+    const { totalFiles, movedCount, results } = result.result;
+    const failures = results.filter(r => !r.ok);
+    if (totalFiles === 0) {
+      window.alert(`"${activity.name}" has no uploaded files to reorganize.`);
+    } else if (failures.length === 0) {
+      window.alert(`Moved ${movedCount} of ${totalFiles} file(s) for "${activity.name}" into their School subfolder.`);
+    } else {
+      const failureList = failures.map(f => `• ${f.scholarName} — ${f.fileName}: ${f.error ?? "Unknown error"}`).join("\n");
+      window.alert(
+        `Moved ${movedCount} of ${totalFiles} file(s) for "${activity.name}".\n${failures.length} failed — you can re-run this ` +
+        `action safely to retry just the failed ones:\n${failureList}`
+      );
+    }
   }
 
   return (
@@ -272,6 +316,16 @@ export function SubmissionActivitiesSection() {
                 <div className="flex shrink-0 items-center gap-2">
                   <button onClick={() => setManagingConditions(activity)} className="text-slate-400 hover:text-[#0088cc]" aria-label="Manage unlock conditions"><SlidersHorizontal size={15} /></button>
                   <button onClick={() => setReviewing(activity)} className="text-slate-400 hover:text-[#0088cc]" aria-label={`Review submissions for ${activity.name}`}><ClipboardCheck size={15} /></button>
+                  <button onClick={() => setMonitoring(activity)} className="text-slate-400 hover:text-[#0088cc]" aria-label={`View submission monitoring for ${activity.name}`} title="View who has and hasn't submitted"><Users size={15} /></button>
+                  <button
+                    onClick={() => void handleReorganize(activity)}
+                    disabled={reorganizingId === activity.id}
+                    className="text-slate-400 hover:text-[#0088cc] disabled:opacity-40 disabled:hover:text-slate-400"
+                    aria-label={`Reorganize Drive files for ${activity.name} into School subfolders`}
+                    title="Move already-uploaded files into the new School subfolder structure"
+                  >
+                    <FolderSync size={15} className={reorganizingId === activity.id ? "animate-spin" : ""} />
+                  </button>
                   <button onClick={() => setEditing(activity)} className="text-slate-400 hover:text-[#0088cc]" aria-label={`Edit ${activity.name}`}><Pencil size={15} /></button>
                   <button onClick={() => void handleDelete(activity)} className="text-slate-400 hover:text-red-600" aria-label={`Delete ${activity.name}`}><Trash2 size={15} /></button>
                 </div>
@@ -290,6 +344,7 @@ export function SubmissionActivitiesSection() {
       {showNew && <SubmissionActivityModal activity={null} onClose={() => setShowNew(false)} onSaved={() => void load()} />}
       {editing && <SubmissionActivityModal activity={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />}
       {reviewing && <SubmissionReviewPanel activity={reviewing} activities={activities} onClose={() => setReviewing(null)} />}
+      {monitoring && <SubmissionRosterPanel activity={monitoring} activities={activities} onClose={() => setMonitoring(null)} />}
       {managingConditions && <SubmissionActivityConditionsModal activity={managingConditions} onClose={() => setManagingConditions(null)} onSaved={() => void load()} />}
     </div>
   );

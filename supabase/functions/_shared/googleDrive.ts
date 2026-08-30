@@ -160,6 +160,34 @@ export async function findOrCreateFolder(accessToken: string, name: string, pare
 }
 
 /**
+ * Milestone 2 of the "Drive folder reorganization + submission
+ * monitoring" task. Reparents an existing Drive file — a real move
+ * (single Drive API call swapping `parents`), never a download +
+ * re-upload + delete, so the file's id, sharing links, and revision
+ * history are all preserved exactly.
+ *
+ * Idempotent by design: `removeParents` is simply ignored by the Drive
+ * API for any parent id the file is no longer actually attached to
+ * (rather than erroring), so calling this again for a file that was
+ * already moved by an earlier run is a safe no-op — the file just stays
+ * in `newParentId`, exactly where it already was.
+ */
+export async function moveFile(accessToken: string, fileId: string, oldParentId: string, newParentId: string): Promise<void> {
+  const url =
+    `${DRIVE_FILES_URL}/${fileId}?addParents=${encodeURIComponent(newParentId)}` +
+    `&removeParents=${encodeURIComponent(oldParentId)}&supportsAllDrives=true&fields=id,parents`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    console.error("Drive file move failed:", json);
+    throwJsonError(`Failed to move a file in Google Drive. (${driveErrorDetail(json)})`, 502);
+  }
+}
+
+/**
  * Part 4. Given a desired "<base><extension>" name, returns the first
  * name in that sequence (base, base_2, base_3, ...) that doesn't already
  * exist as a non-trashed file directly under `parentId` — checked live

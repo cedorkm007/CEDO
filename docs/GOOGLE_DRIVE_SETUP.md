@@ -111,8 +111,15 @@ Submission Activity. The app should create this structure and upload the file:
 <new OAuth-created parent folder>/
   <Activity Name>/
     <Scholar Year Level>/
-      <ActivityName>_<ScholarLastName>_<ScholarFirstName>.<extension>
+      <Scholar School>/
+        <ActivityName>_<ScholarLastName>_<ScholarFirstName>.<extension>
 ```
+
+The School level was added after this doc was first written — a blank/unset
+school produces a folder literally named `No School Set` rather than an empty
+folder name. The Year Level folder is shared across every school within it
+(only the School subfolder differs per scholar), so switching a scholar's
+school never creates a duplicate Year Level folder.
 
 The upload should also create a row in `submission_drive_folders` and a file
 record in `submission_uploads`. If it fails, keep the exact error message: the

@@ -313,3 +313,104 @@ export async function reviewSubmissionUploads(
     .in("id", uploadIds);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+
+// ── Drive folder reorganization (Milestone 2) ────────────────
+// Same shape/error-unwrapping convention as seadApi.ts's invokeEdgeFunction
+// and submissionsApi.ts's own local copy — this file didn't need one
+// until now (every function above is plain table CRUD), so it gets its
+// own copy too rather than importing a non-exported helper from another
+// file.
+async function invokeEdgeFunction<T = Record<string, unknown>>(
+  name: string, body: object
+): Promise<{ ok: boolean; error?: string; data?: T }> {
+  const { data, error } = await supabase.functions.invoke(name, { body: body as Record<string, unknown> });
+  if (error) {
+    let message = error.message;
+    const context = (error as { context?: Response }).context;
+    if (context && typeof context.json === "function") {
+      try {
+        const parsed = await context.clone().json();
+        if (parsed?.error) message = parsed.error;
+      } catch {
+        // Response body wasn't JSON (or was already consumed) — fall back to the generic message.
+      }
+    }
+    return { ok: false, error: message };
+  }
+  const payload = data as (T & { error?: string }) | null;
+  if (payload?.error) return { ok: false, error: payload.error };
+  return { ok: true, data: data as T };
+}
+
+export interface ReorganizeFileResult {
+  uploadId: string;
+  fileName: string;
+  scholarName: string;
+  ok: boolean;
+  error?: string;
+}
+
+export interface ReorganizeActivityResult {
+  activityName: string;
+  totalFiles: number;
+  movedCount: number;
+  results: ReorganizeFileResult[];
+}
+
+/**
+ * Retroactively moves one activity's already-uploaded files from the old
+ * two-level Drive structure into the new three-level (+ School) one —
+ * Milestone 2's actual deliverable. Scoped to one activity per call by
+ * design (see the Edge Function's own header comment for why); calling
+ * this again for the same activity is safe (moveFile()'s underlying
+ * removeParents is a no-op for a file already moved).
+ */
+export async function reorganizeActivityDriveFiles(activityId: string): Promise<{ ok: boolean; error?: string; result?: ReorganizeActivityResult }> {
+  const result = await invokeEdgeFunction<{ activityName: string; totalFiles: number; movedCount: number; results: ReorganizeFileResult[] }>(
+    "submission-reorganize-activity-files", { activityId }
+  );
+  if (!result.ok || !result.data) return { ok: false, error: result.error || "Failed to reorganize files." };
+  return {
+    ok: true,
+    result: {
+      activityName: result.data.activityName,
+      totalFiles: result.data.totalFiles,
+      movedCount: result.data.movedCount,
+      results: result.data.results,
+    },
+  };
+}
+
+// ── Submission monitoring roster (Milestone 4) ────────────────
+export type SubmissionRosterStatus = "submitted" | "needs_resubmission" | "locked" | "not_submitted";
+
+export interface SubmissionRosterRow {
+  scholarId: string;
+  firstName: string;
+  lastName: string;
+  yearLevel: string;
+  school: string;
+  status: SubmissionRosterStatus;
+}
+
+/**
+ * Every scholar the activity's year-level targeting applies to
+ * (roster-based, not uploads-based -- a scholar with zero uploads still
+ * appears here, unlike fetchSubmissionsForActivity()), each with a
+ * computed status. See the RPC's own migration comment
+ * (supabase_migration_submission_roster_status_rpc.sql) for the exact
+ * status precedence and the Q2/Q3 design decisions this depends on.
+ */
+export async function fetchSubmissionRosterStatus(activityId: string): Promise<{ ok: boolean; error?: string; rows?: SubmissionRosterRow[] }> {
+  const { data, error } = await supabase.rpc("get_submission_roster_status", { p_activity_id: activityId });
+  if (error) return { ok: false, error: error.message };
+  const rows: SubmissionRosterRow[] = (data ?? []).map((r: Record<string, unknown>) => ({
+    scholarId: r.scholar_id as string,
+    firstName: r.first_name as string,
+    lastName: r.last_name as string,
+    yearLevel: r.year_level as string,
+    school: (r.school as string) ?? "",
+    status: r.status as SubmissionRosterStatus,
+  }));
+  return { ok: true, rows };
+}
