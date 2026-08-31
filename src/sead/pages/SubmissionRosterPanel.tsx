@@ -8,9 +8,13 @@ import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 
 /**
  * Milestones 5-6 of the "Drive folder reorganization + submission
- * monitoring" task — the roster display (Milestone 5) plus year-level
- * and school filters, AND-combined (Milestone 6). School filter options
- * are derived directly from the already-loaded roster rows rather than
+ * monitoring" task, plus a later addendum (before Milestone 7) adding a
+ * Status filter and a filtered-count summary — same file, same
+ * conventions, not a separate milestone number since it's a direct
+ * extension of Milestone 6's own filter row. The roster display
+ * (Milestone 5) plus year-level, school, AND status filters, all
+ * AND-combined (Milestone 6 + addendum). School filter options are
+ * derived directly from the already-loaded roster rows rather than
  * a separate distinct-schools query — the whole roster for one activity
  * is already fetched client-side, so there's no reason to add a second
  * round-trip just to list the schools that are already in hand. Year
@@ -19,7 +23,12 @@ import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
  * deriving year levels from the roster the same way schools are —
  * FORMATION_YEAR_LEVELS is the canonical, complete list even for a year
  * level with zero eligible scholars right now, which a roster-derived
- * list would silently omit.
+ * list would silently omit. Status filter uses the full 4-way set
+ * (Submitted / Needs Resubmission / Locked / Not Submitted) rather than
+ * a Submitted-vs-everything-else binary — confirmed directly with the
+ * person rather than assumed, since "Not Submitted" language elsewhere
+ * in the original request was genuinely ambiguous against these 4 real
+ * statuses.
  */
 function statusMeta(status: SubmissionRosterStatus): { label: string; className: string; Icon: typeof CheckCircle2 } {
   if (status === "submitted") return { label: "Submitted", className: "bg-emerald-50 text-emerald-700", Icon: CheckCircle2 };
@@ -42,6 +51,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
   const [error, setError] = useState("");
   const [yearLevel, setYearLevel] = useState("all");
   const [school, setSchool] = useState("all");
+  const [status, setStatus] = useState<"all" | SubmissionRosterStatus>("all");
 
   async function load(forActivityId: string) {
     setLoading(true);
@@ -56,7 +66,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
   // Reset filters that no longer apply when switching activities — a
   // school/year-level selected for one activity's roster may not exist
   // in another activity's roster at all.
-  useEffect(() => { setYearLevel("all"); setSchool("all"); }, [activityId]);
+  useEffect(() => { setYearLevel("all"); setSchool("all"); setStatus("all"); }, [activityId]);
 
   const schoolOptions = useMemo(
     () => [...new Set(rows.map(r => r.school || "No School Set"))].sort(),
@@ -64,12 +74,23 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
   );
 
   // AND-combined per the person's explicit "cross-matchable" request —
-  // both conditions must hold, not either.
+  // all active conditions must hold, not any one of them.
   const filteredRows = useMemo(() => rows.filter(row => {
     if (yearLevel !== "all" && row.yearLevel !== yearLevel) return false;
     if (school !== "all" && (row.school || "No School Set") !== school) return false;
+    if (status !== "all" && row.status !== status) return false;
     return true;
-  }), [rows, yearLevel, school]);
+  }), [rows, yearLevel, school, status]);
+
+  // Counts reflect whichever rows are currently visible — filteredRows
+  // already equals the full roster when no filter is active, so this
+  // one computation naturally covers both "filtered" and "unfiltered"
+  // totals without a separate code path for either case.
+  const statusCounts = useMemo(() => {
+    const counts: Record<SubmissionRosterStatus, number> = { submitted: 0, needs_resubmission: 0, locked: 0, not_submitted: 0 };
+    for (const row of filteredRows) counts[row.status]++;
+    return counts;
+  }, [filteredRows]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 py-8" onClick={onClose}>
@@ -94,7 +115,28 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
             <option value="all">All Schools</option>
             {schoolOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+          <select value={status} onChange={event => setStatus(event.target.value as "all" | SubmissionRosterStatus)}
+            className="rounded-lg border border-[#062444]/15 px-2.5 py-1.5 text-[12px] font-semibold text-[#062444] outline-none focus:border-[#0088cc]">
+            <option value="all">All Statuses</option>
+            {(["submitted", "needs_resubmission", "locked", "not_submitted"] as SubmissionRosterStatus[]).map(s => (
+              <option key={s} value={s}>{statusMeta(s).label}</option>
+            ))}
+          </select>
         </div>
+
+        {!loading && !error && rows.length > 0 && (
+          <div className="grid shrink-0 grid-cols-4 gap-2 border-b border-[#e6ecf5] px-6 py-3">
+            {(["submitted", "needs_resubmission", "locked", "not_submitted"] as SubmissionRosterStatus[]).map(s => {
+              const meta = statusMeta(s);
+              return (
+                <div key={s} className={`rounded-lg px-2 py-1.5 text-center ${meta.className}`}>
+                  <p className="text-[15px] font-extrabold">{statusCounts[s]}</p>
+                  <p className="text-[10px] font-bold uppercase leading-tight">{meta.label}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="overflow-y-auto p-6">
           {loading ? (
