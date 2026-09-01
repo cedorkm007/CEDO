@@ -561,3 +561,96 @@ export async function generateScholarsInformationReport(opts: ScholarsInformatio
   const blob = await Packer.toBlob(doc)
   saveAs(blob, `Scholars_Information_${new Date().toISOString().slice(0, 10)}.docx`)
 }
+
+// ── 6. Submission Monitoring Roster Report ───────────────────
+// Same dynamic-width table structure as Scholars Information Report
+// above (reused deliberately rather than generalizing that function's
+// hardcoded title/filename into a shared helper — this project's own
+// convention here is one function per document type, matching Pass
+// Slip / Accomplishment Report / Accomplishment History / Scholars
+// Information each having their own function despite some layout
+// overlap). One addition Scholars Information doesn't need: an
+// activityName line, since a roster is always scoped to one submission
+// activity, unlike the Scholars Information report which isn't scoped
+// to any single entity.
+
+export interface SubmissionRosterReportOptions {
+  activityName: string
+  columns: string[]
+  columnWeights?: number[]
+  rows: string[][]
+  generatedAt: string
+  /** e.g. "Filters: Year Level = 3rd Year; Status = Needs Resubmission" — same convention as ScholarsInformationReportOptions.filtersSummary. */
+  filtersSummary: string
+}
+
+export async function generateSubmissionRosterReport(opts: SubmissionRosterReportOptions): Promise<void> {
+  const TABLE_WIDTH = 15398
+  const weights = opts.columnWeights && opts.columnWeights.length === opts.columns.length
+    ? opts.columnWeights
+    : opts.columns.map(() => 1)
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0)
+  const rawWidths = weights.map(w => (w / totalWeight) * TABLE_WIDTH)
+  const colWidths = rawWidths.map((w, i) =>
+    i === rawWidths.length - 1
+      ? TABLE_WIDTH - rawWidths.slice(0, -1).reduce((sum, x) => sum + Math.round(x), 0)
+      : Math.round(w)
+  )
+
+  const tableRows: TableRow[] = [
+    new TableRow({
+      tableHeader: true,
+      children: opts.columns.map((label, i) => headerCell(label, colWidths[i])),
+    }),
+    ...opts.rows.map(row => new TableRow({
+      children: row.map((value, i) => cell(
+        [new Paragraph({ children: [normal(value, 20)] })],
+        { width: colWidths[i] },
+      )),
+    })),
+  ]
+
+  const header = await buildLetterheadHeader()
+
+  const doc = new Document({
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 16838, height: 11906 },
+          margin: { top: 1440, right: 720, bottom: 431, left: 720, header: 720, footer: 720 },
+        },
+      },
+      headers: { default: header },
+      children: [
+        new Paragraph({
+          children: [bold('SUBMISSION MONITORING ROSTER', 36)],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 60 },
+        }),
+        new Paragraph({
+          children: [bold(opts.activityName, 26)],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 120 },
+        }),
+        new Paragraph({
+          children: [normal(`Generated ${opts.generatedAt} • ${opts.rows.length} scholar${opts.rows.length === 1 ? '' : 's'}`, 20)],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 60 },
+        }),
+        new Paragraph({
+          children: [normal(opts.filtersSummary, 20)],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
+        }),
+        new Table({
+          width: { size: TABLE_WIDTH, type: WidthType.DXA },
+          columnWidths: colWidths,
+          rows: tableRows,
+        }),
+      ],
+    }],
+  })
+
+  const blob = await Packer.toBlob(doc)
+  saveAs(blob, `Submission_Roster_${opts.activityName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.docx`)
+}

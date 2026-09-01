@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Users, CheckCircle2, AlertCircle, Lock, Circle } from "lucide-react";
+import { X, Users, CheckCircle2, AlertCircle, Lock, Circle, Download } from "lucide-react";
+import { jsPDF } from "jspdf";
 import {
   fetchSubmissionRosterStatus,
   type SubmissionActivity, type SubmissionRosterRow, type SubmissionRosterStatus,
 } from "../submissionActivitiesApi";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
+import { toCsv, downloadCsv } from "../csvUtils";
+import { generateSubmissionRosterReport } from "@/lib/docGenerator";
 
 /**
  * Milestones 5-6 of the "Drive folder reorganization + submission
@@ -91,6 +94,121 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
     for (const row of filteredRows) counts[row.status]++;
     return counts;
   }, [filteredRows]);
+
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingWord, setExportingWord] = useState(false);
+  const [exportError, setExportError] = useState("");
+
+  const activeActivityName = activities.find(a => a.id === activityId)?.name ?? "Submission Activity";
+
+  /** Same convention as ScholarsTab.tsx's describeAppliedFilters — human-
+   * readable summary line for the exported document's header. "All" is
+   * omitted per filter rather than spelled out, so an unfiltered export
+   * just reads "All scholars", matching the natural reading of an
+   * unfiltered roster rather than an empty-looking "Filters: none" line. */
+  function describeFilters(): string {
+    const parts: string[] = [];
+    if (yearLevel !== "all") parts.push(`Year Level = ${yearLevel}`);
+    if (school !== "all") parts.push(`School = ${school}`);
+    if (status !== "all") parts.push(`Status = ${statusMeta(status as SubmissionRosterStatus).label}`);
+    return parts.length === 0 ? "All scholars (no filters applied)" : `Filters: ${parts.join("; ")}`;
+  }
+
+  function buildExportColumns(): { label: string; value: (r: SubmissionRosterRow) => string }[] {
+    return [
+      { label: "Scholar", value: r => `${r.lastName}, ${r.firstName}` },
+      { label: "Year Level", value: r => r.yearLevel || "—" },
+      { label: "School", value: r => r.school || "No School Set" },
+      { label: "Status", value: r => statusMeta(r.status).label },
+    ];
+  }
+
+  async function handleExportCsv() {
+    if (exportingCsv || exportingPdf || exportingWord || filteredRows.length === 0) return;
+    setExportingCsv(true);
+    setExportError("");
+    try {
+      const columns = buildExportColumns();
+      const csv = toCsv(columns.map(c => c.label), filteredRows.map(r => columns.map(c => c.value(r))));
+      downloadCsv(csv, `Submission_Roster_${activeActivityName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.csv`);
+    } catch {
+      setExportError("Could not export CSV. Please try again.");
+    } finally {
+      setExportingCsv(false);
+    }
+  }
+
+  async function handleExportPdf() {
+    if (exportingCsv || exportingPdf || exportingWord || filteredRows.length === 0) return;
+    setExportingPdf(true);
+    setExportError("");
+    try {
+      const columns = buildExportColumns();
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const marginX = 14;
+      let y = 18;
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(14);
+      pdf.text("Submission Monitoring Roster", marginX, y);
+      y += 6;
+      pdf.setFontSize(11);
+      pdf.text(activeActivityName, marginX, y);
+      y += 6;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.text(`Generated ${new Date().toLocaleString()} • ${filteredRows.length} scholar${filteredRows.length === 1 ? "" : "s"}`, marginX, y);
+      y += 5;
+      pdf.text(describeFilters(), marginX, y);
+      y += 8;
+
+      const colWidths = [70, 35, 55, 30];
+      const rowHeight = 7;
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(9);
+      let x = marginX;
+      columns.forEach((c, i) => { pdf.text(c.label, x, y); x += colWidths[i]; });
+      y += 4;
+      pdf.setDrawColor(200);
+      pdf.line(marginX, y, marginX + colWidths.reduce((a, b) => a + b, 0), y);
+      y += 4;
+      pdf.setFont("helvetica", "normal");
+
+      for (const row of filteredRows) {
+        if (y > 280) { pdf.addPage(); y = 18; }
+        x = marginX;
+        columns.forEach((c, i) => { pdf.text(c.value(row), x, y, { maxWidth: colWidths[i] - 2 }); x += colWidths[i]; });
+        y += rowHeight;
+      }
+
+      pdf.save(`Submission_Roster_${activeActivityName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch {
+      setExportError("Could not export PDF. Please try again.");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
+  async function handleExportWord() {
+    if (exportingCsv || exportingPdf || exportingWord || filteredRows.length === 0) return;
+    setExportingWord(true);
+    setExportError("");
+    try {
+      const columns = buildExportColumns();
+      await generateSubmissionRosterReport({
+        activityName: activeActivityName,
+        columns: columns.map(c => c.label),
+        columnWeights: [2.2, 1, 1.6, 1],
+        rows: filteredRows.map(r => columns.map(c => c.value(r))),
+        generatedAt: new Date().toLocaleString(),
+        filtersSummary: describeFilters(),
+      });
+    } catch {
+      setExportError("Could not export Word document. Please try again.");
+    } finally {
+      setExportingWord(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 py-8" onClick={onClose}>
