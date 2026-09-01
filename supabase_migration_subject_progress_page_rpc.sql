@@ -18,19 +18,48 @@
 -- reinterpreted — so results before and after this migration match for
 -- the same data.
 --
--- Safe to re-run — create or replace throughout.
+-- New quest monitoring tasks, Task 1: added p_year_level/p_school as
+-- optional filter params on this same RPC (scholars `s` was already
+-- joined in, so this is a WHERE-clause-only extension, not a structural
+-- rework) — exact year_level match, ilike substring match on school,
+-- same convention as this project's other free-text school filters.
+-- src/sead/seadApi.ts's fetchSubjectProgressPage() already calls this
+-- RPC with these two named params; this file previously did NOT declare
+-- them (confirmed directly against the actual uploaded zip, not assumed
+-- from a prior session's notes) — that gap is what this revision fixes.
+-- Left uncaught, this would have been a live "function does not exist"
+-- error on every call, not a cosmetic mismatch — Supabase's PostgREST
+-- RPC calls use named parameters, which must match the function's
+-- declared signature exactly.
+--
+-- Safe to re-run — the DROP below uses IF EXISTS and everything after it
+-- is create or replace / revoke-then-grant.
 -- ─────────────────────────────────────────────────────────────
+
+-- Required specifically because this version changes topic_count's
+-- declared type (integer -> bigint, to match what count(*) actually
+-- returns from the underlying view) — CREATE OR REPLACE FUNCTION cannot
+-- change an existing function's OUT-parameter row type on its own;
+-- Postgres requires the old signature dropped first. Both the original
+-- 4-param signature (in case this is running against a database that
+-- never got any later version of this file) and the intermediate
+-- 4-param-with-bigint signature are dropped, so this is safe to run
+-- regardless of which prior version of this function, if any, is
+-- currently live.
+drop function if exists public.subject_progress_page(uuid, text, integer, integer);
 
 create or replace function public.subject_progress_page(
   p_subject_id uuid,
   p_passed_filter text default 'all',  -- 'all' | 'passed' | 'not_passed'
   p_limit integer default 10,
-  p_offset integer default 0
+  p_offset integer default 0,
+  p_year_level text default null,
+  p_school text default null
 )
 returns table (
   scholar_id_number text,
   scholar_name text,
-  topic_count integer,
+  topic_count bigint,
   subject_percentage numeric,
   passed boolean,
   total_count bigint,
@@ -64,12 +93,14 @@ begin
     where public.is_sead_staff()
       and sp.subject_id = p_subject_id
       and sp.topic_count > 0
+      and (p_year_level is null or s.year_level = p_year_level)
+      and (p_school is null or s.school ilike '%' || p_school || '%')
   ),
   agg as (
     select
       count(*) as total_count,
-      count(*) filter (where passed) as passed_count,
-      count(*) filter (where not passed) as not_passed_count
+      count(*) filter (where filtered.passed) as passed_count,
+      count(*) filter (where not filtered.passed) as not_passed_count
     from filtered
   )
   select f.scholar_id_number, f.scholar_name, f.topic_count, f.subject_percentage, f.passed,
@@ -83,8 +114,8 @@ begin
 end;
 $$;
 
-revoke all on function public.subject_progress_page(uuid, text, integer, integer) from public;
-grant execute on function public.subject_progress_page(uuid, text, integer, integer) to authenticated;
+revoke all on function public.subject_progress_page(uuid, text, integer, integer, text, text) from public;
+grant execute on function public.subject_progress_page(uuid, text, integer, integer, text, text) to authenticated;
 
 -- NOTE: no CREATE INDEX here. scholar_subject_progress is a VIEW
 -- (supabase_migration_subject_passing_rate.sql — `create or replace view
