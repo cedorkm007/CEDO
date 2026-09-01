@@ -256,6 +256,26 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
           </div>
         )}
 
+        {!loading && !error && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-[#e6ecf5] px-6 py-3">
+            <button onClick={handleExportCsv} disabled={exportingCsv || exportingPdf || exportingWord || filteredRows.length === 0}
+              className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
+              <Download size={13} /> {exportingCsv ? "Exporting…" : "Export CSV"}
+            </button>
+            <button onClick={handleExportPdf} disabled={exportingCsv || exportingPdf || exportingWord || filteredRows.length === 0}
+              className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
+              <Download size={13} /> {exportingPdf ? "Exporting…" : "Export PDF"}
+            </button>
+            <button onClick={handleExportWord} disabled={exportingCsv || exportingPdf || exportingWord || filteredRows.length === 0}
+              className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
+              <Download size={13} /> {exportingWord ? "Exporting…" : "Export Word"}
+            </button>
+          </div>
+        )}
+        {exportError && (
+          <div className="shrink-0 border-b border-red-200 bg-red-50 px-6 py-2 text-[12px] text-red-700">{exportError}</div>
+        )}
+
         <div className="overflow-y-auto p-6">
           {loading ? (
             <p className="text-[13px] text-slate-400">Loading…</p>
