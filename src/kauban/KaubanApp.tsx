@@ -95,6 +95,7 @@ export function KaubanApp() {
     <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] pb-28 sm:pb-32">
       <KaubanTopNav
         role={currentRole}
+        page={page}
         showBack={page !== "dashboard"}
         onNavigateHome={goToDashboard}
         onBack={handleBack}

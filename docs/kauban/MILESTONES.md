@@ -19,7 +19,7 @@ Target: `https://cedo-ten.vercel.app/kauban/`. Supabase-backed content (videos, 
 | 13 | Public: Speech-to-Sign-Language screen — Web Speech API recognition matched against the Supabase word table, same muted-autoplay sequencing as the original | **DONE** |
 | 14 | Public: Text-to-Speech, Speech-to-Text, Drawing Pad — pure client-side, no backend needed | **DONE** |
 | 15 | Public: Emergency screen — bundled content from Supabase, personal contacts in `localStorage` | **DONE** |
-| 16 | Deploy at `/kauban/`, full functional + mobile/accessibility QA, PWA baseline (manifest + service worker), docs handoff (supersedes the old `SIGN_LANGUAGE_VIDEOS.md` local-filesystem instructions) | Not started |
+| 16 | Deploy at `/kauban/`, full functional + mobile/accessibility QA, PWA baseline (manifest + service worker), docs handoff (supersedes the old `SIGN_LANGUAGE_VIDEOS.md` local-filesystem instructions) | **DONE** — PWA baseline + QA pass done; production `git push`/deploy left to you (see PROGRESS.md) |
 
 **Off-plan item, now resolved:** "Sign Language Tools" (one of the 9 dashboard tools from milestone 11) was never assigned to any of milestones 12-15 — an oversight, not a deliberate scope cut. **DONE** — its original controller/view were found in the source zip and read for the first time, turned out to be a simple navigation hub to the other tools; ported directly, see PROGRESS.md.
 

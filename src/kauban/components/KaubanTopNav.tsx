@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Home, ArrowLeft, RefreshCw } from "lucide-react";
-import type { KaubanRole } from "../types";
+import type { KaubanPage, KaubanRole } from "../types";
 
 const ROLE_LABEL: Record<KaubanRole, string> = {
   deaf: "Deaf",
@@ -24,14 +24,25 @@ const ROLE_BADGE_STYLE: Record<KaubanRole, { background: string; color: string }
  * The original's profile dropdown only had one action ("Switch User");
  * this keeps that same one-item shape ("Switch Role").
  */
-export function KaubanTopNav({ role, showBack, onNavigateHome, onBack, onSwitchRole }: {
+export function KaubanTopNav({ role, page, showBack, onNavigateHome, onBack, onSwitchRole }: {
   role: KaubanRole;
+  page: KaubanPage;
   showBack: boolean;
   onNavigateHome: () => void;
   onBack: () => void;
   onSwitchRole: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // This bar persists across every page (it's outside KaubanApp's
+  // renderPage() switch), so its own local menuOpen state would otherwise
+  // survive navigation — including navigation via KaubanBottomNav, which
+  // sits visually on top of this dropdown's full-screen close-backdrop and
+  // so never gives it a chance to fire. Closing on every page change
+  // handles all navigation sources at once instead of chasing z-index.
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [page]);
 
   return (
     <div className="sticky top-0 z-30 rounded-b-3xl bg-white/95 px-3 py-2.5 shadow-md backdrop-blur sm:px-6 sm:py-3">
