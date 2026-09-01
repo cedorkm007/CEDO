@@ -11,7 +11,7 @@ Target: `https://cedo-ten.vercel.app/kauban/`. Supabase-backed content (videos, 
 | 5 | Storage bucket setup — create the `kauban-media` bucket; run the batch compressor over the existing 70 video files, then upload | **SQL written** (`supabase_migration_kauban_media_storage.sql`) — awaiting you to run it; the *existing* 70-file batch migration into it is still pending |
 | 6 | Seed initial content — insert the existing 35 sign words, 22 quick phrases, and default emergency contacts/messages into the new tables | Not started |
 | 7 | Admin CMS access wiring — add the `kauban_content` tag to `staffToolTags.ts`, the nav item in `Sidebar.tsx`, and the gated page case in `App.tsx` | **DONE** |
-| 8 | Admin CMS: Sign Words manager — CRUD UI + dual video upload (clip + tutorial) with the in-browser compressor | **Video upload/compression built** — batch uploader done; a plain metadata-only edit/delete table view is still pending |
+| 8 | Admin CMS: Sign Words manager — CRUD UI + dual video upload (clip + tutorial) with the in-browser compressor | **Upload + monitoring + delete built** (batch uploader, Video Library tab grouped by category/type, per-video and per-word delete); editing a word's label/phrase/category after creation still pending |
 | 9 | Admin CMS: Quick Phrases manager — CRUD for categories and phrases | Not started |
 | 10 | Admin CMS: Emergency Content manager — CRUD for bundled contacts and messages | Not started |
 | 11 | Public route scaffolding — new `/kauban` section (no auth) + role-selection shell (Deaf/HoH/Non-deaf) persisted to `localStorage` | Not started |

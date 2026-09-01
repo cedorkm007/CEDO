@@ -126,6 +126,25 @@ Also added a proactive `preloadFFmpeg()` call (new export in `videoCompression.t
 
 **Still worth knowing going in:** ffmpeg.wasm is genuinely slower than a native ffmpeg install (software encoding in the browser, no hardware acceleration) — fine for an admin adding one or two new words at a time, but for the original *bulk* migration of the existing ~70 FSL video files, milestone 3's original design called for a separate native Node script (`ffmpeg-static`) instead, specifically because it's much faster for that one-time job. That script still hasn't been built — worth doing before using this in-browser tool to push all 70 files at once.
 
+---
+
+## Milestone 8 (continued) — Video Library monitoring + delete
+
+**Status: BUILT (2026-09-02)**
+
+You asked for a way to see what's already uploaded, organized by category and video type, plus a way to delete a video. Added as a second tab next to the batch uploader — [`KaubanContentManagementPage.tsx`](../../src/kauban/admin/KaubanContentManagementPage.tsx) now has "Upload Videos" and "Video Library" tabs.
+
+**[`VideoLibrary.tsx`](../../src/kauban/admin/VideoLibrary.tsx)** (new):
+- Groups every `kauban_sign_words` row by its category, with a per-category count like "12 words · 9/12 clips · 4/12 tutorials" so gaps are visible at a glance.
+- Each word shows its Clip and Tutorial slots side by side — a filled slot has a play button (toggles an inline `<video>` preview, muted/autoplay) and a delete button; an empty slot just reads "not uploaded."
+- Deleting a video removes the Storage file and clears just that path column — the word (label/phrase/category) stays, since you might re-record and re-upload later rather than starting over.
+- A separate trash icon per row deletes the whole word — both videos (if present) plus the row itself — for when a word shouldn't exist at all anymore, not just needs a new video.
+- All deletes confirm first (`window.confirm`, same pattern as the existing Forms Management delete flow) since Storage deletes aren't reversible.
+
+**New API functions in [`kaubanAdminApi.ts`](../../src/kauban/admin/kaubanAdminApi.ts):** `fetchSignWords()`, `getVideoPublicUrl()`, `deleteSignWordVideo()`, `deleteSignWord()`.
+
+**Verified:** `npm run type-check`, `npx eslint src/kauban`, and `npm run build` all pass. **Not visually verified this time** — I tried rendering the page directly in a browser (bypassing your login, by faking a cached staff profile in `localStorage` and pointing Supabase at a placeholder URL) to at least confirm the layout renders, but the app's own data-loading effect never clears its loading spinner when every Supabase call fails outright (expected — the placeholder project doesn't exist), so it never got past a "Loading…" screen. That's a limitation of not having a real Supabase connection in this environment, not a finding about the code itself. Please try the Video Library tab for real and let me know if anything looks off.
+
 **Build confirmed clean (2026-09-01):** `npm run type-check`, `npx eslint src/kauban`, and a full `npm run build` all pass. Along the way, found and fixed a pre-existing broken install unrelated to Kauban (`@tailwindcss/oxide` was missing its Windows native binding — a known npm optional-dependency bug) by installing `@tailwindcss/oxide-win32-x64-msvc` with `--no-save`, so it didn't pollute the lockfile.
 
 Also caught before committing: the vendored `ffmpeg-core.wasm` (~32MB) would have permanently bloated the git repo for no reason, since it's 100% derived from the `@ffmpeg/core` npm package already in `node_modules`. Fixed by adding [`scripts/copy-ffmpeg-core.mjs`](../../scripts/copy-ffmpeg-core.mjs) as a `postinstall` step that regenerates `public/kauban-admin/ffmpeg-core/` on every `npm install`, and gitignoring that folder instead of committing it.
