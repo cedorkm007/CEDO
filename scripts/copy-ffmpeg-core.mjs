@@ -11,7 +11,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
-const srcDir = join(rootDir, "node_modules", "@ffmpeg", "core", "dist", "umd");
+// The ESM build, not UMD: @ffmpeg/ffmpeg's worker runs as a module-type
+// Worker, and its fallback loader does `await import(coreURL)` expecting
+// an ES module with a default export — the UMD build has no such export
+// and fails with "failed to import ffmpeg-core.js" (confirmed by hand
+// while debugging a hung/failing compression run in the admin tool).
+const srcDir = join(rootDir, "node_modules", "@ffmpeg", "core", "dist", "esm");
 const destDir = join(rootDir, "public", "kauban-admin", "ffmpeg-core");
 
 if (!existsSync(srcDir)) {

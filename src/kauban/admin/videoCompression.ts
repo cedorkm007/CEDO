@@ -17,6 +17,18 @@ const CORE_BASE_URL = "/kauban-admin/ffmpeg-core";
 
 let ffmpegPromise: Promise<FFmpeg> | null = null;
 
+/**
+ * Starts fetching/initializing the ~32MB compression engine ahead of time
+ * (call this when the admin opens the uploader, not when they click
+ * "Compress") so the network fetch happens while they're still picking
+ * files and entering labels instead of stalling the first file with no
+ * visible reason. Safe to call more than once — later calls just return
+ * the same in-flight/cached promise.
+ */
+export function preloadFFmpeg(): Promise<FFmpeg> {
+  return loadFFmpeg();
+}
+
 async function loadFFmpeg(): Promise<FFmpeg> {
   if (!ffmpegPromise) {
     ffmpegPromise = (async () => {

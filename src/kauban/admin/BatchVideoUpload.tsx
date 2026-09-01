@@ -5,7 +5,7 @@ import {
   normalizeVideoFilename, normalizePhrase,
   type SignCategory, type SignVideoVariant,
 } from "./kaubanAdminApi";
-import { compressVideo } from "./videoCompression";
+import { compressVideo, preloadFFmpeg } from "./videoCompression";
 
 type RowStatus = "pending" | "compressing" | "uploading" | "done" | "error";
 
@@ -54,8 +54,16 @@ export function BatchVideoUpload() {
   const [variant, setVariant] = useState<SignVideoVariant>("clip");
   const [rows, setRows] = useState<BatchRow[]>([]);
   const [running, setRunning] = useState(false);
+  const [engineReady, setEngineReady] = useState(false);
 
-  useEffect(() => { void loadCategories(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    void loadCategories();
+    // Fetching the ~32MB compression engine takes a few seconds on first
+    // use — start it now, while the admin is still picking files/entering
+    // labels, instead of stalling the first file in the batch with no
+    // visible reason.
+    void preloadFFmpeg().then(() => setEngineReady(true));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadCategories() {
     const list = await fetchSignCategories();
@@ -123,7 +131,12 @@ export function BatchVideoUpload() {
         if (!result.ok) { updateRow(row.id, { status: "error", error: result.error }); continue; }
         updateRow(row.id, { status: "done" });
       } catch (err) {
-        updateRow(row.id, { status: "error", error: err instanceof Error ? err.message : "Compression failed." });
+        // ffmpeg.wasm rejects with a plain string (see its worker.js:
+        // `data: e.toString()`), not an Error instance — checking
+        // `instanceof Error` here would silently swallow every real
+        // ffmpeg failure behind a useless generic message.
+        const message = err instanceof Error ? err.message : typeof err === "string" ? err : "Compression failed.";
+        updateRow(row.id, { status: "error", error: message });
       }
     }
     setRunning(false);
@@ -188,7 +201,14 @@ export function BatchVideoUpload() {
       </div>
 
       <div className="rounded-2xl border border-[#062444]/10 bg-white p-5">
-        <h3 className="mb-3 text-sm font-bold text-[#062444]">2. Choose videos</h3>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-bold text-[#062444]">2. Choose videos</h3>
+          {!engineReady && (
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-[#0088cc]">
+              <Loader2 size={12} className="animate-spin" />Preparing compression engine…
+            </span>
+          )}
+        </div>
         <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#062444]/25 bg-[#f8fafd] px-4 py-6 text-sm font-semibold text-[#0088cc] hover:bg-[#f0f7fc]">
           <UploadCloud size={18} />
           Select one or more .mp4 files
