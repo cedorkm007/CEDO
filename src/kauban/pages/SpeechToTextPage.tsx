@@ -72,8 +72,8 @@ export function SpeechToTextPage({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF9FC] px-4 py-8 sm:px-8">
-      <div className="mx-auto max-w-2xl">
+    <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
+      <div className="mx-auto max-w-2xl rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
         <KaubanPageHeader title="Speech to Text" subtitle="See spoken words as text in real time." onBack={onBack} />
 
         {!supported && (
@@ -83,9 +83,9 @@ export function SpeechToTextPage({ onBack }: { onBack: () => void }) {
           </div>
         )}
 
-        <div className="min-h-[180px] rounded-2xl border-2 border-[#4F46E5]/15 bg-white p-5 text-lg text-[#1E1B3A] shadow-sm">
-          {transcript || <span className="text-slate-300">{listening ? "Listening…" : "Press the microphone to start."}</span>}
-          {interimText && <span className="text-slate-400"> {interimText}</span>}
+        <div className="min-h-[180px] rounded-2xl border-2 border-[#3182CE]/15 bg-white p-5 text-lg text-[#2D3748] shadow-sm">
+          {transcript || <span className="text-[#CBD5E0]">{listening ? "Listening…" : "Press the microphone to start."}</span>}
+          {interimText && <span className="text-[#A0AEC0]"> {interimText}</span>}
         </div>
 
         {error && <p className="mt-3 text-center text-sm text-red-600">{error}</p>}
@@ -94,7 +94,7 @@ export function SpeechToTextPage({ onBack }: { onBack: () => void }) {
           <button
             onClick={listening ? handleStop : handleStart}
             disabled={!supported}
-            className={`flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition disabled:opacity-40 ${listening ? "bg-red-500 text-white" : "bg-[#4F46E5] text-white"}`}
+            className={`flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition disabled:opacity-40 ${listening ? "bg-red-500 text-white" : "bg-[#3182CE] text-white"}`}
             aria-label={listening ? "Stop listening" : "Start listening"}
           >
             {listening ? <MicOff size={26} /> : <Mic size={26} />}
@@ -102,14 +102,14 @@ export function SpeechToTextPage({ onBack }: { onBack: () => void }) {
           <button
             onClick={handleCopy}
             disabled={!transcript}
-            className="flex items-center gap-1.5 rounded-lg border border-[#4F46E5]/20 bg-white px-4 py-2.5 text-sm font-semibold text-[#4F46E5] disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-lg bg-[#EBF8FF] px-4 py-2.5 text-sm font-semibold text-[#2B6CB0] disabled:opacity-40"
           >
             {copied ? <Check size={15} /> : <Copy size={15} />} {copied ? "Copied" : "Copy"}
           </button>
           <button
             onClick={() => setTranscript("")}
             disabled={!transcript}
-            className="flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-400 hover:text-slate-600 disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold text-[#A0AEC0] hover:text-[#718096] disabled:opacity-40"
           >
             <Trash2 size={15} /> Clear
           </button>

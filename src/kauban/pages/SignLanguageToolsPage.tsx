@@ -51,8 +51,8 @@ export function SignLanguageToolsPage({ role, onNavigate, onBack }: {
   ];
 
   return (
-    <div className="min-h-screen bg-[#FAF9FC] px-4 py-8 sm:px-8">
-      <div className="mx-auto max-w-3xl">
+    <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
+      <div className="mx-auto max-w-3xl rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
         <KaubanPageHeader title="Sign Language Tools" subtitle="Everything sign-language related, all in one place." onBack={onBack} />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -60,13 +60,13 @@ export function SignLanguageToolsPage({ role, onNavigate, onBack }: {
             <button
               key={card.page}
               onClick={() => onNavigate(card.page)}
-              className="flex flex-col items-center gap-2 rounded-2xl border border-[#4F46E5]/10 bg-white p-6 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-[#4F46E5] hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#4F46E5]/30"
+              className="flex flex-col items-center gap-2 rounded-2xl border border-transparent bg-white p-6 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-[#3182CE] hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#3182CE]/30"
             >
-              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#4F46E5]/10 text-[#4F46E5]">
+              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#EBF8FF] text-[#2B6CB0]">
                 <card.icon size={22} />
               </span>
-              <span className="text-base font-bold text-[#1E1B3A]">{card.label}</span>
-              <span className="text-sm text-slate-500">{card.description}</span>
+              <span className="text-base font-bold text-[#2D3748]">{card.label}</span>
+              <span className="text-sm text-[#718096]">{card.description}</span>
             </button>
           ))}
         </div>

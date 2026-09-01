@@ -115,11 +115,11 @@ export function SpeechToSignLanguagePage({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF9FC] px-4 py-8 sm:px-8">
-      <div className="mx-auto max-w-2xl">
+    <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
+      <div className="mx-auto max-w-2xl rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
         <KaubanPageHeader title="Speech to Sign Language" subtitle="Say something and watch it signed." onBack={onBack} />
 
-        {loading && <p className="py-8 text-center text-sm text-slate-400">Loading…</p>}
+        {loading && <p className="py-8 text-center text-sm text-[#718096]">Loading…</p>}
 
         {!loading && !supported && (
           <div className="flex items-start gap-2 rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
@@ -143,22 +143,22 @@ export function SpeechToSignLanguagePage({ onBack }: { onBack: () => void }) {
                   onError={handleVideoError}
                 />
               ) : (
-                <div className="flex h-[220px] items-center justify-center text-sm text-slate-400">
+                <div className="flex h-[220px] items-center justify-center text-sm text-[#A0AEC0]">
                   {listening ? "Listening — say a word to see it signed." : "Press the microphone to start."}
                 </div>
               )}
               {current && (
-                <p className="bg-white/95 py-2 text-center text-base font-bold text-[#1E1B3A]">{current.label}</p>
+                <p className="bg-white/95 py-2 text-center text-base font-bold text-[#2D3748]">{current.label}</p>
               )}
             </div>
 
-            {interimText && <p className="mb-3 text-center text-sm italic text-slate-400">"{interimText}"</p>}
+            {interimText && <p className="mb-3 text-center text-sm italic text-[#718096]">"{interimText}"</p>}
             {error && <p className="mb-3 text-center text-sm text-red-600">{error}</p>}
 
             <div className="flex justify-center">
               <button
                 onClick={listening ? handleStop : handleStart}
-                className={`flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition ${listening ? "bg-red-500 text-white" : "bg-[#4F46E5] text-white"}`}
+                className={`flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition ${listening ? "bg-red-500 text-white" : "bg-[#3182CE] text-white"}`}
                 aria-label={listening ? "Stop listening" : "Start listening"}
               >
                 {listening ? <MicOff size={26} /> : <Mic size={26} />}
@@ -166,7 +166,7 @@ export function SpeechToSignLanguagePage({ onBack }: { onBack: () => void }) {
             </div>
 
             {queue.length > currentIndex + 1 && (
-              <p className="mt-3 text-center text-xs text-slate-400">
+              <p className="mt-3 text-center text-xs text-[#A0AEC0]">
                 Up next: {queue.slice(currentIndex + 1).map(c => c.label).join(", ")}
               </p>
             )}

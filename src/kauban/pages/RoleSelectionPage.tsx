@@ -12,14 +12,17 @@ const OPTIONS: { role: KaubanRole; label: string; description: string; icon: typ
  * one-time choice (see localRole.ts), matching the original app's own
  * "no sign-in required" entry point (docs/kauban/PROGRESS.md milestone 1).
  * The choice decides which tools show up on the dashboard afterward.
+ * Colors/background match the original app's own layout.blade.php: the
+ * emerald-to-blue gradient body, a light content card, and the app-brand
+ * green (#10B981) used for the "Kauban" title.
  */
 export function RoleSelectionPage({ onSelect }: { onSelect: (role: KaubanRole) => void }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#FAF9FC] px-4 py-10">
-      <div className="w-full max-w-lg">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
+      <div className="w-full max-w-lg rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-extrabold text-[#1E1B3A] sm:text-3xl">Welcome to Kauban</h1>
-          <p className="mt-2 text-base text-slate-500">Which best describes you?</p>
+          <h1 className="text-2xl font-extrabold text-[#10B981] sm:text-3xl">Welcome to Kauban</h1>
+          <p className="mt-2 text-base text-[#718096]">Which best describes you?</p>
         </div>
 
         <div className="space-y-3">
@@ -27,20 +30,20 @@ export function RoleSelectionPage({ onSelect }: { onSelect: (role: KaubanRole) =
             <button
               key={role}
               onClick={() => onSelect(role)}
-              className="flex w-full items-center gap-4 rounded-2xl border-2 border-[#4F46E5]/15 bg-white p-5 text-left shadow-sm transition hover:border-[#4F46E5] hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#4F46E5]/30"
+              className="flex w-full items-center gap-4 rounded-2xl border-2 border-transparent bg-white p-5 text-left shadow-sm transition hover:border-[#3182CE] hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#3182CE]/30"
             >
-              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[#4F46E5]/10 text-[#4F46E5]">
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[#EBF8FF] text-[#2B6CB0]">
                 <Icon size={26} />
               </span>
               <span>
-                <span className="block text-lg font-bold text-[#1E1B3A]">{label}</span>
-                <span className="block text-sm text-slate-500">{description}</span>
+                <span className="block text-lg font-bold text-[#2D3748]">{label}</span>
+                <span className="block text-sm text-[#718096]">{description}</span>
               </span>
             </button>
           ))}
         </div>
 
-        <p className="mt-6 text-center text-xs text-slate-400">
+        <p className="mt-6 text-center text-xs text-[#A0AEC0]">
           You can change this anytime from the dashboard.
         </p>
       </div>

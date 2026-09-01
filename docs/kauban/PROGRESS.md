@@ -371,6 +371,28 @@ Wired into `KaubanApp.tsx`'s switch, which now handles all 9 dashboard tools exp
 
 All 9 Kauban tool screens are now fully built with no remaining gaps. Only milestone 16 (deploy, QA, PWA, docs handoff) and the deferred milestone 5 video upload remain.
 
+---
+
+## Dashboard cleanup + real color scheme
+
+**Status: DONE (2026-09-02), verified live**
+
+**1. Removed 4 redundant dashboard tiles** — Sign Language, Sign Language Quiz, Speech to Sign Language, and Text to Speech no longer appear as separate tiles on the Dashboard, per your instruction. Confirmed against the actual original source while making the change: `resources/views/layout.blade.php`'s bottom nav bar has only 5 icons total (Home, Quick Phrases, one combined "Sign Language Tools" icon, Drawing Pad, Emergency) — its `active` class check literally matches all of `sign-language-tools`, `text-to-speech`, `speech-to-sign-language`, `sign-language`, `sign-language.tutorial`, and `speech-to-text` as one nav item. The original app never had separate top-level entries for these; my earlier 9-tile dashboard was a deviation, not something carried over from the source. The 4 pages themselves are untouched and still reachable through the Sign Language Tools hub. Left Speech to Text as its own tile, exactly as you specified — didn't extend the cut to it on my own judgment.
+
+**2. Applied the original app's actual color scheme**, found by reading `layout.blade.php`'s `<style>` block (not previously read in full — earlier work had been using an invented indigo/violet palette):
+- Page background: the signature `linear-gradient(135deg, #059669, #2563EB)` (emerald to blue), with a light `#F7FAFC` rounded content card floating on top — matches `.content` in the source exactly (border-radius 20px, box-shadow, padding).
+- Primary accent: `#3182CE` (replacing the invented `#4F46E5`) — buttons, focus rings, active/hover borders.
+- Header nav button style: `#EBF8FF` background / `#2B6CB0` icon+text, matching `.header-nav-btn` exactly, used for every page's back button and several icon chips.
+- Heading text `#2D3748`, muted text `#718096` — matches `.welcome-header h2`/`p` exactly.
+- App brand title "Kauban" now uses the original's actual brand green `#10B981` (was an invented dark navy).
+- Role badges ("Signed in as: X") now use the exact per-role gradients from `.user-role-badge.{deaf,hard-hearing,hearing}` — gold for Deaf, green for Hard of Hearing, blue for Hearing.
+
+Every one of the 13 kauban page/component files was updated; confirmed with a grep afterward that no `#4F46E5`/`#1E1B3A`/`#FAF9FC` (the old invented palette) remained anywhere in the module.
+
+**Verified:**
+- `npm run type-check`, `npx eslint src/kauban`, `npm run build` all pass.
+- **Live in the browser**: confirmed the Dashboard shows exactly 5 tiles (Quick Phrases, Sign Language Tools, Speech to Text, Drawing Pad, Emergency) for the Deaf role, and 4 for Hearing (Quick Phrases correctly absent) — role-based filtering still works correctly with the smaller tile set. Visually confirmed the gradient background, white content card, green brand title, and both the gold (Deaf) and blue (Hearing) role badges render matching the original's own gradient definitions.
+
 **Build confirmed clean (2026-09-01):** `npm run type-check`, `npx eslint src/kauban`, and a full `npm run build` all pass. Along the way, found and fixed a pre-existing broken install unrelated to Kauban (`@tailwindcss/oxide` was missing its Windows native binding — a known npm optional-dependency bug) by installing `@tailwindcss/oxide-win32-x64-msvc` with `--no-save`, so it didn't pollute the lockfile.
 
 Also caught before committing: the vendored `ffmpeg-core.wasm` (~32MB) would have permanently bloated the git repo for no reason, since it's 100% derived from the `@ffmpeg/core` npm package already in `node_modules`. Fixed by adding [`scripts/copy-ffmpeg-core.mjs`](../../scripts/copy-ffmpeg-core.mjs) as a `postinstall` step that regenerates `public/kauban-admin/ffmpeg-core/` on every `npm install`, and gitignoring that folder instead of committing it.

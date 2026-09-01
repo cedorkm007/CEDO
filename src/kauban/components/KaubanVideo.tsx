@@ -16,7 +16,7 @@ export function KaubanVideo({ path, className, autoPlay }: { path: string | null
 
   if (!path || failed) {
     return (
-      <div className={`flex flex-col items-center justify-center gap-2 rounded-xl bg-[#4F46E5]/5 text-slate-400 ${className ?? ""}`}>
+      <div className={`flex flex-col items-center justify-center gap-2 rounded-xl bg-[#3182CE]/5 text-[#A0AEC0] ${className ?? ""}`}>
         <Video size={28} />
         <span className="text-xs">Video not available yet</span>
       </div>

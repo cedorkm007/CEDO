@@ -8,11 +8,21 @@ const ROLE_LABEL: Record<KaubanRole, string> = {
   hearing: "Hearing",
 };
 
+// Matches the original app's own `.user-role-badge.{deaf,hard-hearing,hearing}`
+// gradients in resources/views/layout.blade.php exactly.
+const ROLE_BADGE_STYLE: Record<KaubanRole, { background: string; color: string }> = {
+  deaf: { background: "linear-gradient(135deg, #F6E05E 0%, #D69E2E 100%)", color: "#744210" },
+  "hard-of-hearing": { background: "linear-gradient(135deg, #48BB78 0%, #38A169 100%)", color: "#ffffff" },
+  hearing: { background: "linear-gradient(135deg, #4299E1 0%, #3182CE 100%)", color: "#ffffff" },
+};
+
 /**
  * Home screen after role selection — a grid of the tools available to
  * that role (see kaubanTools.ts's per-tool `roles` list, copied from the
  * original app's own per-controller role checks). "Switch role" resets
  * back to RoleSelectionPage, same as the original app's "Switch User".
+ * Colors match layout.blade.php: gradient body, light content card,
+ * app-brand green title, per-role gradient badge.
  */
 export function DashboardPage({ role, onNavigate, onSwitchRole }: {
   role: KaubanRole;
@@ -22,16 +32,21 @@ export function DashboardPage({ role, onNavigate, onSwitchRole }: {
   const tools = toolsForRole(role);
 
   return (
-    <div className="min-h-screen bg-[#FAF9FC] px-4 py-8 sm:px-8">
-      <div className="mx-auto max-w-4xl">
+    <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
+      <div className="mx-auto max-w-4xl rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
         <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-extrabold text-[#1E1B3A]">Kauban</h1>
-            <p className="text-sm text-slate-500">Signed in as: {ROLE_LABEL[role]}</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-extrabold text-[#10B981]">Kauban</h1>
+            <span
+              className="rounded-full px-3 py-1 text-xs font-semibold"
+              style={ROLE_BADGE_STYLE[role]}
+            >
+              {ROLE_LABEL[role]}
+            </span>
           </div>
           <button
             onClick={onSwitchRole}
-            className="flex items-center gap-1.5 rounded-lg border border-[#4F46E5]/20 bg-white px-3 py-2 text-xs font-semibold text-[#4F46E5] hover:bg-[#4F46E5]/5"
+            className="flex items-center gap-1.5 rounded-lg bg-[#EBF8FF] px-3 py-2 text-xs font-semibold text-[#2B6CB0] hover:bg-[#BEE3F8]"
           >
             <RefreshCw size={13} /> Switch Role
           </button>
@@ -42,14 +57,14 @@ export function DashboardPage({ role, onNavigate, onSwitchRole }: {
             <button
               key={tool.page}
               onClick={() => onNavigate(tool.page)}
-              className="flex flex-col items-start gap-3 rounded-2xl border border-[#4F46E5]/10 bg-white p-5 text-left shadow-sm transition hover:border-[#4F46E5] hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#4F46E5]/30"
+              className="flex flex-col items-start gap-3 rounded-2xl border border-transparent bg-white p-5 text-left shadow-sm transition hover:border-[#3182CE] hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#3182CE]/30"
             >
-              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#4F46E5]/10 text-[#4F46E5]">
+              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#EBF8FF] text-[#2B6CB0]">
                 <tool.icon size={22} />
               </span>
               <span>
-                <span className="block text-base font-bold text-[#1E1B3A]">{tool.label}</span>
-                <span className="block text-sm text-slate-500">{tool.description}</span>
+                <span className="block text-base font-bold text-[#2D3748]">{tool.label}</span>
+                <span className="block text-sm text-[#718096]">{tool.description}</span>
               </span>
             </button>
           ))}

@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { MessageSquareText, Hand, GraduationCap, Wrench, Volume2, Captions, Mic, Pencil, Siren } from "lucide-react";
+import { MessageSquareText, Wrench, Captions, Pencil, Siren } from "lucide-react";
 import type { KaubanPage, KaubanRole } from "./types";
 
 export interface KaubanTool {
@@ -18,22 +18,22 @@ export interface KaubanTool {
   roles: KaubanRole[] | "all";
 }
 
+// Sign Language, Sign Language Quiz, Speech to Sign Language, and Text to
+// Speech are deliberately NOT separate dashboard tiles — the original
+// app's own bottom nav (resources/views/layout.blade.php) only ever
+// exposed one combined "Sign Language Tools" icon for all of them (its
+// `active` check literally matches all their route names at once). They
+// stay reachable through SignLanguageToolsPage.tsx, which already
+// contains the correct role-based subset of them — having them here too
+// was a redundant second entry point that never existed in the source.
 export const KAUBAN_TOOLS: KaubanTool[] = [
   { page: "quickPhrases", label: "Quick Phrases", description: "Tap out common sentences instantly.", icon: MessageSquareText, roles: ["deaf", "hard-of-hearing"] },
-  { page: "signLanguage", label: "Sign Language", description: "Learn and browse Filipino Sign Language.", icon: Hand, roles: "all" },
-  { page: "signLanguageQuiz", label: "Sign Language Quiz", description: "Test what you've learned.", icon: GraduationCap, roles: "all" },
-  { page: "signLanguageTools", label: "Sign Language Tools", description: "More sign language resources.", icon: Wrench, roles: "all" },
-  { page: "textToSpeech", label: "Text to Speech", description: "Type something and have it spoken aloud.", icon: Volume2, roles: "all" },
+  { page: "signLanguageTools", label: "Sign Language Tools", description: "Everything sign-language related, all in one place.", icon: Wrench, roles: "all" },
   { page: "speechToText", label: "Speech to Text", description: "See spoken words as text in real time.", icon: Captions, roles: "all" },
-  { page: "speechToSignLanguage", label: "Speech to Sign Language", description: "See spoken words translated into sign video.", icon: Mic, roles: ["deaf"] },
   { page: "drawingPad", label: "Drawing Pad", description: "Draw to communicate when words aren't enough.", icon: Pencil, roles: "all" },
   { page: "emergency", label: "Emergency", description: "Quick access to emergency contacts and messages.", icon: Siren, roles: "all" },
 ];
 
 export function toolsForRole(role: KaubanRole): KaubanTool[] {
   return KAUBAN_TOOLS.filter(t => t.roles === "all" || t.roles.includes(role));
-}
-
-export function toolLabel(page: KaubanPage): string {
-  return KAUBAN_TOOLS.find(t => t.page === page)?.label ?? page;
 }

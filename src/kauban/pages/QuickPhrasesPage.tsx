@@ -31,12 +31,12 @@ export function QuickPhrasesPage({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF9FC] px-4 py-8 sm:px-8">
-      <div className="mx-auto max-w-3xl">
+    <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
+      <div className="mx-auto max-w-3xl rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
         <KaubanPageHeader title="Quick Phrases" subtitle="Tap a phrase to show and speak it." onBack={onBack} />
 
         {current && (
-          <div className="mb-6 flex items-center justify-between gap-3 rounded-2xl bg-[#4F46E5] px-6 py-6 text-white shadow-lg">
+          <div className="mb-6 flex items-center justify-between gap-3 rounded-2xl bg-[#3182CE] px-6 py-6 text-white shadow-lg">
             <p className="text-2xl font-bold sm:text-3xl">{current}</p>
             <button
               onClick={() => speakText(current)}
@@ -48,10 +48,10 @@ export function QuickPhrasesPage({ onBack }: { onBack: () => void }) {
           </div>
         )}
 
-        {loading && <p className="py-8 text-center text-sm text-slate-400">Loading phrases…</p>}
+        {loading && <p className="py-8 text-center text-sm text-[#718096]">Loading phrases…</p>}
 
         {!loading && categories.length === 0 && (
-          <p className="py-8 text-center text-sm text-slate-400">No quick phrases have been added yet.</p>
+          <p className="py-8 text-center text-sm text-[#718096]">No quick phrases have been added yet.</p>
         )}
 
         <div className="space-y-6">
@@ -60,7 +60,7 @@ export function QuickPhrasesPage({ onBack }: { onBack: () => void }) {
             if (categoryPhrases.length === 0) return null;
             return (
               <div key={category.id}>
-                <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-[#1E1B3A]">
+                <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-[#2D3748]">
                   <span aria-hidden>{category.icon}</span>{category.name}
                 </h2>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -68,7 +68,7 @@ export function QuickPhrasesPage({ onBack }: { onBack: () => void }) {
                     <button
                       key={phrase.id}
                       onClick={() => handleTapPhrase(phrase.text)}
-                      className="rounded-xl border-2 bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E1B3A] shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#4F46E5]/30"
+                      className="rounded-xl border-2 bg-white px-4 py-3 text-left text-sm font-semibold text-[#2D3748] shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#3182CE]/30"
                       style={{ borderColor: current === phrase.text ? category.color : "transparent" }}
                     >
                       {phrase.text}
