@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2 } from "lucide-react";
+import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarSeparator,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
@@ -47,10 +47,7 @@ import { DIVISIONS, FORM_TYPES, IT_ADMIN_USERNAME, type Page, type UserProfile }
  * Milestone 4 addition: AppSidebar now takes `user`, `page`, `setPage`
  * (this is the key architectural change from M3's pure-shell version)
  * and Region A ("Common Tabs") is populated: Profile, My Tasks, My
- * Accomplishments, and a Forms group (My Tasks was later moved out of
- * this region — see the "Post-Milestone-7" paragraph below; this
- * paragraph is kept as the original Milestone 4 record, not edited to
- * pretend My Tasks was never here). These four were deliberately
+ * Accomplishments, and a Forms group. These four are deliberately
  * ungated — confirmed against the old inline TopNav in App.tsx that
  * `primaryItems`/`menuItems` never gate "tasks", "profile",
  * "accomplishments", or the Forms dropdown behind any tag/role check
@@ -126,13 +123,9 @@ import { DIVISIONS, FORM_TYPES, IT_ADMIN_USERNAME, type Page, type UserProfile }
  * all-or-nothing.
  *
  * Post-Milestone-7 browser-review revisions (Revisions 1, 2, 6): "My
- * Tasks" was added to the top nav (TopNav.tsx), initially kept here too
- * per that round's own stated default ("only said 'put it on the top
- * nav'... kept in both places... easy to remove from one side later if
- * duplication turns out to be unwanted"). REMOVED from here in a later
- * round, once the person confirmed the duplication was in fact unwanted
- * — "My Tasks" now lives in TopNav.tsx only; this region starts at
- * Profile. Every SidebarMenuItem/SidebarMenuSubItem now has
+ * Tasks" is now ALSO in the top nav (TopNav.tsx) — kept here too, per
+ * the review note's own stated default of keeping both rather than
+ * moving it. Every SidebarMenuItem/SidebarMenuSubItem now has
  * `min-w-0`, and every label is now wrapped in `<span className=
  * "truncate">` — this was the actual root cause of the horizontal
  * scrollbar: SidebarMenuButton's own CSS already had a
@@ -181,6 +174,19 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
     // rendering, so no z-index override was added on top of this.
     <Sidebar className="top-14 h-[calc(100svh-3.5rem)]">
       <SidebarHeader />
+      {/* overflow-x-hidden! forces the fix, rather than relying on
+          cn()/tailwind-merge to dedupe against SidebarContent's own base
+          `overflow-auto` (which sets both axes) — that dedupe behavior
+          isn't guaranteed for this specific class combination, so the
+          Tailwind v4 important modifier (trailing !) is used to remove
+          any ambiguity. This is the actual root-cause fix for the
+          scrollbar still appearing after the earlier min-w-0/truncate
+          round: those fixes stopped labels from being the thing that
+          overflowed, but SidebarContent's own overflow-auto still shows
+          an x-scrollbar for ANY residual sub-pixel horizontal overflow
+          (icon sizing, borders, etc.), not just from long unwrapped text.
+          overflow-y-auto is preserved (not touched), so vertical
+          scrolling still works when there are more items than fit. */}
       <SidebarContent className="overflow-x-hidden!">
         {/* Region A — "Common Tabs" (Milestone 4). No visible label per
             the spec (visual separation only) — a plain styled box for now. */}
@@ -190,6 +196,11 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
               <SidebarMenuItem className="min-w-0">
                 <SidebarMenuButton isActive={page === "profile"} onClick={() => setPage("profile")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
                   <User /> <span className="truncate">Profile</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem className="min-w-0">
+                <SidebarMenuButton isActive={page === "tasks"} onClick={() => setPage("tasks")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                  <CheckSquare /> <span className="truncate">My Tasks</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem className="min-w-0">
@@ -232,14 +243,12 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
             all (including its own separators) for admins; a non-admin
             staff member sees Common Tabs flow straight into whatever
             Region C ends up being, with no empty gap/double-separator
-            left behind where this region would have been. Visible
-            group label used here (unlike Region A) since this group is
-            meaningfully distinct — role-gated, not shown to every staff
-            member — and a label makes that legible at a glance for the
-            admins who DO see it. A minor UX choice, not dictated by any
-            spec seen so far (the mapping doc this project would
-            normally check is missing from the zip, per Milestone 4's
-            own note) — easy to remove if undesired. */}
+            left behind where this region would have been. No visible
+            group label (removed per the person's own explicit request —
+            an earlier round of this milestone had added one with the
+            reasoning "role-gated, worth naming at a glance," but that
+            wasn't asked for and the person found it unnecessary; the
+            SidebarSeparator above still marks the boundary visually). */}
         {user.isAdmin && (
           <>
             <SidebarSeparator />
@@ -271,9 +280,8 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
 
         {/* Region C — "Specific Tools" (Milestone 6) — same "gate the
             whole block, separator included" pattern as Region B, for
-            the same no-empty-gap reason. Visible group label used here
-            too, for the same reasoning as Region B's — role/tag-gated,
-            not shown to every staff member. */}
+            the same no-empty-gap reason. No visible group label, same
+            reasoning/removal as Region B's above. */}
         {hasAnySpecificTool && (
           <>
             <SidebarSeparator />
