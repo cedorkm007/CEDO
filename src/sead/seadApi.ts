@@ -273,6 +273,78 @@ export async function fetchSubjectProgressPage(
   };
 }
 
+export type CompletionStatusFilter = "all" | "completed" | "did_not_complete" | "not_attempted";
+
+export interface SubjectCompletionRow {
+  scholarIdNumber: string;
+  scholarName: string;
+  yearLevel: string;
+  school: string;
+  topicsAttempted: number;
+  totalTopics: number;
+  status: CompletionStatusFilter;
+}
+
+export interface SubjectCompletionPageResult {
+  rows: SubjectCompletionRow[];
+  totalCount: number;
+  completedCount: number;
+  didNotCompleteCount: number;
+  notAttemptedCount: number;
+  /** Same reasoning as SubjectProgressPageResult's own error field — a swallowed RPC error here would otherwise look identical to "every scholar has this status," not just an empty list. */
+  error: string | null;
+}
+
+/**
+ * Quest Monitoring → "Completion Status" sub-tab (New quest monitoring
+ * tasks, Task 2). Same paginated + aggregate-in-one-call shape as
+ * fetchSubjectProgressPage above, backed by subject_completion_status
+ * RPC (supabase_migration_subject_completion_status_rpc.sql). Completed/
+ * did-not-complete/not-attempted per the person's own confirmed
+ * definition — attempted every topic at least once (regardless of
+ * score) vs. attempted some vs. attempted none — NOT tied to
+ * passing_rate_min/max at all, a deliberately different concept from
+ * fetchSubjectProgressPage's pass/fail split above.
+ */
+export async function fetchSubjectCompletionStatus(
+  subjectId: string, statusFilter: CompletionStatusFilter, page: number, pageSize = 10,
+  yearLevel?: string, school?: string,
+): Promise<SubjectCompletionPageResult> {
+  const { data, error } = await supabase.rpc("subject_completion_status", {
+    p_subject_id: subjectId,
+    p_status_filter: statusFilter,
+    p_limit: pageSize,
+    p_offset: (page - 1) * pageSize,
+    p_year_level: yearLevel || null,
+    p_school: school || null,
+  });
+  if (error || !data) {
+    return {
+      rows: [], totalCount: 0, completedCount: 0, didNotCompleteCount: 0, notAttemptedCount: 0,
+      error: error?.message ?? "Something went wrong loading completion status. Please try again.",
+    };
+  }
+
+  const rows = (data as Record<string, unknown>[]).map(r => ({
+    scholarIdNumber: String(r.scholar_id_number),
+    scholarName: String(r.scholar_name ?? r.scholar_id_number),
+    yearLevel: String(r.year_level ?? ""),
+    school: String(r.school ?? ""),
+    topicsAttempted: Number(r.topics_attempted ?? 0),
+    totalTopics: Number(r.total_topics ?? 0),
+    status: (String(r.status ?? "not_attempted")) as CompletionStatusFilter,
+  }));
+  const first = (data as Record<string, unknown>[])[0];
+  return {
+    rows,
+    totalCount: Number(first?.total_count ?? 0),
+    completedCount: Number(first?.completed_count ?? 0),
+    didNotCompleteCount: Number(first?.did_not_complete_count ?? 0),
+    notAttemptedCount: Number(first?.not_attempted_count ?? 0),
+    error: null,
+  };
+}
+
 /** Every scholar's aggregate percentage for one subject — backs the Scores & Progress tab's passing-rate section. */
 export async function fetchSubjectProgress(subjectId: string): Promise<SubjectProgressRow[]> {
   // Same 1,000-row response-cap reasoning as fetchSubjectRankings() above —
