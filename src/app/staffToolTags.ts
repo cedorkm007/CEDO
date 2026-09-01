@@ -38,4 +38,9 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     label: "Forms Management",
     description: "Upload and manage the PDFs/flipbooks scholars see under Forms and Services → Forms, including unlock conditions.",
   },
+  {
+    key: "kauban_content",
+    label: "Kauban Content Management",
+    description: "Add sign words and quick phrases, and upload/compress the sign-language videos for the Kauban app.",
+  },
 ];

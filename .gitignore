@@ -6,6 +6,11 @@ node_modules/
 dist/
 dist-ssr/
 
+# Derived from node_modules/@ffmpeg/core by scripts/copy-ffmpeg-core.mjs
+# (runs on postinstall) — not committed, ~32MB of binary that's already
+# sitting in node_modules.
+public/kauban-admin/ffmpeg-core/
+
 # Environment files — NEVER commit these
 .env
 .env.local
