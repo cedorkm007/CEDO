@@ -402,15 +402,35 @@ export interface SubmissionRosterRow {
  * status precedence and the Q2/Q3 design decisions this depends on.
  */
 export async function fetchSubmissionRosterStatus(activityId: string): Promise<{ ok: boolean; error?: string; rows?: SubmissionRosterRow[] }> {
-  const { data, error } = await supabase.rpc("get_submission_roster_status", { p_activity_id: activityId });
-  if (error) return { ok: false, error: error.message };
-  const rows: SubmissionRosterRow[] = (data ?? []).map((r: Record<string, unknown>) => ({
-    scholarId: r.scholar_id as string,
-    firstName: r.first_name as string,
-    lastName: r.last_name as string,
-    yearLevel: r.year_level as string,
-    school: (r.school as string) ?? "",
-    status: r.status as SubmissionRosterStatus,
-  }));
+  // get_submission_roster_status() returns one row per eligible scholar,
+  // which can exceed Supabase/PostgREST's default 1,000-row response cap
+  // for a broadly-targeted activity (e.g. all_year_levels=true) — this
+  // org is already confirmed elsewhere in this project to have more than
+  // 1,000 scholars. A single unpaginated call here was silently
+  // truncating the roster, producing incomplete submitted/locked/
+  // not-submitted/etc. totals for both filtered and unfiltered views
+  // (both derive from this same array). Pages through with .range()
+  // instead, mirroring fetchSubjectRankings()'s established pattern in
+  // seadApi.ts exactly. Requires the v3 migration
+  // (supabase_migration_submission_roster_status_rpc_v3.sql), which adds
+  // a scholar-id tiebreaker to the RPC's ORDER BY — without a fully
+  // deterministic row order, paging with .range() could skip or
+  // duplicate a row right at a page boundary.
+  const rows: SubmissionRosterRow[] = [];
+  const pageSize = 500;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase.rpc("get_submission_roster_status", { p_activity_id: activityId }).range(from, from + pageSize - 1);
+    if (error) return { ok: false, error: error.message };
+    if (!data || data.length === 0) break;
+    rows.push(...(data as Record<string, unknown>[]).map(r => ({
+      scholarId: r.scholar_id as string,
+      firstName: r.first_name as string,
+      lastName: r.last_name as string,
+      yearLevel: r.year_level as string,
+      school: (r.school as string) ?? "",
+      status: r.status as SubmissionRosterStatus,
+    })));
+    if (data.length < pageSize) break;
+  }
   return { ok: true, rows };
 }
