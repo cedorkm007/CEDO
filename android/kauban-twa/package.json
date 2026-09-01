@@ -1,0 +1,8 @@
+{
+  "name": "kauban-twa",
+  "private": true,
+  "description": "Android TWA (Trusted Web Activity) wrapper project for Kauban, generated with Bubblewrap. Separate Node/Java/Gradle toolchain from the main Vite app — not part of its dependency graph.",
+  "devDependencies": {
+    "@bubblewrap/core": "1.25.0"
+  }
+}
