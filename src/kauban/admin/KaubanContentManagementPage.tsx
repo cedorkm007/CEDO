@@ -1,16 +1,17 @@
 import { useState } from "react";
-import { Video, UploadCloud, LibraryBig } from "lucide-react";
+import { Video, UploadCloud, LibraryBig, MessageSquareText, Siren } from "lucide-react";
 import { BatchVideoUpload } from "./BatchVideoUpload";
 import { VideoLibrary } from "./VideoLibrary";
+import { QuickPhrasesManager } from "./QuickPhrasesManager";
+import { EmergencyContentManager } from "./EmergencyContentManager";
 
-type Tab = "upload" | "library";
+type Tab = "upload" | "library" | "phrases" | "emergency";
 
 /**
  * Staff tool gated by the "kauban_content" tag (see src/app/staffToolTags.ts).
- * Manages the content Kauban's public /kauban/ pages read from Supabase —
- * sign words + videos, quick phrases, emergency content. Quick Phrases and
- * Emergency Content management (docs/kauban/MILESTONES.md, milestones 9-10)
- * will land here as additional tabs.
+ * Manages every piece of content Kauban's public /kauban/ pages read from
+ * Supabase — sign words + videos, quick phrases, emergency content. This
+ * covers all of docs/kauban/MILESTONES.md's Admin CMS milestones (7-10).
  */
 export function KaubanContentManagementPage() {
   const [tab, setTab] = useState<Tab>("upload");
@@ -21,11 +22,11 @@ export function KaubanContentManagementPage() {
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#062444] text-white"><Video size={18} /></div>
         <div>
           <h2 className="text-base font-bold text-[#062444]">Kauban Content Management</h2>
-          <p className="text-[12px] text-slate-500">Compress, upload, and monitor sign-language videos for the Kauban app.</p>
+          <p className="text-[12px] text-slate-500">Videos, sign words, quick phrases, and emergency content for the Kauban app.</p>
         </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setTab("upload")}
           className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold ${tab === "upload" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}
@@ -38,9 +39,24 @@ export function KaubanContentManagementPage() {
         >
           <LibraryBig size={13} /> Video Library
         </button>
+        <button
+          onClick={() => setTab("phrases")}
+          className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold ${tab === "phrases" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}
+        >
+          <MessageSquareText size={13} /> Quick Phrases
+        </button>
+        <button
+          onClick={() => setTab("emergency")}
+          className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold ${tab === "emergency" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}
+        >
+          <Siren size={13} /> Emergency Content
+        </button>
       </div>
 
-      {tab === "upload" ? <BatchVideoUpload /> : <VideoLibrary />}
+      {tab === "upload" && <BatchVideoUpload />}
+      {tab === "library" && <VideoLibrary />}
+      {tab === "phrases" && <QuickPhrasesManager />}
+      {tab === "emergency" && <EmergencyContentManager />}
     </div>
   );
 }

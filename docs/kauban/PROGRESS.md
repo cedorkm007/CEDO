@@ -145,6 +145,232 @@ You asked for a way to see what's already uploaded, organized by category and vi
 
 **Verified:** `npm run type-check`, `npx eslint src/kauban`, and `npm run build` all pass. **Not visually verified this time** — I tried rendering the page directly in a browser (bypassing your login, by faking a cached staff profile in `localStorage` and pointing Supabase at a placeholder URL) to at least confirm the layout renders, but the app's own data-loading effect never clears its loading spinner when every Supabase call fails outright (expected — the placeholder project doesn't exist), so it never got past a "Loading…" screen. That's a limitation of not having a real Supabase connection in this environment, not a finding about the code itself. Please try the Video Library tab for real and let me know if anything looks off.
 
+---
+
+## Milestone 9 — Quick Phrases manager
+
+**Status: BUILT (2026-09-02)**
+
+Added a third tab, "Quick Phrases", next to Upload Videos and Video Library.
+
+**[`QuickPhrasesManager.tsx`](../../src/kauban/admin/QuickPhrasesManager.tsx)** (new):
+- Lists every `kauban_quick_phrase_categories` row as a card (icon, name, color swatch), each showing its `kauban_quick_phrases` inline — click the pencil to edit a phrase's text in place, trash to delete it (confirmed first), or type into the "Add a phrase…" box and hit Enter to add one.
+- Category name/icon/color are editable the same way (pencil toggles an inline form with a native color-picker input); deleting a category warns how many phrases will go with it, since the DB cascade removes them too.
+- New categories/phrases just append to the end (`sort_order` = current count) — no drag-to-reorder, matching how the original app never had reordering either and it wasn't asked for here.
+
+**New API functions in [`kaubanAdminApi.ts`](../../src/kauban/admin/kaubanAdminApi.ts):** `fetchQuickPhraseCategories`, `createQuickPhraseCategory`, `updateQuickPhraseCategory`, `deleteQuickPhraseCategory`, `fetchQuickPhrases`, `createQuickPhrase`, `updateQuickPhrase`, `deleteQuickPhrase`.
+
+**Verified:** `npm run type-check`, `npx eslint src/kauban`, `npm run build` all pass. Not visually verified live (same Supabase-connection limitation as the Video Library entry above).
+
+**Remaining before Admin CMS is fully done:** milestone 10 (Emergency Content manager) is the last untouched admin screen.
+
+---
+
+## Milestone 8 (gap filled) — Sign Words edit
+
+**Status: BUILT (2026-09-02)**
+
+Added the missing piece: each word row in the Video Library tab now has a pencil icon (next to the existing delete-word trash icon) that turns the row into an inline form — Label, Matching phrase, and a Category dropdown — with Save/Cancel. Saving calls the new `updateSignWord()` in `kaubanAdminApi.ts`, which re-normalizes the phrase the same way upload does (lowercase, matching the DB's own `check` constraint) before writing it. Editing the category moves the word into that category's group the next time the list reloads, same as you'd expect.
+
+Doesn't touch the word's videos — that's still `uploadSignWordVideo` (replace) and `deleteSignWordVideo` (remove), unchanged.
+
+**Verified:** `npm run type-check`, `npx eslint src/kauban`, `npm run build` all pass. Not visually verified live (same Supabase-connection limitation noted earlier in this log).
+
+Admin CMS is now feature-complete except milestone 10 (Emergency Content manager).
+
+---
+
+## Milestone 10 — Emergency Content manager
+
+**Status: BUILT (2026-09-02)**
+
+Added the fourth and final tab, "Emergency Content", completing the Admin CMS (milestones 7-10).
+
+**[`EmergencyContentManager.tsx`](../../src/kauban/admin/EmergencyContentManager.tsx)** (new):
+- **Emergency Contacts** — flat list (no categories, matching the schema), each with name/number/a color swatch via native color picker. Inline add/edit/delete, same pattern as Quick Phrases.
+- **Emergency Messages** — flat list of canned messages, same inline add/edit/delete.
+- Explicitly does **not** touch personal contacts a visitor adds for themselves during first-run setup — those were always meant to live only in that visitor's own browser (`localStorage`, no accounts — see milestone 1's finding about `AppSetup.php`'s "one install per device" design), never in these shared tables. Said so directly in the component's doc comment so a future edit doesn't accidentally conflate the two.
+
+**New API functions in [`kaubanAdminApi.ts`](../../src/kauban/admin/kaubanAdminApi.ts):** `fetchEmergencyContacts`, `createEmergencyContact`, `updateEmergencyContact`, `deleteEmergencyContact`, `fetchEmergencyMessages`, `createEmergencyMessage`, `updateEmergencyMessage`, `deleteEmergencyMessage`.
+
+**Verified:** `npm run type-check`, `npx eslint src/kauban`, `npm run build` all pass. Not visually verified live (same Supabase-connection limitation noted earlier in this log).
+
+**Admin CMS (milestones 7-10) is now fully built.** Everything from here on is either (a) the still-pending Storage/seed-data groundwork (milestone 5's native batch-compression script + upload of the existing 70 videos, milestone 6's initial data seed), or (b) the public-facing `/kauban` screens (milestones 11-16), which is the next major phase of the plan.
+
+---
+
+## Milestone 5 (remaining piece) + Milestone 6 — Native batch migration script + seed data SQL
+
+**Status: BOTH WRITTEN (2026-09-02) — need you to actually run them**
+
+**[`scripts/kauban-migrate-videos.mjs`](../../scripts/kauban-migrate-videos.mjs)** (new) — the native (real ffmpeg, not ffmpeg.wasm) batch script milestone 3's original design called for, now actually built:
+- Takes `--source "<path>"` pointing at the extracted Laravel app's `public/fsl` folder (must contain `videos/` and `tutorial/<category>/` subfolders, matching the original app's own layout).
+- Walks both folders, compresses every `.mp4` with the exact same settings as the in-browser compressor (`videoCompression.ts`) — strip audio, cap 720px, H.264 CRF 28 — via a real `ffmpeg-static` binary instead of WASM, then uploads each to the `kauban-media` bucket at `clips/<file>` / `tutorial/<file>` using the Supabase **service role** key (bypasses RLS — same trusted-local-script pattern as `create-admin-accounts.mjs`).
+- Doesn't touch `kauban_sign_words` at all — the seed SQL below already points each word at these exact paths, so running both (in either order) is what makes videos "show up."
+- Safe to re-run: each upload is `upsert: true`, and a per-file failure is caught and reported rather than stopping the whole batch.
+
+**Bug caught and fixed while building this:** `@supabase/supabase-js`'s `createClient()` unconditionally constructs a Realtime client, which throws immediately on Node < 22 if `WebSocket` isn't a global — confirmed by hand (this script never uses realtime at all, but the crash happens regardless). Fixed with a `ws`-package polyfill at the top of the script. **Heads up:** `scripts/create-admin-accounts.mjs` calls `createClient()` the same way and likely has this exact same bug on Node 18/20 — I didn't touch that file since it's outside this milestone's scope, but if you ever hit "Node.js detected but native WebSocket not found" running it, this is why.
+
+**[`supabase_migration_kauban_seed_content.sql`](../../supabase_migration_kauban_seed_content.sql)** (new) — every row copied directly from the original app's `quiz-words.json` / `quick-phrases.json` / `emergency.json` (no invented data): 2 sign categories, all 35 sign words (with `clip_video_path`/`tutorial_video_path` pre-set to match what the script above uploads to), 4 quick-phrase categories, all 22 quick phrases, 2 emergency contacts, 4 emergency messages. Every insert is `on conflict do nothing`, so it's safe to re-run and never clobbers anything you've since edited through the admin tool — this needed adding a small unique index to 3 tables that didn't have one yet (`kauban_quick_phrase_categories.name`, `kauban_quick_phrases (category_id, text)`, `kauban_emergency_contacts.name`, `kauban_emergency_messages.message`), documented at the top of the file.
+
+**Verified:**
+- The script's compression logic: ran it for real against a synthetic test clip (native ffmpeg via `ffmpeg-static`, not just type-checked) — compressed correctly (20410 → 16482 bytes), and separately confirmed its directory-walking (including the nested `tutorial/<category>/` structure) and error-handling against a fake source folder + fake credentials: it found both files, compressed both, and reported the (expected, since the credentials were fake) upload failures per-file without crashing.
+- `npm run type-check`, `npx eslint`, `npm run build` all still pass.
+- **Not verified:** an actual successful upload against your real Supabase project, and the seed SQL's execution — both need real credentials/access I don't have. Please review the SQL file yourself before running it (it's short and every value is traceable to the source JSON files cited above), then run both this SQL and the migration script (after extracting `Kauban App.zip` somewhere and pointing `--source` at its `public/fsl` folder).
+
+Once both are run, the Admin CMS should show real content instead of an empty state, and milestones 5-6 are fully done — only the public-facing screens (11-16) remain.
+
+**Update (2026-09-02):** Seed SQL confirmed run successfully — milestone 6 is locked. Milestone 5's video upload is **deferred by your explicit choice**: you're fine launching without videos yet and will upload them later (via `kauban-migrate-videos.mjs` for the bulk original set, or the admin Batch Video Upload tab for anything after). Not a blocker — `kauban_sign_words` rows now exist with `clip_video_path`/`tutorial_video_path` pointing at paths that don't have files behind them yet, so anything reading those paths (the admin Video Library preview, and later the public Speech-to-Sign-Language screen) will show "not uploaded"/broken video until you do. Noting this explicitly so a future session doesn't mistake it for a bug.
+
+**Current state:** all of milestones 1-10 done, milestone 6 done, milestone 5 intentionally partial (data ready, video files pending). Next up per the plan is milestone 11 — the first of the public-facing `/kauban` screens.
+
+---
+
+## Milestone 11 — Public route scaffolding + role-selection shell
+
+**Status: DONE (2026-09-02), visually verified live**
+
+`https://cedo-ten.vercel.app/kauban/` now works as its own app, entirely separate from the staff app and the CEDO/Scholar Portal site.
+
+**[`src/main.tsx`](../../src/main.tsx)** — added a third branch: any path starting with `/kauban` now mounts `KaubanApp` instead of falling through to the staff app (previously anything not starting with `/cedo` rendered the staff app by default — `/kauban` would have silently hit that fallback and shown the staff sign-in page).
+
+**New module `src/kauban/`** (the public app, separate from `src/kauban/admin/`):
+- **[`types.ts`](../../src/kauban/types.ts)** — `KaubanRole` ('deaf' | 'hard-of-hearing' | 'hearing', matching the original Laravel app's own session role values exactly) and `KaubanPage`.
+- **[`localRole.ts`](../../src/kauban/localRole.ts)** — get/set/clear the visitor's role choice in `localStorage`. This is the direct equivalent of the original app's `AppSetup.php` (one JSON file per device) — no accounts, no server round-trip.
+- **[`kaubanTools.ts`](../../src/kauban/kaubanTools.ts)** — the 9 tools with their per-role visibility, copied from the original app's actual role checks (`QuickPhraseController` redirects "hearing" away, `SpeechToSignLanguageController` is deaf-only, everything else is open to all) — not a new restriction invented here.
+- **[`pages/RoleSelectionPage.tsx`](../../src/kauban/pages/RoleSelectionPage.tsx)** — the entry screen, three large accessible buttons (Deaf / Hard of Hearing / Hearing).
+- **[`pages/DashboardPage.tsx`](../../src/kauban/pages/DashboardPage.tsx)** — role-filtered grid of tool cards + "Switch Role".
+- **[`pages/ComingSoonPage.tsx`](../../src/kauban/pages/ComingSoonPage.tsx)** — placeholder for the 9 tool screens milestones 12-15 fill in one at a time; `KaubanApp.tsx` just swaps each `ComingSoonPage` case for the real screen as it's built, no shell rework needed later.
+- **[`KaubanApp.tsx`](../../src/kauban/KaubanApp.tsx)** — root component. Follows the same manual view-state pattern as `ScholarSiteApp.tsx` rather than introducing a client-side router — `react-router` is an installed but completely unused dependency in this codebase (confirmed by grep), so a router would've been a new pattern, not a reused one.
+
+**Scoping note:** milestone 11's own wording is "role-selection shell" specifically — the original app's onboarding also had an emergency-contacts setup step right after role choice; that's deliberately left for milestone 15 (Emergency screen) instead of half-built now, so it isn't touched twice.
+
+**Bug caught by `npm run build` that `npm run type-check` missed:** `kaubanTools.ts` typed each tool's icon as `ComponentType<{ size?: number; ... }>`, but lucide-react's actual icon props allow `size?: string | number` — `tsc -b` (build mode, what `npm run build` actually runs) caught the resulting structural mismatch via a `propTypes` comparison; plain `tsc --noEmit` (the `type-check` script) did not. Fixed by matching lucide's real prop type. Worth remembering: `type-check` passing isn't proof `build` will too.
+
+**Verified live, not just built** — ran the actual dev server and drove it as a user, in the browser:
+- `/kauban` shows the role picker (no Supabase calls happen on this path, so this didn't hit the earlier no-credentials wall).
+- Picking "Deaf" shows all 9 tools; a tool card opens its "Coming Soon" placeholder with the right title; "Back to Dashboard" returns correctly.
+- Reloading `/kauban` after picking a role skips straight to the dashboard (localStorage persistence confirmed).
+- "Switch Role" clears back to the picker; picking "Hearing" correctly hides Quick Phrases and Speech to Sign Language (the two role-gated tools) — filtering confirmed working both ways.
+- Checked mobile viewport (375×812) — cards stack cleanly, no overflow.
+- Regression-checked `/CEDO` still renders its own site correctly after the `main.tsx` change — no cross-app breakage.
+
+Milestone 12 (Quick Phrases + Sign Language browse/tutorial + Sign Quiz screens) is next.
+
+---
+
+## Milestone 12 — Quick Phrases + Sign Language browse/tutorial + Sign Quiz
+
+**Status: DONE (2026-09-02), verified as far as this environment allows**
+
+Three real tool screens replace their `ComingSoonPage` placeholders in `KaubanApp.tsx`.
+
+**New shared pieces:**
+- **[`kaubanPublicApi.ts`](../../src/kauban/kaubanPublicApi.ts)** — read-only Supabase queries for the public site, deliberately separate from `src/kauban/admin/kaubanAdminApi.ts` (that module has writes and pulls in the video-compression code path — neither belongs in a visitor's bundle).
+- **[`speechSynthesis.ts`](../../src/kauban/speechSynthesis.ts)** — thin Web Speech API wrapper, used by Quick Phrases now and the Text-to-Speech tool (milestone 14) later.
+- **[`components/KaubanPageHeader.tsx`](../../src/kauban/components/KaubanPageHeader.tsx)** — shared back-button + title header, one implementation instead of copy-pasting it into every tool screen.
+- **[`components/KaubanVideo.tsx`](../../src/kauban/components/KaubanVideo.tsx)** — a video slot that catches a load failure (`onError`) and shows "Video not available yet" instead of a broken player. This matters right now specifically because milestone 5 was left intentionally partial — `kauban_sign_words` rows have paths set but the actual files aren't uploaded, so every video in these screens is expected to hit this fallback until you run the migration script.
+
+**[`pages/QuickPhrasesPage.tsx`](../../src/kauban/pages/QuickPhrasesPage.tsx)** — tap a phrase, it's shown large on screen and spoken aloud via `speechSynthesis` at the same time; a replay button on the banner in case they want to hear it again.
+
+**[`pages/SignLanguagePage.tsx`](../../src/kauban/pages/SignLanguagePage.tsx)** — browse by category, tap a word to play its tutorial video (falls back to the clip video if only that variant exists). **Scoping deviation, noted deliberately:** the original Laravel app sent "hearing" visitors to a separate "AI avatar" translator page instead of this browse/tutorial view — building a whole AI-avatar feature was never discussed with you and is a large undertaking on its own, so all three roles get this same browse screen instead. Flagging this now rather than silently diverging from the original app's behavior.
+
+**[`pages/SignLanguageQuizPage.tsx`](../../src/kauban/pages/SignLanguageQuizPage.tsx)** — the original blade template's exact quiz mechanics were never extracted (only `SignQuizController.php`, which just loads the word list, was read during milestone 1), so this is a standard reconstruction matching its evident purpose ("Test what you've learned"): watch a word's clip video, pick the right label from 4 choices, 10 questions per round, score shown at the end, "Try Again" reshuffles. A word whose video fails to load falls back the same way `KaubanVideo` does everywhere else.
+
+**Verified:**
+- `npm run type-check`, `npx eslint src/kauban`, `npm run build` all pass (ran the full build this time before declaring done, given milestone 11's lesson that `type-check` alone isn't sufficient).
+- **Live in the browser, structurally**: navigated to all three screens, confirmed headers/back-buttons work, confirmed the loading → empty-state transition works correctly on each ("No quick phrases have been added yet." / "No sign words have been added yet." / "Not enough sign words have been added yet for a quiz.").
+- **Not verified**: actual rendering with real seeded data, video playback, the quiz's answer/scoring flow, or the speech-synthesis calls — this sandbox has no reachable Supabase project, so every fetch returns empty by design (network failure caught and treated as "no data"). Once you load `/kauban` yourself with the real project connected, please check these three screens for real, especially whether the quiz feels right — its exact mechanics were reconstructed, not copied from a source I could read.
+
+Milestone 13 (Speech-to-Sign-Language) is next — the one screen that actually needs the Web Speech API's *recognition* side (these three used only speech *synthesis*).
+
+---
+
+## Milestone 13 — Speech to Sign Language
+
+**Status: DONE (2026-09-02), verified live including a real bug catch**
+
+**[`signWordMatching.ts`](../../src/kauban/signWordMatching.ts)** — this one **is** a direct port, not a reconstruction: the greedy longest-phrase-first matching algorithm is copied from the original app's actual `speech-to-sign-language.blade.php` JS (captured word-for-word in milestone 1's log), just run against `kauban_sign_words` rows instead of a hardcoded object. Multi-word phrases ("good morning") are checked before single words so they win, exactly like the source.
+
+**[`speechRecognition.ts`](../../src/kauban/speechRecognition.ts)** — minimal local types for the Web Speech API's recognition side (TypeScript's DOM lib doesn't reliably cover it), mirroring `speechSynthesis.ts`'s wrapper style from milestone 12.
+
+**[`pages/SpeechToSignLanguagePage.tsx`](../../src/kauban/pages/SpeechToSignLanguagePage.tsx)** — press the mic, speak, matched words play as muted sign-language clips in sequence. **One deliberate simplification from the original, stated directly:** the source used a dual-video-element crossfade between clips for a seamless transition; this uses one `<video>` that swaps `src` on `onEnded` — a visible cut instead of a crossfade, functionally equivalent but less polished. Clips stay muted (matching the original's own autoplay-safety rule). A word with no clip uploaded yet is skipped automatically rather than showing a broken player, same pattern as `KaubanVideo` elsewhere.
+
+**Real bug caught by live testing, not just code review:** clicking the mic and having the browser deny microphone permission left the Stop button (red, mic-off icon) showing even though recognition had actually failed and wasn't running — misleading the user into thinking it was still listening. Worse, the `onend` auto-restart logic would have kept retrying against a permission that was already permanently denied. Fixed: a `not-allowed`/`service-not-allowed` error now resets the listening state so the UI honestly reflects that it stopped, and the auto-restart doesn't fire again.
+
+**Verified:**
+- `npm run type-check`, `npx eslint src/kauban`, `npm run build` all pass.
+- **Live in the browser**: confirmed the "unsupported browser" branch doesn't fire (this Chrome-based pane has `webkitSpeechRecognition`), pressed the actual mic button, watched the real permission-denied flow happen (the sandbox blocks mic access, which triggered the exact `onerror` path a real denial would), caught the stuck-button bug from that, fixed it, and re-tested to confirm the button now correctly returns to idle.
+- **Not verified**: an actual successful recognition + matching + playback cycle, since that needs a real microphone this sandbox can't provide, and real video files this project doesn't have yet (milestone 5 still pending). The matching algorithm itself is worth double-checking once both exist, even though it's a direct port rather than a reconstruction.
+
+Milestone 14 (Text-to-Speech, Speech-to-Text, Drawing Pad — all pure client-side, no backend) is next.
+
+---
+
+## Milestone 14 — Text to Speech, Speech to Text, Drawing Pad
+
+**Status: DONE (2026-09-02), most thoroughly verified milestone yet — genuine end-to-end tests, not just structural ones**
+
+All three tools are pure client-side, no Supabase involved at all — which meant, for the first time this project, I could actually verify real functionality live rather than just empty-state handling.
+
+**[`pages/TextToSpeechPage.tsx`](../../src/kauban/pages/TextToSpeechPage.tsx)** — textarea, Speak/Stop/Clear. **Verified for real**: typed a sentence, pressed Speak, watched the button correctly change to "Speaking…" with Stop enabled — this is genuine working `speechSynthesis` behavior confirmed live, not inferred from reading the code.
+
+**[`pages/SpeechToTextPage.tsx`](../../src/kauban/pages/SpeechToTextPage.tsx)** — mic button, live transcript area, Copy/Clear. Shares the exact same permission-error handling fixed in milestone 13 (reused, not re-implemented) — verified that fix works here too, not just on the screen it was originally found on.
+
+**[`pages/DrawingPadPage.tsx`](../../src/kauban/pages/DrawingPadPage.tsx)** — canvas with pointer-event drawing, 7 preset colors + a custom color picker, brush size slider, Clear, and Save (downloads a PNG). No persistence anywhere, matching the original app's own `DrawingPadController` (just returns a view, nothing stored). **Verified for real**: actually drew on the canvas with a drag gesture (a real line appeared), switched color and drew again (color change applied correctly), and confirmed Clear wipes it — this is a fully working feature, confirmed by using it, not just by reading the pointer-event code and trusting it.
+
+**Verified overall:** `npm run type-check`, `npx eslint src/kauban`, `npm run build` all pass. Live-tested Text-to-Speech (genuinely works), Drawing Pad (genuinely works, drew/colored/cleared for real), and Speech-to-Text's permission-error path (confirmed the milestone-13 fix generalizes correctly).
+
+**Still not verified:** an actual successful speech-*recognition* result (this sandbox has no real microphone), and nothing here touches Supabase so there's nothing seed-data-related left to check for these three specifically.
+
+All 9 tool screens are now built (milestones 11-14 complete). Only milestone 15 (Emergency screen) and milestone 16 (deploy + QA + PWA + docs handoff) remain on the original 16-milestone plan, plus the still-pending milestone 5 video upload whenever you're ready for it.
+
+---
+
+## Milestone 15 — Emergency screen
+
+**Status: DONE (2026-09-02), verified live including a real scope gap caught along the way**
+
+**[`localEmergencyContacts.ts`](../../src/kauban/localEmergencyContacts.ts)** — a visitor's own contacts, `localStorage`-only, the direct equivalent of the original app's per-device `storage/app/setup.json` personal contacts (milestone 1's finding). Never touches Supabase.
+
+**[`pages/EmergencyPage.tsx`](../../src/kauban/pages/EmergencyPage.tsx)** — three sections, personal contacts shown first (same reasoning the original `EmergencyController` used — "usually the most relevant in an actual emergency"):
+- **Your Contacts** — add/remove your own, each with a one-tap `tel:` call link.
+- **Emergency Services** — the staff-managed bundled contacts (`EmergencyContentManager.tsx`, built back in milestone 10), also one-tap call links.
+- **Quick Messages** — tap a canned message to show it large and speak it aloud, same interaction pattern as milestone 12's Quick Phrases screen (intentionally reused, not reinvented).
+
+**New public reads in [`kaubanPublicApi.ts`](../../src/kauban/kaubanPublicApi.ts):** `fetchEmergencyContacts`, `fetchEmergencyMessages` — the admin API already had these for the staff tool; the public site needed its own read-only versions for the same separation-of-concerns reason as every other public fetch (see milestone 12's note on why the two API files are split).
+
+**Scope gap caught and documented, not silently patched over:** wiring the last `case` into `KaubanApp.tsx`'s switch revealed that **"Sign Language Tools" was never actually assigned to any milestone** — it's one of the 9 dashboard tools from milestone 11, but milestones 12-15 only ever named 8 of them. There's no source detail on what this screen should contain (its Laravel controller was never read in milestone 1's investigation), so it intentionally still falls through to `ComingSoonPage` rather than inventing content for it. Flagging this now so it's a deliberate decision on record, not a thing that quietly falls through the cracks.
+
+**Verified:**
+- `npm run type-check`, `npx eslint src/kauban`, `npm run build` all pass.
+- **Live in the browser, and this time the localStorage half is a genuine end-to-end test**: added a real contact ("Mom", a phone number) through the actual form, confirmed it rendered with a working `tel:` call button, **reloaded the page and confirmed it persisted**, then deleted it and confirmed it's gone. The bundled-content sections (Supabase-backed) correctly showed their empty states, same limitation as every other Supabase-reading screen in this sandbox.
+
+**Remaining on the original 16-milestone plan:** milestone 16 (deploy, full QA, PWA manifest/service worker, docs handoff) and the still-deferred milestone 5 video upload. The undocumented "Sign Language Tools" gap noted above is also outstanding, separate from the numbered plan.
+
+---
+
+## Sign Language Tools gap — filled
+
+**Status: DONE (2026-09-02), verified live**
+
+Rather than guess at what this screen should contain, went back to the original `Kauban App.zip` and actually extracted/read `SignLanguageToolsController.php` and `resources/views/sign-language-tools.blade.php` — neither had been read during milestone 1's investigation, which is why the gap existed. Turned out to be simple: a navigation hub linking to tools that already exist, with role-based visibility. No invented content needed after all.
+
+**[`pages/SignLanguageToolsPage.tsx`](../../src/kauban/pages/SignLanguageToolsPage.tsx)** — a direct port of the blade file's `@if(session('role') ...)` conditions:
+- Text to Speech — shown unless role is "hearing"
+- Speech to Sign — shown only for "deaf"
+- Sign Language / Sign Language Tutorial — always shown, label switches on role (matches the original's own `@if(session('role') === 'hearing')` branch in the card itself)
+- Speech to Text — shown only for "hearing"
+- Sign Language Quiz — always shown
+
+Wired into `KaubanApp.tsx`'s switch, which now handles all 9 dashboard tools explicitly — no `default` case, no `ComingSoonPage` fallback needed anymore. Deleted `pages/ComingSoonPage.tsx` since it became genuinely unused (confirmed via a grep before deleting, not assumed).
+
+**Verified:**
+- `npm run type-check`, `npx eslint src/kauban`, `npm run build` all pass — including confirming TypeScript's own exhaustiveness checking accepts the switch with no `default`, since every `KaubanPage` member now has a case.
+- **Live in the browser**: navigated to the hub as the "Deaf" role and confirmed exactly the 4 expected cards appear (Text to Speech, Speech to Sign, Sign Language Tutorial, Sign Language Quiz) with Speech to Text correctly absent, then clicked into Sign Language Quiz and confirmed it actually routes to the real screen, not a placeholder.
+
+All 9 Kauban tool screens are now fully built with no remaining gaps. Only milestone 16 (deploy, QA, PWA, docs handoff) and the deferred milestone 5 video upload remain.
+
 **Build confirmed clean (2026-09-01):** `npm run type-check`, `npx eslint src/kauban`, and a full `npm run build` all pass. Along the way, found and fixed a pre-existing broken install unrelated to Kauban (`@tailwindcss/oxide` was missing its Windows native binding — a known npm optional-dependency bug) by installing `@tailwindcss/oxide-win32-x64-msvc` with `--no-save`, so it didn't pollute the lockfile.
 
 Also caught before committing: the vendored `ffmpeg-core.wasm` (~32MB) would have permanently bloated the git repo for no reason, since it's 100% derived from the `@ffmpeg/core` npm package already in `node_modules`. Fixed by adding [`scripts/copy-ffmpeg-core.mjs`](../../scripts/copy-ffmpeg-core.mjs) as a `postinstall` step that regenerates `public/kauban-admin/ffmpeg-core/` on every `npm install`, and gitignoring that folder instead of committing it.

@@ -1,18 +1,18 @@
 import { useEffect, useState } from "react";
-import { Play, Trash2, Video, FileVideo, X } from "lucide-react";
+import { Play, Trash2, Video, FileVideo, X, Pencil, Check } from "lucide-react";
 import {
-  fetchSignCategories, fetchSignWords, getVideoPublicUrl, deleteSignWordVideo, deleteSignWord,
+  fetchSignCategories, fetchSignWords, getVideoPublicUrl, deleteSignWordVideo, deleteSignWord, updateSignWord,
   type SignCategory, type SignWord, type SignVideoVariant,
 } from "./kaubanAdminApi";
 
 const VARIANT_LABEL: Record<SignVideoVariant, string> = { clip: "Clip", tutorial: "Tutorial" };
 
 /**
- * Read-only monitoring view over everything uploaded so far (via
- * BatchVideoUpload or otherwise), grouped by category so it's easy to
- * spot which words are still missing a clip or a tutorial video. Also
- * where an admin removes a video that's wrong/outdated, or a whole word
- * that shouldn't exist anymore.
+ * Monitoring view over everything uploaded so far (via BatchVideoUpload
+ * or otherwise), grouped by category so it's easy to spot which words are
+ * still missing a clip or a tutorial video. Also where an admin edits a
+ * word's label/matching-phrase/category, removes a video that's wrong or
+ * outdated, or deletes a whole word that shouldn't exist anymore.
  */
 export function VideoLibrary() {
   const [categories, setCategories] = useState<SignCategory[]>([]);
@@ -21,6 +21,11 @@ export function VideoLibrary() {
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState("");
+
+  const [editingWordId, setEditingWordId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editPhrase, setEditPhrase] = useState("");
+  const [editCategoryId, setEditCategoryId] = useState("");
 
   useEffect(() => { void load(); }, []);
 
@@ -42,6 +47,24 @@ export function VideoLibrary() {
     if (!result.ok) { setError(result.error); return; }
     if (previewKey === key) setPreviewKey(null);
     setWords(prev => prev.map(w => (w.id === word.id ? { ...w, [variant === "clip" ? "clipVideoPath" : "tutorialVideoPath"]: null } : w)));
+  }
+
+  function startEditWord(word: SignWord) {
+    setEditingWordId(word.id);
+    setEditLabel(word.label);
+    setEditPhrase(word.phrase);
+    setEditCategoryId(word.categoryId);
+  }
+
+  async function handleSaveWord(id: string) {
+    if (!editLabel.trim() || !editPhrase.trim()) { setError("Label and phrase can't be empty."); return; }
+    setBusyKey(id);
+    setError("");
+    const result = await updateSignWord(id, { label: editLabel, phrase: editPhrase, categoryId: editCategoryId });
+    setBusyKey(null);
+    if (!result.ok) { setError(result.error); return; }
+    setEditingWordId(null);
+    await load();
   }
 
   async function handleDeleteWord(word: SignWord) {
@@ -82,35 +105,55 @@ export function VideoLibrary() {
             <div className="space-y-2">
               {categoryWords.map(word => (
                 <div key={word.id} className="rounded-lg border border-[#e6ecf5] p-2.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="min-w-[140px] flex-1">
-                      <p className="text-[13px] font-semibold text-[#062444]">{word.label}</p>
-                      <p className="text-[11px] text-slate-400">"{word.phrase}"</p>
+                  {editingWordId === word.id ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input value={editLabel} onChange={e => setEditLabel(e.target.value)} placeholder="Label" className="min-w-[120px] flex-1 rounded-md border border-[#062444]/15 px-2 py-1.5 text-[13px]" />
+                      <input value={editPhrase} onChange={e => setEditPhrase(e.target.value)} placeholder="Matching phrase" className="min-w-[140px] flex-1 rounded-md border border-[#062444]/15 px-2 py-1.5 text-[13px]" />
+                      <select value={editCategoryId} onChange={e => setEditCategoryId(e.target.value)} className="rounded-md border border-[#062444]/15 px-2 py-1.5 text-[13px]">
+                        {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                      </select>
+                      <button onClick={() => void handleSaveWord(word.id)} disabled={busyKey === word.id} className="shrink-0 rounded-md bg-[#062444] p-1.5 text-white disabled:opacity-50" aria-label="Save word"><Check size={14} /></button>
+                      <button onClick={() => setEditingWordId(null)} className="shrink-0 text-slate-400 hover:text-slate-600" aria-label="Cancel"><X size={14} /></button>
                     </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="min-w-[140px] flex-1">
+                        <p className="text-[13px] font-semibold text-[#062444]">{word.label}</p>
+                        <p className="text-[11px] text-slate-400">"{word.phrase}"</p>
+                      </div>
 
-                    <VideoSlot
-                      word={word} variant="clip" path={word.clipVideoPath}
-                      previewKey={previewKey} setPreviewKey={setPreviewKey}
-                      busy={busyKey === `${word.id}:clip`}
-                      onDelete={() => void handleDeleteVideo(word, "clip", word.clipVideoPath!)}
-                    />
-                    <VideoSlot
-                      word={word} variant="tutorial" path={word.tutorialVideoPath}
-                      previewKey={previewKey} setPreviewKey={setPreviewKey}
-                      busy={busyKey === `${word.id}:tutorial`}
-                      onDelete={() => void handleDeleteVideo(word, "tutorial", word.tutorialVideoPath!)}
-                    />
+                      <VideoSlot
+                        word={word} variant="clip" path={word.clipVideoPath}
+                        previewKey={previewKey} setPreviewKey={setPreviewKey}
+                        busy={busyKey === `${word.id}:clip`}
+                        onDelete={() => void handleDeleteVideo(word, "clip", word.clipVideoPath!)}
+                      />
+                      <VideoSlot
+                        word={word} variant="tutorial" path={word.tutorialVideoPath}
+                        previewKey={previewKey} setPreviewKey={setPreviewKey}
+                        busy={busyKey === `${word.id}:tutorial`}
+                        onDelete={() => void handleDeleteVideo(word, "tutorial", word.tutorialVideoPath!)}
+                      />
 
-                    <button
-                      onClick={() => void handleDeleteWord(word)}
-                      disabled={busyKey === word.id}
-                      className="shrink-0 rounded-md p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                      title="Delete this word entirely"
-                      aria-label={`Delete ${word.label} entirely`}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                      <button
+                        onClick={() => startEditWord(word)}
+                        className="shrink-0 rounded-md p-1.5 text-slate-300 hover:bg-[#0088cc]/10 hover:text-[#0088cc]"
+                        title="Edit this word"
+                        aria-label={`Edit ${word.label}`}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => void handleDeleteWord(word)}
+                        disabled={busyKey === word.id}
+                        className="shrink-0 rounded-md p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                        title="Delete this word entirely"
+                        aria-label={`Delete ${word.label} entirely`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  )}
 
                   {(previewKey === `${word.id}:clip` || previewKey === `${word.id}:tutorial`) && (
                     <div className="mt-2.5 flex items-start justify-between gap-2 rounded-lg bg-[#f8fafd] p-2">
