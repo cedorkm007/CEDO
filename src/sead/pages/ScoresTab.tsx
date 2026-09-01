@@ -3,6 +3,7 @@ import { Search, Filter, Award, CheckCircle2, XCircle, ChevronLeft, ChevronRight
 import { fetchSubjects, fetchTopics, searchQuestScores, fetchSubjectProgressPage, type PassedFilter } from "../seadApi";
 import type { QuestSubject, QuestTopic, ScoreRow } from "../types";
 import { ListPagination } from "@/app/components/PaginatedList";
+import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 
 export function ScoresTab() {
   const [subjects, setSubjects] = useState<QuestSubject[]>([]);
@@ -27,11 +28,34 @@ export function ScoresTab() {
   const [passedFilter, setPassedFilter] = useState<PassedFilter>("all");
   const [progressPage, setProgressPage] = useState(1);
   const [progressError, setProgressError] = useState<string | null>(null);
-  const PROGRESS_PAGE_SIZE = 10;
+  // New quest monitoring tasks, Task 1: 50/100 added as alternatives to the
+  // existing 10 — this is now state, not a fixed const, so the person can
+  // switch it; still defaults to 10 (unchanged existing default behavior).
+  const [progressPageSize, setProgressPageSize] = useState(10);
+  const [progressYearLevel, setProgressYearLevel] = useState("");
+  const [progressSchool, setProgressSchool] = useState("");
+  // School is free text — debounced on the same 350ms convention already
+  // used for free-text filters elsewhere in this project (ScholarsTab.tsx's
+  // own name/course/school filters), so a query isn't fired on every
+  // keystroke. Year Level is a select (discrete choice), so it applies
+  // immediately on change instead — same reasoning ScholarsTab.tsx itself
+  // uses for its own select-vs-text-input filters.
+  useEffect(() => {
+    if (!subjectId) return;
+    const t = setTimeout(() => {
+      setProgressPage(1);
+      void loadProgressPage(subjectId, passedFilter, 1, progressPageSize, progressYearLevel, progressSchool);
+    }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progressSchool]);
 
-  async function loadProgressPage(subject: string, filter: PassedFilter, page: number) {
+  async function loadProgressPage(
+    subject: string, filter: PassedFilter, page: number,
+    pageSize: number = progressPageSize, yearLevel: string = progressYearLevel, school: string = progressSchool,
+  ) {
     setProgressLoading(true);
-    const result = await fetchSubjectProgressPage(subject, filter, page, PROGRESS_PAGE_SIZE);
+    const result = await fetchSubjectProgressPage(subject, filter, page, pageSize, yearLevel, school);
     setProgressRows(result.rows);
     setProgressTotal(result.totalCount);
     setProgressPassedCount(result.passedCount);
@@ -52,6 +76,18 @@ export function ScoresTab() {
     setPassedFilter(next);
     setProgressPage(1);
     if (subjectId) void loadProgressPage(subjectId, next, 1);
+  }
+
+  function changeProgressYearLevel(next: string) {
+    setProgressYearLevel(next);
+    setProgressPage(1);
+    if (subjectId) void loadProgressPage(subjectId, passedFilter, 1, progressPageSize, next, progressSchool);
+  }
+
+  function changeProgressPageSize(next: number) {
+    setProgressPageSize(next);
+    setProgressPage(1);
+    if (subjectId) void loadProgressPage(subjectId, passedFilter, 1, next);
   }
 
   function changeProgressPage(nextPage: number) {
@@ -139,7 +175,7 @@ export function ScoresTab() {
 
       {subjectId && (() => {
         const subject = subjects.find(s => s.id === subjectId);
-        const progressTotalPages = Math.max(1, Math.ceil(progressTotal / PROGRESS_PAGE_SIZE));
+        const progressTotalPages = Math.max(1, Math.ceil(progressTotal / progressPageSize));
         const safeProgressPage = Math.min(progressPage, progressTotalPages);
         return (
           <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4 mb-4">
@@ -173,6 +209,23 @@ export function ScoresTab() {
               ))}
             </div>
 
+            {/* New quest monitoring tasks, Task 1: Year Level + School
+                filters, scoped to this panel only (the person's own
+                clarification named this specific pass/fail-by-subject view,
+                not the main per-attempt Scores table above). Year Level
+                applies immediately (discrete select); School is debounced
+                350ms (free text) — see the useEffect above this component's
+                loadProgressPage definition. */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <select value={progressYearLevel} onChange={e => changeProgressYearLevel(e.target.value)}
+                className="border border-[#062444]/15 rounded-lg px-3 py-2 text-[12.5px] outline-none">
+                <option value="">All Year Levels</option>
+                {FORMATION_YEAR_LEVELS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <input value={progressSchool} onChange={e => setProgressSchool(e.target.value)} placeholder="Search school…"
+                className="border border-[#062444]/15 rounded-lg px-3 py-2 text-[12.5px] outline-none" />
+            </div>
+
             {progressLoading ? (
               <p className="text-sm text-slate-400 text-center py-4">Loading…</p>
             ) : progressRows.length === 0 ? (
@@ -201,9 +254,20 @@ export function ScoresTab() {
                   ))}
                 </div>
                 <div className="flex items-center justify-between mt-3">
-                  <span className="text-[11.5px] text-slate-500">
-                    Showing {(safeProgressPage - 1) * PROGRESS_PAGE_SIZE + 1}–{Math.min(safeProgressPage * PROGRESS_PAGE_SIZE, progressTotal)} of {progressTotal}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11.5px] text-slate-500">
+                      Showing {(safeProgressPage - 1) * progressPageSize + 1}–{Math.min(safeProgressPage * progressPageSize, progressTotal)} of {progressTotal}
+                    </span>
+                    {/* New quest monitoring tasks, Task 1: 50/100 added as
+                        alternatives to the existing 10 — not a replacement
+                        for it, per the request. */}
+                    <select value={progressPageSize} onChange={e => changeProgressPageSize(Number(e.target.value))}
+                      className="border border-[#062444]/15 rounded-lg px-2 py-1 text-[11.5px] outline-none">
+                      <option value={10}>10 / page</option>
+                      <option value={50}>50 / page</option>
+                      <option value={100}>100 / page</option>
+                    </select>
+                  </div>
                   <div className="flex items-center gap-2">
                     <button onClick={() => changeProgressPage(Math.max(1, safeProgressPage - 1))} disabled={safeProgressPage <= 1}
                       className="flex items-center gap-1 text-[12px] font-semibold text-[#062444] disabled:text-slate-300">

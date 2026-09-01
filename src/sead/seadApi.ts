@@ -230,15 +230,22 @@ export type PassedFilter = "all" | "passed" | "not_passed";
  * from potentially hundreds/thousands of ids. fetchSubjectProgress()
  * itself is left in place — nothing else references it, and replacing it
  * outright wasn't necessary to fix this.
+ *
+ * yearLevel/school are optional server-side filters (New quest monitoring
+ * tasks, Task 1) — undefined/empty means no filter, matching the RPC's
+ * own null/''-means-unfiltered convention for these two params.
  */
 export async function fetchSubjectProgressPage(
   subjectId: string, passedFilter: PassedFilter, page: number, pageSize = 10,
+  yearLevel?: string, school?: string,
 ): Promise<SubjectProgressPageResult> {
   const { data, error } = await supabase.rpc("subject_progress_page", {
     p_subject_id: subjectId,
     p_passed_filter: passedFilter,
     p_limit: pageSize,
     p_offset: (page - 1) * pageSize,
+    p_year_level: yearLevel || null,
+    p_school: school || null,
   });
   if (error || !data) {
     return {
