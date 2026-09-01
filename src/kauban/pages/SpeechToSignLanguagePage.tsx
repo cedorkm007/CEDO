@@ -15,7 +15,7 @@ import { KaubanPageHeader } from "../components/KaubanPageHeader";
  * muted, same as the original app's own rule (avoids autoplay-with-sound
  * being blocked, and the source clips are meant to be muted anyway).
  */
-export function SpeechToSignLanguagePage({ onBack }: { onBack: () => void }) {
+export function SpeechToSignLanguagePage() {
   const [pool, setPool] = useState<SignWord[]>([]);
   const [loading, setLoading] = useState(true);
   const [listening, setListening] = useState(false);
@@ -115,9 +115,8 @@ export function SpeechToSignLanguagePage({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
-      <div className="mx-auto max-w-2xl rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
-        <KaubanPageHeader title="Speech to Sign Language" subtitle="Say something and watch it signed." onBack={onBack} />
+    <div className="rounded-[20px] bg-[#F7FAFC] p-4 shadow-xl sm:p-10">
+      <KaubanPageHeader title="Speech to Sign Language" subtitle="Say something and watch it signed." />
 
         {loading && <p className="py-8 text-center text-sm text-[#718096]">Loading…</p>}
 
@@ -148,7 +147,7 @@ export function SpeechToSignLanguagePage({ onBack }: { onBack: () => void }) {
                 </div>
               )}
               {current && (
-                <p className="bg-white/95 py-2 text-center text-base font-bold text-[#2D3748]">{current.label}</p>
+                <p className="bg-white/95 py-2 text-center text-base font-semibold text-[#2D3748]" style={{ fontFamily: "'Fredoka', sans-serif" }}>{current.label}</p>
               )}
             </div>
 
@@ -158,10 +157,10 @@ export function SpeechToSignLanguagePage({ onBack }: { onBack: () => void }) {
             <div className="flex justify-center">
               <button
                 onClick={listening ? handleStop : handleStart}
-                className={`flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition ${listening ? "bg-red-500 text-white" : "bg-[#3182CE] text-white"}`}
+                className={`flex h-[72px] w-[72px] items-center justify-center rounded-full shadow-lg transition-transform duration-150 active:scale-90 ${listening ? "bg-red-500 text-white" : "bg-[#3182CE] text-white"}`}
                 aria-label={listening ? "Stop listening" : "Start listening"}
               >
-                {listening ? <MicOff size={26} /> : <Mic size={26} />}
+                {listening ? <MicOff size={28} /> : <Mic size={28} />}
               </button>
             </div>
 
@@ -172,7 +171,6 @@ export function SpeechToSignLanguagePage({ onBack }: { onBack: () => void }) {
             )}
           </>
         )}
-      </div>
     </div>
   );
 }

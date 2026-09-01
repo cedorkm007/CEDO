@@ -5,6 +5,7 @@ import { KaubanPageHeader } from "../components/KaubanPageHeader";
 import { KaubanVideo } from "../components/KaubanVideo";
 
 const QUESTION_COUNT = 10;
+const KID_FONT = { fontFamily: "'Fredoka', sans-serif" };
 
 function shuffle<T>(items: T[]): T[] {
   const copy = [...items];
@@ -34,7 +35,7 @@ function buildQuiz(pool: SignWord[]): Question[] {
  * the Sign Language browse screen and Speech-to-Sign-Language use, not a
  * separate quiz-only dataset.
  */
-export function SignLanguageQuizPage({ onBack }: { onBack: () => void }) {
+export function SignLanguageQuizPage() {
   const [pool, setPool] = useState<SignWord[]>([]);
   const [loading, setLoading] = useState(true);
   const [quiz, setQuiz] = useState<Question[] | null>(null);
@@ -73,9 +74,8 @@ export function SignLanguageQuizPage({ onBack }: { onBack: () => void }) {
   const canQuiz = useMemo(() => pool.length >= 4, [pool]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
-      <div className="mx-auto max-w-xl rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
-        <KaubanPageHeader title="Sign Language Quiz" subtitle="Watch the sign, pick the right word." onBack={onBack} />
+    <div className="rounded-[20px] bg-[#F7FAFC] p-4 shadow-xl sm:p-10">
+      <KaubanPageHeader title="Sign Language Quiz" subtitle="Watch the sign, pick the right word." />
 
         {loading && <p className="py-8 text-center text-sm text-[#718096]">Loading…</p>}
 
@@ -84,20 +84,20 @@ export function SignLanguageQuizPage({ onBack }: { onBack: () => void }) {
         )}
 
         {!loading && canQuiz && !quiz && (
-          <div className="rounded-2xl bg-white p-8 text-center shadow-sm">
+          <div className="rounded-3xl bg-white p-8 text-center shadow-sm">
             <p className="mb-4 text-sm text-[#718096]">{Math.min(QUESTION_COUNT, pool.length)} questions, multiple choice.</p>
-            <button onClick={startQuiz} className="rounded-lg bg-[#3182CE] px-6 py-3 text-sm font-bold text-white hover:opacity-90">
+            <button onClick={startQuiz} className="min-h-12 rounded-full bg-[#3182CE] px-8 py-3 text-sm font-bold text-white transition active:scale-95">
               Start Quiz
             </button>
           </div>
         )}
 
         {quiz && !finished && current && (
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="rounded-3xl bg-white p-4 shadow-sm sm:p-5">
             <p className="mb-3 text-center text-xs font-semibold text-[#A0AEC0]">Question {index + 1} of {quiz.length} · Score {score}</p>
             <KaubanVideo
               path={current.word.clipVideoPath ?? current.word.tutorialVideoPath}
-              className="mx-auto mb-4 max-h-[240px] w-full rounded-xl bg-black"
+              className="mx-auto mb-4 max-h-[240px] w-full rounded-2xl bg-black"
               autoPlay
             />
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -110,8 +110,8 @@ export function SignLanguageQuizPage({ onBack }: { onBack: () => void }) {
                     key={choice}
                     onClick={() => handleAnswer(choice)}
                     disabled={selected !== null}
-                    className={`flex items-center justify-between gap-2 rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold transition
-                      ${!showResult ? "border-[#3182CE]/15 bg-white text-[#2D3748] hover:border-[#3182CE]" : ""}
+                    className={`flex min-h-[52px] items-center justify-between gap-2 rounded-2xl border-2 px-4 py-3 text-left text-sm font-semibold transition-all duration-150 active:scale-[0.97]
+                      ${!showResult ? "border-[#3182CE]/15 bg-white text-[#2D3748] sm:hover:border-[#3182CE]" : ""}
                       ${showResult && isCorrect ? "border-emerald-500 bg-emerald-50 text-emerald-700" : ""}
                       ${showResult && isSelected && !isCorrect ? "border-red-400 bg-red-50 text-red-600" : ""}
                       ${showResult && !isCorrect && !isSelected ? "border-transparent bg-white text-[#A0AEC0]" : ""}`}
@@ -125,7 +125,7 @@ export function SignLanguageQuizPage({ onBack }: { onBack: () => void }) {
             </div>
 
             {selected && (
-              <button onClick={handleNext} className="mt-5 w-full rounded-lg bg-[#3182CE] py-2.5 text-sm font-bold text-white hover:opacity-90">
+              <button onClick={handleNext} className="mt-5 min-h-12 w-full rounded-full bg-[#3182CE] py-2.5 text-sm font-bold text-white transition active:scale-[0.97]">
                 {index + 1 < quiz.length ? "Next Question" : "See Results"}
               </button>
             )}
@@ -133,15 +133,14 @@ export function SignLanguageQuizPage({ onBack }: { onBack: () => void }) {
         )}
 
         {finished && quiz && (
-          <div className="rounded-2xl bg-white p-8 text-center shadow-sm">
-            <p className="text-3xl font-extrabold text-[#2D3748]">{score} / {quiz.length}</p>
+          <div className="rounded-3xl bg-white p-8 text-center shadow-sm">
+            <p className="text-3xl font-bold text-[#2D3748]" style={KID_FONT}>{score} / {quiz.length}</p>
             <p className="mt-1 text-sm text-[#718096]">correct</p>
-            <button onClick={startQuiz} className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#3182CE] py-2.5 text-sm font-bold text-white hover:opacity-90">
+            <button onClick={startQuiz} className="mt-5 flex min-h-12 w-full items-center justify-center gap-1.5 rounded-full bg-[#3182CE] py-2.5 text-sm font-bold text-white transition active:scale-[0.97]">
               <RotateCcw size={15} /> Try Again
             </button>
           </div>
         )}
-      </div>
     </div>
   );
 }

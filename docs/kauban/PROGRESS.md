@@ -393,6 +393,32 @@ Every one of the 13 kauban page/component files was updated; confirmed with a gr
 - `npm run type-check`, `npx eslint src/kauban`, `npm run build` all pass.
 - **Live in the browser**: confirmed the Dashboard shows exactly 5 tiles (Quick Phrases, Sign Language Tools, Speech to Text, Drawing Pad, Emergency) for the Deaf role, and 4 for Hearing (Quick Phrases correctly absent) — role-based filtering still works correctly with the smaller tile set. Visually confirmed the gradient background, white content card, green brand title, and both the gold (Deaf) and blue (Hearing) role badges render matching the original's own gradient definitions.
 
+---
+
+## Mobile/tablet optimization + kid-friendly styling
+
+**Status: DONE (2026-09-02), build/lint/type-check verified; interactive testing partially blocked by a tooling issue**
+
+Most Kauban users are kids under 8 on a phone or tablet, so this pass went through all 13 kauban page/component files for touch ergonomics and a friendlier visual style, on top of the color-scheme work above.
+
+**Mobile/touch changes:**
+- Every icon-only button that was too small for a kid's finger (e.g. Emergency's remove-contact trash icon, previously bare with no padding) now has an explicit ≥44px touch target.
+- Added `active:scale-*` press feedback to essentially every interactive element (buttons, cards, color swatches) — a visible "squish" on tap instead of a hover-only affordance, since hover doesn't exist on touchscreens. Kept `hover:` variants but scoped them behind `sm:` so they only apply on larger/pointer-capable screens.
+- Grew the mic buttons (Speech to Text, Speech to Sign Language) from 64px to 72px, and the Dashboard/Sign Language Tools tiles now use a 2-column grid by default (was 1-column) — reads more like a kid-friendly app-icon launcher on a phone.
+- Form inputs (Emergency's add-contact fields) were `text-sm` (14px), which triggers Safari's iOS auto-zoom on focus — bumped to `text-base`/`text-lg` (16px+) everywhere text gets typed.
+- Added `playsInline` to `KaubanVideo.tsx`'s video element (the Speech-to-Sign-Language screen already had it) so videos don't force an unexpected fullscreen takeover on iOS.
+- Reduced outer page padding on small screens (`p-3` instead of `p-4`/`p-6`) so more content fits without feeling cramped.
+- Confirmed `index.html`'s viewport meta tag was already correct (`width=device-width`, no `user-scalable=no` — that would have been an accessibility regression) — no change needed there.
+
+**Kid-friendly styling changes:**
+- Added the "Fredoka" Google Font (a rounded, playful display face) via `index.html` — used only by Kauban's own headings/emphasis text (`style={{ fontFamily: "'Fredoka', sans-serif" }}`) via inline styles, not a global app change; the other two apps in this bundle never reference it.
+- **[`kaubanTools.ts`](../../src/kauban/kaubanTools.ts)** now carries a distinct bright `bg`/`fg` color pair per dashboard tool instead of one uniform blue — colors are lifted from the original app's own varied per-icon SVG fills (blue, purple, orange, green, red), not invented. `SignLanguageToolsPage.tsx`'s cards got the same treatment. `RoleSelectionPage.tsx`'s three role options now echo their own role badge's color (gold/green/blue) for a cohesive thread from first screen to dashboard.
+- Rounded corners pushed further (`rounded-2xl`/`3xl` throughout, was mostly `xl`/`2xl`) for a softer, bubblier look.
+
+**Verified:**
+- `npm run type-check`, `npx eslint src/kauban`, `npm run build` all pass.
+- **Live, partially**: confirmed via screenshot at a 375×812 mobile viewport that the Dashboard renders correctly — colorful distinct tile icons, the Fredoka brand title, comfortable 2-column touch grid, pill-shaped Switch Role button. **Could not complete interactive testing this round** — the Browser tool's click/tap dispatch started timing out mid-session (screenshots and navigation kept working, so the page itself was fine; this looked like a tooling-side issue, not a regression in the code) after this round's changes were already visually confirmed once. Given the DrawingPad's actual pointer-event drawing logic was untouched this pass (only its touch-target sizing and animations changed) and was already verified working end-to-end in milestone 14's session, risk is low — but genuinely re-testing touch drawing, button press feedback, and the Emergency form on a real device is worth doing when you get the chance.
+
 **Build confirmed clean (2026-09-01):** `npm run type-check`, `npx eslint src/kauban`, and a full `npm run build` all pass. Along the way, found and fixed a pre-existing broken install unrelated to Kauban (`@tailwindcss/oxide` was missing its Windows native binding — a known npm optional-dependency bug) by installing `@tailwindcss/oxide-win32-x64-msvc` with `--no-save`, so it didn't pollute the lockfile.
 
 Also caught before committing: the vendored `ffmpeg-core.wasm` (~32MB) would have permanently bloated the git repo for no reason, since it's 100% derived from the `@ffmpeg/core` npm package already in `node_modules`. Fixed by adding [`scripts/copy-ffmpeg-core.mjs`](../../scripts/copy-ffmpeg-core.mjs) as a `postinstall` step that regenerates `public/kauban-admin/ffmpeg-core/` on every `npm install`, and gitignoring that folder instead of committing it.
@@ -401,3 +427,29 @@ Also caught before committing: the vendored `ffmpeg-core.wasm` (~32MB) would hav
 - New: `supabase_migration_kauban_media_storage.sql`, `src/kauban/admin/{kaubanAdminApi.ts, videoCompression.ts, BatchVideoUpload.tsx, KaubanContentManagementPage.tsx}`, `scripts/copy-ffmpeg-core.mjs`, `public/kauban-admin/README.md`
 - Edited: `src/app/App.tsx`, `src/app/components/Sidebar.tsx`, `src/app/staffToolTags.ts`, `package.json`, `package-lock.json`, `.gitignore`
 - Nothing has been committed to git yet — all of the above sits as uncommitted working-tree changes, awaiting your review.
+
+---
+
+## Persistent top + bottom navigation
+
+**Status: DONE (2026-09-02), verified live end-to-end including navigation edge cases**
+
+Added the original app's actual persistent navigation chrome, ported from `resources/views/layout.blade.php`'s always-present `.app-header` and `.bottom-nav` — until now every Kauban screen managed its own full-screen background and an in-page back button, with no global "you are here" or quick-jump navigation, unlike the source app.
+
+**[`components/KaubanTopNav.tsx`](../../src/kauban/components/KaubanTopNav.tsx)** (new) — sticky top bar, shown on every screen once a role is picked: Home + Back (Back only when not already on the dashboard) on the left, the "Kauban" brand center, and a role-colored pill on the right that opens a one-item dropdown ("Switch Role") — a direct port of the original's profile-dropdown-with-one-action shape.
+
+**[`components/KaubanBottomNav.tsx`](../../src/kauban/components/KaubanBottomNav.tsx)** (new) — the floating pill-shaped icon bar from the same source file: Home plus one icon per `KAUBAN_TOOLS` entry, each in that tool's own color (reusing the colors from the earlier kid-friendly-styling pass). The "Sign Language Tools" icon lights up as active for all 4 of its hub sub-pages too (textToSpeech, speechToSignLanguage, signLanguage, signLanguageQuiz) — ported directly from the original's own combined-route `active` check, which matched all of those against one icon.
+
+**Smarter "Back" than a plain history stack:** pages reached through the Sign Language Tools hub return to the hub on Back, not the dashboard — `KaubanApp.tsx` computes this from a small `HUB_SUB_PAGES` list rather than tracking real navigation history (this app has no URL-per-page routing, so there's no browser history to call `.back()` on).
+
+**Structural cleanup this required:**
+- Every one of the 9 tool pages had its own `min-h-screen bg-gradient-to-br ...` wrapper — removed all 9, since the gradient background + nav shell now lives once in `KaubanApp.tsx`, wrapping whichever page is active.
+- `KaubanPageHeader.tsx` lost its back-button (now redundant with TopNav's global Back) — it's just a page title/subtitle now.
+- `DashboardPage.tsx` lost its own "Kauban" brand title, role badge, and "Switch Role" button — all three now live once in TopNav instead of being duplicated on the home screen specifically.
+- Every page's `onBack` prop was removed entirely — navigation is fully global now, no per-page prop drilling.
+
+**Real bug caught by the full build, not by `type-check`:** the exact same class of issue found in milestone 11 — `tsc -b` (what `npm run build` runs) didn't narrow `role: KaubanRole | null` to non-null inside `KaubanApp.tsx`'s nested `renderPage()` closure the way plain `tsc --noEmit` did, so `npm run build` failed while `type-check` had passed clean. Fixed by re-binding to an explicitly-typed `const currentRole: KaubanRole = role` right after the null check, which the closure captures instead. Worth remembering: this project's `type-check` script is not sufficient proof the build will pass — the full build must run before calling anything done, which is exactly the practice this session has been following since milestone 11.
+
+**Verified live, thoroughly:**
+- `npm run type-check`, `npx eslint src/kauban`, `npm run build` all pass (after the fix above).
+- Actually drove the new nav in a browser: confirmed Home highlights correctly on the dashboard and un-highlights elsewhere, confirmed Back is hidden on the dashboard and appears everywhere else, confirmed navigating two levels deep (Dashboard → Sign Language Tools → Sign Language) then pressing Back returns to the hub specifically — not the dashboard, exercising the smarter-than-history-stack logic directly — and confirmed the role-badge dropdown opens, and its "Switch Role" action correctly returns to the role-selection screen.

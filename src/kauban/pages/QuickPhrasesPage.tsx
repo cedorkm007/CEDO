@@ -10,7 +10,7 @@ import { KaubanPageHeader } from "../components/KaubanPageHeader";
  * staff-managed (src/kauban/admin/QuickPhrasesManager.tsx), there's no
  * per-visitor custom list since there are no accounts.
  */
-export function QuickPhrasesPage({ onBack }: { onBack: () => void }) {
+export function QuickPhrasesPage() {
   const [categories, setCategories] = useState<QuickPhraseCategory[]>([]);
   const [phrases, setPhrases] = useState<QuickPhrase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,16 +31,15 @@ export function QuickPhrasesPage({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
-      <div className="mx-auto max-w-3xl rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
-        <KaubanPageHeader title="Quick Phrases" subtitle="Tap a phrase to show and speak it." onBack={onBack} />
+    <div className="rounded-[20px] bg-[#F7FAFC] p-4 shadow-xl sm:p-10">
+      <KaubanPageHeader title="Quick Phrases" subtitle="Tap a phrase to show and speak it." />
 
         {current && (
-          <div className="mb-6 flex items-center justify-between gap-3 rounded-2xl bg-[#3182CE] px-6 py-6 text-white shadow-lg">
-            <p className="text-2xl font-bold sm:text-3xl">{current}</p>
+          <div className="mb-6 flex items-center justify-between gap-3 rounded-3xl bg-[#3182CE] px-5 py-5 text-white shadow-lg sm:px-6 sm:py-6">
+            <p className="text-xl font-bold sm:text-3xl" style={{ fontFamily: "'Fredoka', sans-serif" }}>{current}</p>
             <button
               onClick={() => speakText(current)}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 hover:bg-white/25"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/15 transition active:scale-90 active:bg-white/25"
               aria-label="Speak again"
             >
               <Volume2 size={20} />
@@ -68,7 +67,7 @@ export function QuickPhrasesPage({ onBack }: { onBack: () => void }) {
                     <button
                       key={phrase.id}
                       onClick={() => handleTapPhrase(phrase.text)}
-                      className="rounded-xl border-2 bg-white px-4 py-3 text-left text-sm font-semibold text-[#2D3748] shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#3182CE]/30"
+                      className="min-h-[52px] rounded-2xl border-2 bg-white px-4 py-3 text-left text-sm font-semibold text-[#2D3748] shadow-sm transition-all duration-150 active:scale-[0.97] sm:hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#3182CE]/30"
                       style={{ borderColor: current === phrase.text ? category.color : "transparent" }}
                     >
                       {phrase.text}
@@ -79,7 +78,6 @@ export function QuickPhrasesPage({ onBack }: { onBack: () => void }) {
             );
           })}
         </div>
-      </div>
     </div>
   );
 }

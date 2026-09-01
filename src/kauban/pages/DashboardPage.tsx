@@ -1,74 +1,50 @@
-import { RefreshCw } from "lucide-react";
 import type { KaubanPage, KaubanRole } from "../types";
 import { toolsForRole } from "../kaubanTools";
 
-const ROLE_LABEL: Record<KaubanRole, string> = {
-  deaf: "Deaf",
-  "hard-of-hearing": "Hard of Hearing",
-  hearing: "Hearing",
-};
-
-// Matches the original app's own `.user-role-badge.{deaf,hard-hearing,hearing}`
-// gradients in resources/views/layout.blade.php exactly.
-const ROLE_BADGE_STYLE: Record<KaubanRole, { background: string; color: string }> = {
-  deaf: { background: "linear-gradient(135deg, #F6E05E 0%, #D69E2E 100%)", color: "#744210" },
-  "hard-of-hearing": { background: "linear-gradient(135deg, #48BB78 0%, #38A169 100%)", color: "#ffffff" },
-  hearing: { background: "linear-gradient(135deg, #4299E1 0%, #3182CE 100%)", color: "#ffffff" },
-};
+const KID_FONT = { fontFamily: "'Fredoka', sans-serif" };
 
 /**
  * Home screen after role selection — a grid of the tools available to
  * that role (see kaubanTools.ts's per-tool `roles` list, copied from the
- * original app's own per-controller role checks). "Switch role" resets
- * back to RoleSelectionPage, same as the original app's "Switch User".
- * Colors match layout.blade.php: gradient body, light content card,
- * app-brand green title, per-role gradient badge.
+ * original app's own per-controller role checks). The "Kauban" brand,
+ * role badge, and "Switch Role" control used to live here but now live
+ * in KaubanTopNav.tsx (persistent across every screen), so this page is
+ * just the tool grid itself. Most Kauban users are kids under 8 on a
+ * phone/tablet, so tiles use big touch targets, a distinct bright color
+ * per tool, the rounded "Fredoka" display font, and a tactile press
+ * animation instead of a hover-only affordance.
  */
-export function DashboardPage({ role, onNavigate, onSwitchRole }: {
+export function DashboardPage({ role, onNavigate }: {
   role: KaubanRole;
   onNavigate: (page: KaubanPage) => void;
-  onSwitchRole: () => void;
 }) {
   const tools = toolsForRole(role);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
-      <div className="mx-auto max-w-4xl rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-extrabold text-[#10B981]">Kauban</h1>
-            <span
-              className="rounded-full px-3 py-1 text-xs font-semibold"
-              style={ROLE_BADGE_STYLE[role]}
-            >
-              {ROLE_LABEL[role]}
-            </span>
-          </div>
-          <button
-            onClick={onSwitchRole}
-            className="flex items-center gap-1.5 rounded-lg bg-[#EBF8FF] px-3 py-2 text-xs font-semibold text-[#2B6CB0] hover:bg-[#BEE3F8]"
-          >
-            <RefreshCw size={13} /> Switch Role
-          </button>
-        </div>
+    <div className="rounded-[20px] bg-[#F7FAFC] p-4 shadow-xl sm:p-10">
+      <h1 className="mb-5 text-lg font-semibold text-[#2D3748] sm:mb-8 sm:text-xl" style={KID_FONT}>
+        Hi! What do you want to do?
+      </h1>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
-          {tools.map(tool => (
-            <button
-              key={tool.page}
-              onClick={() => onNavigate(tool.page)}
-              className="flex flex-col items-start gap-3 rounded-2xl border border-transparent bg-white p-5 text-left shadow-sm transition hover:border-[#3182CE] hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#3182CE]/30"
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
+        {tools.map(tool => (
+          <button
+            key={tool.page}
+            onClick={() => onNavigate(tool.page)}
+            className="flex min-h-[132px] flex-col items-start gap-2.5 rounded-3xl border-2 border-transparent bg-white p-4 text-left shadow-sm transition-all duration-150 active:scale-95 active:shadow-md sm:gap-3 sm:p-5 sm:hover:-translate-y-0.5 sm:hover:border-[#3182CE] sm:hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#3182CE]/30"
+          >
+            <span
+              className="flex h-12 w-12 items-center justify-center rounded-2xl sm:h-14 sm:w-14"
+              style={{ backgroundColor: tool.bg, color: tool.fg }}
             >
-              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#EBF8FF] text-[#2B6CB0]">
-                <tool.icon size={22} />
-              </span>
-              <span>
-                <span className="block text-base font-bold text-[#2D3748]">{tool.label}</span>
-                <span className="block text-sm text-[#718096]">{tool.description}</span>
-              </span>
-            </button>
-          ))}
-        </div>
+              <tool.icon size={24} />
+            </span>
+            <span>
+              <span className="block text-base font-semibold text-[#2D3748]" style={KID_FONT}>{tool.label}</span>
+              <span className="mt-0.5 block text-xs text-[#718096] sm:text-sm">{tool.description}</span>
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );

@@ -29,6 +29,7 @@ export function KaubanVideo({ path, className, autoPlay }: { path: string | null
       src={getVideoPublicUrl(path)}
       controls
       autoPlay={autoPlay}
+      playsInline
       className={className}
       onError={() => setFailed(true)}
     />

@@ -8,7 +8,7 @@ const COLORS = ["#2D3748", "#EF4444", "#F59E0B", "#10B981", "#3182CE", "#8B5CF6"
  *  client-side, nothing persisted anywhere (matches the original app's
  *  own DrawingPadController, which just returned a view with no storage
  *  behind it). "Save" downloads the drawing as a PNG. */
-export function DrawingPadPage({ onBack }: { onBack: () => void }) {
+export function DrawingPadPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -82,52 +82,50 @@ export function DrawingPadPage({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
-      <div className="mx-auto max-w-2xl rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
-        <KaubanPageHeader title="Drawing Pad" subtitle="Draw to communicate when words aren't enough." onBack={onBack} />
+    <div className="rounded-[20px] bg-[#F7FAFC] p-4 shadow-xl sm:p-10">
+      <KaubanPageHeader title="Drawing Pad" subtitle="Draw to communicate when words aren't enough." />
 
         <canvas
           ref={canvasRef}
-          className="h-[400px] w-full touch-none rounded-2xl border-2 border-[#3182CE]/15 bg-white shadow-sm"
+          className="h-[340px] w-full touch-none rounded-3xl border-2 border-[#3182CE]/15 bg-white shadow-sm sm:h-[440px]"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
         />
 
-        <div className="mt-4 flex flex-wrap items-center gap-4">
-          <div className="flex gap-1.5">
+        <div className="mt-4 flex flex-wrap items-center gap-3 sm:gap-4">
+          <div className="flex flex-wrap gap-2">
             {COLORS.map(c => (
               <button
                 key={c}
                 onClick={() => setColor(c)}
-                className={`h-8 w-8 rounded-full border-2 ${color === c ? "border-[#3182CE]" : "border-[#E2E8F0]"}`}
+                className={`h-10 w-10 shrink-0 rounded-full border-2 transition-transform duration-150 active:scale-90 ${color === c ? "scale-110 border-[#3182CE]" : "border-[#E2E8F0]"}`}
                 style={{ backgroundColor: c }}
                 aria-label={`Color ${c}`}
               />
             ))}
             <input
               type="color" value={color} onChange={e => setColor(e.target.value)}
-              className="h-8 w-8 cursor-pointer rounded-full border-2 border-[#E2E8F0]"
+              className="h-10 w-10 shrink-0 cursor-pointer rounded-full border-2 border-[#E2E8F0]"
               aria-label="Custom color"
             />
           </div>
 
           <label className="flex items-center gap-2 text-xs font-semibold text-[#718096]">
             Brush
-            <input type="range" min={2} max={30} value={brushSize} onChange={e => setBrushSize(Number(e.target.value))} className="w-24" />
+            <input type="range" min={2} max={30} value={brushSize} onChange={e => setBrushSize(Number(e.target.value))} className="w-20 sm:w-24" />
           </label>
 
           <div className="ml-auto flex gap-2">
-            <button onClick={handleClear} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-[#A0AEC0] hover:text-[#718096]">
+            <button onClick={handleClear} className="flex min-h-11 items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-[#A0AEC0] transition active:scale-95 hover:text-[#718096]">
               <Trash2 size={15} /> Clear
             </button>
-            <button onClick={handleSave} className="flex items-center gap-1.5 rounded-lg bg-[#3182CE] px-3 py-2 text-sm font-bold text-white hover:opacity-90">
+            <button onClick={handleSave} className="flex min-h-11 items-center gap-1.5 rounded-full bg-[#3182CE] px-4 py-2 text-sm font-bold text-white transition active:scale-95 hover:opacity-90">
               <Download size={15} /> Save
             </button>
           </div>
         </div>
-      </div>
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { KaubanVideo } from "../components/KaubanVideo";
  * that variant uploaded so far — either is better than nothing while
  * milestone 5's video migration is still pending.
  */
-export function SignLanguagePage({ onBack }: { onBack: () => void }) {
+export function SignLanguagePage() {
   const [categories, setCategories] = useState<SignCategory[]>([]);
   const [words, setWords] = useState<SignWord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,18 +28,17 @@ export function SignLanguagePage({ onBack }: { onBack: () => void }) {
   const selected = words.find(w => w.id === selectedId) ?? null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
-      <div className="mx-auto max-w-3xl rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
-        <KaubanPageHeader title="Sign Language" subtitle="Browse Filipino Sign Language by category." onBack={onBack} />
+    <div className="rounded-[20px] bg-[#F7FAFC] p-4 shadow-xl sm:p-10">
+      <KaubanPageHeader title="Sign Language" subtitle="Browse Filipino Sign Language by category." />
 
         {selected && (
-          <div className="mb-6 rounded-2xl bg-white p-4 shadow-lg">
+          <div className="mb-6 rounded-3xl bg-white p-4 shadow-lg">
             <KaubanVideo
               path={selected.tutorialVideoPath ?? selected.clipVideoPath}
-              className="max-h-[320px] w-full rounded-xl bg-black"
+              className="max-h-[320px] w-full rounded-2xl bg-black"
               autoPlay
             />
-            <p className="mt-3 text-center text-lg font-bold text-[#2D3748]">{selected.label}</p>
+            <p className="mt-3 text-center text-lg font-semibold text-[#2D3748]" style={{ fontFamily: "'Fredoka', sans-serif" }}>{selected.label}</p>
           </div>
         )}
 
@@ -60,10 +59,10 @@ export function SignLanguagePage({ onBack }: { onBack: () => void }) {
                     <button
                       key={word.id}
                       onClick={() => setSelectedId(word.id)}
-                      className={`flex flex-col items-center gap-2 rounded-xl border-2 bg-white p-4 text-center shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#3182CE]/30 ${selectedId === word.id ? "border-[#3182CE]" : "border-transparent"}`}
+                      className={`flex min-h-[104px] flex-col items-center justify-center gap-2 rounded-2xl border-2 bg-white p-3 text-center shadow-sm transition-all duration-150 active:scale-95 sm:hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-[#3182CE]/30 ${selectedId === word.id ? "border-[#3182CE]" : "border-transparent"}`}
                     >
-                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#EBF8FF] text-[#2B6CB0]">
-                        {selectedId === word.id ? <Play size={18} /> : <Hand size={18} />}
+                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#EBF8FF] text-[#2B6CB0]">
+                        {selectedId === word.id ? <Play size={20} /> : <Hand size={20} />}
                       </span>
                       <span className="text-sm font-semibold text-[#2D3748]">{word.label}</span>
                     </button>
@@ -73,7 +72,6 @@ export function SignLanguagePage({ onBack }: { onBack: () => void }) {
             );
           })}
         </div>
-      </div>
     </div>
   );
 }

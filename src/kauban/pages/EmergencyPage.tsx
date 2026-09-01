@@ -5,13 +5,15 @@ import { getPersonalContacts, addPersonalContact, removePersonalContact, type Pe
 import { speakText } from "../speechSynthesis";
 import { KaubanPageHeader } from "../components/KaubanPageHeader";
 
+const KID_FONT = { fontFamily: "'Fredoka', sans-serif" };
+
 /**
  * Personal contacts (this device only, see localEmergencyContacts.ts)
  * show first — "usually the most relevant in an actual emergency", same
  * reasoning the original app's own EmergencyController used. Bundled
  * contacts/messages below are staff-managed content from Supabase.
  */
-export function EmergencyPage({ onBack }: { onBack: () => void }) {
+export function EmergencyPage() {
   const [personalContacts, setPersonalContacts] = useState<PersonalEmergencyContact[]>([]);
   const [bundledContacts, setBundledContacts] = useState<EmergencyContact[]>([]);
   const [messages, setMessages] = useState<EmergencyMessage[]>([]);
@@ -50,18 +52,17 @@ export function EmergencyPage({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#059669] to-[#2563EB] p-4 sm:p-8">
-      <div className="mx-auto max-w-2xl rounded-[20px] bg-[#F7FAFC] p-6 shadow-xl sm:p-10">
-        <KaubanPageHeader title="Emergency" subtitle="Quick access to contacts and messages." onBack={onBack} />
+    <div className="rounded-[20px] bg-[#F7FAFC] p-4 shadow-xl sm:p-10">
+      <KaubanPageHeader title="Emergency" subtitle="Quick access to contacts and messages." />
 
         {currentMessage && (
-          <div className="mb-6 flex items-center justify-between gap-3 rounded-2xl bg-red-600 px-6 py-6 text-white shadow-lg">
-            <p className="text-2xl font-bold">{currentMessage}</p>
+          <div className="mb-6 flex items-center justify-between gap-3 rounded-3xl bg-red-600 px-5 py-5 text-white shadow-lg sm:px-6 sm:py-6">
+            <p className="text-xl font-bold sm:text-2xl" style={KID_FONT}>{currentMessage}</p>
             <div className="flex shrink-0 gap-2">
-              <button onClick={() => speakText(currentMessage)} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 hover:bg-white/25" aria-label="Speak again">
+              <button onClick={() => speakText(currentMessage)} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 transition active:scale-90 active:bg-white/25" aria-label="Speak again">
                 <Volume2 size={20} />
               </button>
-              <button onClick={() => setCurrentMessage(null)} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 hover:bg-white/25" aria-label="Close">
+              <button onClick={() => setCurrentMessage(null)} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 transition active:scale-90 active:bg-white/25" aria-label="Close">
                 <X size={20} />
               </button>
             </div>
@@ -72,29 +73,29 @@ export function EmergencyPage({ onBack }: { onBack: () => void }) {
           <h2 className="mb-2 text-sm font-bold text-[#2D3748]">Your Contacts</h2>
           <div className="space-y-2">
             {personalContacts.map(contact => (
-              <div key={contact.id} className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm">
+              <div key={contact.id} className="flex items-center gap-2 rounded-2xl bg-white p-3 shadow-sm">
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold text-[#2D3748]">{contact.name}</span>
                   <span className="block text-xs text-[#A0AEC0]">{contact.number}</span>
                 </span>
-                <a href={`tel:${contact.number}`} className="flex h-9 w-9 items-center justify-center rounded-full bg-[#38A169] text-white hover:opacity-90" aria-label={`Call ${contact.name}`}>
-                  <Phone size={15} />
+                <a href={`tel:${contact.number}`} className="flex h-11 w-11 items-center justify-center rounded-full bg-[#38A169] text-white transition active:scale-90" aria-label={`Call ${contact.name}`}>
+                  <Phone size={17} />
                 </a>
-                <button onClick={() => handleRemoveContact(contact.id)} className="text-[#CBD5E0] hover:text-red-600" aria-label={`Remove ${contact.name}`}>
-                  <Trash2 size={15} />
+                <button onClick={() => handleRemoveContact(contact.id)} className="flex h-11 w-11 items-center justify-center text-[#CBD5E0] transition active:scale-90 hover:text-red-600" aria-label={`Remove ${contact.name}`}>
+                  <Trash2 size={17} />
                 </button>
               </div>
             ))}
 
             {adding ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-[#3182CE]/25 bg-white p-3">
-                <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Name" className="min-w-0 flex-1 rounded-md border border-[#3182CE]/15 px-2.5 py-1.5 text-sm" />
-                <input value={newNumber} onChange={e => setNewNumber(e.target.value)} placeholder="Number" className="w-32 shrink-0 rounded-md border border-[#3182CE]/15 px-2.5 py-1.5 text-sm" />
-                <button onClick={handleAddContact} className="shrink-0 rounded-md bg-[#3182CE] px-3 py-1.5 text-xs font-bold text-white">Add</button>
-                <button onClick={() => setAdding(false)} className="shrink-0 text-xs text-[#A0AEC0] hover:underline">Cancel</button>
+              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-[#3182CE]/25 bg-white p-3">
+                <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Name" className="min-w-0 flex-1 rounded-xl border border-[#3182CE]/15 px-3 py-2.5 text-base" />
+                <input value={newNumber} onChange={e => setNewNumber(e.target.value)} placeholder="Number" className="w-32 shrink-0 rounded-xl border border-[#3182CE]/15 px-3 py-2.5 text-base" />
+                <button onClick={handleAddContact} className="min-h-11 shrink-0 rounded-full bg-[#3182CE] px-4 text-sm font-bold text-white transition active:scale-95">Add</button>
+                <button onClick={() => setAdding(false)} className="min-h-11 shrink-0 px-2 text-xs text-[#A0AEC0] hover:underline">Cancel</button>
               </div>
             ) : (
-              <button onClick={() => setAdding(true)} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#3182CE]/25 py-2.5 text-sm font-semibold text-[#3182CE]">
+              <button onClick={() => setAdding(true)} className="flex min-h-12 w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-[#3182CE]/25 py-2.5 text-sm font-semibold text-[#3182CE] transition active:scale-[0.98]">
                 <Plus size={15} /> Add Your Own Contact
               </button>
             )}
@@ -110,7 +111,7 @@ export function EmergencyPage({ onBack }: { onBack: () => void }) {
               <a
                 key={contact.id}
                 href={`tel:${contact.number}`}
-                className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm hover:shadow-md"
+                className="flex min-h-[52px] items-center gap-3 rounded-2xl bg-white p-3 shadow-sm transition-transform duration-150 active:scale-[0.98] sm:hover:shadow-md"
               >
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: contact.color }} />
                 <span className="min-w-0 flex-1 text-sm font-semibold text-[#2D3748]">{contact.name}</span>
@@ -129,14 +130,13 @@ export function EmergencyPage({ onBack }: { onBack: () => void }) {
               <button
                 key={msg.id}
                 onClick={() => handleTapMessage(msg.message)}
-                className="rounded-xl border-2 border-transparent bg-white px-4 py-3 text-left text-sm font-semibold text-[#2D3748] shadow-sm hover:border-red-300 hover:shadow-md"
+                className="min-h-[52px] rounded-2xl border-2 border-transparent bg-white px-4 py-3 text-left text-sm font-semibold text-[#2D3748] shadow-sm transition-all duration-150 active:scale-[0.97] sm:hover:border-red-300 sm:hover:shadow-md"
               >
                 {msg.message}
               </button>
             ))}
           </div>
         </section>
-      </div>
     </div>
   );
 }
