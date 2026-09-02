@@ -37,9 +37,22 @@ export function matchSignWords(transcript: string, pool: SignWord[]): MatchedCli
     if (match) {
       matches.push({ word: match.word, label: match.word.label });
       index += match.words.length;
-    } else {
-      index++;
+      continue;
     }
+    // Speech recognition doesn't reliably agree with a stored phrase's
+    // word boundaries for compound words — "good bye" can come back from
+    // Vosk as one fused token ("goodbye") just as easily as two, and
+    // which way it goes isn't consistent even for the same word. Rather
+    // than pick one spelling and be right only half the time, also try
+    // each multi-word phrase joined with no spaces against a single
+    // transcript word before giving up on this position.
+    const merged = entries.find(entry => entry.words.length > 1 && entry.words.join("") === words[index]);
+    if (merged) {
+      matches.push({ word: merged.word, label: merged.word.label });
+      index++;
+      continue;
+    }
+    index++;
   }
   return matches;
 }
