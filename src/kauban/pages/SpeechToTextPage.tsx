@@ -1,46 +1,39 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Trash2, Copy, AlertCircle, Check } from "lucide-react";
-import { isVoskRecognitionSupported } from "../voskSupport";
-import type { VoskRecognizer } from "../voskRecognition";
+import { Mic, MicOff, Trash2, Copy, AlertCircle, Check, Cloud, CloudOff } from "lucide-react";
+import { createAdaptiveSpeechRecognizer, isSpeechRecognitionAvailable, type AdaptiveSpeechRecognizer, type SpeechEngine } from "../adaptiveSpeechRecognizer";
 import { KaubanPageHeader } from "../components/KaubanPageHeader";
 
 /**
- * Speak, see it appear as text in real time — pure client-side, no
- * cloud dependency once the offline speech model is cached (see
- * voskRecognition.ts). Unlike the browser's built-in speech recognition,
- * this works fully offline after its one-time model download, and
- * unlike the earlier Whisper-based version of this page, it updates
- * continuously as you talk rather than only after you pause.
+ * Speak, see it appear as text in real time. Uses the browser's own
+ * (cloud-backed) speech recognition when online — more accurate, and
+ * this is the same engine the app used before offline support existed —
+ * falling back to the on-device Vosk engine when offline, or if the
+ * cloud engine can't actually reach the network despite appearing
+ * online (see adaptiveSpeechRecognizer.ts). Unlike Whisper (an earlier
+ * version of this page's offline engine), Vosk updates continuously as
+ * you talk rather than only after you pause.
  */
 export function SpeechToTextPage() {
   const [listening, setListening] = useState(false);
   const [modelLoading, setModelLoading] = useState(false);
+  const [engine, setEngine] = useState<SpeechEngine | null>(null);
   const [transcript, setTranscript] = useState("");
   const [interimText, setInterimText] = useState("");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const recognizerRef = useRef<VoskRecognizer | null>(null);
-  const supported = isVoskRecognitionSupported();
+  const recognizerRef = useRef<AdaptiveSpeechRecognizer | null>(null);
+  const supported = isSpeechRecognitionAvailable();
 
   useEffect(() => () => { recognizerRef.current?.destroy(); }, []);
 
-  async function handleStart() {
+  function handleStart() {
     if (!supported || listening) return;
     setError("");
     setInterimText("");
+    setEngine(null);
 
-    if (!recognizerRef.current) {
-      // Dynamic import, not a top-level one: vosk-browser is a large
-      // dependency, and statically importing it (even indirectly, for a
-      // one-line capability check) pulled it into the *main* app bundle
-      // instead of a lazily-loaded chunk — confirmed via a full
-      // production build, where it ballooned the entry chunk from
-      // ~2.3MB to ~8.1MB. This way it's only ever fetched by someone who
-      // actually opens a speech feature.
-      const { createVoskRecognizer } = await import("../voskRecognition");
-      recognizerRef.current = createVoskRecognizer();
-    }
+    if (!recognizerRef.current) recognizerRef.current = createAdaptiveSpeechRecognizer();
 
     recognizerRef.current.start({
       onPartialText: setInterimText,
@@ -50,6 +43,7 @@ export function SpeechToTextPage() {
       },
       onModelLoading: setModelLoading,
       onListening: setListening,
+      onEngine: setEngine,
       onError: message => {
         setError(message);
         setListening(false);
@@ -88,6 +82,14 @@ export function SpeechToTextPage() {
             <AlertCircle size={18} className="mt-0.5 shrink-0" />
             <p>Downloading offline speech model (one-time, ~130MB — Wi-Fi recommended)…</p>
           </div>
+        )}
+
+        {listening && engine && (
+          <p className="mb-2 flex items-center justify-center gap-1.5 text-xs font-semibold text-[#A0AEC0]">
+            {engine === "cloud"
+              ? <><Cloud size={13} /> Using accurate online recognition</>
+              : <><CloudOff size={13} /> Using offline speech recognition</>}
+          </p>
         )}
 
         <div className="min-h-[180px] rounded-3xl border-2 border-[#3182CE]/15 bg-white p-5 text-lg text-[#2D3748] shadow-sm">

@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, AlertCircle } from "lucide-react";
+import { Mic, MicOff, AlertCircle, Cloud, CloudOff } from "lucide-react";
 import { fetchSignWords, type SignWord } from "../kaubanPublicApi";
 import { getVideoPlaybackUrl } from "../videoPlayback";
 import { matchSignWords, type MatchedClip } from "../signWordMatching";
-import { isVoskRecognitionSupported } from "../voskSupport";
-import type { VoskRecognizer } from "../voskRecognition";
+import { createAdaptiveSpeechRecognizer, isSpeechRecognitionAvailable, type AdaptiveSpeechRecognizer, type SpeechEngine } from "../adaptiveSpeechRecognizer";
 import { KaubanPageHeader } from "../components/KaubanPageHeader";
 
 /**
@@ -17,9 +16,9 @@ import { KaubanPageHeader } from "../components/KaubanPageHeader";
  * muted, same as the original app's own rule (avoids autoplay-with-sound
  * being blocked, and the source clips are meant to be muted anyway).
  *
- * Speech recognition is Vosk, running on-device (voskRecognition.ts) —
- * the browser's built-in recognizer needs a cloud connection with no
- * offline mode at all, which defeats the point here.
+ * Speech recognition prefers the browser's own (cloud-backed) engine when
+ * online — more accurate than the on-device fallback — and drops to Vosk
+ * (voskRecognition.ts) when offline; see adaptiveSpeechRecognizer.ts.
  *
  * Matching happens once, against everything captured across the whole
  * listening session, when the person presses Stop — not per Vosk-internal
@@ -35,6 +34,7 @@ export function SpeechToSignLanguagePage() {
   const [loading, setLoading] = useState(true);
   const [listening, setListening] = useState(false);
   const [modelLoading, setModelLoading] = useState(false);
+  const [engine, setEngine] = useState<SpeechEngine | null>(null);
   const [capturedText, setCapturedText] = useState("");
   const [interimText, setInterimText] = useState("");
   const [queue, setQueue] = useState<MatchedClip[]>([]);
@@ -43,12 +43,12 @@ export function SpeechToSignLanguagePage() {
 
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
 
-  const recognizerRef = useRef<VoskRecognizer | null>(null);
+  const recognizerRef = useRef<AdaptiveSpeechRecognizer | null>(null);
   // Mirrors capturedText for handleStop to read synchronously — by the
   // time stop()'s flush promise resolves, a plain state closure captured
   // at handleStop's own definition could be stale.
   const capturedTextRef = useRef("");
-  const supported = isVoskRecognitionSupported();
+  const supported = isSpeechRecognitionAvailable();
   const current = queue[currentIndex] ?? null;
 
   useEffect(() => {
@@ -90,7 +90,7 @@ export function SpeechToSignLanguagePage() {
     };
   }, [current]);
 
-  async function handleStart() {
+  function handleStart() {
     if (!supported || listening) return;
     setError("");
     setInterimText("");
@@ -98,15 +98,9 @@ export function SpeechToSignLanguagePage() {
     capturedTextRef.current = "";
     setQueue([]);
     setCurrentIndex(0);
+    setEngine(null);
 
-    if (!recognizerRef.current) {
-      // Dynamic import, not a top-level one — see the comment on this
-      // same pattern in SpeechToTextPage.tsx: vosk-browser is large
-      // enough that a static import (even indirect) pulled it into the
-      // main app bundle instead of a lazily-loaded chunk.
-      const { createVoskRecognizer } = await import("../voskRecognition");
-      recognizerRef.current = createVoskRecognizer();
-    }
+    if (!recognizerRef.current) recognizerRef.current = createAdaptiveSpeechRecognizer();
 
     recognizerRef.current.start({
       onPartialText: setInterimText,
@@ -117,6 +111,7 @@ export function SpeechToSignLanguagePage() {
       },
       onModelLoading: setModelLoading,
       onListening: setListening,
+      onEngine: setEngine,
       onError: message => {
         setError(message);
         setListening(false);
@@ -198,6 +193,14 @@ export function SpeechToSignLanguagePage() {
                 <p className="bg-white/95 py-2 text-center text-base font-semibold text-[#2D3748]" style={{ fontFamily: "'Fredoka', sans-serif" }}>{current.label}</p>
               )}
             </div>
+
+            {listening && engine && (
+              <p className="mb-2 flex items-center justify-center gap-1.5 text-xs font-semibold text-[#A0AEC0]">
+                {engine === "cloud"
+                  ? <><Cloud size={13} /> Using accurate online recognition</>
+                  : <><CloudOff size={13} /> Using offline speech recognition</>}
+              </p>
+            )}
 
             {(capturedText || interimText) && (
               <p className="mb-3 text-center text-sm italic text-[#718096]">

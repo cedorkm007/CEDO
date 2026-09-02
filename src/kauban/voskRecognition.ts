@@ -106,13 +106,10 @@ let modelPromise: Promise<Model> | null = null;
  * wrong. The blob URL is intentionally never revoked — the model is a
  * long-lived singleton for the app's whole session.
  */
-async function getModelUrl(): Promise<string> {
+async function ensureModelCached(): Promise<Response> {
   const cache = await caches.open(MODEL_CACHE_NAME);
   const cached = await cache.match(MODEL_URL);
-  if (cached) {
-    const blob = await cached.blob();
-    return URL.createObjectURL(blob);
-  }
+  if (cached) return cached;
   const response = await fetch(MODEL_URL);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   await cache.put(MODEL_URL, response.clone());
@@ -121,8 +118,25 @@ async function getModelUrl(): Promise<string> {
   try {
     await navigator.storage?.persist?.();
   } catch { /* not fatal */ }
+  return response;
+}
+
+async function getModelUrl(): Promise<string> {
+  const response = await ensureModelCached();
   const blob = await response.blob();
   return URL.createObjectURL(blob);
+}
+
+/**
+ * Downloads the model into Cache Storage without going through
+ * createModel()'s WASM parsing/init (that's deferred to actual first use
+ * in getModel() below) — used by the "Download for Offline" flow
+ * (OfflineDownloadModal.tsx) to prefetch the model up front, alongside
+ * the sign videos, rather than waiting for someone to press the mic for
+ * the first time while already offline.
+ */
+export async function prefetchVoskModel(): Promise<void> {
+  await ensureModelCached();
 }
 
 const MODEL_LOAD_TIMEOUT_MS = 30000;
