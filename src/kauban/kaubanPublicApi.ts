@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { getCachedMetadata, setCachedMetadata } from "./offlineMetadataCache";
 
 /**
  * Read-only Supabase access for Kauban's public /kauban pages — anon key,
@@ -6,6 +7,12 @@ import { supabase } from "@/lib/supabase";
  * separate from src/kauban/admin/kaubanAdminApi.ts: that module has
  * write operations and pulls in the video-compression code path, neither
  * of which any public visitor's bundle should need.
+ *
+ * Every fetch here falls back to the last successful result (cached via
+ * offlineMetadataCache.ts) when the live request fails — see that file's
+ * comment for why: without it, going offline just silently produced an
+ * empty list instead of a visible error, which broke sign-word matching
+ * in a way that looked like nothing was wrong.
  */
 
 const MEDIA_BUCKET = "kauban-media";
@@ -25,7 +32,8 @@ export async function fetchSignCategories(): Promise<SignCategory[]> {
     .from("kauban_sign_categories")
     .select("id, key, label")
     .order("sort_order");
-  if (error || !data) return [];
+  if (error || !data) return getCachedMetadata<SignCategory[]>("signCategories") ?? [];
+  setCachedMetadata("signCategories", data);
   return data;
 }
 
@@ -43,11 +51,13 @@ export async function fetchSignWords(): Promise<SignWord[]> {
     .from("kauban_sign_words")
     .select("id, category_id, phrase, label, clip_video_path, tutorial_video_path")
     .order("sort_order");
-  if (error || !data) return [];
-  return data.map(r => ({
+  if (error || !data) return getCachedMetadata<SignWord[]>("signWords") ?? [];
+  const words = data.map(r => ({
     id: r.id, categoryId: r.category_id, phrase: r.phrase, label: r.label,
     clipVideoPath: r.clip_video_path, tutorialVideoPath: r.tutorial_video_path,
   }));
+  setCachedMetadata("signWords", words);
+  return words;
 }
 
 export interface QuickPhraseCategory {
@@ -62,7 +72,8 @@ export async function fetchQuickPhraseCategories(): Promise<QuickPhraseCategory[
     .from("kauban_quick_phrase_categories")
     .select("id, name, icon, color")
     .order("sort_order");
-  if (error || !data) return [];
+  if (error || !data) return getCachedMetadata<QuickPhraseCategory[]>("quickPhraseCategories") ?? [];
+  setCachedMetadata("quickPhraseCategories", data);
   return data;
 }
 
@@ -77,8 +88,10 @@ export async function fetchQuickPhrases(): Promise<QuickPhrase[]> {
     .from("kauban_quick_phrases")
     .select("id, category_id, text")
     .order("sort_order");
-  if (error || !data) return [];
-  return data.map(r => ({ id: r.id, categoryId: r.category_id, text: r.text }));
+  if (error || !data) return getCachedMetadata<QuickPhrase[]>("quickPhrases") ?? [];
+  const phrases = data.map(r => ({ id: r.id, categoryId: r.category_id, text: r.text }));
+  setCachedMetadata("quickPhrases", phrases);
+  return phrases;
 }
 
 export interface EmergencyContact {
@@ -95,7 +108,8 @@ export async function fetchEmergencyContacts(): Promise<EmergencyContact[]> {
     .from("kauban_emergency_contacts")
     .select("id, name, number, color")
     .order("sort_order");
-  if (error || !data) return [];
+  if (error || !data) return getCachedMetadata<EmergencyContact[]>("emergencyContacts") ?? [];
+  setCachedMetadata("emergencyContacts", data);
   return data;
 }
 
@@ -109,6 +123,7 @@ export async function fetchEmergencyMessages(): Promise<EmergencyMessage[]> {
     .from("kauban_emergency_messages")
     .select("id, message")
     .order("sort_order");
-  if (error || !data) return [];
+  if (error || !data) return getCachedMetadata<EmergencyMessage[]>("emergencyMessages") ?? [];
+  setCachedMetadata("emergencyMessages", data);
   return data;
 }
