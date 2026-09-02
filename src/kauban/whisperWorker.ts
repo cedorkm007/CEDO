@@ -14,10 +14,13 @@ if (env.backends.onnx.wasm) {
   env.backends.onnx.wasm.wasmPaths = "/kauban-onnx-wasm/";
 }
 
-// tiny.en: ~40MB download, fastest, noticeably less accurate.
-// base.en: ~75MB download, still fine on a phone CPU, meaningfully better
-// accuracy. Swap this one constant to change it app-wide.
-const MODEL_ID = "Xenova/whisper-tiny.en";
+// base.en over tiny.en: meaningfully more accurate — tiny.en's transcripts
+// came back garbled/inaccurate in real-world testing (confirmed on-device,
+// not just an offline-vs-online difference). Larger one-time download (at
+// fp32 — see the dtype comment below — roughly double tiny.en's size), but
+// it's cached after the first use either way. Swap this one constant to
+// change it app-wide.
+const MODEL_ID = "Xenova/whisper-base.en";
 
 let transcriberPromise: Promise<AutomaticSpeechRecognitionPipeline> | null = null;
 

@@ -71,7 +71,7 @@ export function SpeechToTextPage() {
 
         {modelLoading !== null && (
           <div className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
-            <p className="mb-1.5">Downloading offline speech model (one-time, ~40MB)…</p>
+            <p className="mb-1.5">Downloading offline speech model (one-time, ~300MB — Wi-Fi recommended)…</p>
             <div className="h-2 overflow-hidden rounded-full bg-amber-100">
               <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${Math.round(modelLoading * 100)}%` }} />
             </div>

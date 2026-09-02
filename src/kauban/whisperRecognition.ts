@@ -53,6 +53,32 @@ export function isWhisperRecognitionSupported(): boolean {
   return typeof window !== "undefined" && !!navigator.mediaDevices?.getUserMedia && typeof AudioContext !== "undefined";
 }
 
+// Whisper expects mono 16kHz PCM. Forcing `new AudioContext({sampleRate:
+// 16000})` and trusting the browser to resample the mic capture down to
+// that rate looked reasonable, but was never actually verified against
+// real speech (an earlier check only fed a synthetic buffer straight into
+// the worker, bypassing this entirely) — and requesting a non-native rate
+// for a *capture* context is a known source of inconsistent behavior
+// across Android Chrome/WebView versions. If it silently doesn't
+// resample, the model receives distorted audio, which looks exactly like
+// garbled transcription. Fixed by letting the context run at whatever its
+// real native rate is and resampling explicitly, in code we can verify,
+// rather than trusting that to happen implicitly.
+function resampleTo16k(input: Float32Array, inputSampleRate: number): Float32Array {
+  if (inputSampleRate === SAMPLE_RATE) return input;
+  const ratio = inputSampleRate / SAMPLE_RATE;
+  const outputLength = Math.round(input.length / ratio);
+  const output = new Float32Array(outputLength);
+  for (let i = 0; i < outputLength; i++) {
+    const srcIndex = i * ratio;
+    const srcIndexFloor = Math.floor(srcIndex);
+    const srcIndexCeil = Math.min(srcIndexFloor + 1, input.length - 1);
+    const frac = srcIndex - srcIndexFloor;
+    output[i] = input[srcIndexFloor] * (1 - frac) + input[srcIndexCeil] * frac;
+  }
+  return output;
+}
+
 export function createWhisperRecognizer(): WhisperRecognizer {
   let worker: Worker | null = null;
   let modelReady = false;
@@ -82,19 +108,21 @@ export function createWhisperRecognizer(): WhisperRecognizer {
   }
 
   function finalizeChunk() {
-    const durationMs = (chunkSampleCount / SAMPLE_RATE) * 1000;
+    const nativeRate = audioContext?.sampleRate ?? SAMPLE_RATE;
+    const durationMs = (chunkSampleCount / nativeRate) * 1000;
     if (!hasSpeech || durationMs < MIN_CHUNK_DURATION_MS) {
       resetChunk();
       return;
     }
-    const audio = new Float32Array(chunkSampleCount);
+    const raw = new Float32Array(chunkSampleCount);
     let offset = 0;
     for (const buf of chunkBuffers) {
-      audio.set(buf, offset);
+      raw.set(buf, offset);
       offset += buf.length;
     }
     resetChunk();
 
+    const audio = resampleTo16k(raw, nativeRate);
     const id = nextChunkId++;
     getWorker().postMessage({ type: "transcribe", id, audio }, [audio.buffer]);
   }
@@ -119,7 +147,7 @@ export function createWhisperRecognizer(): WhisperRecognizer {
           running = false;
           callbacks.onError(
             data.message?.includes("fetch") || data.message?.includes("network")
-              ? "This needs an internet connection the first time, to download the offline speech model (~40MB). After that, it works offline."
+              ? "This needs an internet connection the first time, to download the offline speech model (~300MB). After that, it works offline."
               : `Couldn't load the speech model: ${data.message}`
           );
           break;
@@ -147,7 +175,12 @@ export function createWhisperRecognizer(): WhisperRecognizer {
         return;
       }
 
-      audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+      // Deliberately not forcing `{ sampleRate: SAMPLE_RATE }` here — see
+      // the comment on resampleTo16k above. Whatever native rate this
+      // resolves to (typically 48000 on Android), the VAD math below
+      // tracks it explicitly rather than assuming it's 16kHz.
+      audioContext = new AudioContext();
+      const nativeRate = audioContext.sampleRate;
       await audioContext.resume();
       const source = audioContext.createMediaStreamSource(mediaStream);
       processor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
@@ -163,12 +196,12 @@ export function createWhisperRecognizer(): WhisperRecognizer {
         chunkBuffers.push(input.slice());
         chunkSampleCount += input.length;
 
-        const chunkDurationMs = (chunkSampleCount / SAMPLE_RATE) * 1000;
+        const chunkDurationMs = (chunkSampleCount / nativeRate) * 1000;
         if (rms > SILENCE_RMS_THRESHOLD) {
           hasSpeech = true;
           silenceMs = 0;
         } else {
-          silenceMs += (input.length / SAMPLE_RATE) * 1000;
+          silenceMs += (input.length / nativeRate) * 1000;
         }
 
         if ((hasSpeech && silenceMs >= SILENCE_DURATION_MS) || chunkDurationMs >= MAX_CHUNK_DURATION_MS) {
