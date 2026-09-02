@@ -96,7 +96,13 @@ export function KaubanVideo({ path, className, autoPlay, cropTopPercent }: {
     // land right at the visible box's bottom rather than off-screen.
     const scale = 1 / (1 - cropTopPercent / 100);
     return (
-      <div className={`relative overflow-hidden ${className ?? ""}`}>
+      // aspect-video is a fallback height source, not a stylistic choice:
+      // the video inside is `position: absolute` so it contributes nothing
+      // to this div's layout height — without some intrinsic height of its
+      // own, a className that only sets a max-height (like the quiz page's
+      // max-h-[240px], with no plain height) leaves this div at 0px tall,
+      // and overflow-hidden then clips it to nothing visible at all.
+      <div className={`relative overflow-hidden aspect-video ${className ?? ""}`}>
         <video
           key={path}
           src={src}
