@@ -113,7 +113,10 @@ export function SpeechToSignLanguagePage() {
 
         {!loading && supported && (
           <>
-            <div className="mb-5 overflow-hidden rounded-2xl bg-black shadow-lg">
+            {/* Sticky rather than static: this page's queue list below can
+                grow long, and scrolling to see it was pushing the actively-
+                playing video off-screen. */}
+            <div className="sticky top-20 z-20 mb-5 overflow-hidden rounded-2xl bg-black shadow-lg">
               {current && current.word.clipVideoPath ? (
                 <video
                   key={current.word.id}

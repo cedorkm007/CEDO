@@ -32,7 +32,10 @@ export function SignLanguagePage() {
       <KaubanPageHeader title="Sign Language" subtitle="Browse Filipino Sign Language by category." />
 
         {selected && (
-          <div className="mb-6 rounded-3xl bg-white p-4 shadow-lg">
+          // Sticky rather than static: browsing more categories below can
+          // scroll a long way, and that was pushing the playing video
+          // off-screen instead of keeping it visible while you browse.
+          <div className="sticky top-20 z-20 mb-6 rounded-3xl bg-white p-4 shadow-lg">
             <KaubanVideo
               path={selected.tutorialVideoPath ?? selected.clipVideoPath}
               className="max-h-[320px] w-full rounded-2xl bg-black"
