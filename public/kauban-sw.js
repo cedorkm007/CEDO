@@ -4,7 +4,7 @@
 // site, which share this Vite build but are not offline-capable.
 //
 // Bump CACHE_VERSION to invalidate old caches on the next deploy.
-const CACHE_VERSION = "kauban-v2";
+const CACHE_VERSION = "kauban-v3";
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const VIDEO_CACHE = `${CACHE_VERSION}-video`;
 
@@ -55,11 +55,13 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Hashed, content-addressed build assets (JS/CSS/images) are immutable —
-  // safe to serve cache-first and cache indefinitely. The self-hosted ONNX
-  // WASM runtime (offline Whisper speech recognition — see
-  // whisperWorker.ts) is the same story: static, versioned by the app's
-  // own deploy, never changes underneath a given build.
-  if (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/kauban-icons/") || url.pathname.startsWith("/kauban-onnx-wasm/")) {
+  // safe to serve cache-first and cache indefinitely. The self-hosted Vosk
+  // speech model (offline speech recognition — see voskRecognition.ts) is
+  // the same story: static, versioned by the app's own deploy, never
+  // changes underneath a given build. vosk-browser fetches it from its
+  // own internal Web Worker, not from this page directly, but service
+  // workers intercept same-origin fetches from any worker in scope too.
+  if (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/kauban-icons/") || url.pathname.startsWith("/kauban-vosk-model/")) {
     event.respondWith(cacheFirst(request, SHELL_CACHE));
     return;
   }

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, AlertCircle } from "lucide-react";
 import { fetchSignWords, getVideoPublicUrl, type SignWord } from "../kaubanPublicApi";
 import { matchSignWords, type MatchedClip } from "../signWordMatching";
-import { createWhisperRecognizer, isWhisperRecognitionSupported, type WhisperRecognizer } from "../whisperRecognition";
+import { isVoskRecognitionSupported } from "../voskSupport";
+import type { VoskRecognizer } from "../voskRecognition";
 import { KaubanPageHeader } from "../components/KaubanPageHeader";
 
 /**
@@ -15,23 +16,26 @@ import { KaubanPageHeader } from "../components/KaubanPageHeader";
  * muted, same as the original app's own rule (avoids autoplay-with-sound
  * being blocked, and the source clips are meant to be muted anyway).
  *
- * Speech recognition is Whisper, running on-device (whisperRecognition.ts)
- * — the browser's built-in recognizer needs a cloud connection with no
- * offline mode at all, which defeats the point here. There's no live
- * partial captioning as a result: a word or phrase gets matched only once
- * a short pause is detected, not continuously as you speak.
+ * Speech recognition is Vosk, running on-device (voskRecognition.ts) —
+ * the browser's built-in recognizer needs a cloud connection with no
+ * offline mode at all, which defeats the point here. Matching only
+ * happens on *final* results, not the continuously-updating partial
+ * ones shown below the video — partials can still revise themselves as
+ * more audio comes in, and triggering video playback from an unstable
+ * guess would make clips swap out from under themselves.
  */
 export function SpeechToSignLanguagePage() {
   const [pool, setPool] = useState<SignWord[]>([]);
   const [loading, setLoading] = useState(true);
   const [listening, setListening] = useState(false);
-  const [modelLoading, setModelLoading] = useState<number | null>(null);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [interimText, setInterimText] = useState("");
   const [queue, setQueue] = useState<MatchedClip[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState("");
 
-  const recognizerRef = useRef<WhisperRecognizer | null>(null);
-  const supported = isWhisperRecognitionSupported();
+  const recognizerRef = useRef<VoskRecognizer | null>(null);
+  const supported = isVoskRecognitionSupported();
   const current = queue[currentIndex] ?? null;
 
   useEffect(() => {
@@ -50,26 +54,35 @@ export function SpeechToSignLanguagePage() {
     if (current && !current.word.clipVideoPath) setCurrentIndex(i => i + 1);
   }, [current]);
 
-  function handleStart() {
+  async function handleStart() {
     if (!supported || listening) return;
     setError("");
+    setInterimText("");
     setQueue([]);
     setCurrentIndex(0);
 
-    if (!recognizerRef.current) recognizerRef.current = createWhisperRecognizer();
+    if (!recognizerRef.current) {
+      // Dynamic import, not a top-level one — see the comment on this
+      // same pattern in SpeechToTextPage.tsx: vosk-browser is large
+      // enough that a static import (even indirect) pulled it into the
+      // main app bundle instead of a lazily-loaded chunk.
+      const { createVoskRecognizer } = await import("../voskRecognition");
+      recognizerRef.current = createVoskRecognizer();
+    }
 
     recognizerRef.current.start({
+      onPartialText: setInterimText,
       onFinalText: text => {
+        setInterimText("");
         const matches = matchSignWords(text, pool);
         if (matches.length > 0) setQueue(q => [...q, ...matches]);
       },
-      onModelLoading: fraction => setModelLoading(fraction),
-      onModelReady: () => setModelLoading(null),
+      onModelLoading: setModelLoading,
       onListening: setListening,
       onError: message => {
         setError(message);
         setListening(false);
-        setModelLoading(null);
+        setModelLoading(false);
       },
     });
   }
@@ -77,6 +90,7 @@ export function SpeechToSignLanguagePage() {
   function handleStop() {
     recognizerRef.current?.stop();
     setListening(false);
+    setInterimText("");
   }
 
   function handleVideoEnded() {
@@ -102,12 +116,10 @@ export function SpeechToSignLanguagePage() {
           </div>
         )}
 
-        {!loading && supported && modelLoading !== null && (
-          <div className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
-            <p className="mb-1.5">Downloading offline speech model (one-time, ~300MB — Wi-Fi recommended)…</p>
-            <div className="h-2 overflow-hidden rounded-full bg-amber-100">
-              <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${Math.round(modelLoading * 100)}%` }} />
-            </div>
+        {!loading && supported && modelLoading && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
+            <AlertCircle size={18} className="mt-0.5 shrink-0" />
+            <p>Downloading offline speech model (one-time, ~40MB — Wi-Fi recommended)…</p>
           </div>
         )}
 
@@ -130,7 +142,7 @@ export function SpeechToSignLanguagePage() {
                 />
               ) : (
                 <div className="flex h-[220px] items-center justify-center text-sm text-[#A0AEC0]">
-                  {listening ? "Listening — say a word, then pause, to see it signed." : "Press the microphone to start."}
+                  {listening ? "Listening — say a word to see it signed." : "Press the microphone to start."}
                 </div>
               )}
               {current && (
@@ -138,6 +150,7 @@ export function SpeechToSignLanguagePage() {
               )}
             </div>
 
+            {interimText && <p className="mb-3 text-center text-sm italic text-[#718096]">"{interimText}"</p>}
             {error && <p className="mb-3 text-center text-sm text-red-600">{error}</p>}
 
             <div className="flex justify-center">
