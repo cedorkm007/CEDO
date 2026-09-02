@@ -101,6 +101,13 @@ export function KaubanTopNav({ role, page, showBack, onNavigateHome, onBack, onS
                 >
                   <RefreshCw size={14} /> Switch Role
                 </button>
+                {/* Lets someone confirm, from the device itself, whether it's
+                    actually running the build just deployed — see the comment
+                    on getBuildVersion() in vite.config.ts for why that's not
+                    always obvious on a phone. */}
+                <p className="mt-1 border-t border-[#EDF2F7] px-3 pt-2 text-[10px] leading-none text-[#A0AEC0]">
+                  Build {__KAUBAN_BUILD__}
+                </p>
               </div>
             </>
           )}

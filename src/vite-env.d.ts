@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+// Injected by vite.config.ts's define — see getBuildVersion() there.
+declare const __KAUBAN_BUILD__: string;
+
 declare module "*.png" {
   const src: string;
   export default src;
