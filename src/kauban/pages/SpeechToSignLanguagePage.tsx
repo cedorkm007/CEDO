@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, AlertCircle } from "lucide-react";
 import { fetchSignWords, getVideoPublicUrl, type SignWord } from "../kaubanPublicApi";
 import { matchSignWords, type MatchedClip } from "../signWordMatching";
-import { createSpeechRecognition, isSpeechRecognitionSupported, type KaubanSpeechRecognition } from "../speechRecognition";
+import { createWhisperRecognizer, isWhisperRecognitionSupported, type WhisperRecognizer } from "../whisperRecognition";
 import { KaubanPageHeader } from "../components/KaubanPageHeader";
 
 /**
@@ -14,20 +14,24 @@ import { KaubanPageHeader } from "../components/KaubanPageHeader";
  * less polished) cut between clips instead of a crossfade. Clips play
  * muted, same as the original app's own rule (avoids autoplay-with-sound
  * being blocked, and the source clips are meant to be muted anyway).
+ *
+ * Speech recognition is Whisper, running on-device (whisperRecognition.ts)
+ * — the browser's built-in recognizer needs a cloud connection with no
+ * offline mode at all, which defeats the point here. There's no live
+ * partial captioning as a result: a word or phrase gets matched only once
+ * a short pause is detected, not continuously as you speak.
  */
 export function SpeechToSignLanguagePage() {
   const [pool, setPool] = useState<SignWord[]>([]);
   const [loading, setLoading] = useState(true);
   const [listening, setListening] = useState(false);
-  const [interimText, setInterimText] = useState("");
+  const [modelLoading, setModelLoading] = useState<number | null>(null);
   const [queue, setQueue] = useState<MatchedClip[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState("");
 
-  const recognitionRef = useRef<KaubanSpeechRecognition | null>(null);
-  const listeningRef = useRef(false); // mirrors `listening` for the onend handler, which closes over stale state otherwise
-
-  const supported = isSpeechRecognitionSupported();
+  const recognizerRef = useRef<WhisperRecognizer | null>(null);
+  const supported = isWhisperRecognitionSupported();
   const current = queue[currentIndex] ?? null;
 
   useEffect(() => {
@@ -37,7 +41,7 @@ export function SpeechToSignLanguagePage() {
     })();
   }, []);
 
-  useEffect(() => () => { recognitionRef.current?.abort(); }, []);
+  useEffect(() => () => { recognizerRef.current?.destroy(); }, []);
 
   // A matched word with no clip uploaded yet (milestone 5 pending) has
   // nothing to play — skip it immediately instead of rendering a <video>
@@ -52,56 +56,27 @@ export function SpeechToSignLanguagePage() {
     setQueue([]);
     setCurrentIndex(0);
 
-    const recognition = createSpeechRecognition();
-    if (!recognition) { setError("Speech recognition isn't available in this browser."); return; }
+    if (!recognizerRef.current) recognizerRef.current = createWhisperRecognizer();
 
-    recognition.onresult = event => {
-      let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        const transcript = result[0]?.transcript ?? "";
-        if (result.isFinal) {
-          const matches = matchSignWords(transcript, pool);
-          if (matches.length > 0) setQueue(q => [...q, ...matches]);
-        } else {
-          interim += transcript;
-        }
-      }
-      setInterimText(interim);
-    };
-
-    recognition.onerror = event => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        setError("Microphone access was denied — allow it in your browser to use this tool.");
-        // Fatal — the mic will never become available mid-session without
-        // a page reload, so stop instead of letting onend below retry
-        // forever against a permission that's already denied.
-        listeningRef.current = false;
+    recognizerRef.current.start({
+      onFinalText: text => {
+        const matches = matchSignWords(text, pool);
+        if (matches.length > 0) setQueue(q => [...q, ...matches]);
+      },
+      onModelLoading: fraction => setModelLoading(fraction),
+      onModelReady: () => setModelLoading(null),
+      onListening: setListening,
+      onError: message => {
+        setError(message);
         setListening(false);
-      } else if (event.error !== "no-speech") {
-        setError(`Speech recognition error: ${event.error}`);
-      }
-    };
-
-    recognition.onend = () => {
-      // `continuous` isn't honored forever by every browser — restart
-      // automatically while the person hasn't pressed Stop themselves
-      // (and the browser hasn't just told us to give up — see onerror).
-      if (listeningRef.current) recognition.start();
-    };
-
-    recognitionRef.current = recognition;
-    listeningRef.current = true;
-    setListening(true);
-    recognition.start();
+        setModelLoading(null);
+      },
+    });
   }
 
   function handleStop() {
-    listeningRef.current = false;
+    recognizerRef.current?.stop();
     setListening(false);
-    setInterimText("");
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
   }
 
   function handleVideoEnded() {
@@ -123,7 +98,16 @@ export function SpeechToSignLanguagePage() {
         {!loading && !supported && (
           <div className="flex items-start gap-2 rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
             <AlertCircle size={18} className="mt-0.5 shrink-0" />
-            <p>Speech recognition isn't supported in this browser. Try Chrome or Edge instead.</p>
+            <p>Speech recognition isn't supported in this browser.</p>
+          </div>
+        )}
+
+        {!loading && supported && modelLoading !== null && (
+          <div className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
+            <p className="mb-1.5">Downloading offline speech model (one-time, ~40MB)…</p>
+            <div className="h-2 overflow-hidden rounded-full bg-amber-100">
+              <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${Math.round(modelLoading * 100)}%` }} />
+            </div>
           </div>
         )}
 
@@ -143,7 +127,7 @@ export function SpeechToSignLanguagePage() {
                 />
               ) : (
                 <div className="flex h-[220px] items-center justify-center text-sm text-[#A0AEC0]">
-                  {listening ? "Listening — say a word to see it signed." : "Press the microphone to start."}
+                  {listening ? "Listening — say a word, then pause, to see it signed." : "Press the microphone to start."}
                 </div>
               )}
               {current && (
@@ -151,13 +135,13 @@ export function SpeechToSignLanguagePage() {
               )}
             </div>
 
-            {interimText && <p className="mb-3 text-center text-sm italic text-[#718096]">"{interimText}"</p>}
             {error && <p className="mb-3 text-center text-sm text-red-600">{error}</p>}
 
             <div className="flex justify-center">
               <button
                 onClick={listening ? handleStop : handleStart}
-                className={`flex h-[72px] w-[72px] items-center justify-center rounded-full shadow-lg transition-transform duration-150 active:scale-90 ${listening ? "bg-red-500 text-white" : "bg-[#3182CE] text-white"}`}
+                disabled={!supported}
+                className={`flex h-[72px] w-[72px] items-center justify-center rounded-full shadow-lg transition-transform duration-150 active:scale-90 disabled:opacity-40 ${listening ? "bg-red-500 text-white" : "bg-[#3182CE] text-white"}`}
                 aria-label={listening ? "Stop listening" : "Start listening"}
               >
                 {listening ? <MicOff size={28} /> : <Mic size={28} />}

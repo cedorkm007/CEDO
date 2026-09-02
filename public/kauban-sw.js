@@ -4,7 +4,7 @@
 // site, which share this Vite build but are not offline-capable.
 //
 // Bump CACHE_VERSION to invalidate old caches on the next deploy.
-const CACHE_VERSION = "kauban-v1";
+const CACHE_VERSION = "kauban-v2";
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const VIDEO_CACHE = `${CACHE_VERSION}-video`;
 
@@ -55,8 +55,11 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Hashed, content-addressed build assets (JS/CSS/images) are immutable —
-  // safe to serve cache-first and cache indefinitely.
-  if (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/kauban-icons/")) {
+  // safe to serve cache-first and cache indefinitely. The self-hosted ONNX
+  // WASM runtime (offline Whisper speech recognition — see
+  // whisperWorker.ts) is the same story: static, versioned by the app's
+  // own deploy, never changes underneath a given build.
+  if (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/kauban-icons/") || url.pathname.startsWith("/kauban-onnx-wasm/")) {
     event.respondWith(cacheFirst(request, SHELL_CACHE));
     return;
   }

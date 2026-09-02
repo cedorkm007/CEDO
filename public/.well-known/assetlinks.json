@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.cedo.kauban",
+      "sha256_cert_fingerprints": [
+        "EA:5C:86:D0:3A:E2:B4:F0:BB:19:F0:0C:9F:7C:87:0B:72:5B:8D:66:41:60:A4:CC:58:78:A2:DC:4F:6C:C0:C4"
+      ]
+    }
+  }
+]

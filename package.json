@@ -11,7 +11,7 @@
     "lint:fix": "eslint . --fix",
     "type-check": "tsc --noEmit",
     "seed:admins": "node scripts/create-admin-accounts.mjs",
-    "postinstall": "node scripts/copy-ffmpeg-core.mjs"
+    "postinstall": "node scripts/copy-ffmpeg-core.mjs && node scripts/copy-onnx-wasm.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -19,6 +19,7 @@
     "@ffmpeg/core": "^0.12.10",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
+    "@huggingface/transformers": "^4.2.0",
     "@mui/icons-material": "^7.3.5",
     "@mui/material": "^7.3.5",
     "@popperjs/core": "^2.11.8",

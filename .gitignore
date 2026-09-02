@@ -11,6 +11,12 @@ dist-ssr/
 # sitting in node_modules.
 public/kauban-admin/ffmpeg-core/
 
+# Derived from node_modules/onnxruntime-web by scripts/copy-onnx-wasm.mjs
+# (runs on postinstall) — not committed, ~100MB of binary that's already
+# sitting in node_modules. Powers offline Whisper speech recognition
+# (src/kauban/whisperWorker.ts).
+public/kauban-onnx-wasm/
+
 # Environment files — NEVER commit these
 .env
 .env.local

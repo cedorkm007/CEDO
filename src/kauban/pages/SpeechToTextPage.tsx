@@ -1,66 +1,53 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, Trash2, Copy, AlertCircle, Check } from "lucide-react";
-import { createSpeechRecognition, isSpeechRecognitionSupported, type KaubanSpeechRecognition } from "../speechRecognition";
+import { createWhisperRecognizer, isWhisperRecognitionSupported, type WhisperRecognizer } from "../whisperRecognition";
 import { KaubanPageHeader } from "../components/KaubanPageHeader";
 
-/** Speak, see it appear as text in real time — pure client-side, no backend. */
+/**
+ * Speak, see it appear as text in real time — pure client-side, no
+ * cloud dependency once the offline speech model is cached (see
+ * whisperRecognition.ts). Unlike the browser's built-in speech
+ * recognition, this works fully offline after its one-time model
+ * download.
+ *
+ * There's no live word-by-word captioning here the way a continuous
+ * recognizer would give: Whisper has no incremental output, so text
+ * appears in short chunks whenever a pause is detected, not word by word.
+ */
 export function SpeechToTextPage() {
   const [listening, setListening] = useState(false);
+  const [modelLoading, setModelLoading] = useState<number | null>(null);
   const [transcript, setTranscript] = useState("");
-  const [interimText, setInterimText] = useState("");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const recognitionRef = useRef<KaubanSpeechRecognition | null>(null);
-  const listeningRef = useRef(false);
-  const supported = isSpeechRecognitionSupported();
+  const recognizerRef = useRef<WhisperRecognizer | null>(null);
+  const supported = isWhisperRecognitionSupported();
 
-  useEffect(() => () => { recognitionRef.current?.abort(); }, []);
+  useEffect(() => () => { recognizerRef.current?.destroy(); }, []);
 
   function handleStart() {
     if (!supported || listening) return;
     setError("");
 
-    const recognition = createSpeechRecognition();
-    if (!recognition) { setError("Speech recognition isn't available in this browser."); return; }
+    if (!recognizerRef.current) recognizerRef.current = createWhisperRecognizer();
 
-    recognition.onresult = event => {
-      let interim = "";
-      let finalChunk = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        const text = result[0]?.transcript ?? "";
-        if (result.isFinal) finalChunk += text;
-        else interim += text;
-      }
-      if (finalChunk) setTranscript(t => (t ? `${t} ${finalChunk.trim()}` : finalChunk.trim()));
-      setInterimText(interim);
-    };
-
-    recognition.onerror = event => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        setError("Microphone access was denied — allow it in your browser to use this tool.");
-        listeningRef.current = false;
+    recognizerRef.current.start({
+      onFinalText: text => setTranscript(t => (t ? `${t} ${text}` : text)),
+      onModelLoading: fraction => setModelLoading(fraction),
+      onModelReady: () => setModelLoading(null),
+      onListening: setListening,
+      onError: message => {
+        setError(message);
         setListening(false);
-      } else if (event.error !== "no-speech") {
-        setError(`Speech recognition error: ${event.error}`);
-      }
-    };
-
-    recognition.onend = () => { if (listeningRef.current) recognition.start(); };
-
-    recognitionRef.current = recognition;
-    listeningRef.current = true;
-    setListening(true);
-    recognition.start();
+        setModelLoading(null);
+      },
+    });
   }
 
   function handleStop() {
-    listeningRef.current = false;
+    recognizerRef.current?.stop();
     setListening(false);
-    setInterimText("");
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
   }
 
   async function handleCopy() {
@@ -78,13 +65,21 @@ export function SpeechToTextPage() {
         {!supported && (
           <div className="mb-4 flex items-start gap-2 rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
             <AlertCircle size={18} className="mt-0.5 shrink-0" />
-            <p>Speech recognition isn't supported in this browser. Try Chrome or Edge instead.</p>
+            <p>Speech recognition isn't supported in this browser.</p>
+          </div>
+        )}
+
+        {modelLoading !== null && (
+          <div className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
+            <p className="mb-1.5">Downloading offline speech model (one-time, ~40MB)…</p>
+            <div className="h-2 overflow-hidden rounded-full bg-amber-100">
+              <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${Math.round(modelLoading * 100)}%` }} />
+            </div>
           </div>
         )}
 
         <div className="min-h-[180px] rounded-3xl border-2 border-[#3182CE]/15 bg-white p-5 text-lg text-[#2D3748] shadow-sm">
-          {transcript || <span className="text-[#CBD5E0]">{listening ? "Listening…" : "Press the microphone to start."}</span>}
-          {interimText && <span className="text-[#A0AEC0]"> {interimText}</span>}
+          {transcript || <span className="text-[#CBD5E0]">{listening ? "Listening… speak, then pause." : "Press the microphone to start."}</span>}
         </div>
 
         {error && <p className="mt-3 text-center text-sm text-red-600">{error}</p>}
