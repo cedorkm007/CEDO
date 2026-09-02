@@ -201,8 +201,22 @@ export function createVoskRecognizer(): VoskRecognizer {
     // Always 16000 here — see resampleTo16k above. Every chunk fed to
     // this recognizer is resampled to that rate before being sent.
     recognizer = new model.KaldiRecognizer(SAMPLE_RATE);
+    // vosk-browser has a documented bug (github.com/ccoreilly/vosk-browser
+    // issue #69): if the recognizer already auto-finalized a segment
+    // because of trailing silence, a later retrieveFinalResult() call
+    // (stop() below calls it, to flush speech that hasn't paused yet)
+    // fires a *second* "result" event repeating that same text — reported
+    // here as the whole sentence appearing twice after pressing Stop.
+    // Since two genuinely distinct utterances finalizing back-to-back
+    // with byte-identical text is effectively never legitimate, dropping
+    // an exact repeat of the immediately preceding final is a safe guard
+    // against the duplicate without needing a library fix.
+    let lastFinalText = "";
     recognizer.on("result", message => {
-      if (message.event === "result" && message.result.text) callbacks.onFinalText(message.result.text);
+      if (message.event !== "result" || !message.result.text) return;
+      if (message.result.text === lastFinalText) return;
+      lastFinalText = message.result.text;
+      callbacks.onFinalText(message.result.text);
     });
     recognizer.on("partialresult", message => {
       if (message.event === "partialresult") callbacks.onPartialText(message.result.partial);
