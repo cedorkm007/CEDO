@@ -96,9 +96,10 @@ export function SignLanguageQuizPage() {
           <div className="rounded-3xl bg-white p-4 shadow-sm sm:p-5">
             <p className="mb-3 text-center text-xs font-semibold text-[#A0AEC0]">Question {index + 1} of {quiz.length} · Score {score}</p>
             <KaubanVideo
-              path={current.word.clipVideoPath ?? current.word.tutorialVideoPath}
+              path={current.word.tutorialVideoPath ?? current.word.clipVideoPath}
               className="mx-auto mb-4 max-h-[240px] w-full rounded-2xl bg-black"
               autoPlay
+              loop
               cropTopPercent={27}
             />
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

@@ -17,10 +17,11 @@ import { getVideoPlaybackUrl } from "../videoPlayback";
  * generic message for both — the two need very different next steps
  * from whoever's looking at it.
  */
-export function KaubanVideo({ path, className, autoPlay, cropTopPercent }: {
+export function KaubanVideo({ path, className, autoPlay, loop, cropTopPercent }: {
   path: string | null;
   className?: string;
   autoPlay?: boolean;
+  loop?: boolean;
   /**
    * Hides the top N% of the video frame — some clips have a caption
    * baked into the footage itself (not something this app renders) that
@@ -108,6 +109,7 @@ export function KaubanVideo({ path, className, autoPlay, cropTopPercent }: {
           src={src}
           controls
           autoPlay={autoPlay}
+          loop={loop}
           playsInline
           className="absolute left-0 w-full"
           style={{ top: `-${cropTopPercent * scale}%`, height: `${scale * 100}%` }}
@@ -123,6 +125,7 @@ export function KaubanVideo({ path, className, autoPlay, cropTopPercent }: {
       src={src}
       controls
       autoPlay={autoPlay}
+      loop={loop}
       playsInline
       className={className}
       onError={() => setFailed(true)}
