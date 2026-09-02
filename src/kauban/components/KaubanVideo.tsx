@@ -17,7 +17,19 @@ import { getVideoPlaybackUrl } from "../videoPlayback";
  * generic message for both — the two need very different next steps
  * from whoever's looking at it.
  */
-export function KaubanVideo({ path, className, autoPlay }: { path: string | null; className?: string; autoPlay?: boolean }) {
+export function KaubanVideo({ path, className, autoPlay, cropTopPercent }: {
+  path: string | null;
+  className?: string;
+  autoPlay?: boolean;
+  /**
+   * Hides the top N% of the video frame — some clips have a caption
+   * baked into the footage itself (not something this app renders) that
+   * gives away the answer on the Sign Language Quiz page. Stretches the
+   * remaining footage vertically to still fill the same box, rather than
+   * leaving a gap where the cropped part was.
+   */
+  cropTopPercent?: number;
+}) {
   const [failed, setFailed] = useState(false);
   const [src, setSrc] = useState<string | null>(null);
   const [servedFromCache, setServedFromCache] = useState(false);
@@ -70,6 +82,31 @@ export function KaubanVideo({ path, className, autoPlay }: { path: string | null
     return (
       <div className={`flex flex-col items-center justify-center gap-2 rounded-xl bg-[#3182CE]/5 text-[#A0AEC0] ${className ?? ""}`}>
         <span className="text-xs">Loading…</span>
+      </div>
+    );
+  }
+
+  if (cropTopPercent) {
+    // height/top are the standard "crop N% off the top, stretch the rest
+    // to fill" math: making the video (1 / (1 - crop)) times taller than
+    // its box and shifting it up by exactly the cropped portion's share
+    // of that enlarged height means the box's bottom edge lines up with
+    // the video's own bottom edge — so this doesn't need object-fit, and
+    // native controls (rendered at the video's own bottom edge) still
+    // land right at the visible box's bottom rather than off-screen.
+    const scale = 1 / (1 - cropTopPercent / 100);
+    return (
+      <div className={`relative overflow-hidden ${className ?? ""}`}>
+        <video
+          key={path}
+          src={src}
+          controls
+          autoPlay={autoPlay}
+          playsInline
+          className="absolute left-0 w-full"
+          style={{ top: `-${cropTopPercent * scale}%`, height: `${scale * 100}%` }}
+          onError={() => setFailed(true)}
+        />
       </div>
     );
   }

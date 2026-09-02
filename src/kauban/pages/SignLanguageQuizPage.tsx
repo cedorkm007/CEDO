@@ -99,6 +99,7 @@ export function SignLanguageQuizPage() {
               path={current.word.clipVideoPath ?? current.word.tutorialVideoPath}
               className="mx-auto mb-4 max-h-[240px] w-full rounded-2xl bg-black"
               autoPlay
+              cropTopPercent={27}
             />
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {current.choices.map(choice => {
