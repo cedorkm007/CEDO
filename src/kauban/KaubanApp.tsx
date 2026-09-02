@@ -62,6 +62,14 @@ export function KaubanApp() {
 
   const trackedDepthRef = useRef(0);
   const initializedRef = useRef(false);
+  // Always-fresh mirror of `page` for the popstate handler below, which is
+  // registered once rather than re-subscribed on every page change — an
+  // earlier version re-subscribed per page change and, confirmed live on
+  // device, could still leave a stale closure in place for a popstate that
+  // lands in the tiny window between a fast repeated back-press and
+  // React's next render.
+  const pageRef = useRef(page);
+  useEffect(() => { pageRef.current = page; }, [page]);
 
   // Keeps one browser-history entry per level of depth so there's
   // something for the hardware/gesture back button to pop. Runs even
@@ -83,10 +91,8 @@ export function KaubanApp() {
       // this just keeps the entry's stored state in sync) or an explicit
       // jump straight to a shallower page (Home, Switch Role) — in that
       // second case the real history stack still has stale entries below
-      // this one, so back may need one harmless extra press before the
-      // app actually exits. A reasonable tradeoff against the complexity
-      // of collapsing the stack with history.go(), which fires its own
-      // delayed popstate and would race this effect.
+      // this one. That's harmless: the popstate handler's own refill-at-
+      // dashboard logic below self-heals it on the next back press.
       history.replaceState({ page }, "");
     }
     trackedDepthRef.current = newDepth;
@@ -96,15 +102,31 @@ export function KaubanApp() {
   // event.state and recomputes the target from current `page` instead,
   // using the exact same rule as the in-app Back button (handleBack
   // below) — that's the whole point of wiring this up, so both agree.
+  //
+  // At the dashboard (depth 0), earlier versions did nothing here, which
+  // let each further back press keep consuming the WebView's own real
+  // history entries with nothing pushed back to replace them. Confirmed
+  // live on device: once that stack was fully drained, the TWA's hosting
+  // Custom Tab didn't cleanly exit the app — it went blank instead. So at
+  // depth 0, a press pushes a fresh entry right back — the dashboard
+  // doesn't visibly change, but the WebView's stack can never run dry.
+  // The tradeoff is that hardware back can no longer exit the app from
+  // the dashboard at all; leaving requires the device's home/recents
+  // gesture instead, same as many single-page apps with a persistent
+  // shell like this one.
   useEffect(() => {
     if (!role) return;
     function onPopState() {
-      if (page === "dashboard") return; // nothing left to go back to — let the app exit normally
-      setPage(HUB_SUB_PAGES.includes(page) ? "signLanguageTools" : "dashboard");
+      const current = pageRef.current;
+      if (current === "dashboard") {
+        history.pushState({ page: "dashboard" }, "");
+        return;
+      }
+      setPage(HUB_SUB_PAGES.includes(current) ? "signLanguageTools" : "dashboard");
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [role, page]);
+  }, [role]);
 
   function handleSelectRole(selected: KaubanRole) {
     setKaubanRole(selected);
