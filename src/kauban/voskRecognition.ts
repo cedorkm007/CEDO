@@ -1,5 +1,7 @@
 import { createModel, type Model, type KaldiRecognizer } from "vosk-browser";
 
+const MODEL_CACHE_NAME = "kauban-vosk-model-v1";
+
 /**
  * On-device offline speech recognition via Vosk, replacing the earlier
  * Whisper-based engine (see docs/kauban/PROGRESS.md) — Whisper has no
@@ -80,9 +82,39 @@ export interface VoskRecognizer {
 
 let modelPromise: Promise<Model> | null = null;
 
+/**
+ * Fetches the model archive through Cache Storage, managed directly here
+ * rather than left to kauban-sw.js's own fetch interception — same
+ * reasoning as offlineCaches.ts on the video side: vosk-browser's
+ * createModel() does its own fetch() from inside its internal Web
+ * Worker, which this page code can't intercept or verify, so getting a
+ * genuinely offline-capable model means never depending on the service
+ * worker to have been active at the right moment.
+ *
+ * Passing createModel() a blob: URL instead of the network path is the
+ * key part: a blob URL is served from this tab's own memory, not over
+ * the network at all, so vosk-browser's internal fetch succeeds offline
+ * unconditionally, with nothing for a service worker to get right or
+ * wrong. The blob URL is intentionally never revoked — the model is a
+ * long-lived singleton for the app's whole session.
+ */
+async function getModelUrl(): Promise<string> {
+  const cache = await caches.open(MODEL_CACHE_NAME);
+  const cached = await cache.match(MODEL_URL);
+  if (cached) {
+    const blob = await cached.blob();
+    return URL.createObjectURL(blob);
+  }
+  const response = await fetch(MODEL_URL);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  await cache.put(MODEL_URL, response.clone());
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
 function getModel(): Promise<Model> {
   if (!modelPromise) {
-    modelPromise = createModel(MODEL_URL);
+    modelPromise = getModelUrl().then(url => createModel(url));
   }
   return modelPromise;
 }
@@ -106,6 +138,10 @@ export function createVoskRecognizer(): VoskRecognizer {
       if (!alreadyLoading) callbacks.onModelLoading?.(false);
     } catch (err) {
       running = false;
+      // Otherwise a failed first attempt (e.g. no connection yet) would
+      // wedge every future attempt for the rest of the session on the
+      // same cached rejected promise, even after connectivity returns.
+      modelPromise = null;
       callbacks.onModelLoading?.(false);
       const message = err instanceof Error ? err.message : String(err);
       callbacks.onError(

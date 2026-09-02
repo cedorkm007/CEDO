@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, AlertCircle } from "lucide-react";
-import { fetchSignWords, getVideoPublicUrl, type SignWord } from "../kaubanPublicApi";
+import { fetchSignWords, type SignWord } from "../kaubanPublicApi";
+import { getVideoPlaybackUrl } from "../videoPlayback";
 import { matchSignWords, type MatchedClip } from "../signWordMatching";
 import { isVoskRecognitionSupported } from "../voskSupport";
 import type { VoskRecognizer } from "../voskRecognition";
@@ -40,6 +41,8 @@ export function SpeechToSignLanguagePage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState("");
 
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+
   const recognizerRef = useRef<VoskRecognizer | null>(null);
   // Mirrors capturedText for handleStop to read synchronously — by the
   // time stop()'s flush promise resolves, a plain state closure captured
@@ -62,6 +65,29 @@ export function SpeechToSignLanguagePage() {
   // with an empty src.
   useEffect(() => {
     if (current && !current.word.clipVideoPath) setCurrentIndex(i => i + 1);
+  }, [current]);
+
+  // Resolves through the offline video cache first (see videoPlayback.ts)
+  // rather than pointing <video src> straight at the network URL — that's
+  // what actually makes an offline-downloaded clip play back offline.
+  useEffect(() => {
+    setVideoSrc(null);
+    const path = current?.word.clipVideoPath;
+    if (!path) return;
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    (async () => {
+      const url = await getVideoPlaybackUrl(path);
+      if (cancelled) return;
+      if (url.startsWith("blob:")) objectUrl = url;
+      setVideoSrc(url);
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [current]);
 
   async function handleStart() {
@@ -152,10 +178,10 @@ export function SpeechToSignLanguagePage() {
                 grow long, and scrolling to see it was pushing the actively-
                 playing video off-screen. */}
             <div className="sticky top-20 z-20 mb-5 overflow-hidden rounded-2xl bg-black shadow-lg">
-              {current && current.word.clipVideoPath ? (
+              {current && current.word.clipVideoPath && videoSrc ? (
                 <video
                   key={current.word.id}
-                  src={getVideoPublicUrl(current.word.clipVideoPath)}
+                  src={videoSrc}
                   className="mx-auto max-h-[360px] w-full"
                   autoPlay
                   muted

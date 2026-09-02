@@ -1,4 +1,5 @@
 import { fetchSignWords, getVideoPublicUrl } from "./kaubanPublicApi";
+import { VIDEO_CACHE_NAME } from "./offlineCaches";
 
 export interface DownloadProgress {
   completed: number;
@@ -11,14 +12,11 @@ export interface DownloadProgress {
  * use, rather than relying only on cache-on-first-play (kauban-sw.js),
  * which only caches a clip after someone has already watched it once.
  *
- * This doesn't touch the Cache Storage API directly — it just issues a
- * plain fetch() per video URL. The service worker's own fetch handler
- * already intercepts every request matching the Supabase video path
- * (VIDEO_URL_MARKER in kauban-sw.js) and caches it there, regardless of
- * whether the request came from a <video> element or, as here, a bare
- * fetch() call. Re-running this after videos are already cached is cheap:
- * the service worker resolves those straight from cache without hitting
- * the network again.
+ * Writes directly to Cache Storage (see offlineCaches.ts for why this
+ * doesn't just fetch() and hope the service worker intercepts it) —
+ * paired with videoPlayback.ts, which reads from the same cache when
+ * rendering a <video>. Re-running this after videos are already cached
+ * is cheap: already-cached URLs are skipped without a network request.
  */
 export async function downloadAllVideosForOffline(
   onProgress: (progress: DownloadProgress) => void
@@ -36,9 +34,10 @@ export async function downloadAllVideosForOffline(
   const total = urls.length;
   onProgress({ completed, total, failed });
 
+  const cache = await caches.open(VIDEO_CACHE_NAME);
+
   // A small concurrency cap rather than firing every request at once —
-  // gentler on mobile data and CPU, and avoids handing the service
-  // worker dozens of simultaneous large video downloads together.
+  // gentler on mobile data and CPU.
   const CONCURRENCY = 3;
   let nextIndex = 0;
 
@@ -46,8 +45,12 @@ export async function downloadAllVideosForOffline(
     while (nextIndex < urls.length) {
       const url = urls[nextIndex++];
       try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const alreadyCached = await cache.match(url);
+        if (!alreadyCached) {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          await cache.put(url, response);
+        }
       } catch {
         failed++;
       }
