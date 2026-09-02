@@ -22,9 +22,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.cedo.kauban">
 
-    
+
         <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    
+
+
+    <!-- Not part of Bubblewrap's twa-manifest.json schema — added by hand
+         for the Speech to Text / Speech to Sign Language mic features
+         (see docs/kauban/ANDROID_APP.md). Without this, Chrome can't even
+         show its own in-page microphone permission prompt inside the TWA;
+         getUserMedia() fails silently at the OS level first. Re-apply this
+         if the project is ever regenerated from generate-project.cjs. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
     
 

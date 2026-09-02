@@ -13,6 +13,7 @@ import { DrawingPadPage } from "./pages/DrawingPadPage";
 import { EmergencyPage } from "./pages/EmergencyPage";
 import { KaubanTopNav } from "./components/KaubanTopNav";
 import { KaubanBottomNav } from "./components/KaubanBottomNav";
+import { OfflineDownloadModal } from "./components/OfflineDownloadModal";
 import type { KaubanPage, KaubanRole } from "./types";
 
 // Reached only via the Sign Language Tools hub — "Back" from any of these
@@ -40,6 +41,7 @@ const HUB_SUB_PAGES: KaubanPage[] = ["textToSpeech", "speechToSignLanguage", "si
 export function KaubanApp() {
   const [role, setRole] = useState<KaubanRole | null>(() => getKaubanRole());
   const [page, setPage] = useState<KaubanPage>("dashboard");
+  const [showOfflineDownload, setShowOfflineDownload] = useState(false);
 
   function handleSelectRole(selected: KaubanRole) {
     setKaubanRole(selected);
@@ -100,11 +102,13 @@ export function KaubanApp() {
         onNavigateHome={goToDashboard}
         onBack={handleBack}
         onSwitchRole={handleSwitchRole}
+        onDownloadForOffline={() => setShowOfflineDownload(true)}
       />
       <div className="mx-auto max-w-4xl px-3 pt-4 sm:px-8 sm:pt-6">
         {renderPage()}
       </div>
       <KaubanBottomNav role={currentRole} page={page} onNavigate={setPage} />
+      {showOfflineDownload && <OfflineDownloadModal onClose={() => setShowOfflineDownload(false)} />}
     </div>
   );
 }

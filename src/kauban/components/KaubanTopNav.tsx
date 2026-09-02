@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Home, ArrowLeft, RefreshCw } from "lucide-react";
+import { Home, ArrowLeft, RefreshCw, Download } from "lucide-react";
 import type { KaubanPage, KaubanRole } from "../types";
 
 const ROLE_LABEL: Record<KaubanRole, string> = {
@@ -24,13 +24,14 @@ const ROLE_BADGE_STYLE: Record<KaubanRole, { background: string; color: string }
  * The original's profile dropdown only had one action ("Switch User");
  * this keeps that same one-item shape ("Switch Role").
  */
-export function KaubanTopNav({ role, page, showBack, onNavigateHome, onBack, onSwitchRole }: {
+export function KaubanTopNav({ role, page, showBack, onNavigateHome, onBack, onSwitchRole, onDownloadForOffline }: {
   role: KaubanRole;
   page: KaubanPage;
   showBack: boolean;
   onNavigateHome: () => void;
   onBack: () => void;
   onSwitchRole: () => void;
+  onDownloadForOffline: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -87,7 +88,13 @@ export function KaubanTopNav({ role, page, showBack, onNavigateHome, onBack, onS
                 aria-label="Close menu"
                 tabIndex={-1}
               />
-              <div className="absolute right-0 top-[52px] z-40 min-w-[170px] rounded-2xl border border-[#EDF2F7] bg-white p-1.5 shadow-lg">
+              <div className="absolute right-0 top-[52px] z-40 min-w-[190px] rounded-2xl border border-[#EDF2F7] bg-white p-1.5 shadow-lg">
+                <button
+                  onClick={() => { setMenuOpen(false); onDownloadForOffline(); }}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#2D3748] transition active:scale-[0.97] hover:bg-[#EBF8FF]"
+                >
+                  <Download size={14} /> Download for Offline
+                </button>
                 <button
                   onClick={() => { setMenuOpen(false); onSwitchRole(); }}
                   className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#2D3748] transition active:scale-[0.97] hover:bg-[#EBF8FF]"
