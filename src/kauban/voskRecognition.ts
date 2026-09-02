@@ -1,6 +1,10 @@
 import { createModel, type Model, type KaldiRecognizer } from "vosk-browser";
 
-const MODEL_CACHE_NAME = "kauban-vosk-model-v1";
+// Bumped from v1 when the model itself changed (small -> lgraph, see
+// download-vosk-model.mjs) — a device that already cached the old model
+// under the old key would otherwise keep serving it forever from Cache
+// Storage instead of ever fetching the new one.
+const MODEL_CACHE_NAME = "kauban-vosk-model-v2";
 
 /**
  * On-device offline speech recognition via Vosk, replacing the earlier
@@ -11,8 +15,12 @@ const MODEL_CACHE_NAME = "kauban-vosk-model-v1";
  * recognition: it reports a continuously-updating partial guess *while*
  * someone is still talking, then a final result once they pause — the
  * same "watch it appear as you speak" feel as the browser's own
- * (cloud-only) speech recognition. The tradeoff is accuracy: Vosk's small
- * model is noticeably less accurate per word than Whisper's.
+ * (cloud-only) speech recognition. The tradeoff is accuracy: even with
+ * the larger "lgraph" model (download-vosk-model.mjs), Vosk is still
+ * noticeably less accurate per word than Whisper's — the lgraph model
+ * over the original small one was specifically to close that gap for
+ * longer, natural sentences, which the small model's tiny language
+ * model handled poorly (dropped/garbled words past a few words in).
  *
  * The model (public/kauban-vosk-model/, downloaded by
  * scripts/download-vosk-model.mjs) is a module-level singleton shared by
@@ -167,7 +175,7 @@ export function createVoskRecognizer(): VoskRecognizer {
       const message = err instanceof Error ? err.message : String(err);
       callbacks.onError(
         /fetch|network|failed to load/i.test(message)
-          ? "This needs an internet connection the first time, to download the offline speech model (~40MB). After that, it works offline."
+          ? "This needs an internet connection the first time, to download the offline speech model (~130MB). After that, it works offline."
           : `Couldn't load the speech model: ${message}`
       );
       return;

@@ -86,7 +86,7 @@ export function SpeechToTextPage() {
         {modelLoading && (
           <div className="mb-4 flex items-start gap-2 rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
             <AlertCircle size={18} className="mt-0.5 shrink-0" />
-            <p>Downloading offline speech model (one-time, ~40MB — Wi-Fi recommended)…</p>
+            <p>Downloading offline speech model (one-time, ~130MB — Wi-Fi recommended)…</p>
           </div>
         )}
 
