@@ -18,23 +18,33 @@ import { KaubanPageHeader } from "../components/KaubanPageHeader";
  *
  * Speech recognition is Vosk, running on-device (voskRecognition.ts) —
  * the browser's built-in recognizer needs a cloud connection with no
- * offline mode at all, which defeats the point here. Matching only
- * happens on *final* results, not the continuously-updating partial
- * ones shown below the video — partials can still revise themselves as
- * more audio comes in, and triggering video playback from an unstable
- * guess would make clips swap out from under themselves.
+ * offline mode at all, which defeats the point here.
+ *
+ * Matching happens once, against everything captured across the whole
+ * listening session, when the person presses Stop — not per Vosk-internal
+ * "final" segment as it happens. Vosk finalizes fairly eagerly at short
+ * pauses, sometimes splitting one sentence into several final chunks —
+ * matching each separately could miss a multi-word phrase that only
+ * matchSignWords() would catch as a single complete string. Everything
+ * recognized while listening (each final chunk plus the live partial) is
+ * still shown as it comes in, just not acted on until Stop.
  */
 export function SpeechToSignLanguagePage() {
   const [pool, setPool] = useState<SignWord[]>([]);
   const [loading, setLoading] = useState(true);
   const [listening, setListening] = useState(false);
   const [modelLoading, setModelLoading] = useState(false);
+  const [capturedText, setCapturedText] = useState("");
   const [interimText, setInterimText] = useState("");
   const [queue, setQueue] = useState<MatchedClip[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState("");
 
   const recognizerRef = useRef<VoskRecognizer | null>(null);
+  // Mirrors capturedText for handleStop to read synchronously — by the
+  // time stop()'s flush promise resolves, a plain state closure captured
+  // at handleStop's own definition could be stale.
+  const capturedTextRef = useRef("");
   const supported = isVoskRecognitionSupported();
   const current = queue[currentIndex] ?? null;
 
@@ -58,6 +68,8 @@ export function SpeechToSignLanguagePage() {
     if (!supported || listening) return;
     setError("");
     setInterimText("");
+    setCapturedText("");
+    capturedTextRef.current = "";
     setQueue([]);
     setCurrentIndex(0);
 
@@ -74,8 +86,8 @@ export function SpeechToSignLanguagePage() {
       onPartialText: setInterimText,
       onFinalText: text => {
         setInterimText("");
-        const matches = matchSignWords(text, pool);
-        if (matches.length > 0) setQueue(q => [...q, ...matches]);
+        capturedTextRef.current = capturedTextRef.current ? `${capturedTextRef.current} ${text}` : text;
+        setCapturedText(capturedTextRef.current);
       },
       onModelLoading: setModelLoading,
       onListening: setListening,
@@ -87,10 +99,21 @@ export function SpeechToSignLanguagePage() {
     });
   }
 
-  function handleStop() {
-    recognizerRef.current?.stop();
+  async function handleStop() {
     setListening(false);
     setInterimText("");
+    // Waits for any speech still buffered at the moment Stop was pressed
+    // to flush through onFinalText first (see voskRecognition.ts) — so
+    // the last word or two doesn't just vanish.
+    await recognizerRef.current?.stop();
+
+    const fullText = capturedTextRef.current.trim();
+    capturedTextRef.current = "";
+    setCapturedText("");
+    if (fullText) {
+      const matches = matchSignWords(fullText, pool);
+      if (matches.length > 0) setQueue(q => [...q, ...matches]);
+    }
   }
 
   function handleVideoEnded() {
@@ -142,7 +165,7 @@ export function SpeechToSignLanguagePage() {
                 />
               ) : (
                 <div className="flex h-[220px] items-center justify-center text-sm text-[#A0AEC0]">
-                  {listening ? "Listening — say a word to see it signed." : "Press the microphone to start."}
+                  {listening ? "Listening — press stop when you're done to see it signed." : "Press the microphone to start."}
                 </div>
               )}
               {current && (
@@ -150,7 +173,11 @@ export function SpeechToSignLanguagePage() {
               )}
             </div>
 
-            {interimText && <p className="mb-3 text-center text-sm italic text-[#718096]">"{interimText}"</p>}
+            {(capturedText || interimText) && (
+              <p className="mb-3 text-center text-sm italic text-[#718096]">
+                "{capturedText}{capturedText && interimText ? " " : ""}<span className="text-[#A0AEC0]">{interimText}</span>"
+              </p>
+            )}
             {error && <p className="mb-3 text-center text-sm text-red-600">{error}</p>}
 
             <div className="flex justify-center">

@@ -25,6 +25,35 @@ import { createModel, type Model, type KaldiRecognizer } from "vosk-browser";
 
 const MODEL_URL = "/kauban-vosk-model/model.tar.gz";
 const BUFFER_SIZE = 4096;
+const SAMPLE_RATE = 16000;
+
+// Vosk's Kaldi model was trained on and expects exactly 16kHz audio.
+// acceptWaveformFloat(buffer, sampleRate) looked like it might do that
+// conversion itself given the sampleRate argument, but checking the
+// actual library source shows it only rescales amplitude from [-1,1] to
+// Kaldi's int16 range — it does not resample. Passing 48kHz audio (the
+// typical native mic rate on Android) straight through, even correctly
+// labeled with its real rate, produced exactly what got reported:
+// present but wrong/garbled text — a mismatched sample rate is heard by
+// the model as completely different frequency content, not silence or
+// an error. This is the same class of bug already found and fixed once
+// for the earlier Whisper-based engine, and the fix is the same:
+// resample explicitly in code that's actually verified, rather than
+// trust an assumption about what a library does internally.
+function resampleTo16k(input: Float32Array, inputSampleRate: number): Float32Array {
+  if (inputSampleRate === SAMPLE_RATE) return input;
+  const ratio = inputSampleRate / SAMPLE_RATE;
+  const outputLength = Math.round(input.length / ratio);
+  const output = new Float32Array(outputLength);
+  for (let i = 0; i < outputLength; i++) {
+    const srcIndex = i * ratio;
+    const srcIndexFloor = Math.floor(srcIndex);
+    const srcIndexCeil = Math.min(srcIndexFloor + 1, input.length - 1);
+    const frac = srcIndex - srcIndexFloor;
+    output[i] = input[srcIndexFloor] * (1 - frac) + input[srcIndexCeil] * frac;
+  }
+  return output;
+}
 
 export interface VoskCallbacks {
   onPartialText: (text: string) => void;
@@ -37,7 +66,14 @@ export interface VoskCallbacks {
 
 export interface VoskRecognizer {
   start(callbacks: VoskCallbacks): void;
-  stop(): void;
+  /**
+   * Resolves once any speech still pending at the moment of the call has
+   * been flushed through onFinalText — callers that accumulate the full
+   * utterance across the session (rather than acting on each chunk as it
+   * arrives) should await this before reading that accumulator, or the
+   * last few words spoken right before pressing Stop go missing.
+   */
+  stop(): Promise<void>;
   /** Tears down this recognizer's mic + audio graph. Safe to call on unmount — the shared model itself stays loaded for next time. */
   destroy(): void;
 }
@@ -93,15 +129,13 @@ export function createVoskRecognizer(): VoskRecognizer {
       return;
     }
 
-    // The recognizer needs to know the real capture rate up front (it's a
-    // constructor argument, not something passed per audio chunk) — so
-    // the AudioContext has to exist first rather than assuming a rate
-    // (e.g. hardcoding 48000, common on Android but not guaranteed) that
-    // might not match this device's actual native rate.
     audioContext = new AudioContext();
     await audioContext.resume();
+    const nativeRate = audioContext.sampleRate;
 
-    recognizer = new model.KaldiRecognizer(audioContext.sampleRate);
+    // Always 16000 here — see resampleTo16k above. Every chunk fed to
+    // this recognizer is resampled to that rate before being sent.
+    recognizer = new model.KaldiRecognizer(SAMPLE_RATE);
     recognizer.on("result", message => {
       if (message.event === "result" && message.result.text) callbacks.onFinalText(message.result.text);
     });
@@ -118,9 +152,10 @@ export function createVoskRecognizer(): VoskRecognizer {
     silentGain.gain.value = 0;
 
     processor.onaudioprocess = event => {
-      if (!recognizer || !audioContext) return;
+      if (!recognizer) return;
       try {
-        recognizer.acceptWaveformFloat(event.inputBuffer.getChannelData(0), audioContext.sampleRate);
+        const resampled = resampleTo16k(event.inputBuffer.getChannelData(0), nativeRate);
+        recognizer.acceptWaveformFloat(resampled, SAMPLE_RATE);
       } catch (err) {
         // A single bad buffer shouldn't end the whole session — log and
         // keep listening rather than surfacing an error per audio frame.
@@ -143,16 +178,33 @@ export function createVoskRecognizer(): VoskRecognizer {
     mediaStream = null;
   }
 
-  function stop() {
-    if (!running) return;
+  function stop(): Promise<void> {
+    if (!running) return Promise.resolve();
     running = false;
-    teardownAudio();
-    recognizer?.remove();
-    recognizer = null;
+    return new Promise(resolve => {
+      // Flush whatever's still buffered (e.g. the last word or two,
+      // spoken right before Stop was pressed, that hasn't reached a
+      // natural pause yet) rather than discarding it. vosk-browser's
+      // retrieveFinalResult() is fire-and-forget — the flushed text
+      // arrives asynchronously through the same "result" event the
+      // caller already listens to via onFinalText, so this just waits a
+      // beat for it before tearing the audio graph down.
+      try {
+        recognizer?.retrieveFinalResult();
+      } catch (err) {
+        console.error("Vosk retrieveFinalResult failed", err);
+      }
+      setTimeout(() => {
+        teardownAudio();
+        recognizer?.remove();
+        recognizer = null;
+        resolve();
+      }, 300);
+    });
   }
 
   function destroy() {
-    stop();
+    void stop();
   }
 
   return { start, stop, destroy };
