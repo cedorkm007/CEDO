@@ -21,6 +21,17 @@ export interface DownloadProgress {
 export async function downloadAllVideosForOffline(
   onProgress: (progress: DownloadProgress) => void
 ): Promise<DownloadProgress> {
+  // Browsers can silently evict Cache Storage under storage pressure —
+  // without this, a successful download today doesn't guarantee the
+  // data is still there whenever it's actually needed offline later.
+  // Best-effort: the browser can still say no, and older browsers don't
+  // have this API at all.
+  try {
+    await navigator.storage?.persist?.();
+  } catch {
+    // Not fatal either way — proceed with the download regardless.
+  }
+
   const words = await fetchSignWords();
   const paths = new Set<string>();
   for (const word of words) {

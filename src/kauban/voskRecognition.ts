@@ -108,13 +108,34 @@ async function getModelUrl(): Promise<string> {
   const response = await fetch(MODEL_URL);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   await cache.put(MODEL_URL, response.clone());
+  // Best-effort: reduces (doesn't guarantee) the chance the browser
+  // evicts this under storage pressure before it's needed again offline.
+  try {
+    await navigator.storage?.persist?.();
+  } catch { /* not fatal */ }
   const blob = await response.blob();
   return URL.createObjectURL(blob);
 }
 
+const MODEL_LOAD_TIMEOUT_MS = 30000;
+
 function getModel(): Promise<Model> {
   if (!modelPromise) {
-    modelPromise = getModelUrl().then(url => createModel(url));
+    // vosk-browser's own createModel() has no timeout of its own — worse,
+    // reading its source shows a real bug: it resolves on a successful
+    // "load" event, but if that event never fires at all (its internal
+    // Worker's own fetch of the model URL fails in a way that doesn't
+    // report back, or just never returns), the returned promise hangs
+    // forever with no error, ever. On screen that reads as "nothing
+    // happened" — exactly what got reported. This race turns a silent,
+    // permanent hang into a real, visible error after a wait that's
+    // generous for a large offline model load but not infinite.
+    modelPromise = Promise.race([
+      getModelUrl().then(url => createModel(url)),
+      new Promise<Model>((_, reject) =>
+        setTimeout(() => reject(new Error("Timed out loading the speech model.")), MODEL_LOAD_TIMEOUT_MS)
+      ),
+    ]);
   }
   return modelPromise;
 }

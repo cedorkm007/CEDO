@@ -78,7 +78,7 @@ export function SpeechToSignLanguagePage() {
     let cancelled = false;
     let objectUrl: string | null = null;
     (async () => {
-      const url = await getVideoPlaybackUrl(path);
+      const { url } = await getVideoPlaybackUrl(path);
       if (cancelled) return;
       if (url.startsWith("blob:")) objectUrl = url;
       setVideoSrc(url);
