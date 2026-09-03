@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { User, Calendar, IdCard, Lock, Eye, EyeOff, LogIn } from "lucide-react";
 import { scholarSignIn } from "../scholarApi";
+import { ScholarPasswordResetRequestModal } from "../components/ScholarPasswordResetRequestModal";
 import CEDOSeal from "@/imports/CEDO_Seal.png";
 
 interface ScholarLoginPageProps {
@@ -16,7 +17,7 @@ interface ScholarLoginPageProps {
  * this app's backend requires: identify by (First/Last/M.I. + Birthday) OR
  * Scholar ID Number, plus a password.
  */
-export function ScholarLoginPage({ onLoginSuccess, onResetPassword }: ScholarLoginPageProps) {
+export function ScholarLoginPage({ onLoginSuccess }: ScholarLoginPageProps) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [middleInitial, setMiddleInitial] = useState("");
@@ -27,6 +28,7 @@ export function ScholarLoginPage({ onLoginSuccess, onResetPassword }: ScholarLog
   const [rememberMe, setRememberMe] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [showResetModal, setShowResetModal] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -156,12 +158,14 @@ export function ScholarLoginPage({ onLoginSuccess, onResetPassword }: ScholarLog
 
           <p className="text-center text-[13px] text-slate-500 mt-4">
             Don't have an access yet?{" "}
-            <button type="button" onClick={onResetPassword} className="font-bold text-[#1B3372] underline underline-offset-2">
+            <button type="button" onClick={() => setShowResetModal(true)} className="font-bold text-[#1B3372] underline underline-offset-2">
               RESET PASSWORD
             </button>
           </p>
         </form>
       </motion.div>
+
+      {showResetModal && <ScholarPasswordResetRequestModal onClose={() => setShowResetModal(false)} />}
     </div>
   );
 }

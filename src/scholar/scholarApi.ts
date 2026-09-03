@@ -178,3 +178,38 @@ export async function changeOwnPassword(currentPassword: string, newPassword: st
   if (updateError) return { ok: false, error: updateError.message };
   return { ok: true };
 }
+
+export interface PasswordResetRequestInput {
+  scholarId: string; // optional — caller may pass ""
+  lastName: string;
+  firstName: string;
+  middleInitial: string;
+  school: string;
+  yearLevel: string;
+}
+
+/**
+ * Submits a manual password-reset request for a scholar who can't log in
+ * (the real forgot-password flow isn't functional yet) — recorded by the
+ * scholar-password-reset-request Edge Function as a row in a staff-managed
+ * Google Sheet for someone to verify and reset by hand. Deliberately
+ * callable while signed out (the function is deployed with
+ * --no-verify-jwt) — there's no session to invoke this with otherwise.
+ */
+export async function requestScholarPasswordReset(input: PasswordResetRequestInput): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.functions.invoke("scholar-password-reset-request", { body: input });
+  if (error) {
+    let message = error.message;
+    const context = (error as { context?: Response }).context;
+    if (context && typeof context.json === "function") {
+      try {
+        const parsed = await context.clone().json();
+        if (parsed?.error) message = parsed.error;
+      } catch { /* not JSON */ }
+    }
+    return { ok: false, error: message };
+  }
+  const payload = data as { error?: string } | null;
+  if (payload?.error) return { ok: false, error: payload.error };
+  return { ok: true };
+}
