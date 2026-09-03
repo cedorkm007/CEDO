@@ -635,6 +635,7 @@ export interface ScholarInformationRow {
   middleName: string;
   yearLevel: string;
   school: string;
+  status: ScholarshipStatus;
   barangay: string;
   course: string;
   birthday: string; // ISO date, or "" — the UI computes age from this rather than storing age separately
@@ -693,7 +694,7 @@ function isoDateYearsAgo(years: number): string {
 }
 
 const SCHOLAR_INFORMATION_SELECT =
-  "scholar_id_number, first_name, last_name, middle_name, year_level, school, barangay, course, birthday, civil_status, contact_no";
+  "scholar_id_number, first_name, last_name, middle_name, year_level, school, status, barangay, course, birthday, civil_status, contact_no";
 
 /**
  * Applies every ScholarInformationFilters field to a query builder — the
@@ -773,6 +774,7 @@ function mapScholarInformationRow(r: Record<string, unknown>): ScholarInformatio
   return {
     scholarIdNumber: String(r.scholar_id_number), firstName: String(r.first_name), lastName: String(r.last_name),
     middleName: String(r.middle_name ?? ""), yearLevel: String(r.year_level ?? ""), school: String(r.school ?? ""),
+    status: r.status as ScholarshipStatus,
     barangay: String(r.barangay ?? ""), course: String(r.course ?? ""), birthday: String(r.birthday ?? ""),
     civilStatus: String(r.civil_status ?? ""), contactNo: String(r.contact_no ?? ""),
   };
@@ -1073,9 +1075,9 @@ export async function bulkUpdateScholars(rows: BulkScholarUpdateInput[]): Promis
   return { updated, results };
 }
 
-/** Individual edit of a scholar's Scholarship Status from the dropdown in ScholarsTab.tsx. */
-export async function updateScholarStatus(id: string, scholarIdNumber: string, status: ScholarshipStatus): Promise<{ ok: boolean; error?: string }> {
-  const { data, error } = await supabase.from("scholars").update({ status, updated_at: new Date().toISOString() }).eq("id", id).select("first_name, last_name");
+/** Individual edit of a scholar's Scholarship Status from the dropdown in the Scholars Information subtab (ScholarsTab.tsx). */
+export async function updateScholarStatus(scholarIdNumber: string, status: ScholarshipStatus): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.from("scholars").update({ status, updated_at: new Date().toISOString() }).eq("scholar_id_number", scholarIdNumber).select("id, first_name, last_name");
   if (error) return { ok: false, error: error.message };
   if (!data || data.length === 0) return { ok: false, error: "Scholar not found." };
 
@@ -1084,7 +1086,7 @@ export async function updateScholarStatus(id: string, scholarIdNumber: string, s
     const staffName = await currentStaffDisplayName();
     const { error: logError } = await supabase.from("sead_scholar_account_log").insert({
       action: "updated",
-      scholar_id: id,
+      scholar_id: data[0].id,
       scholar_id_number: scholarIdNumber,
       scholar_name: `${data[0].first_name} ${data[0].last_name}`,
       performed_by: auth.user.id,
