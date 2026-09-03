@@ -891,6 +891,21 @@ export interface ScholarshipStatusCounts {
   reconsidered: number;
 }
 
+export interface BarangayCount {
+  barangay: string;
+  count: number;
+}
+
+export async function fetchScholarsByBarangay(): Promise<{ ok: boolean; error?: string; counts?: BarangayCount[] }> {
+  const { data, error } = await supabase.rpc("scholars_by_barangay");
+  if (error) return { ok: false, error: error.message };
+  const rows = (data ?? []) as { barangay: string | null; scholar_count: number }[];
+  return {
+    ok: true,
+    counts: rows.filter(r => r.barangay).map(r => ({ barangay: r.barangay as string, count: Number(r.scholar_count) })),
+  };
+}
+
 export async function fetchScholarshipStatusCounts(): Promise<{ ok: boolean; error?: string; counts?: ScholarshipStatusCounts }> {
   const { data, error } = await supabase.rpc("scholarship_status_counts");
   if (error) return { ok: false, error: error.message };
