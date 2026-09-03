@@ -411,26 +411,50 @@ export async function fetchSubmissionRosterStatus(activityId: string): Promise<{
   // not-submitted/etc. totals for both filtered and unfiltered views
   // (both derive from this same array). Pages through with .range()
   // instead, mirroring fetchSubjectRankings()'s established pattern in
-  // seadApi.ts exactly. Requires the v3 migration
+  // seadApi.ts. Requires the v3 migration
   // (supabase_migration_submission_roster_status_rpc_v3.sql), which adds
   // a scholar-id tiebreaker to the RPC's ORDER BY — without a fully
   // deterministic row order, paging with .range() could skip or
   // duplicate a row right at a page boundary.
+  //
+  // Pages are fetched in parallel batches, not one .range() call at a
+  // time: each call re-executes the RPC's entire query — PostgREST only
+  // slices the result at the wire level, not inside the query itself —
+  // so awaiting one page before requesting the next meant a roster this
+  // org's size (~7,000+ scholars ÷ 500/page) paid for ~15 full sequential
+  // round trips back-to-back (measured: this RPC alone runs ~500ms
+  // server-side, so ~15 of them one after another is most of what made
+  // this screen feel like "loading for a significant amount of time").
+  // Firing a batch of pages at once collapses that to roughly one round
+  // trip's wall-clock time, at the cost of some real database work if the
+  // roster turns out smaller than the batch guessed — an acceptable
+  // trade for an occasional staff monitoring screen, not a
+  // high-frequency endpoint.
   const rows: SubmissionRosterRow[] = [];
   const pageSize = 500;
-  for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabase.rpc("get_submission_roster_status", { p_activity_id: activityId }).range(from, from + pageSize - 1);
-    if (error) return { ok: false, error: error.message };
-    if (!data || data.length === 0) break;
-    rows.push(...(data as Record<string, unknown>[]).map(r => ({
-      scholarId: r.scholar_id as string,
-      firstName: r.first_name as string,
-      lastName: r.last_name as string,
-      yearLevel: r.year_level as string,
-      school: (r.school as string) ?? "",
-      status: r.status as SubmissionRosterStatus,
-    })));
-    if (data.length < pageSize) break;
+  const batchSize = 20; // generous headroom over this org's confirmed ~7,000-scholar scale
+  let pageIndex = 0;
+  outer: while (true) {
+    const results = await Promise.all(
+      Array.from({ length: batchSize }, (_, i) => {
+        const from = (pageIndex + i) * pageSize;
+        return supabase.rpc("get_submission_roster_status", { p_activity_id: activityId }).range(from, from + pageSize - 1);
+      }),
+    );
+    for (const { data, error } of results) {
+      if (error) return { ok: false, error: error.message };
+      if (!data || data.length === 0) break outer;
+      rows.push(...(data as Record<string, unknown>[]).map(r => ({
+        scholarId: r.scholar_id as string,
+        firstName: r.first_name as string,
+        lastName: r.last_name as string,
+        yearLevel: r.year_level as string,
+        school: (r.school as string) ?? "",
+        status: r.status as SubmissionRosterStatus,
+      })));
+      if (data.length < pageSize) break outer;
+    }
+    pageIndex += batchSize;
   }
   return { ok: true, rows };
 }
