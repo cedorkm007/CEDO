@@ -104,14 +104,32 @@ export function SpeechToSignLanguagePage() {
     queue.forEach(clip => {
       const path = clip.word.clipVideoPath;
       if (!path || urlCacheRef.current.has(path)) return;
-      getVideoPlaybackUrl(path).then(({ url }) => {
+      (async () => {
+        const { url } = await getVideoPlaybackUrl(path);
+        let playableUrl = url;
+        if (!url.startsWith("blob:")) {
+          // Not offline-cached — getVideoPlaybackUrl hands back the plain
+          // network URL instantly without actually fetching anything, so
+          // without this the clip's real download would only start once
+          // this element's src is set at its turn to play, reintroducing
+          // exactly the gap this preload step exists to remove. Fetching
+          // the whole (small, few-hundred-KB) clip into a blob now, while
+          // an earlier clip is still playing, is what makes it instant.
+          try {
+            const resp = await fetch(url);
+            playableUrl = URL.createObjectURL(await resp.blob());
+          } catch {
+            // Network hiccup — fall back to the plain URL; the browser
+            // can still buffer it live, just not as smoothly.
+          }
+        }
         if (cancelled) return;
-        urlCacheRef.current.set(path, url);
+        urlCacheRef.current.set(path, playableUrl);
         // Covers the rare case where this clip's turn to play arrived
         // before its own preload finished — the advance effect below
         // would have found no URL yet and done nothing, so retry now.
         if (current?.word.clipVideoPath === path) playClip(current.word);
-      });
+      })();
     });
     return () => { cancelled = true; };
     // current/playClip intentionally excluded: this effect's job is
