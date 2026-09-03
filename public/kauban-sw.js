@@ -3,7 +3,13 @@
 // PROGRESS.md milestone 16). Not used by the staff app or the public CEDO
 // site, which share this Vite build but are not offline-capable.
 //
-// Bump CACHE_VERSION to invalidate old caches on the next deploy.
+// Stamped with the current deploy's short commit hash by
+// stampServiceWorkerCacheVersion() in vite.config.ts at build time —
+// this literal only matters in dev, where that step doesn't run. A fixed
+// version here (unchanged across many deploys) meant activate's own
+// cleanup below never actually fired, since it only deletes cache
+// *names* other than the current one: every deploy's content-hashed
+// JS/CSS just piled up in the same never-cleared cache indefinitely.
 const CACHE_VERSION = "kauban-v3";
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const VIDEO_CACHE = `${CACHE_VERSION}-video`;
@@ -20,7 +26,17 @@ self.addEventListener("activate", (event) => {
       const keys = await caches.keys();
       await Promise.all(
         keys
-          .filter((key) => key.startsWith("kauban-") && key !== SHELL_CACHE && key !== VIDEO_CACHE)
+          // Only this SW's own versioned shell/video caches from a prior
+          // deploy — NOT "kauban-videos-v1" (offlineCaches.ts's explicit
+          // Download-for-Offline cache) or "kauban-vosk-model-v2"
+          // (voskRecognition.ts's speech model), which are managed by
+          // page code entirely outside this service worker. A plain
+          // startsWith("kauban-") here would delete those too on every
+          // future deploy now that this file's own bytes change per
+          // commit (see CACHE_VERSION above) and reliably trigger this
+          // handler — wiping out someone's offline downloads the next
+          // time they open the app after any unrelated deploy.
+          .filter((key) => /^kauban-.+-(shell|video)$/.test(key) && key !== SHELL_CACHE && key !== VIDEO_CACHE)
           .map((key) => caches.delete(key))
       );
       await self.clients.claim();
