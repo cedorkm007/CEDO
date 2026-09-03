@@ -54,5 +54,21 @@ export function matchSignWords(transcript: string, pool: SignWord[]): MatchedCli
     }
     index++;
   }
-  return matches;
+
+  // Speech recognition can still emit the same word or phrase back-to-back
+  // as a duplicate (a browser/engine restart artifact — see
+  // browserSpeechRecognition.ts's onresult dedup for one source of it, but
+  // not the only possible one) even when the on-screen caption looks
+  // right, since a transcript-level near-duplicate the caption's own dedup
+  // doesn't happen to catch still reaches here. Playing the identical sign
+  // clip twice in a row with nothing else between is never a meaningful
+  // communication choice in this context, so collapsing an immediate
+  // repeat of the same matched word is a safe backstop regardless of
+  // exactly how the duplicate got into the transcript.
+  const deduped: MatchedClip[] = [];
+  for (const m of matches) {
+    const prev = deduped[deduped.length - 1];
+    if (!prev || prev.word.id !== m.word.id) deduped.push(m);
+  }
+  return deduped;
 }

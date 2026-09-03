@@ -70,7 +70,10 @@ export function createBrowserSpeechRecognizer(): VoskRecognizer {
         const text = result[0].transcript;
         if (result.isFinal) {
           const trimmed = text.trim();
-          if (trimmed && trimmed !== lastFinalText) {
+          // Case-insensitive: a restart-race repeat has come back with
+          // different capitalization between the two firings, which an
+          // exact-match comparison let straight through.
+          if (trimmed && trimmed.toLowerCase() !== lastFinalText.toLowerCase()) {
             lastFinalText = trimmed;
             callbacks.onFinalText(trimmed);
           }
