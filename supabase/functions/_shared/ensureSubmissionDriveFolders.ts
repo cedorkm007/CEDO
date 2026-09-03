@@ -60,12 +60,22 @@ export async function ensureSubmissionDriveFolders(
   school: string,
   getAccessToken: () => Promise<string>,
 ): Promise<DriveFolders> {
+  // .limit(1) matters here the same way it does below for the sibling
+  // lookups: if this (activity_id, year_level, school) key ever ends up
+  // with more than one cache row (e.g. the unique constraint in
+  // supabase_migration_submission_drive_folders_school.sql was never
+  // actually applied against the live DB, or two concurrent first-uploads
+  // both inserted before either could see the other's row), a plain
+  // .maybeSingle() throws "JSON object requested, multiple (or no) rows
+  // returned" and fails every upload for that key from then on —
+  // regardless of the uploading scholar's own unlock/permission state.
   const { data: cached, error: cacheReadError } = await admin
     .from("submission_drive_folders")
     .select("activity_folder_id, year_level_folder_id, school_folder_id")
     .eq("activity_id", activityId)
     .eq("year_level", yearLevel)
     .eq("school", school)
+    .limit(1)
     .maybeSingle();
   if (cacheReadError) {
     throwJsonError(cacheReadError.message, 500);
@@ -143,13 +153,17 @@ export async function ensureSubmissionDriveFolders(
     // year_level, school) already inserted first (unique constraint) —
     // read back what won that race instead of failing a request whose
     // Drive folders were, in fact, created/found successfully.
-    const { data: raceRow } = await admin
+    const { data: raceRow, error: raceRowError } = await admin
       .from("submission_drive_folders")
       .select("activity_folder_id, year_level_folder_id, school_folder_id")
       .eq("activity_id", activityId)
       .eq("year_level", yearLevel)
       .eq("school", school)
+      .limit(1)
       .maybeSingle();
+    if (raceRowError) {
+      throwJsonError(raceRowError.message, 500);
+    }
     if (raceRow && raceRow.school_folder_id) {
       return {
         activityFolderId: raceRow.activity_folder_id,
