@@ -304,6 +304,7 @@ function describeAppliedFilters(filters: ScholarInformationFilters): string {
   if (filters.course) parts.push(`Course contains "${filters.course}"`);
   if (filters.school) parts.push(`School contains "${filters.school}"`);
   if (filters.yearLevel) parts.push(`Year Level = ${filters.yearLevel}`);
+  if (filters.status) parts.push(`Scholarship Status = ${filters.status}`);
   if (filters.ageMin !== undefined && filters.ageMax !== undefined) parts.push(`Age ${filters.ageMin}–${filters.ageMax}`);
   else if (filters.ageMin !== undefined) parts.push(`Age ≥ ${filters.ageMin}`);
   else if (filters.ageMax !== undefined) parts.push(`Age ≤ ${filters.ageMax}`);
@@ -367,6 +368,7 @@ function ScholarsInformationSubtab() {
   const [courseFilter, setCourseFilter] = useState("");
   const [schoolFilter, setSchoolFilter] = useState("");
   const [yearLevelFilter, setYearLevelFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ScholarshipStatus | "">("");
   const [ageMinFilter, setAgeMinFilter] = useState("");
   const [ageMaxFilter, setAgeMaxFilter] = useState("");
   // Milestone 3 — a Set (not an array) so toggling one checkbox doesn't
@@ -423,6 +425,7 @@ function ScholarsInformationSubtab() {
       if (courseFilter.trim()) next.course = courseFilter.trim();
       if (schoolFilter.trim()) next.school = schoolFilter.trim();
       if (yearLevelFilter) next.yearLevel = yearLevelFilter;
+      if (statusFilter) next.status = statusFilter;
       if (ageMin !== undefined && !Number.isNaN(ageMin)) next.ageMin = ageMin;
       if (ageMax !== undefined && !Number.isNaN(ageMax)) next.ageMax = ageMax;
       if (emptyFieldsFilter.size > 0) next.emptyFields = [...emptyFieldsFilter];
@@ -433,7 +436,7 @@ function ScholarsInformationSubtab() {
     }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nameFilter, barangayFilter, courseFilter, schoolFilter, yearLevelFilter, ageMinFilter, ageMaxFilter, emptyFieldsFilter]);
+  }, [nameFilter, barangayFilter, courseFilter, schoolFilter, yearLevelFilter, statusFilter, ageMinFilter, ageMaxFilter, emptyFieldsFilter]);
 
   function toggleEmptyField(key: ScholarInformationEmptyableField) {
     setEmptyFieldsFilter(prev => {
@@ -445,7 +448,7 @@ function ScholarsInformationSubtab() {
 
   function clearFilters() {
     setNameFilter(""); setBarangayFilter(""); setCourseFilter(""); setSchoolFilter("");
-    setYearLevelFilter(""); setAgeMinFilter(""); setAgeMaxFilter(""); setEmptyFieldsFilter(new Set());
+    setYearLevelFilter(""); setStatusFilter(""); setAgeMinFilter(""); setAgeMaxFilter(""); setEmptyFieldsFilter(new Set());
     // The debounce effect above will pick this up and reload with empty
     // filters — no need to duplicate that call here.
   }
@@ -738,6 +741,14 @@ function ScholarsInformationSubtab() {
               className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc] bg-white">
               <option value="">Any</option>
               {FORMATION_YEAR_LEVELS.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Scholarship Status</label>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as ScholarshipStatus | "")}
+              className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc] bg-white">
+              <option value="">Any</option>
+              {SCHOLARSHIP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>

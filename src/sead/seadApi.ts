@@ -651,6 +651,7 @@ export interface ScholarInformationFilters {
   course?: string; // partial match — course is free text everywhere else in this codebase (no fixed enum exists), so this stays consistent with that
   school?: string; // partial match
   yearLevel?: string; // exact match — sourced from FORMATION_YEAR_LEVELS (src/scholar/formationActivitiesApi.ts), the same canonical list scholars.year_level values already come from elsewhere in this app
+  status?: ScholarshipStatus; // exact match — sourced from SCHOLARSHIP_STATUSES (./types.ts)
   ageMin?: number;
   ageMax?: number;
   /**
@@ -736,6 +737,7 @@ function applyScholarInformationFilters(query: any, filters: ScholarInformationF
   if (filters.course?.trim()) query = query.ilike("course", `%${filters.course.trim()}%`);
   if (filters.school?.trim()) query = query.ilike("school", `%${filters.school.trim()}%`);
   if (filters.yearLevel) query = query.eq("year_level", filters.yearLevel);
+  if (filters.status) query = query.eq("status", filters.status);
   // Age is a value COMPUTED from birthday (see computeAge() in
   // ScholarsTab.tsx), not a stored column, so a WHERE clause can't filter
   // on it directly — translate the requested age range into a birthday
