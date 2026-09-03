@@ -6,15 +6,22 @@ import { matchSignWords, type MatchedClip } from "../signWordMatching";
 import { createAdaptiveSpeechRecognizer, isSpeechRecognitionAvailable, type AdaptiveSpeechRecognizer, type SpeechEngine } from "../adaptiveSpeechRecognizer";
 import { KaubanPageHeader } from "../components/KaubanPageHeader";
 
+const PLAYBACK_RATE = 1.25;
+
 /**
  * Say a word or phrase, watch it play back as a sign-language clip.
  * Matching is matchSignWords() — a direct port of the original app's own
- * algorithm. Playback is simplified from the original: that version used
- * a dual-video-element crossfade between clips for a seamless transition;
- * this uses one <video> that swaps `src` on `onEnded`, a visible (if
- * less polished) cut between clips instead of a crossfade. Clips play
- * muted, same as the original app's own rule (avoids autoplay-with-sound
- * being blocked, and the source clips are meant to be muted anyway).
+ * algorithm.
+ *
+ * Playback: every clip in the queue is preloaded (resolved to a playable
+ * URL) as soon as it's matched, well ahead of when it's actually needed —
+ * see the preload effect below. Advancing to the next clip on `onEnded`
+ * is then just a `.src` swap on one persistent <video> element (no
+ * remount, no fetch at transition time), which is what makes a multi-word
+ * sentence play back like one continuous clip instead of a slideshow with
+ * a loading gap between each word. Clips play muted, same as the original
+ * app's own rule (avoids autoplay-with-sound being blocked, and the
+ * source clips are meant to be muted anyway) and slightly sped up.
  *
  * Speech recognition prefers the browser's own (cloud-backed) engine when
  * online — more accurate than the on-device fallback — and drops to Vosk
@@ -41,8 +48,14 @@ export function SpeechToSignLanguagePage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState("");
 
-  const [videoSrc, setVideoSrc] = useState<string | null>(null);
-
+  const videoRef = useRef<HTMLVideoElement>(null);
+  // Resolved playback URLs for every clip currently in the queue, keyed
+  // by clipVideoPath (not word id — the same clip can legitimately appear
+  // more than once in a longer sentence, and should reuse one URL rather
+  // than fetching it again each time). A ref, not state: populating it
+  // shouldn't itself trigger a re-render, only actually playing a clip
+  // should.
+  const urlCacheRef = useRef<Map<string, string>>(new Map());
   const recognizerRef = useRef<AdaptiveSpeechRecognizer | null>(null);
   // Mirrors capturedText for handleStop to read synchronously — by the
   // time stop()'s flush promise resolves, a plain state closure captured
@@ -58,36 +71,61 @@ export function SpeechToSignLanguagePage() {
     })();
   }, []);
 
-  useEffect(() => () => { recognizerRef.current?.destroy(); }, []);
+  useEffect(() => {
+    return () => {
+      recognizerRef.current?.destroy();
+      urlCacheRef.current.forEach(url => { if (url.startsWith("blob:")) URL.revokeObjectURL(url); });
+    };
+  }, []);
 
   // A matched word with no clip uploaded yet (milestone 5 pending) has
-  // nothing to play — skip it immediately instead of rendering a <video>
-  // with an empty src.
+  // nothing to play — skip it immediately instead of stalling the
+  // sequence on it.
   useEffect(() => {
     if (current && !current.word.clipVideoPath) setCurrentIndex(i => i + 1);
   }, [current]);
 
+  function playClip(word: SignWord) {
+    const video = videoRef.current;
+    const url = word.clipVideoPath ? urlCacheRef.current.get(word.clipVideoPath) : undefined;
+    if (!video || !url) return;
+    video.src = url;
+    video.playbackRate = PLAYBACK_RATE;
+    video.play().catch(() => { /* onError below covers a real playback failure */ });
+  }
+
   // Resolves through the offline video cache first (see videoPlayback.ts)
-  // rather than pointing <video src> straight at the network URL — that's
-  // what actually makes an offline-downloaded clip play back offline.
+  // — what makes an offline-downloaded clip play back offline — for every
+  // clip in the queue at once, in parallel, rather than one at a time
+  // right as each clip's turn comes up. queue only ever grows within a
+  // session, so already-cached paths are skipped on re-runs.
   useEffect(() => {
-    setVideoSrc(null);
-    const path = current?.word.clipVideoPath;
-    if (!path) return;
-
     let cancelled = false;
-    let objectUrl: string | null = null;
-    (async () => {
-      const { url } = await getVideoPlaybackUrl(path);
-      if (cancelled) return;
-      if (url.startsWith("blob:")) objectUrl = url;
-      setVideoSrc(url);
-    })();
+    queue.forEach(clip => {
+      const path = clip.word.clipVideoPath;
+      if (!path || urlCacheRef.current.has(path)) return;
+      getVideoPlaybackUrl(path).then(({ url }) => {
+        if (cancelled) return;
+        urlCacheRef.current.set(path, url);
+        // Covers the rare case where this clip's turn to play arrived
+        // before its own preload finished — the advance effect below
+        // would have found no URL yet and done nothing, so retry now.
+        if (current?.word.clipVideoPath === path) playClip(current.word);
+      });
+    });
+    return () => { cancelled = true; };
+    // current/playClip intentionally excluded: this effect's job is
+    // fetching for the queue's contents, not reacting to whose turn it is.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue]);
 
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
+  // Advances playback to whichever clip is now current. A plain `.src`
+  // swap + play() on the one persistent <video> element — no remount, no
+  // fetch — since the preload effect above already resolved the URL well
+  // before this point for anything but a very-early clip.
+  useEffect(() => {
+    if (current?.word.clipVideoPath) playClip(current.word);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current]);
 
   function handleStart() {
@@ -96,6 +134,11 @@ export function SpeechToSignLanguagePage() {
     setInterimText("");
     setCapturedText("");
     capturedTextRef.current = "";
+    // Previous sequence's blob URLs aren't needed anymore — release them
+    // before starting a fresh one.
+    urlCacheRef.current.forEach(url => { if (url.startsWith("blob:")) URL.revokeObjectURL(url); });
+    urlCacheRef.current.clear();
+    if (videoRef.current) videoRef.current.removeAttribute("src");
     setQueue([]);
     setCurrentIndex(0);
     setEngine(null);
@@ -173,18 +216,19 @@ export function SpeechToSignLanguagePage() {
                 grow long, and scrolling to see it was pushing the actively-
                 playing video off-screen. */}
             <div className="sticky top-20 z-20 mb-5 overflow-hidden rounded-2xl bg-black shadow-lg">
-              {current && current.word.clipVideoPath && videoSrc ? (
-                <video
-                  key={current.word.id}
-                  src={videoSrc}
-                  className="mx-auto max-h-[360px] w-full"
-                  autoPlay
-                  muted
-                  playsInline
-                  onEnded={handleVideoEnded}
-                  onError={handleVideoError}
-                />
-              ) : (
+              {/* Always mounted (never conditionally rendered) so playClip()
+                  is swapping `src` on the same element across the whole
+                  session, not remounting a fresh <video> per clip — hidden
+                  via CSS rather than removed when there's nothing to show. */}
+              <video
+                ref={videoRef}
+                className={`mx-auto max-h-[360px] w-full ${current ? "" : "hidden"}`}
+                muted
+                playsInline
+                onEnded={handleVideoEnded}
+                onError={handleVideoError}
+              />
+              {!current && (
                 <div className="flex h-[220px] items-center justify-center text-sm text-[#A0AEC0]">
                   {listening ? "Listening — press stop when you're done to see it signed." : "Press the microphone to start."}
                 </div>
