@@ -34,6 +34,9 @@ export interface QuestQuestion {
   choices: QuestChoiceDraft[];
 }
 
+export const SCHOLARSHIP_STATUSES = ["Regular", "Probationary", "On leave", "Reconsidered"] as const;
+export type ScholarshipStatus = (typeof SCHOLARSHIP_STATUSES)[number];
+
 export interface ScholarListItem {
   id: string;
   scholarIdNumber: string;
@@ -41,7 +44,7 @@ export interface ScholarListItem {
   lastName: string;
   middleName: string;
   school: string;
-  status: string;
+  status: ScholarshipStatus;
 }
 
 export interface ScoreRow {

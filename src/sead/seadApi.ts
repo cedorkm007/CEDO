@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { isValidHttpsUrl } from "@/lib/urlValidation";
-import type { QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, ScholarListItem, ScholarAccountLogEntry, ScoreRow } from "./types";
+import type { QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, ScholarListItem, ScholarAccountLogEntry, ScoreRow, ScholarshipStatus } from "./types";
 
 /**
  * Calls a Supabase Edge Function and returns its parsed JSON body.
@@ -967,7 +967,7 @@ export interface BulkScholarUpdateInput {
   firstName?: string; lastName?: string; middleName?: string; birthday?: string;
   school?: string; course?: string; yearLevel?: string; civilStatus?: string; contactNo?: string;
   houseUnitNo?: string; street?: string; barangay?: string; cityMunicipality?: string;
-  provinceRegion?: string; country?: string; zipCode?: string;
+  provinceRegion?: string; country?: string; zipCode?: string; scholarshipStatus?: ScholarshipStatus;
 }
 
 export interface BulkScholarUpdateRowResult {
@@ -982,7 +982,7 @@ const BULK_UPDATE_FIELD_MAP: Record<keyof Omit<BulkScholarUpdateInput, "scholarI
   firstName: "first_name", lastName: "last_name", middleName: "middle_name", birthday: "birthday",
   school: "school", course: "course", yearLevel: "year_level", civilStatus: "civil_status", contactNo: "contact_no",
   houseUnitNo: "house_unit_no", street: "street", barangay: "barangay", cityMunicipality: "city_municipality",
-  provinceRegion: "province_region", country: "country", zipCode: "zip_code",
+  provinceRegion: "province_region", country: "country", zipCode: "zip_code", scholarshipStatus: "status",
 };
 
 /**
@@ -1071,6 +1071,31 @@ export async function bulkUpdateScholars(rows: BulkScholarUpdateInput[]): Promis
   }
 
   return { updated, results };
+}
+
+/** Individual edit of a scholar's Scholarship Status from the dropdown in ScholarsTab.tsx. */
+export async function updateScholarStatus(id: string, scholarIdNumber: string, status: ScholarshipStatus): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.from("scholars").update({ status, updated_at: new Date().toISOString() }).eq("id", id).select("first_name, last_name");
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) return { ok: false, error: "Scholar not found." };
+
+  const { data: auth } = await supabase.auth.getUser();
+  if (auth.user) {
+    const staffName = await currentStaffDisplayName();
+    const { error: logError } = await supabase.from("sead_scholar_account_log").insert({
+      action: "updated",
+      scholar_id: id,
+      scholar_id_number: scholarIdNumber,
+      scholar_name: `${data[0].first_name} ${data[0].last_name}`,
+      performed_by: auth.user.id,
+      performed_by_name: staffName,
+      batch_id: null,
+      source: "single",
+      description: `Updated 1 field (Scholarship Status).`,
+    });
+    if (logError) console.error("Failed to write scholar account log entry:", logError.message);
+  }
+  return { ok: true };
 }
 
 export async function resetScholarPassword(scholarIdNumber: string): Promise<{ ok: boolean; error?: string; name?: string }> {

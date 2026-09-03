@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw, Download } from "lucide-react";
-import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, fetchAllScholarsInformationForExport, type ScholarInformationRow, type ScholarInformationFilters, type ScholarInformationEmptyableField } from "../seadApi";
+import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, updateScholarStatus, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, fetchAllScholarsInformationForExport, type ScholarInformationRow, type ScholarInformationFilters, type ScholarInformationEmptyableField } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
 import { BulkScholarUploadModal } from "../components/BulkScholarUploadModal";
 import { BulkScholarUpdateModal } from "../components/BulkScholarUpdateModal";
@@ -9,7 +9,7 @@ import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { toCsv, downloadCsv } from "../csvUtils";
 import { jsPDF } from "jspdf";
 import { generateScholarsInformationReport } from "@/lib/docGenerator";
-import type { ScholarListItem } from "../types";
+import { SCHOLARSHIP_STATUSES, type ScholarListItem, type ScholarshipStatus } from "../types";
 
 type ScholarsSubtab = "account" | "information";
 
@@ -47,6 +47,7 @@ function ScholarsAccountSubtab() {
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
   const [showResetAll, setShowResetAll] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / SCHOLARS_PAGE_SIZE));
 
@@ -93,6 +94,19 @@ function ScholarsAccountSubtab() {
     setToast(result.ok ? `Removed ${result.name}'s account.` : (result.error || "Failed to remove account."));
     setTimeout(() => setToast(null), 4000);
     if (result.ok) load(page);
+  }
+
+  async function handleStatusChange(s: ScholarListItem, newStatus: ScholarshipStatus) {
+    if (newStatus === s.status) return;
+    setStatusBusyId(s.id);
+    const result = await updateScholarStatus(s.id, s.scholarIdNumber, newStatus);
+    setStatusBusyId(null);
+    if (result.ok) {
+      setScholars(prev => prev.map(item => item.id === s.id ? { ...item, status: newStatus } : item));
+    } else {
+      setToast(result.error || "Failed to update Scholarship Status.");
+      setTimeout(() => setToast(null), 4000);
+    }
   }
 
   function handleAllPasswordsReset(message: string) {
@@ -148,7 +162,7 @@ function ScholarsAccountSubtab() {
               <th className="px-4 py-3">Scholar ID</th>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">School</th>
-              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Scholarship Status</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -164,9 +178,14 @@ function ScholarsAccountSubtab() {
                   <td className="px-4 py-3">{s.lastName}, {s.firstName} {s.middleName}</td>
                   <td className="px-4 py-3 text-slate-500">{s.school || "—"}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full ${
-                      s.status === "probation" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-700"
-                    }`}>{s.status}</span>
+                    <select
+                      value={s.status}
+                      disabled={statusBusyId === s.id}
+                      onChange={e => handleStatusChange(s, e.target.value as ScholarshipStatus)}
+                      className={`text-[11px] font-bold uppercase tracking-wide pl-2.5 pr-1.5 py-1 rounded-full border-0 outline-none cursor-pointer disabled:opacity-50 disabled:cursor-wait ${STATUS_BADGE_CLASSES[s.status]}`}
+                    >
+                      {SCHOLARSHIP_STATUSES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
                   </td>
                   <td className="px-4 py-3 text-right">
                     {confirmDeleteId === s.id ? (
@@ -218,6 +237,13 @@ function ScholarsAccountSubtab() {
     </div>
   );
 }
+
+const STATUS_BADGE_CLASSES: Record<ScholarshipStatus, string> = {
+  "Regular": "bg-green-100 text-green-700",
+  "Probationary": "bg-red-100 text-red-600",
+  "On leave": "bg-amber-100 text-amber-700",
+  "Reconsidered": "bg-blue-100 text-blue-700",
+};
 
 const INFO_COLUMNS: { key: keyof ScholarInformationRow; label: string }[] = [
   { key: "yearLevel", label: "Year Level" },

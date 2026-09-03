@@ -3,15 +3,16 @@ import { X, Download, Upload, AlertTriangle, CheckCircle2, UploadCloud } from "l
 import { bulkUpdateScholars, type BulkScholarUpdateInput, type BulkScholarUpdateRowResult } from "../seadApi";
 import { parseCsv, toCsv, downloadCsv, normalizeHeader, findColumn, cell } from "../csvUtils";
 import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
+import { SCHOLARSHIP_STATUSES } from "../types";
 
 const TEMPLATE_HEADERS = [
   "Scholar ID Number", "First Name", "Last Name", "Middle Name", "Birthday (YYYY-MM-DD)",
-  "School", "Course", "Year Level", "Civil Status", "Contact No.",
+  "School", "Course", "Year Level", "Civil Status", "Contact No.", "Scholarship Status",
   "House/Unit No.", "Street", "Barangay", "City/Municipality", "Province/Region", "Country", "Zip Code",
 ];
 
 const TEMPLATE_SAMPLE_ROWS = [
-  ["20250001", "", "", "", "", "", "", "2nd Year", "", "09171234567", "Blk 3 Lot 12", "Rizal St.", "Poblacion", "Butuan City", "Agusan del Norte", "Philippines", "8600"],
+  ["20250001", "", "", "", "", "", "", "2nd Year", "", "09171234567", "Regular", "Blk 3 Lot 12", "Rizal St.", "Poblacion", "Butuan City", "Agusan del Norte", "Philippines", "8600"],
 ];
 
 interface ParsedRow {
@@ -39,7 +40,7 @@ function normalizeBirthday(raw: string): string | null {
   return null;
 }
 
-const FIELD_DEFS: { key: keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">; label: string; aliases: string[]; isBirthday?: boolean; isBarangay?: boolean }[] = [
+const FIELD_DEFS: { key: keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">; label: string; aliases: string[]; isBirthday?: boolean; isBarangay?: boolean; isScholarshipStatus?: boolean }[] = [
   { key: "firstName", label: "First Name", aliases: ["first name", "firstname"] },
   { key: "lastName", label: "Last Name", aliases: ["last name", "lastname"] },
   { key: "middleName", label: "Middle Name", aliases: ["middle name", "middlename"] },
@@ -49,6 +50,7 @@ const FIELD_DEFS: { key: keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">; 
   { key: "yearLevel", label: "Year Level", aliases: ["year level", "yearlevel", "year"] },
   { key: "civilStatus", label: "Civil Status", aliases: ["civil status", "civilstatus"] },
   { key: "contactNo", label: "Contact No.", aliases: ["contact no.", "contact no", "contact number", "contact"] },
+  { key: "scholarshipStatus", label: "Scholarship Status", aliases: ["scholarship status", "scholarshipstatus", "status"], isScholarshipStatus: true },
   { key: "houseUnitNo", label: "House/Unit No.", aliases: ["house/unit no.", "house/unit no", "house unit no", "house no"] },
   { key: "street", label: "Street", aliases: ["street"] },
   { key: "barangay", label: "Barangay", aliases: ["barangay"], isBarangay: true },
@@ -90,6 +92,10 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
         const match = ALL_BARANGAYS.find(b => b.toLowerCase() === raw.toLowerCase());
         if (!match) return { rowNumber, ok: false, error: `"${raw}" isn't a recognized Barangay — check spelling against the official list, or leave blank.`, preview: scholarIdNumber, changedFieldLabels: [] };
         update.barangay = match;
+      } else if (f.isScholarshipStatus) {
+        const match = SCHOLARSHIP_STATUSES.find(s => s.toLowerCase() === raw.toLowerCase());
+        if (!match) return { rowNumber, ok: false, error: `"${raw}" isn't a valid Scholarship Status — use one of: ${SCHOLARSHIP_STATUSES.join(", ")}.`, preview: scholarIdNumber, changedFieldLabels: [] };
+        update.scholarshipStatus = match;
       } else {
         (update[f.key] as string) = raw;
       }
