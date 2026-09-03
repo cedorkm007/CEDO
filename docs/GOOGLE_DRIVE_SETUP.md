@@ -80,10 +80,47 @@ secrets from the project if they are still present.
 
 ## 4. Publish the OAuth consent screen
 
-Return to **APIs & Services → OAuth consent screen** and publish the app to
-**Production**. This is important: an External app left in Testing can issue
-refresh tokens that expire after seven days. With only the `drive.file` scope,
-publishing does not require restricted-scope verification.
+This is important: an External app left in Testing can issue refresh tokens
+that expire after seven days — the exact failure mode this whole doc exists
+to prevent (`invalid_grant: Token has been expired or revoked`). With only
+the `drive.file` scope, publishing does not require Google's *restricted-scope
+verification* review, but Google now requires a few Branding fields to be
+filled in before the Publish button will even activate — this part isn't
+obviously flagged in the Cloud Console UI, so it's easy to get stuck here.
+
+As of late 2026, the consent screen configuration lives under
+**APIs & Services → Google Auth Platform** (not "OAuth consent screen"
+directly — that old menu item is gone). It's split into sub-tabs:
+**Branding**, **Audience**, **Data Access**, **Verification Center**.
+
+1. Go to the **Branding** tab and fill in:
+   - **App name** — anything descriptive (e.g. "CEDO Submission Uploads").
+   - **User support email** — an address someone actually monitors.
+   - **Application home page** — a real, reachable URL. `https://cedo-ten.vercel.app`
+     works fine; there's no requirement it be a page specifically about this
+     OAuth integration.
+   - **Privacy Policy URL** — also required, even for an internal-only
+     unverified app. Reusing the same homepage URL is fine if there's no
+     dedicated privacy page.
+   - **Developer contact information** — same support email is fine.
+2. Go to the **Audience** tab and try **Publish App**. If it asks for an
+   **Authorized domain** for whatever domain you used above, that domain
+   must already be a **verified property in Google Search Console** for the
+   same Google account — Google will reject it with a "Missing Domain"
+   error otherwise, not a "please verify" prompt. To verify:
+   - [Google Search Console](https://search.google.com/search-console) →
+     Add property → **URL prefix** → the exact URL you used (e.g.
+     `https://cedo-ten.vercel.app`).
+   - Use the **HTML file** or **HTML tag** verification method (not DNS —
+     there's no separate DNS control over a shared domain like
+     `*.vercel.app`). The HTML file just needs to be served from the site's
+     public root (for this project: drop it in `public/`, Vite copies
+     `public/*` to the deployed root as-is); the HTML tag goes in
+     `index.html`'s `<head>`.
+   - Once verified, go back to Branding/Audience and enter the **bare
+     domain** (no `https://`, no path — e.g. `cedo-ten.vercel.app`) as the
+     Authorized domain.
+3. Publish should now succeed.
 
 ## 5. Deploy the Edge Functions
 
