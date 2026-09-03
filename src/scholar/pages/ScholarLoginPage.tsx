@@ -7,7 +7,6 @@ import CEDOSeal from "@/imports/CEDO_Seal.png";
 
 interface ScholarLoginPageProps {
   onLoginSuccess: () => void;
-  onResetPassword: () => void;
 }
 
 /**
