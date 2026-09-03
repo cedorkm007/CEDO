@@ -34,6 +34,14 @@ export function isBrowserSpeechRecognitionSupported(): boolean {
  */
 export const NETWORK_ERROR_SENTINEL = "browser-speech-recognition-network-error";
 
+// Loose enough to catch a restart-race repeat that comes back with
+// different capitalization or trailing punctuation between firings (e.g.
+// "hello good morning" vs "Hello good morning.") without needing to
+// enumerate every way the two firings can differ.
+function normalizeForComparison(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
+}
+
 export function createBrowserSpeechRecognizer(): VoskRecognizer {
   let recognition: SpeechRecognition | null = null;
   let running = false;
@@ -70,11 +78,8 @@ export function createBrowserSpeechRecognizer(): VoskRecognizer {
         const text = result[0].transcript;
         if (result.isFinal) {
           const trimmed = text.trim();
-          // Case-insensitive: a restart-race repeat has come back with
-          // different capitalization between the two firings, which an
-          // exact-match comparison let straight through.
-          if (trimmed && trimmed.toLowerCase() !== lastFinalText.toLowerCase()) {
-            lastFinalText = trimmed;
+          if (trimmed && normalizeForComparison(trimmed) !== lastFinalText) {
+            lastFinalText = normalizeForComparison(trimmed);
             callbacks.onFinalText(trimmed);
           }
         } else {
@@ -106,11 +111,20 @@ export function createBrowserSpeechRecognizer(): VoskRecognizer {
       // session actually behaves continuously from the caller's point of
       // view, unless this was an explicit Stop.
       if (running && !manualStop) {
-        try {
-          recognition?.start();
-        } catch {
-          // Already starting/started — a restart race, not a real failure.
-        }
+        // A short beat before restarting, rather than immediately: this is
+        // exactly the race window that produces a duplicate final result
+        // (see the dedup above) — restarting slower gives the ending
+        // session's own last result more room to finish flushing first,
+        // reducing how often the race triggers at all rather than only
+        // cleaning up its output after the fact.
+        setTimeout(() => {
+          if (!running || manualStop) return;
+          try {
+            recognition?.start();
+          } catch {
+            // Already starting/started — a restart race, not a real failure.
+          }
+        }, 250);
       } else {
         callbacks.onListening?.(false);
       }
