@@ -53,6 +53,16 @@ export function createBrowserSpeechRecognizer(): VoskRecognizer {
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
+    // Chrome (especially on Android) doesn't reliably honor continuous=true
+    // — it tends to end the session after each short pause, which is what
+    // the onend handler below restarts. That restart can race with a final
+    // result still being flushed for the *previous* session, replaying the
+    // same text again right at the boundary — reported as "Hello Good
+    // Morning" coming out as "Hello Hello Hello Good Morning". Scoped per
+    // outer start() call (not reset by the internal restarts themselves),
+    // dropping an exact repeat of the immediately preceding final absorbs
+    // it the same way the equivalent Vosk bug was handled.
+    let lastFinalText = "";
     recognition.onresult = event => {
       let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -60,7 +70,10 @@ export function createBrowserSpeechRecognizer(): VoskRecognizer {
         const text = result[0].transcript;
         if (result.isFinal) {
           const trimmed = text.trim();
-          if (trimmed) callbacks.onFinalText(trimmed);
+          if (trimmed && trimmed !== lastFinalText) {
+            lastFinalText = trimmed;
+            callbacks.onFinalText(trimmed);
+          }
         } else {
           interim += text;
         }
