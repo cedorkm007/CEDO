@@ -950,6 +950,55 @@ export async function fetchScholarsBySchoolYearLevelCourse(school: string, yearL
   return { ok: true, counts: mapGroupCountRows(data, "course") };
 }
 
+export interface ScholarQuestSubjectProgress {
+  subjectId: string;
+  subjectName: string;
+  topicCount: number;
+  percentage: number;
+  passingRateMin: number;
+  passingRateMax: number;
+  isCompleted: boolean;
+}
+
+/**
+ * One scholar's per-subject Quest progress, for the Scholarship Program
+ * Information tab's comprehensive profile export. Reads scholar_subject_progress
+ * (a precomputed per-scholar/per-subject view, already used elsewhere in
+ * this file for rankings/progress screens) rather than aggregating
+ * scholar_quest_scores by hand — same source of truth the scholar-facing
+ * Quest UI uses, so numbers here match what the scholar themself sees.
+ * "Completed" reuses the same passing_rate_min..max range check as
+ * quizApi.ts's isCompleted (default 75..100 when a subject hasn't set one).
+ */
+export async function fetchScholarQuestProgress(scholarIdNumber: string): Promise<ScholarQuestSubjectProgress[]> {
+  const [{ data: progress, error: progressError }, { data: subjects, error: subjectsError }] = await Promise.all([
+    supabase.from("scholar_subject_progress").select("subject_id, topic_count, subject_percentage").eq("scholar_id_number", scholarIdNumber).gt("topic_count", 0),
+    supabase.from("quest_subjects").select("id, name, passing_rate_min, passing_rate_max"),
+  ]);
+  if (progressError || subjectsError || !progress || !subjects) return [];
+
+  const subjectById = new Map(subjects.map(s => [s.id as string, s]));
+  return progress
+    .map(p => {
+      const subject = subjectById.get(p.subject_id as string);
+      if (!subject) return null;
+      const percentage = Number(p.subject_percentage ?? 0);
+      const passingRateMin = Number(subject.passing_rate_min ?? 75);
+      const passingRateMax = Number(subject.passing_rate_max ?? 100);
+      return {
+        subjectId: p.subject_id as string,
+        subjectName: String(subject.name ?? ""),
+        topicCount: Number(p.topic_count ?? 0),
+        percentage,
+        passingRateMin,
+        passingRateMax,
+        isCompleted: percentage >= passingRateMin && percentage <= passingRateMax,
+      };
+    })
+    .filter((r): r is ScholarQuestSubjectProgress => r !== null)
+    .sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+}
+
 export async function fetchScholarshipStatusCounts(): Promise<{ ok: boolean; error?: string; counts?: ScholarshipStatusCounts }> {
   const { data, error } = await supabase.rpc("scholarship_status_counts");
   if (error) return { ok: false, error: error.message };

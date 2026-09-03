@@ -113,3 +113,124 @@ export async function exportTableAsPdf<T>(opts: {
 
   pdf.save(`${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
+
+export interface ProfilePdfSection {
+  heading: string;
+  columns: string[];
+  rows: string[][];
+  emptyMessage: string;
+}
+
+/**
+ * PDF variant of the Comprehensive Scholar Profile (see also
+ * generateComprehensiveScholarProfile in docGenerator.ts for the Word
+ * version, and ScholarListPanel.tsx for the CSV version) — a portrait,
+ * multi-section document rather than one flat table, so it's drawn here
+ * directly with jsPDF rather than reusing exportTableAsPdf above.
+ */
+export async function exportComprehensiveScholarProfilePdf(opts: {
+  scholarIdNumber: string;
+  basicInfo: { label: string; value: string }[];
+  sections: ProfilePdfSection[];
+}): Promise<void> {
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 14;
+  const usableWidth = pageWidth - margin * 2;
+  let y = margin;
+
+  function ensureSpace(next: number) {
+    if (y + next > pageHeight - margin) {
+      pdf.addPage();
+      y = margin;
+    }
+  }
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(14);
+  pdf.setTextColor(6, 36, 68);
+  pdf.text("COMPREHENSIVE SCHOLAR PROFILE", pageWidth / 2, y, { align: "center" });
+  y += 6;
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9);
+  pdf.setTextColor(100, 116, 139);
+  pdf.text(`Generated ${new Date().toLocaleString()}`, pageWidth / 2, y, { align: "center" });
+  y += 9;
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(11);
+  pdf.setTextColor(6, 36, 68);
+  pdf.text("Basic Information", margin, y);
+  y += 5.5;
+  pdf.setFontSize(9);
+  for (const { label, value } of opts.basicInfo) {
+    ensureSpace(5.5);
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(51, 65, 85);
+    pdf.text(`${label}:`, margin, y);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(value || "—", margin + 38, y);
+    y += 5.5;
+  }
+  y += 3;
+
+  for (const section of opts.sections) {
+    ensureSpace(11);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(11);
+    pdf.setTextColor(6, 36, 68);
+    pdf.text(section.heading, margin, y);
+    y += 5.5;
+
+    if (section.rows.length === 0) {
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text(section.emptyMessage, margin, y);
+      y += 8;
+      continue;
+    }
+
+    const colWidths = section.columns.map(() => usableWidth / section.columns.length);
+    ensureSpace(6.5);
+    pdf.setFillColor(248, 250, 253);
+    pdf.rect(margin, y, usableWidth, 6, "F");
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8);
+    pdf.setTextColor(0, 136, 204);
+    let x = margin;
+    section.columns.forEach((c, i) => {
+      pdf.text(truncateToWidth(pdf, c, colWidths[i] - 3), x + 1.5, y + 4.2);
+      x += colWidths[i];
+    });
+    y += 6;
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8);
+    pdf.setTextColor(51, 65, 85);
+    for (const row of section.rows) {
+      ensureSpace(5.5);
+      x = margin;
+      row.forEach((value, i) => {
+        pdf.text(truncateToWidth(pdf, value, colWidths[i] - 3), x + 1.5, y + 3.8);
+        x += colWidths[i];
+      });
+      pdf.setDrawColor(240, 243, 248);
+      pdf.line(margin, y + 5.5, margin + usableWidth, y + 5.5);
+      y += 5.5;
+    }
+    y += 4;
+  }
+
+  const pageCount = pdf.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p++) {
+    pdf.setPage(p);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7.5);
+    pdf.setTextColor(148, 163, 184);
+    pdf.text(`Page ${p} of ${pageCount}`, pageWidth - margin, pageHeight - 4, { align: "right" });
+  }
+
+  pdf.save(`Scholar_Profile_${opts.scholarIdNumber}_${new Date().toISOString().slice(0, 10)}.pdf`);
+}

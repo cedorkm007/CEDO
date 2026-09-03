@@ -1,9 +1,38 @@
 import { useState } from "react";
-import { Download, ChevronDown, ChevronUp } from "lucide-react";
+import { Download, ChevronDown, ChevronUp, FileSpreadsheet, FileText, FileType2 } from "lucide-react";
 import type { ScholarInformationRow } from "../seadApi";
+import { fetchScholarQuestProgress } from "../seadApi";
+import { fetchScholarSDPHistory } from "../sdpMonitorApi";
+import { fetchScholarFormationAttendance } from "../formationActivitiesApi";
 import { toCsv, downloadCsv } from "../csvUtils";
-import { exportTableAsPdf } from "../pdfTableExport";
-import { generateScholarsInformationReport } from "@/lib/docGenerator";
+import { exportTableAsPdf, exportComprehensiveScholarProfilePdf } from "../pdfTableExport";
+import { generateScholarsInformationReport, generateComprehensiveScholarProfile } from "@/lib/docGenerator";
+
+/** Fetches every subsystem section needed for one scholar's comprehensive profile, in parallel. */
+async function loadProfileSections(r: ScholarInformationRow) {
+  const [sdp, quest, formation] = await Promise.all([
+    fetchScholarSDPHistory(r.scholarIdNumber),
+    fetchScholarQuestProgress(r.scholarIdNumber),
+    fetchScholarFormationAttendance(r.scholarIdNumber),
+  ]);
+  return {
+    basicInfo: [
+      { label: "Scholar ID", value: r.scholarIdNumber },
+      { label: "Name", value: `${r.lastName}, ${r.firstName} ${r.middleName}`.trim() },
+      { label: "School", value: r.school || "" },
+      { label: "Course", value: r.course || "" },
+      { label: "Year Level", value: r.yearLevel || "" },
+      { label: "Status", value: r.status || "" },
+      { label: "Barangay", value: r.barangay || "" },
+      { label: "Birthday", value: r.birthday || "" },
+      { label: "Civil Status", value: r.civilStatus || "" },
+      { label: "Contact No.", value: r.contactNo || "" },
+    ],
+    sdpCompleted: sdp.attended.map(a => ({ activityName: a.activityName, category: a.category || "", date: a.date })),
+    formationAttended: formation.map(f => ({ activityName: f.activityName, dateTime: f.dateTime, venue: f.venue })),
+    questSubjects: quest.map(q => ({ subjectName: q.subjectName, topicCount: q.topicCount, percentage: q.percentage, isCompleted: q.isCompleted })),
+  };
+}
 
 const EXPORT_COLUMNS: { label: string; value: (r: ScholarInformationRow) => string; weight?: number }[] = [
   { label: "Scholar ID", value: r => r.scholarIdNumber },
@@ -35,6 +64,60 @@ export function ScholarListPanel({
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingWord, setExportingWord] = useState(false);
   const busy = exportingCsv || exportingPdf || exportingWord;
+  // Which scholar's profile is currently being generated, and in which format — drives the per-row spinner/disabled state.
+  const [profileDownloading, setProfileDownloading] = useState<{ id: string; format: "csv" | "pdf" | "word" } | null>(null);
+
+  async function handleDownloadProfile(r: ScholarInformationRow, format: "csv" | "pdf" | "word") {
+    if (profileDownloading) return;
+    setProfileDownloading({ id: r.scholarIdNumber, format });
+    try {
+      const sections = await loadProfileSections(r);
+      if (format === "word") {
+        await generateComprehensiveScholarProfile({
+          scholar: r,
+          sdpCompleted: sections.sdpCompleted,
+          formationAttended: sections.formationAttended,
+          questSubjects: sections.questSubjects,
+          generatedAt: new Date().toLocaleString(),
+        });
+      } else if (format === "pdf") {
+        await exportComprehensiveScholarProfilePdf({
+          scholarIdNumber: r.scholarIdNumber,
+          basicInfo: sections.basicInfo,
+          sections: [
+            {
+              heading: `SDP — Completed Activities (${sections.sdpCompleted.length})`,
+              columns: ["Activity", "Category", "Date"],
+              rows: sections.sdpCompleted.map(a => [a.activityName, a.category || "—", a.date || "—"]),
+              emptyMessage: "No completed SDP activities.",
+            },
+            {
+              heading: `Formation Activities — Attended (${sections.formationAttended.length})`,
+              columns: ["Activity", "Date", "Venue"],
+              rows: sections.formationAttended.map(a => [a.activityName, a.dateTime || "—", a.venue || "—"]),
+              emptyMessage: "No formation activity attendance recorded.",
+            },
+            {
+              heading: `Quest — Subjects (${sections.questSubjects.length})`,
+              columns: ["Subject", "Topics Completed", "Score", "Status"],
+              rows: sections.questSubjects.map(q => [q.subjectName, String(q.topicCount), `${q.percentage.toFixed(1)}%`, q.isCompleted ? "Completed" : "In Progress"]),
+              emptyMessage: "No Quest activity recorded.",
+            },
+          ],
+        });
+      } else {
+        const blocks = [
+          toCsv(["Field", "Value"], sections.basicInfo.map(b => [b.label, b.value])),
+          `SDP — Completed Activities (${sections.sdpCompleted.length})\r\n` + toCsv(["Activity", "Category", "Date"], sections.sdpCompleted.map(a => [a.activityName, a.category, a.date])),
+          `Formation Activities — Attended (${sections.formationAttended.length})\r\n` + toCsv(["Activity", "Date", "Venue"], sections.formationAttended.map(a => [a.activityName, a.dateTime, a.venue])),
+          `Quest — Subjects (${sections.questSubjects.length})\r\n` + toCsv(["Subject", "Topics Completed", "Score", "Status"], sections.questSubjects.map(q => [q.subjectName, q.topicCount, `${q.percentage.toFixed(1)}%`, q.isCompleted ? "Completed" : "In Progress"])),
+        ];
+        downloadCsv(`Scholar_Profile_${r.scholarIdNumber}_${new Date().toISOString().slice(0, 10)}.csv`, blocks.join("\r\n\r\n"));
+      }
+    } finally {
+      setProfileDownloading(null);
+    }
+  }
 
   function handleExportCsv() {
     if (busy || rows.length === 0) return;
@@ -106,21 +189,44 @@ export function ScholarListPanel({
                 <th className="px-4 py-2 whitespace-nowrap">School</th>
                 <th className="px-4 py-2 whitespace-nowrap">Course</th>
                 <th className="px-4 py-2 whitespace-nowrap">Year Level</th>
+                <th className="px-4 py-2 whitespace-nowrap text-right">Profile</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-400">No scholars found.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">No scholars found.</td></tr>
               ) : (
-                rows.map(r => (
-                  <tr key={r.scholarIdNumber} className="border-t border-[#f0f3f8]">
-                    <td className="px-4 py-2 font-medium text-[#062444] whitespace-nowrap">{r.scholarIdNumber}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{r.lastName}, {r.firstName} {r.middleName}</td>
-                    <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{r.school || "—"}</td>
-                    <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{r.course || "—"}</td>
-                    <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{r.yearLevel || "—"}</td>
-                  </tr>
-                ))
+                rows.map(r => {
+                  const downloading = profileDownloading?.id === r.scholarIdNumber ? profileDownloading.format : null;
+                  return (
+                    <tr key={r.scholarIdNumber} className="border-t border-[#f0f3f8]">
+                      <td className="px-4 py-2 font-medium text-[#062444] whitespace-nowrap">{r.scholarIdNumber}</td>
+                      <td className="px-4 py-2 whitespace-nowrap">{r.lastName}, {r.firstName} {r.middleName}</td>
+                      <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{r.school || "—"}</td>
+                      <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{r.course || "—"}</td>
+                      <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{r.yearLevel || "—"}</td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => handleDownloadProfile(r, "csv")} disabled={!!profileDownloading}
+                            title="Download comprehensive profile as CSV"
+                            className="p-1.5 rounded-md text-slate-400 hover:text-[#0088cc] hover:bg-[#f8fafd] disabled:opacity-40">
+                            {downloading === "csv" ? <span className="text-[10px]">…</span> : <FileSpreadsheet size={13} />}
+                          </button>
+                          <button onClick={() => handleDownloadProfile(r, "pdf")} disabled={!!profileDownloading}
+                            title="Download comprehensive profile as PDF"
+                            className="p-1.5 rounded-md text-slate-400 hover:text-[#0088cc] hover:bg-[#f8fafd] disabled:opacity-40">
+                            {downloading === "pdf" ? <span className="text-[10px]">…</span> : <FileText size={13} />}
+                          </button>
+                          <button onClick={() => handleDownloadProfile(r, "word")} disabled={!!profileDownloading}
+                            title="Download comprehensive profile as Word"
+                            className="p-1.5 rounded-md text-slate-400 hover:text-[#0088cc] hover:bg-[#f8fafd] disabled:opacity-40">
+                            {downloading === "word" ? <span className="text-[10px]">…</span> : <FileType2 size={13} />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

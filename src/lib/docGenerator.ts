@@ -654,3 +654,118 @@ export async function generateSubmissionRosterReport(opts: SubmissionRosterRepor
   const blob = await Packer.toBlob(doc)
   saveAs(blob, `Submission_Roster_${opts.activityName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.docx`)
 }
+
+// ── 7. Comprehensive Scholar Profile ─────────────────────────
+// The Scholarship Program Information tab's per-scholar export: basic
+// info plus three subsystem sections (SDP, Formation Activities, Quest).
+// Unlike every report above, this is a single-entity, multi-section
+// document rather than one flat table, so it's built from scratch rather
+// than reusing generateScholarsInformationReport's table layout — but it
+// still reuses the same low-level helpers (labeledRow, headerCell, cell,
+// normal, bold) already defined in this file. Kept generic (plain string
+// fields, no imported sead-specific types) to match this file's existing
+// convention of not depending on app-layer types.
+
+export interface ComprehensiveScholarProfileOptions {
+  scholar: {
+    scholarIdNumber: string
+    lastName: string
+    firstName: string
+    middleName: string
+    school: string
+    course: string
+    yearLevel: string
+    status: string
+    barangay: string
+    birthday: string
+    civilStatus: string
+    contactNo: string
+  }
+  sdpCompleted: { activityName: string; category: string; date: string }[]
+  formationAttended: { activityName: string; dateTime: string; venue: string }[]
+  questSubjects: { subjectName: string; topicCount: number; percentage: number; isCompleted: boolean }[]
+  generatedAt: string
+}
+
+function sectionHeading(text: string): Paragraph {
+  return new Paragraph({ children: [bold(text, 26)], spacing: { before: 300, after: 120 } })
+}
+
+function simpleTable(columns: string[], colWidths: number[], rows: string[][], emptyMessage: string): (Table | Paragraph)[] {
+  if (rows.length === 0) return [new Paragraph({ children: [normal(emptyMessage, 22)], spacing: { after: 120 } })]
+  return [new Table({
+    width: { size: colWidths.reduce((a, b) => a + b, 0), type: WidthType.DXA },
+    columnWidths: colWidths,
+    rows: [
+      new TableRow({ tableHeader: true, children: columns.map((label, i) => headerCell(label, colWidths[i])) }),
+      ...rows.map(row => new TableRow({
+        children: row.map((value, i) => cell([new Paragraph({ children: [normal(value, 20)] })], { width: colWidths[i] })),
+      })),
+    ],
+  })]
+}
+
+export async function generateComprehensiveScholarProfile(opts: ComprehensiveScholarProfileOptions): Promise<void> {
+  const header = await buildLetterheadHeader()
+  const COL_LABEL = 3200
+  const COL_VALUE = 9488 - COL_LABEL
+  const s = opts.scholar
+
+  const doc = new Document({
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 11906, height: 16838 }, // portrait A4, same as CTO Form
+          margin: { top: 720, right: 431, bottom: 720, left: 1440, header: 720, footer: 720 },
+        },
+      },
+      headers: { default: header },
+      children: [
+        new Paragraph({ children: [bold('COMPREHENSIVE SCHOLAR PROFILE', 32)], alignment: AlignmentType.CENTER, spacing: { after: 60 } }),
+        new Paragraph({ children: [normal(`Generated ${opts.generatedAt}`, 20)], alignment: AlignmentType.CENTER, spacing: { after: 240 } }),
+
+        sectionHeading('Basic Information'),
+        new Table({
+          width: { size: 9488, type: WidthType.DXA },
+          columnWidths: [COL_LABEL, COL_VALUE],
+          rows: [
+            labeledRow('Scholar ID', s.scholarIdNumber),
+            labeledRow('Name', `${s.lastName}, ${s.firstName} ${s.middleName}`.trim()),
+            labeledRow('School', s.school || '—'),
+            labeledRow('Course', s.course || '—'),
+            labeledRow('Year Level', s.yearLevel || '—'),
+            labeledRow('Status', s.status || '—'),
+            labeledRow('Barangay', s.barangay || '—'),
+            labeledRow('Birthday', s.birthday || '—'),
+            labeledRow('Civil Status', s.civilStatus || '—'),
+            labeledRow('Contact No.', s.contactNo || '—'),
+          ],
+        }),
+
+        sectionHeading(`SDP — Completed Activities (${opts.sdpCompleted.length})`),
+        ...simpleTable(
+          ['Activity', 'Category', 'Date'], [5288, 2200, 2000],
+          opts.sdpCompleted.map(a => [a.activityName, a.category || '—', a.date || '—']),
+          'No completed SDP activities.',
+        ),
+
+        sectionHeading(`Formation Activities — Attended (${opts.formationAttended.length})`),
+        ...simpleTable(
+          ['Activity', 'Date', 'Venue'], [4288, 2400, 2800],
+          opts.formationAttended.map(a => [a.activityName, a.dateTime || '—', a.venue || '—']),
+          'No formation activity attendance recorded.',
+        ),
+
+        sectionHeading(`Quest — Subjects (${opts.questSubjects.length})`),
+        ...simpleTable(
+          ['Subject', 'Topics Completed', 'Score', 'Status'], [4488, 2400, 1400, 1200],
+          opts.questSubjects.map(q => [q.subjectName, String(q.topicCount), `${q.percentage.toFixed(1)}%`, q.isCompleted ? 'Completed' : 'In Progress']),
+          'No Quest activity recorded.',
+        ),
+      ],
+    }],
+  })
+
+  const blob = await Packer.toBlob(doc)
+  saveAs(blob, `Scholar_Profile_${s.scholarIdNumber}_${new Date().toISOString().slice(0, 10)}.docx`)
+}

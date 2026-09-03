@@ -26,6 +26,49 @@ export async function fetchFormationActivities(): Promise<FormationActivity[]> {
   return data.map(row => rowToActivity(row as Record<string, unknown>));
 }
 
+export interface ScholarFormationAttendanceEntry {
+  activityId: string;
+  activityName: string;
+  dateTime: string;
+  venue: string;
+  status: string;
+  hoursEarned: number;
+}
+
+/**
+ * Formation activities attended by one scholar, for the Scholarship Program
+ * Information tab's comprehensive profile export. Sourced from the QR-code
+ * attendance_records/attendance_sessions tables (shared with SDP/program
+ * attendance via three mutually-exclusive nullable FKs on
+ * attendance_sessions) — filtered client-side to sessions whose
+ * formation_activity_id is set, since that's the only column that
+ * distinguishes a Formation session from an SDP or program one.
+ */
+export async function fetchScholarFormationAttendance(scholarIdNumber: string): Promise<ScholarFormationAttendanceEntry[]> {
+  const { data, error } = await supabase
+    .from("attendance_records")
+    .select("status, hours_earned, attendance_sessions(formation_activity_id, formation_activities(id, name, date_time, venue))")
+    .eq("scholar_id_number", scholarIdNumber);
+  if (error || !data) return [];
+
+  return data
+    .map(row => {
+      const session = row.attendance_sessions as unknown as { formation_activity_id: string | null; formation_activities: Record<string, unknown> | null } | null;
+      const activity = session?.formation_activities;
+      if (!session?.formation_activity_id || !activity) return null;
+      return {
+        activityId: String(activity.id),
+        activityName: String(activity.name ?? ""),
+        dateTime: String(activity.date_time ?? ""),
+        venue: String(activity.venue ?? ""),
+        status: String(row.status ?? ""),
+        hoursEarned: Number(row.hours_earned ?? 0),
+      };
+    })
+    .filter((entry): entry is ScholarFormationAttendanceEntry => entry !== null)
+    .sort((a, b) => a.dateTime.localeCompare(b.dateTime));
+}
+
 export async function createFormationActivity(input: NewFormationActivityInput): Promise<{ ok: boolean; error?: string; id?: string }> {
   const { data: auth } = await supabase.auth.getUser();
   const { data, error } = await supabase.from("formation_activities").insert({
