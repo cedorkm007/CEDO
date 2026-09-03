@@ -25,6 +25,7 @@ import { SDPMonitoringTab } from "@/sead/pages/SDPMonitoringTab";
 import { FormationToolsTab } from "@/sead/pages/FormationToolsTab";
 import { FormsManagementTab } from "@/sead/pages/FormsManagementTab";
 import { KaubanContentManagementPage } from "@/kauban/admin/KaubanContentManagementPage";
+import { ScholarshipProgramInfoPage } from "@/sead/pages/ScholarshipProgramInfoPage";
 import { StaffAccountsPage } from "@/itadmin/StaffAccountsPage";
 import { TopNav } from "@/app/components/TopNav";
 import { AppSidebar } from "@/app/components/Sidebar";
@@ -52,7 +53,7 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
-export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "staffAccounts";
+export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "staffAccounts";
 
 /** "Scholar Management Tools" (question bank + scholar accounts) is now gated by
  *  the "scholar_management" tag (see src/app/staffToolTags.ts) instead of a fixed
@@ -73,7 +74,7 @@ export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitorin
 // hand-copied a third time into a different file.
 export const IT_ADMIN_USERNAME = "it.admin1";
 
-const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "staffAccounts"];
+const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "staffAccounts"];
 
 /**
  * Mirrors the exact gating conditions in the render switch at the bottom
@@ -94,6 +95,7 @@ function isPageAuthorizedFor(page: Page, user: UserProfile): boolean {
     case "formationTools": return user.tags.includes("scholars_formation");
     case "formsManagement": return user.tags.includes("forms_management");
     case "kaubanContent": return user.tags.includes("kauban_content");
+    case "scholarshipProgramInfo": return user.tags.includes("scholarship_program_info");
     case "staffAccounts": return user.username.toLowerCase() === IT_ADMIN_USERNAME;
     default: return true; // home, profile, tasks, accomplishments, notifications, forms — open to any signed-in user
   }
@@ -3445,6 +3447,9 @@ export default function App() {
           )}
           {page==="kaubanContent" && currentUser.tags.includes("kauban_content") && (
             <KaubanContentManagementPage/>
+          )}
+          {page==="scholarshipProgramInfo" && currentUser.tags.includes("scholarship_program_info") && (
+            <ScholarshipProgramInfoPage/>
           )}
           {page==="staffAccounts" && currentUser.username.toLowerCase()===IT_ADMIN_USERNAME && (
             <StaffAccountsPage/>

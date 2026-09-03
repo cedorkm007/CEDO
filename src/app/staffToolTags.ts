@@ -43,4 +43,9 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     label: "Kauban Content Management",
     description: "Add sign words and quick phrases, and upload/compress the sign-language videos for the Kauban app.",
   },
+  {
+    key: "scholarship_program_info",
+    label: "Scholarship Program Information",
+    description: "Birds-eye statistics on the scholarship program — counts by status, barangay, school, year level, and course, with per-scholar profile exports.",
+  },
 ];

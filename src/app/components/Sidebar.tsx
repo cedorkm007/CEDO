@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video } from "lucide-react";
+import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarSeparator,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
@@ -156,6 +156,7 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
     || user.tags.includes("scholars_formation")
     || user.tags.includes("forms_management")
     || user.tags.includes("kauban_content")
+    || user.tags.includes("scholarship_program_info")
     || user.username.toLowerCase() === IT_ADMIN_USERNAME;
 
   return (
@@ -321,6 +322,13 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
                     <SidebarMenuItem className="min-w-0">
                       <SidebarMenuButton isActive={page === "kaubanContent"} onClick={() => setPage("kaubanContent")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
                         <Video /> <span className="truncate">Kauban Content Management</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {user.tags.includes("scholarship_program_info") && (
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "scholarshipProgramInfo"} onClick={() => setPage("scholarshipProgramInfo")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <BarChart3 /> <span className="truncate">Scholarship Program Information</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}

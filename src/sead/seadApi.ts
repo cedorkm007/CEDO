@@ -883,6 +883,30 @@ export async function fetchScholars(search: string, page: number = 1): Promise<S
 
 export { SCHOLARS_PAGE_SIZE };
 
+// ── Scholarship Program Information ──────────────────────────
+export interface ScholarshipStatusCounts {
+  regular: number;
+  probationary: number;
+  onLeave: number;
+  reconsidered: number;
+}
+
+export async function fetchScholarshipStatusCounts(): Promise<{ ok: boolean; error?: string; counts?: ScholarshipStatusCounts }> {
+  const { data, error } = await supabase.rpc("scholarship_status_counts");
+  if (error) return { ok: false, error: error.message };
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
+  if (!row) return { ok: false, error: "No data returned." };
+  return {
+    ok: true,
+    counts: {
+      regular: Number(row.regular_count ?? 0),
+      probationary: Number(row.probationary_count ?? 0),
+      onLeave: Number(row.on_leave_count ?? 0),
+      reconsidered: Number(row.reconsidered_count ?? 0),
+    },
+  };
+}
+
 export interface NewScholarInput {
   scholarIdNumber: string; firstName: string; lastName: string; middleName: string;
   birthday: string; address: string; school: string; course: string; civilStatus: string; contactNo: string;
