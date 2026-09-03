@@ -652,6 +652,17 @@ export interface ScholarInformationFilters {
   school?: string; // partial match
   yearLevel?: string; // exact match — sourced from FORMATION_YEAR_LEVELS (src/scholar/formationActivitiesApi.ts), the same canonical list scholars.year_level values already come from elsewhere in this app
   status?: ScholarshipStatus; // exact match — sourced from SCHOLARSHIP_STATUSES (./types.ts)
+  /**
+   * Exact-match variants of school/course, distinct from the partial
+   * (ilike) filters above — used by the Scholarship Program Information
+   * tab's School -> Year Level -> Course drill-down, where the value
+   * being filtered on is taken directly from a GROUP BY result (an exact
+   * stored value), not typed by a person doing a free-text search. A
+   * partial match here risks over-matching a school/course name that's a
+   * substring of another one.
+   */
+  schoolExact?: string;
+  courseExact?: string;
   ageMin?: number;
   ageMax?: number;
   /**
@@ -738,6 +749,8 @@ function applyScholarInformationFilters(query: any, filters: ScholarInformationF
   if (filters.school?.trim()) query = query.ilike("school", `%${filters.school.trim()}%`);
   if (filters.yearLevel) query = query.eq("year_level", filters.yearLevel);
   if (filters.status) query = query.eq("status", filters.status);
+  if (filters.schoolExact) query = query.eq("school", filters.schoolExact);
+  if (filters.courseExact) query = query.eq("course", filters.courseExact);
   // Age is a value COMPUTED from birthday (see computeAge() in
   // ScholarsTab.tsx), not a stored column, so a WHERE clause can't filter
   // on it directly — translate the requested age range into a birthday
@@ -904,6 +917,37 @@ export async function fetchScholarsByBarangay(): Promise<{ ok: boolean; error?: 
     ok: true,
     counts: rows.filter(r => r.barangay).map(r => ({ barangay: r.barangay as string, count: Number(r.scholar_count) })),
   };
+}
+
+export interface GroupCount {
+  label: string;
+  count: number;
+}
+
+/** Generic {name column, count} row shape shared by all three School drill-down RPCs below. */
+function mapGroupCountRows(data: unknown, labelColumn: string): GroupCount[] {
+  const rows = (data ?? []) as Record<string, unknown>[];
+  return rows
+    .filter(r => r[labelColumn])
+    .map(r => ({ label: String(r[labelColumn]), count: Number(r.scholar_count) }));
+}
+
+export async function fetchScholarsBySchool(): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = await supabase.rpc("scholars_by_school");
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, counts: mapGroupCountRows(data, "school") };
+}
+
+export async function fetchScholarsBySchoolYearLevel(school: string): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = await supabase.rpc("scholars_by_school_year_level", { p_school: school });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, counts: mapGroupCountRows(data, "year_level") };
+}
+
+export async function fetchScholarsBySchoolYearLevelCourse(school: string, yearLevel: string): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = await supabase.rpc("scholars_by_school_year_level_course", { p_school: school, p_year_level: yearLevel });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, counts: mapGroupCountRows(data, "course") };
 }
 
 export async function fetchScholarshipStatusCounts(): Promise<{ ok: boolean; error?: string; counts?: ScholarshipStatusCounts }> {
