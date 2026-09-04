@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, ChevronDown, ChevronUp, FileSpreadsheet, FileText, FileType2 } from "lucide-react";
+import { Download, ChevronDown, ChevronUp, FileSpreadsheet, FileText, FileType2, Eye } from "lucide-react";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
 import type { ScholarInformationRow } from "../seadApi";
 import { fetchScholarQuestProgress } from "../seadApi";
@@ -8,9 +8,17 @@ import { fetchScholarFormationAttendance } from "../formationActivitiesApi";
 import { toCsv, downloadCsv } from "../csvUtils";
 import { exportTableAsPdf, exportComprehensiveScholarProfilePdf } from "../pdfTableExport";
 import { generateScholarsInformationReport, generateComprehensiveScholarProfile } from "@/lib/docGenerator";
+import { Modal } from "./Modal";
+
+interface ProfileSections {
+  basicInfo: { label: string; value: string }[];
+  sdpCompleted: { activityName: string; category: string; date: string }[];
+  formationAttended: { activityName: string; dateTime: string; venue: string }[];
+  questSubjects: { subjectName: string; topicCount: number; percentage: number; isCompleted: boolean }[];
+}
 
 /** Fetches every subsystem section needed for one scholar's comprehensive profile, in parallel. */
-async function loadProfileSections(r: ScholarInformationRow) {
+async function loadProfileSections(r: ScholarInformationRow): Promise<ProfileSections> {
   const [sdp, quest, formation] = await Promise.all([
     fetchScholarSDPHistory(r.scholarIdNumber),
     fetchScholarQuestProgress(r.scholarIdNumber),
@@ -69,6 +77,9 @@ export function ScholarListPanel({
   const [profileDownloading, setProfileDownloading] = useState<{ id: string; format: "csv" | "pdf" | "word" } | null>(null);
   // Which scholar's name was clicked to open the CSV/PDF/Word download menu — only one open at a time.
   const [openProfileMenuFor, setOpenProfileMenuFor] = useState<string | null>(null);
+  // The scholar currently shown in the "Preview" popup, and its loaded sections (null while fetching).
+  const [previewScholar, setPreviewScholar] = useState<ScholarInformationRow | null>(null);
+  const [previewSections, setPreviewSections] = useState<ProfileSections | null>(null);
 
   const { sorted: sortedRows, sortState, toggleSort } = useSort<ScholarInformationRow>(rows, {
     scholarIdNumber: r => r.scholarIdNumber,
@@ -78,12 +89,20 @@ export function ScholarListPanel({
     yearLevel: r => r.yearLevel,
   });
 
-  async function handleDownloadProfile(r: ScholarInformationRow, format: "csv" | "pdf" | "word") {
+  async function handlePreviewProfile(r: ScholarInformationRow) {
+    setOpenProfileMenuFor(null);
+    setPreviewScholar(r);
+    setPreviewSections(null);
+    setPreviewSections(await loadProfileSections(r));
+  }
+
+  /** `preloadedSections` skips the re-fetch when downloading straight out of an already-open Preview popup. */
+  async function handleDownloadProfile(r: ScholarInformationRow, format: "csv" | "pdf" | "word", preloadedSections?: ProfileSections) {
     if (profileDownloading) return;
     setOpenProfileMenuFor(null);
     setProfileDownloading({ id: r.scholarIdNumber, format });
     try {
-      const sections = await loadProfileSections(r);
+      const sections = preloadedSections ?? await loadProfileSections(r);
       if (format === "word") {
         await generateComprehensiveScholarProfile({
           scholar: r,
@@ -226,6 +245,11 @@ export function ScholarListPanel({
                             <>
                               <div className="fixed inset-0 z-40" onClick={() => setOpenProfileMenuFor(null)} />
                               <div className="absolute left-0 top-full mt-1 z-50 w-52 bg-white rounded-lg border border-[#e6ecf5] shadow-lg py-1">
+                                <button onClick={() => handlePreviewProfile(r)}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-normal text-[#062444] hover:bg-[#f8fafd]">
+                                  <Eye size={13} /> Preview
+                                </button>
+                                <div className="my-1 border-t border-[#f0f3f8]" />
                                 <button onClick={() => handleDownloadProfile(r, "csv")}
                                   className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-normal text-[#062444] hover:bg-[#f8fafd]">
                                   <FileSpreadsheet size={13} /> Download as CSV
@@ -250,6 +274,91 @@ export function ScholarListPanel({
                   );
                 })
               )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {previewScholar && (
+        <Modal elevated title={`Preview — ${previewScholar.lastName}, ${previewScholar.firstName} ${previewScholar.middleName}`.trim()}
+          onClose={() => { setPreviewScholar(null); setPreviewSections(null); }}>
+          {!previewSections ? (
+            <p className="text-[13px] text-slate-400 text-center py-8">Loading…</p>
+          ) : (
+            <div className="space-y-5">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">Basic Information</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 bg-white rounded-xl border border-[#e6ecf5] p-4">
+                  {previewSections.basicInfo.map(b => (
+                    <div key={b.label} className="flex items-center justify-between gap-2 text-[12.5px] border-b border-[#f8fafd] py-1 last:border-b-0">
+                      <span className="text-slate-400">{b.label}</span>
+                      <span className="font-semibold text-[#062444] text-right">{b.value || "—"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <PreviewSection
+                title={`SDP — Completed Activities (${previewSections.sdpCompleted.length})`}
+                columns={["Activity", "Category", "Date"]}
+                rows={previewSections.sdpCompleted.map(a => [a.activityName, a.category || "—", a.date || "—"])}
+                emptyMessage="No completed SDP activities."
+              />
+              <PreviewSection
+                title={`Formation Activities — Attended (${previewSections.formationAttended.length})`}
+                columns={["Activity", "Date", "Venue"]}
+                rows={previewSections.formationAttended.map(f => [f.activityName, f.dateTime || "—", f.venue || "—"])}
+                emptyMessage="No formation activity attendance recorded."
+              />
+              <PreviewSection
+                title={`Quest — Subjects (${previewSections.questSubjects.length})`}
+                columns={["Subject", "Topics Completed", "Score", "Status"]}
+                rows={previewSections.questSubjects.map(q => [q.subjectName, String(q.topicCount), `${q.percentage.toFixed(1)}%`, q.isCompleted ? "Completed" : "In Progress"])}
+                emptyMessage="No Quest activity recorded."
+              />
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#e6ecf5]">
+                <button onClick={() => handleDownloadProfile(previewScholar, "csv", previewSections)} disabled={!!profileDownloading}
+                  className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 hover:bg-white bg-[#f8fafd] disabled:opacity-50">
+                  <FileSpreadsheet size={12} /> CSV
+                </button>
+                <button onClick={() => handleDownloadProfile(previewScholar, "pdf", previewSections)} disabled={!!profileDownloading}
+                  className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 hover:bg-white bg-[#f8fafd] disabled:opacity-50">
+                  <FileText size={12} /> PDF
+                </button>
+                <button onClick={() => handleDownloadProfile(previewScholar, "word", previewSections)} disabled={!!profileDownloading}
+                  className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 hover:bg-white bg-[#f8fafd] disabled:opacity-50">
+                  <FileType2 size={12} /> Word
+                </button>
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function PreviewSection({ title, columns, rows, emptyMessage }: { title: string; columns: string[]; rows: string[][]; emptyMessage: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">{title}</p>
+      {rows.length === 0 ? (
+        <p className="text-[12px] text-slate-400 italic bg-white rounded-xl border border-[#e6ecf5] px-4 py-3">{emptyMessage}</p>
+      ) : (
+        <div className="bg-white rounded-xl border border-[#e6ecf5] overflow-x-auto">
+          <table className="w-full text-[12.5px]">
+            <thead>
+              <tr className="bg-[#f8fafd] text-left text-[10.5px] uppercase tracking-wide text-[#0088cc]">
+                {columns.map(c => <th key={c} className="px-3 py-2 whitespace-nowrap">{c}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={i} className="border-t border-[#f0f3f8]">
+                  {row.map((value, j) => <td key={j} className="px-3 py-2 text-slate-600 whitespace-nowrap">{value}</td>)}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
