@@ -183,10 +183,10 @@ export function ScholarListPanel({
       </div>
 
       {expanded && (
-        <div className="border-t border-[#f0f3f8] overflow-x-auto">
+        <div className="border-t border-[#f0f3f8] overflow-auto max-h-[55vh]">
           <table className="w-full text-[12.5px]">
             <thead>
-              <tr className="bg-[#f8fafd] text-left text-[10.5px] uppercase tracking-wide text-[#0088cc]">
+              <tr className="sticky top-0 z-10 bg-[#f8fafd] text-left text-[10.5px] uppercase tracking-wide text-[#0088cc]">
                 <th className="px-4 py-2 whitespace-nowrap">Scholar ID</th>
                 <th className="px-4 py-2 whitespace-nowrap">Name</th>
                 <th className="px-4 py-2 whitespace-nowrap">School</th>
@@ -234,8 +234,8 @@ export function ScholarListPanel({
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{r.school || "—"}</td>
-                      <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{r.course || "—"}</td>
+                      <td className="px-4 py-2 text-slate-500 max-w-[220px] truncate" title={r.school || undefined}>{r.school || "—"}</td>
+                      <td className="px-4 py-2 text-slate-500 max-w-[160px] truncate" title={r.course || undefined}>{r.course || "—"}</td>
                       <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{r.yearLevel || "—"}</td>
                     </tr>
                   );

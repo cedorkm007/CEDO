@@ -22,14 +22,14 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl border border-[#e6ecf5] shadow-xl w-full max-w-4xl max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3f8] sticky top-0 bg-white rounded-t-2xl">
-          <h3 className="text-[14px] font-bold text-[#062444]">{title}</h3>
-          <button onClick={onClose} className="p-1.5 rounded-md text-slate-400 hover:bg-[#f8fafd] hover:text-slate-600">
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-6xl max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 bg-[#062444] shrink-0">
+          <h3 className="text-[14px] font-bold text-white">{title}</h3>
+          <button onClick={onClose} className="p-1.5 rounded-md text-white/70 hover:bg-white/10 hover:text-white">
             <X size={16} />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-5 overflow-y-auto flex-1 min-h-0 bg-[#f8fafd]">{children}</div>
       </div>
     </div>
   );
