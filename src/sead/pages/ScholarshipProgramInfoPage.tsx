@@ -8,6 +8,7 @@ import {
 import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
 import { ScholarListPanel } from "../components/ScholarListPanel";
 import { GroupCountBreakdown, type GroupCountRow } from "../components/GroupCountBreakdown";
+import { Modal } from "../components/Modal";
 
 type InfoSubtab = "barangay" | "school";
 
@@ -127,6 +128,11 @@ function BarangaySubtab() {
     setLoadingScholars(false);
   }
 
+  function handleClose() {
+    setSelected(null);
+    setScholarRows(null);
+  }
+
   if (loading) return <LoadingPanel label="Loading…" />;
   if (error) return <p className="text-[13px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>;
   if (!counts) return null;
@@ -136,15 +142,17 @@ function BarangaySubtab() {
       <GroupCountBreakdown title="Scholars per Barangay" columnLabel="Barangay" rows={counts} onSelect={handleSelect} />
 
       {selected && (
-        loadingScholars ? <LoadingPanel label={`Loading scholars in ${selected}…`} /> : (
-          <ScholarListPanel
-            title={`Scholars in ${selected}`}
-            rows={scholarRows ?? []}
-            filtersSummary={`Filters: Barangay = ${selected}`}
-            filenamePrefix={`scholars-barangay-${slugify(selected)}`}
-            defaultExpanded
-          />
-        )
+        <Modal title={`Scholars in ${selected}`} onClose={handleClose}>
+          {loadingScholars ? <LoadingPanel label={`Loading scholars in ${selected}…`} /> : (
+            <ScholarListPanel
+              title={`Scholars in ${selected}`}
+              rows={scholarRows ?? []}
+              filtersSummary={`Filters: Barangay = ${selected}`}
+              filenamePrefix={`scholars-barangay-${slugify(selected)}`}
+              defaultExpanded
+            />
+          )}
+        </Modal>
       )}
     </div>
   );

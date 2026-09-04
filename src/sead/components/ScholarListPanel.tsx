@@ -66,9 +66,12 @@ export function ScholarListPanel({
   const busy = exportingCsv || exportingPdf || exportingWord;
   // Which scholar's profile is currently being generated, and in which format — drives the per-row spinner/disabled state.
   const [profileDownloading, setProfileDownloading] = useState<{ id: string; format: "csv" | "pdf" | "word" } | null>(null);
+  // Which scholar's name was clicked to open the CSV/PDF/Word download menu — only one open at a time.
+  const [openProfileMenuFor, setOpenProfileMenuFor] = useState<string | null>(null);
 
   async function handleDownloadProfile(r: ScholarInformationRow, format: "csv" | "pdf" | "word") {
     if (profileDownloading) return;
+    setOpenProfileMenuFor(null);
     setProfileDownloading({ id: r.scholarIdNumber, format });
     try {
       const sections = await loadProfileSections(r);
@@ -189,41 +192,51 @@ export function ScholarListPanel({
                 <th className="px-4 py-2 whitespace-nowrap">School</th>
                 <th className="px-4 py-2 whitespace-nowrap">Course</th>
                 <th className="px-4 py-2 whitespace-nowrap">Year Level</th>
-                <th className="px-4 py-2 whitespace-nowrap text-right">Profile</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">No scholars found.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-400">No scholars found.</td></tr>
               ) : (
                 rows.map(r => {
                   const downloading = profileDownloading?.id === r.scholarIdNumber ? profileDownloading.format : null;
+                  const menuOpen = openProfileMenuFor === r.scholarIdNumber;
                   return (
                     <tr key={r.scholarIdNumber} className="border-t border-[#f0f3f8]">
                       <td className="px-4 py-2 font-medium text-[#062444] whitespace-nowrap">{r.scholarIdNumber}</td>
-                      <td className="px-4 py-2 whitespace-nowrap">{r.lastName}, {r.firstName} {r.middleName}</td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        <div className="relative inline-block">
+                          <button onClick={() => setOpenProfileMenuFor(v => v === r.scholarIdNumber ? null : r.scholarIdNumber)}
+                            disabled={!!profileDownloading}
+                            title="Download this scholar's comprehensive profile"
+                            className="text-left text-[#062444] hover:text-[#0088cc] hover:underline disabled:opacity-50">
+                            {r.lastName}, {r.firstName} {r.middleName}
+                            {downloading && <span className="ml-1.5 text-[10.5px] font-normal text-slate-400">generating…</span>}
+                          </button>
+                          {menuOpen && (
+                            <>
+                              <div className="fixed inset-0 z-40" onClick={() => setOpenProfileMenuFor(null)} />
+                              <div className="absolute left-0 top-full mt-1 z-50 w-52 bg-white rounded-lg border border-[#e6ecf5] shadow-lg py-1">
+                                <button onClick={() => handleDownloadProfile(r, "csv")}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-normal text-[#062444] hover:bg-[#f8fafd]">
+                                  <FileSpreadsheet size={13} /> Download as CSV
+                                </button>
+                                <button onClick={() => handleDownloadProfile(r, "pdf")}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-normal text-[#062444] hover:bg-[#f8fafd]">
+                                  <FileText size={13} /> Download as PDF
+                                </button>
+                                <button onClick={() => handleDownloadProfile(r, "word")}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-normal text-[#062444] hover:bg-[#f8fafd]">
+                                  <FileType2 size={13} /> Download as Word
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{r.school || "—"}</td>
                       <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{r.course || "—"}</td>
                       <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{r.yearLevel || "—"}</td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => handleDownloadProfile(r, "csv")} disabled={!!profileDownloading}
-                            title="Download comprehensive profile as CSV"
-                            className="p-1.5 rounded-md text-slate-400 hover:text-[#0088cc] hover:bg-[#f8fafd] disabled:opacity-40">
-                            {downloading === "csv" ? <span className="text-[10px]">…</span> : <FileSpreadsheet size={13} />}
-                          </button>
-                          <button onClick={() => handleDownloadProfile(r, "pdf")} disabled={!!profileDownloading}
-                            title="Download comprehensive profile as PDF"
-                            className="p-1.5 rounded-md text-slate-400 hover:text-[#0088cc] hover:bg-[#f8fafd] disabled:opacity-40">
-                            {downloading === "pdf" ? <span className="text-[10px]">…</span> : <FileText size={13} />}
-                          </button>
-                          <button onClick={() => handleDownloadProfile(r, "word")} disabled={!!profileDownloading}
-                            title="Download comprehensive profile as Word"
-                            className="p-1.5 rounded-md text-slate-400 hover:text-[#0088cc] hover:bg-[#f8fafd] disabled:opacity-40">
-                            {downloading === "word" ? <span className="text-[10px]">…</span> : <FileType2 size={13} />}
-                          </button>
-                        </div>
-                      </td>
                     </tr>
                   );
                 })
