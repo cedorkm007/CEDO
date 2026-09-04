@@ -254,11 +254,7 @@ function SchoolSubtab() {
         </>}
         {selectedYearLevel && <>
           <span className="text-slate-300">/</span>
-          <Crumb label={selectedYearLevel} onClick={selectedCourse ? resetToCourses : undefined} current={!selectedCourse} />
-        </>}
-        {selectedCourse && <>
-          <span className="text-slate-300">/</span>
-          <Crumb label={selectedCourse} current />
+          <Crumb label={selectedYearLevel} current />
         </>}
       </div>
 
@@ -270,21 +266,23 @@ function SchoolSubtab() {
           <GroupCountBreakdown title={`Scholars per Year Level — ${selectedSchool}`} columnLabel="Year Level" rows={yearLevelCounts ?? []} onSelect={handleSelectYearLevel} />
         )
       )}
-      {selectedSchool && selectedYearLevel && !selectedCourse && (
+      {selectedSchool && selectedYearLevel && (
         loadingCourses ? <LoadingPanel label="Loading courses…" /> : (
           <GroupCountBreakdown title={`Scholars per Course — ${selectedSchool}, ${selectedYearLevel}`} columnLabel="Course" rows={courseCounts ?? []} onSelect={handleSelectCourse} />
         )
       )}
       {selectedSchool && selectedYearLevel && selectedCourse && (
-        loadingScholars ? <LoadingPanel label="Loading scholars…" /> : (
-          <ScholarListPanel
-            title={`Scholars — ${selectedSchool}, ${selectedYearLevel}, ${selectedCourse}`}
-            rows={scholarRows ?? []}
-            filtersSummary={`Filters: School = ${selectedSchool}; Year Level = ${selectedYearLevel}; Course = ${selectedCourse}`}
-            filenamePrefix={`scholars-${slugify(selectedSchool)}-${slugify(selectedYearLevel)}-${slugify(selectedCourse)}`}
-            defaultExpanded
-          />
-        )
+        <Modal title={`Scholars — ${selectedSchool}, ${selectedYearLevel}, ${selectedCourse}`} onClose={resetToCourses}>
+          {loadingScholars ? <LoadingPanel label="Loading scholars…" /> : (
+            <ScholarListPanel
+              title={`Scholars — ${selectedSchool}, ${selectedYearLevel}, ${selectedCourse}`}
+              rows={scholarRows ?? []}
+              filtersSummary={`Filters: School = ${selectedSchool}; Year Level = ${selectedYearLevel}; Course = ${selectedCourse}`}
+              filenamePrefix={`scholars-${slugify(selectedSchool)}-${slugify(selectedYearLevel)}-${slugify(selectedCourse)}`}
+              defaultExpanded
+            />
+          )}
+        </Modal>
       )}
     </div>
   );
