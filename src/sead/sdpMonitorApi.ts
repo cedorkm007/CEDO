@@ -151,48 +151,25 @@ export interface ScholarSDPChecklist {
   formationProgram: boolean;
 }
 
-/** One row per scholar with an account, showing their 3-category checklist completion. */
+/**
+ * One row per scholar with an account, showing their 3-category
+ * checklist completion. Computed in Postgres via scholars_sdp_checklist()
+ * (a single grouped LEFT JOIN) rather than paginating through every
+ * scholar row client-side (7+ sequential round trips at this project's
+ * scholar count) plus a separate full status-table fetch joined in
+ * JavaScript — this was the slowest list found investigating "lists load
+ * very slowly" on the admin side.
+ */
 export async function fetchAllScholarsSDPChecklist(): Promise<ScholarSDPChecklist[]> {
-  // PostgREST caps a single response (commonly at 1,000 rows). Fetch every
-  // page so the checklist remains complete as the scholar population grows.
-  async function fetchAllScholarRows() {
-    const pageSize = 1000;
-    const rows: { scholar_id_number: string; first_name: string; last_name: string }[] = [];
-    for (let from = 0; ; from += pageSize) {
-      const { data, error } = await supabase.from("scholars")
-        .select("scholar_id_number, first_name, last_name")
-        .order("last_name").order("first_name")
-        .range(from, from + pageSize - 1);
-      if (error || !data) return null;
-      rows.push(...data);
-      if (data.length < pageSize) return rows;
-    }
-  }
-
-  const [scholars, statusResult] = await Promise.all([
-    fetchAllScholarRows(),
-    supabase.from("scholar_sdp_category_status").select("scholar_id_number, category, completed").eq("completed", true),
-  ]);
-  const statusRows = statusResult.data;
-  if (!scholars) return [];
-
-  const completedByScholarId = new Map<string, Set<SDPCategory>>();
-  for (const row of statusRows ?? []) {
-    const set = completedByScholarId.get(row.scholar_id_number) ?? new Set<SDPCategory>();
-    set.add(row.category as SDPCategory);
-    completedByScholarId.set(row.scholar_id_number, set);
-  }
-
-  return scholars.map(s => {
-    const completed = completedByScholarId.get(s.scholar_id_number) ?? new Set<SDPCategory>();
-    return {
-      scholarIdNumber: s.scholar_id_number,
-      name: `${s.first_name} ${s.last_name}`,
-      communityService: completed.has("community_service"),
-      communityVolunteerism: completed.has("community_volunteerism"),
-      formationProgram: completed.has("formation_program"),
-    };
-  });
+  const { data, error } = await supabase.rpc("scholars_sdp_checklist");
+  if (error || !data) return [];
+  return (data as { scholar_id_number: string; name: string; community_service: boolean; community_volunteerism: boolean; formation_program: boolean }[]).map(r => ({
+    scholarIdNumber: r.scholar_id_number,
+    name: r.name,
+    communityService: r.community_service,
+    communityVolunteerism: r.community_volunteerism,
+    formationProgram: r.formation_program,
+  }));
 }
 
 export interface SDPHistoryRow {

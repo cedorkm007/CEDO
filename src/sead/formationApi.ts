@@ -55,12 +55,19 @@ export async function deleteSlot(id: string): Promise<{ ok: boolean; error?: str
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
-/** Distinct school names already on scholars' profiles — the school list for the School-based subsection. */
+/**
+ * Distinct school names already on scholars' profiles — the school list
+ * for the School-based subsection. Computed in Postgres via
+ * distinct_scholar_schools() rather than pulling every scholar's school
+ * column to the client and deduplicating here — that used to both pull
+ * far more data than needed and silently truncate at PostgREST's
+ * response cap (no .range() loop existed), so schools belonging only to
+ * scholars past that cap could vanish from this list.
+ */
 export async function fetchDistinctSchools(): Promise<string[]> {
-  const { data, error } = await supabase.from("scholars").select("school").not("school", "is", null);
+  const { data, error } = await supabase.rpc("distinct_scholar_schools");
   if (error || !data) return [];
-  const set = new Set(data.map(r => (r.school as string ?? "").trim()).filter(Boolean));
-  return [...set].sort((a, b) => a.localeCompare(b));
+  return (data as { school: string }[]).map(r => r.school);
 }
 
 export interface ScholarSearchResult {

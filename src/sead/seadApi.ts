@@ -122,76 +122,47 @@ export interface RankingRow {
   topicCount: number;
 }
 
-/** Top scorers for one subject, optionally filtered by year level / school / cluster (via barangayIn) / barangay. */
+/**
+ * Top scorers for one subject, optionally filtered by year level /
+ * school / cluster (via barangayIn) / barangay. Computed in Postgres via
+ * subject_rankings() — a single joined, filtered, ranked, (optionally)
+ * top-N-limited query — rather than paginating through every scholar
+ * with progress in the subject and separately paginating through a
+ * matching .in() scholar lookup, both 500 rows at a time client-side.
+ * That old approach could take 10+ sequential round trips for a popular
+ * subject at this project's scholar count, and re-ran on every filter
+ * change including free-text Barangay keystrokes — the slowest list
+ * found investigating "lists load very slowly" on the admin side.
+ */
 export async function fetchSubjectRankings(subjectId: string, filters: RankingFilters = {}): Promise<{ rows: RankingRow[]; error: string | null }> {
-  // scholar_subject_progress can hold more rows for a popular subject than
-  // Supabase/PostgREST's default 1,000-row response cap, so this pages
-  // through with .range() instead of a single .select() — same pattern as
-  // fetchScores() below. order() makes each page's slice deterministic.
-  const progress: { scholar_id_number: string; subject_percentage: number; topic_count: number }[] = [];
-  {
-    const pageSize = 500;
-    for (let from = 0; ; from += pageSize) {
-      const { data, error } = await supabase.from("scholar_subject_progress")
-        .select("scholar_id_number, subject_percentage, topic_count")
-        .eq("subject_id", subjectId).gt("topic_count", 0)
-        .order("scholar_id_number")
-        .range(from, from + pageSize - 1);
-      if (error) return { rows: [], error: error.message };
-      if (!data || data.length === 0) break;
-      progress.push(...data);
-      if (data.length < pageSize) break;
-    }
-  }
-  if (progress.length === 0) return { rows: [], error: null };
-
-  // Same response-cap reasoning applies to the matching scholars — an
-  // .in() filter is still subject to the same cap, so this pages through
-  // too rather than trusting one call to return every match.
-  const scholarIds = progress.map(p => p.scholar_id_number);
-  const scholars: { scholar_id_number: string; first_name: string; last_name: string; school: string | null; year_level: string | null; barangay: string | null }[] = [];
-  {
-    const pageSize = 500;
-    for (let from = 0; ; from += pageSize) {
-      let scholarQuery = supabase.from("scholars")
-        .select("scholar_id_number, first_name, last_name, school, year_level, barangay")
-        .in("scholar_id_number", scholarIds)
-        .order("scholar_id_number");
-      if (filters.yearLevel) scholarQuery = scholarQuery.eq("year_level", filters.yearLevel);
-      if (filters.school) scholarQuery = scholarQuery.eq("school", filters.school);
-      if (filters.barangay) scholarQuery = scholarQuery.eq("barangay", filters.barangay);
-      if (filters.barangayIn) scholarQuery = scholarQuery.in("barangay", filters.barangayIn);
-      const { data, error } = await scholarQuery.range(from, from + pageSize - 1);
-      if (error) return { rows: [], error: error.message };
-      if (!data || data.length === 0) break;
-      scholars.push(...data);
-      if (data.length < pageSize) break;
-    }
-  }
-  if (scholars.length === 0) return { rows: [], error: null };
-
-  const progressByScholarId = new Map(progress.map(p => [p.scholar_id_number, p]));
-  const rows = scholars
-    .map(s => {
-      const p = progressByScholarId.get(s.scholar_id_number);
-      return {
-        scholarIdNumber: s.scholar_id_number, scholarName: `${s.first_name} ${s.last_name}`,
-        school: s.school ?? "", yearLevel: s.year_level ?? "", barangay: s.barangay ?? "",
-        subjectPercentage: Number(p?.subject_percentage ?? 0), topicCount: Number(p?.topic_count ?? 0),
-      };
-    })
-    .sort((a, b) => b.subjectPercentage - a.subjectPercentage)
-    .map((r, i) => ({ ...r, rank: i + 1 }));
-
-  return { rows: filters.topN ? rows.slice(0, filters.topN) : rows, error: null };
+  const { data, error } = await supabase.rpc("subject_rankings", {
+    p_subject_id: subjectId,
+    p_top_n: filters.topN ?? null,
+    p_year_level: filters.yearLevel || null,
+    p_school: filters.school || null,
+    p_barangay: filters.barangay || null,
+    p_barangay_in: filters.barangayIn || null,
+  });
+  if (error) return { rows: [], error: error.message };
+  const rows = (data as Record<string, unknown>[] ?? []).map(r => ({
+    rank: Number(r.rank), scholarIdNumber: String(r.scholar_id_number), scholarName: String(r.scholar_name),
+    school: String(r.school ?? ""), yearLevel: String(r.year_level ?? ""), barangay: String(r.barangay ?? ""),
+    subjectPercentage: Number(r.subject_percentage), topicCount: Number(r.topic_count),
+  }));
+  return { rows, error: null };
 }
 
-/** Distinct year levels already on scholars' profiles, for the Rankings filter dropdown. */
+/**
+ * Distinct year levels already on scholars' profiles, for the Rankings
+ * filter dropdown. Computed in Postgres via distinct_scholar_year_levels()
+ * rather than pulling every scholar's year_level column to the client —
+ * see fetchDistinctSchools' own comment (formationApi.ts) for why the
+ * old client-side-dedupe version was both slow and silently incomplete.
+ */
 export async function fetchDistinctYearLevels(): Promise<string[]> {
-  const { data, error } = await supabase.from("scholars").select("year_level").not("year_level", "is", null);
+  const { data, error } = await supabase.rpc("distinct_scholar_year_levels");
   if (error || !data) return [];
-  const set = new Set(data.map(r => (r.year_level as string ?? "").trim()).filter(Boolean));
-  return [...set].sort((a, b) => a.localeCompare(b));
+  return (data as { year_level: string }[]).map(r => r.year_level);
 }
 
 export interface SubjectProgressRow {

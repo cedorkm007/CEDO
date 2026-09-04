@@ -30,6 +30,14 @@ export function RankingsTab() {
   const [locationMode, setLocationMode] = useState<"none" | "cluster" | "barangay">("none");
   const [cluster, setCluster] = useState<ClusterCode>("A");
   const [barangay, setBarangay] = useState("");
+  // Debounced separately from the other (select/click) filters below, since
+  // this is the one free-text field — without this, every keystroke would
+  // re-run loadRankings().
+  const [debouncedBarangay, setDebouncedBarangay] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedBarangay(barangay), 350);
+    return () => clearTimeout(t);
+  }, [barangay]);
 
   const [yearLevels, setYearLevels] = useState<string[]>([]);
   const [schools, setSchools] = useState<string[]>([]);
@@ -53,7 +61,7 @@ export function RankingsTab() {
       topN: topN === "all" ? undefined : topN,
       yearLevel: yearLevel || undefined,
       school: school || undefined,
-      barangay: locationMode === "barangay" && barangay ? barangay : undefined,
+      barangay: locationMode === "barangay" && debouncedBarangay ? debouncedBarangay : undefined,
       barangayIn: clusterBarangays,
     });
     // Milestone 6 (this round): surface result.error, which Milestone 5
@@ -67,7 +75,7 @@ export function RankingsTab() {
   useEffect(() => {
     if (selected) loadRankings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, topN, yearLevel, school, locationMode, cluster, barangay]);
+  }, [selected, topN, yearLevel, school, locationMode, cluster, debouncedBarangay]);
 
   const { sorted: sortedRows, sortState, toggleSort } = useSort<RankingRow>(rows, {
     rank: r => r.rank,
