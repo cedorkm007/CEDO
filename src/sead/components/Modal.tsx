@@ -43,7 +43,7 @@ export function Modal({
   return (
     <div className={`fixed inset-0 ${zIndexClass} flex items-center justify-center p-4`}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-6xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 bg-[#062444] shrink-0">
           <h3 className="text-[14px] font-bold text-white">{title}</h3>
           <button onClick={onClose} className="p-1.5 rounded-md text-white/70 hover:bg-white/10 hover:text-white">
