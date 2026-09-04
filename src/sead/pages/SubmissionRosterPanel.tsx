@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Users, CheckCircle2, AlertCircle, Lock, Circle } from "lucide-react";
+import { X, Users, CheckCircle2, AlertCircle, Lock, Circle, Search, MessageSquare, ChevronDown } from "lucide-react";
 import { ExportButtonGroup, type ExportFormat } from "@/app/components/ExportButtons";
 import { jsPDF } from "jspdf";
 import {
@@ -58,6 +58,11 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
   const [yearLevel, setYearLevel] = useState("all");
   const [school, setSchool] = useState("all");
   const [status, setStatus] = useState<"all" | SubmissionRosterStatus>("all");
+  const [search, setSearch] = useState("");
+  // Which scholar's Remarks dropdown is open — not wired to anything
+  // yet (per the request, "does not do anything for now"), just the UI
+  // shell for a status-remark feature to be built later.
+  const [openRemarksFor, setOpenRemarksFor] = useState<string | null>(null);
 
   async function load(forActivityId: string) {
     setLoading(true);
@@ -72,7 +77,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
   // Reset filters that no longer apply when switching activities — a
   // school/year-level selected for one activity's roster may not exist
   // in another activity's roster at all.
-  useEffect(() => { setYearLevel("all"); setSchool("all"); setStatus("all"); }, [activityId]);
+  useEffect(() => { setYearLevel("all"); setSchool("all"); setStatus("all"); setSearch(""); }, [activityId]);
 
   const schoolOptions = useMemo(
     () => [...new Set(rows.map(r => r.school || "No School Set"))].sort(),
@@ -80,13 +85,23 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
   );
 
   // AND-combined per the person's explicit "cross-matchable" request —
-  // all active conditions must hold, not any one of them.
-  const filteredRows = useMemo(() => rows.filter(row => {
-    if (yearLevel !== "all" && row.yearLevel !== yearLevel) return false;
-    if (school !== "all" && (row.school || "No School Set") !== school) return false;
-    if (status !== "all" && row.status !== status) return false;
-    return true;
-  }), [rows, yearLevel, school, status]);
+  // all active conditions must hold, not any one of them. Search matches
+  // either the scholar's name or their Scholar ID number, substring,
+  // case-insensitive — whichever a staff member happens to have on hand.
+  const filteredRows = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return rows.filter(row => {
+      if (yearLevel !== "all" && row.yearLevel !== yearLevel) return false;
+      if (school !== "all" && (row.school || "No School Set") !== school) return false;
+      if (status !== "all" && row.status !== status) return false;
+      if (term) {
+        const name = `${row.firstName} ${row.lastName}`.toLowerCase();
+        const idNumber = row.scholarIdNumber.toLowerCase();
+        if (!name.includes(term) && !idNumber.includes(term)) return false;
+      }
+      return true;
+    });
+  }, [rows, yearLevel, school, status, search]);
 
   // Counts reflect whichever rows are currently visible — filteredRows
   // already equals the full roster when no filter is active, so this
@@ -114,7 +129,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
   // new pattern. Exports still use the full sortedRows, not just the
   // current page.
   const { paged: pagedRows, page, setPage, totalPages, filteredCount, pageSize } = usePaginatedList(sortedRows, { pageSize: 50 });
-  useEffect(() => { setPage(1); }, [yearLevel, school, status, sortState.key, sortState.direction, setPage]);
+  useEffect(() => { setPage(1); }, [yearLevel, school, status, search, sortState.key, sortState.direction, setPage]);
 
   const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
   const [exportError, setExportError] = useState("");
@@ -131,11 +146,13 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
     if (yearLevel !== "all") parts.push(`Year Level = ${yearLevel}`);
     if (school !== "all") parts.push(`School = ${school}`);
     if (status !== "all") parts.push(`Status = ${statusMeta(status as SubmissionRosterStatus).label}`);
+    if (search.trim()) parts.push(`Search = "${search.trim()}"`);
     return parts.length === 0 ? "All scholars (no filters applied)" : `Filters: ${parts.join("; ")}`;
   }
 
   function buildExportColumns(): { label: string; value: (r: SubmissionRosterRow) => string }[] {
     return [
+      { label: "Scholar ID", value: r => r.scholarIdNumber || "—" },
       { label: "Scholar", value: r => `${r.lastName}, ${r.firstName}` },
       { label: "Year Level", value: r => r.yearLevel || "—" },
       { label: "School", value: r => r.school || "No School Set" },
@@ -181,7 +198,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
       pdf.text(describeFilters(), marginX, y);
       y += 8;
 
-      const colWidths = [70, 35, 55, 30];
+      const colWidths = [26, 52, 30, 42, 26];
       const rowHeight = 7;
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(9);
@@ -217,7 +234,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
       await generateSubmissionRosterReport({
         activityName: activeActivityName,
         columns: columns.map(c => c.label),
-        columnWeights: [2.2, 1, 1.6, 1],
+        columnWeights: [1, 2.2, 1, 1.6, 1],
         rows: sortedRows.map(r => columns.map(c => c.value(r))),
         generatedAt: new Date().toLocaleString(),
         filtersSummary: describeFilters(),
@@ -231,13 +248,18 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 py-8" onClick={onClose}>
-      <div className="flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
+      <div className="flex w-full max-w-6xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
         <div className="flex shrink-0 items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4">
           <h3 className="flex items-center gap-1.5 text-[15px] font-bold text-white"><Users size={16} /> Submission Monitoring</h3>
           <button onClick={onClose} className="text-white/70 hover:text-white" aria-label="Close"><X size={18} /></button>
         </div>
 
         <div className="flex flex-wrap gap-2 border-b border-[#e6ecf5] px-6 py-3">
+          <div className="flex items-center gap-1.5 rounded-lg border border-[#062444]/15 px-2.5 py-1.5 focus-within:border-[#0088cc]">
+            <Search size={13} className="text-slate-400 shrink-0" />
+            <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name or Scholar ID…"
+              className="w-44 text-[12px] font-semibold text-[#062444] outline-none placeholder:font-normal placeholder:text-slate-400" />
+          </div>
           <select value={activityId} onChange={event => setActivityId(event.target.value)}
             className="rounded-lg border border-[#062444]/15 px-2.5 py-1.5 text-[12px] font-semibold text-[#062444] outline-none focus:border-[#0088cc]">
             {activities.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -265,11 +287,14 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
           <div className="grid shrink-0 grid-cols-4 gap-2 border-b border-[#e6ecf5] px-6 py-3">
             {(["submitted", "needs_resubmission", "locked", "not_submitted"] as SubmissionRosterStatus[]).map(s => {
               const meta = statusMeta(s);
+              const active = status === s;
               return (
-                <div key={s} className={`rounded-lg px-2 py-1.5 text-center ${meta.className}`}>
+                <button key={s} onClick={() => setStatus(active ? "all" : s)}
+                  title={active ? "Click to clear this filter" : `Filter to ${meta.label}`}
+                  className={`rounded-lg px-2 py-1.5 text-center transition ${meta.className} ${active ? "ring-2 ring-offset-1 ring-[#062444]" : "hover:opacity-80"}`}>
                   <p className="text-[15px] font-extrabold">{statusCounts[s]}</p>
                   <p className="text-[10px] font-bold uppercase leading-tight">{meta.label}</p>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -300,24 +325,52 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
             <table className="w-full border-separate border-spacing-y-1.5 text-left text-[12.5px]">
               <thead>
                 <tr className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  <th className="px-3 pb-1">Scholar ID</th>
                   <SortableTh label="Scholar" sortKey="scholar" sortState={sortState} onSort={toggleSort} className="px-3 pb-1" />
                   <SortableTh label="Year Level" sortKey="yearLevel" sortState={sortState} onSort={toggleSort} className="px-3 pb-1" />
                   <SortableTh label="School" sortKey="school" sortState={sortState} onSort={toggleSort} className="px-3 pb-1" />
                   <SortableTh label="Status" sortKey="status" sortState={sortState} onSort={toggleSort} className="px-3 pb-1" />
+                  <th className="px-3 pb-1">Remarks</th>
                 </tr>
               </thead>
               <tbody>
                 {pagedRows.map(row => {
                   const meta = statusMeta(row.status);
+                  const remarksOpen = openRemarksFor === row.scholarId;
                   return (
                     <tr key={row.scholarId} className="rounded-xl bg-[#f8fafc]">
-                      <td className="rounded-l-xl px-3 py-2 font-semibold text-[#062444]">{row.lastName}, {row.firstName}</td>
+                      <td className="rounded-l-xl px-3 py-2 text-slate-500 whitespace-nowrap">{row.scholarIdNumber || "—"}</td>
+                      <td className="px-3 py-2 font-semibold text-[#062444]">{row.lastName}, {row.firstName}</td>
                       <td className="px-3 py-2 text-slate-600">{row.yearLevel || "—"}</td>
                       <td className="px-3 py-2 text-slate-600">{row.school || "No School Set"}</td>
-                      <td className="rounded-r-xl px-3 py-2">
+                      <td className="px-3 py-2">
                         <span className={`flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${meta.className}`}>
                           <meta.Icon size={12} /> {meta.label}
                         </span>
+                      </td>
+                      <td className="rounded-r-xl px-3 py-2">
+                        <div className="relative inline-block">
+                          <button onClick={() => setOpenRemarksFor(v => v === row.scholarId ? null : row.scholarId)}
+                            className="flex items-center gap-1 text-[11.5px] font-semibold text-[#0088cc] hover:underline">
+                            <MessageSquare size={12} /> Remarks <ChevronDown size={11} />
+                          </button>
+                          {remarksOpen && (
+                            <>
+                              <div className="fixed inset-0 z-40" onClick={() => setOpenRemarksFor(null)} />
+                              <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-[#e6ecf5] bg-white py-1 shadow-lg">
+                                {(["submitted", "needs_resubmission", "locked", "not_submitted"] as SubmissionRosterStatus[]).map(s => {
+                                  const optionMeta = statusMeta(s);
+                                  return (
+                                    <button key={s} onClick={() => setOpenRemarksFor(null)}
+                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] font-normal text-slate-700 hover:bg-[#f8fafd]">
+                                      <optionMeta.Icon size={12} className="text-slate-400" /> {optionMeta.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

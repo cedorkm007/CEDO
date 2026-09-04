@@ -386,6 +386,7 @@ export type SubmissionRosterStatus = "submitted" | "needs_resubmission" | "locke
 
 export interface SubmissionRosterRow {
   scholarId: string;
+  scholarIdNumber: string;
   firstName: string;
   lastName: string;
   yearLevel: string;
@@ -446,6 +447,7 @@ export async function fetchSubmissionRosterStatus(activityId: string): Promise<{
       if (!data || data.length === 0) break outer;
       rows.push(...(data as Record<string, unknown>[]).map(r => ({
         scholarId: r.scholar_id as string,
+        scholarIdNumber: (r.scholar_id_number as string) ?? "",
         firstName: r.first_name as string,
         lastName: r.last_name as string,
         yearLevel: r.year_level as string,
