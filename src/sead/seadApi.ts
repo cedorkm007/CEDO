@@ -950,6 +950,25 @@ export async function fetchScholarsBySchoolYearLevelCourse(school: string, yearL
   return { ok: true, counts: mapGroupCountRows(data, "course") };
 }
 
+/** Breakdown of one Scholarship Status (e.g. "Probationary") by Year Level, School, or Barangay — backs the clickable status stat cards. */
+export async function fetchScholarsByYearLevelForStatus(status: ScholarshipStatus): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = await supabase.rpc("scholars_by_year_level_for_status", { p_status: status });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, counts: mapGroupCountRows(data, "year_level") };
+}
+
+export async function fetchScholarsBySchoolForStatus(status: ScholarshipStatus): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = await supabase.rpc("scholars_by_school_for_status", { p_status: status });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, counts: mapGroupCountRows(data, "school") };
+}
+
+export async function fetchScholarsByBarangayForStatus(status: ScholarshipStatus): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = await supabase.rpc("scholars_by_barangay_for_status", { p_status: status });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, counts: mapGroupCountRows(data, "barangay") };
+}
+
 export interface ScholarQuestSubjectProgress {
   subjectId: string;
   subjectName: string;

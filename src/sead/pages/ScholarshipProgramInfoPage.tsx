@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
-import { MapPin, School as SchoolIcon, BarChart3 } from "lucide-react";
+import { MapPin, School as SchoolIcon, BarChart3, ChevronLeft } from "lucide-react";
 import {
   fetchScholarshipStatusCounts, fetchScholarsByBarangay, fetchAllScholarsInformationForExport,
   fetchScholarsBySchool, fetchScholarsBySchoolYearLevel, fetchScholarsBySchoolYearLevelCourse,
+  fetchScholarsByYearLevelForStatus, fetchScholarsBySchoolForStatus, fetchScholarsByBarangayForStatus,
   type ScholarshipStatusCounts, type ScholarInformationRow,
 } from "../seadApi";
+import type { ScholarshipStatus } from "../types";
 import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
+import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { ScholarListPanel } from "../components/ScholarListPanel";
 import { GroupCountBreakdown, type GroupCountRow } from "../components/GroupCountBreakdown";
 import { Modal } from "../components/Modal";
 
 type InfoSubtab = "barangay" | "school";
+type StatusDimension = "yearLevel" | "school" | "barangay";
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -28,6 +32,7 @@ export function ScholarshipProgramInfoPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [subtab, setSubtab] = useState<InfoSubtab>("barangay");
+  const [activeStatus, setActiveStatus] = useState<ScholarshipStatus | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -52,11 +57,13 @@ export function ScholarshipProgramInfoPage() {
       {error && <p className="mb-4 text-[13px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Regular" value={counts?.regular} loading={loading} colorClasses="bg-green-100 text-green-700" />
-        <StatCard label="Probationary" value={counts?.probationary} loading={loading} colorClasses="bg-red-100 text-red-600" />
-        <StatCard label="On leave" value={counts?.onLeave} loading={loading} colorClasses="bg-amber-100 text-amber-700" />
-        <StatCard label="Reconsidered" value={counts?.reconsidered} loading={loading} colorClasses="bg-blue-100 text-blue-700" />
+        <StatCard label="Regular" value={counts?.regular} loading={loading} colorClasses="bg-green-100 text-green-700" onClick={() => setActiveStatus("Regular")} />
+        <StatCard label="Probationary" value={counts?.probationary} loading={loading} colorClasses="bg-red-100 text-red-600" onClick={() => setActiveStatus("Probationary")} />
+        <StatCard label="On leave" value={counts?.onLeave} loading={loading} colorClasses="bg-amber-100 text-amber-700" onClick={() => setActiveStatus("On leave")} />
+        <StatCard label="Reconsidered" value={counts?.reconsidered} loading={loading} colorClasses="bg-blue-100 text-blue-700" onClick={() => setActiveStatus("Reconsidered")} />
       </div>
+
+      {activeStatus && <StatusDrilldown status={activeStatus} onClose={() => setActiveStatus(null)} />}
 
       <div className="flex items-center gap-2 mb-4">
         <button onClick={() => setSubtab("barangay")}
@@ -74,16 +81,133 @@ export function ScholarshipProgramInfoPage() {
   );
 }
 
-function StatCard({ label, value, loading, colorClasses }: { label: string; value: number | undefined; loading: boolean; colorClasses: string }) {
+function StatCard({ label, value, loading, colorClasses, onClick }: { label: string; value: number | undefined; loading: boolean; colorClasses: string; onClick?: () => void }) {
   return (
-    <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4">
+    <button onClick={onClick} disabled={!onClick || loading}
+      className="bg-white rounded-2xl border border-[#e6ecf5] p-4 text-left hover:border-[#0088cc]/40 hover:shadow-sm transition disabled:cursor-default disabled:hover:border-[#e6ecf5] disabled:hover:shadow-none">
       <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">{label}</p>
       {loading ? (
         <p className="text-2xl font-extrabold text-slate-300">—</p>
       ) : (
         <span className={`inline-block text-2xl font-extrabold rounded-lg px-2.5 py-0.5 ${colorClasses}`}>{value?.toLocaleString() ?? 0}</span>
       )}
-    </div>
+    </button>
+  );
+}
+
+const STATUS_DIMENSIONS: { key: StatusDimension; label: string }[] = [
+  { key: "yearLevel", label: "Year Level" },
+  { key: "school", label: "School" },
+  { key: "barangay", label: "Barangay" },
+];
+
+/**
+ * Popup opened from clicking a status stat card (Regular / Probationary /
+ * On leave / Reconsidered): first asks which dimension to break that
+ * status down by, then shows the same GroupCountBreakdown used
+ * everywhere else in this tab, scoped to that one status. Selecting a
+ * row opens a second, stacked (`elevated`) modal with the matching
+ * scholar list — reusing ScholarListPanel as-is, so the CSV/PDF/Word
+ * list export and the per-scholar comprehensive-profile download menu
+ * both come for free.
+ */
+function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClose: () => void }) {
+  const [dimension, setDimension] = useState<StatusDimension | null>(null);
+  const [rows, setRows] = useState<GroupCountRow[] | null>(null);
+  const [loadingRows, setLoadingRows] = useState(false);
+  const [error, setError] = useState("");
+
+  const [selectedValue, setSelectedValue] = useState<string | null>(null);
+  const [scholarRows, setScholarRows] = useState<ScholarInformationRow[] | null>(null);
+  const [loadingScholars, setLoadingScholars] = useState(false);
+
+  async function handleChooseDimension(key: StatusDimension) {
+    setDimension(key);
+    setRows(null);
+    setError("");
+    setLoadingRows(true);
+    if (key === "yearLevel") {
+      const result = await fetchScholarsByYearLevelForStatus(status);
+      if (result.ok && result.counts) {
+        const byLevel = new Map(result.counts.map(c => [c.label, c.count]));
+        setRows(FORMATION_YEAR_LEVELS.map(l => ({ label: l, count: byLevel.get(l) ?? 0 })));
+      } else {
+        setError(result.error || "Failed to load the Year Level breakdown.");
+      }
+    } else if (key === "school") {
+      const result = await fetchScholarsBySchoolForStatus(status);
+      if (result.ok && result.counts) setRows([...result.counts].sort((a, b) => b.count - a.count));
+      else setError(result.error || "Failed to load the School breakdown.");
+    } else {
+      const result = await fetchScholarsByBarangayForStatus(status);
+      if (result.ok && result.counts) {
+        const byBarangay = new Map(result.counts.map(c => [c.label, c.count]));
+        setRows(ALL_BARANGAYS.map(b => ({ label: b, count: byBarangay.get(b) ?? 0 })).sort((a, b) => b.count - a.count));
+      } else {
+        setError(result.error || "Failed to load the Barangay breakdown.");
+      }
+    }
+    setLoadingRows(false);
+  }
+
+  async function handleSelectValue(value: string) {
+    if (!dimension) return;
+    setSelectedValue(value);
+    setLoadingScholars(true);
+    const filters = dimension === "yearLevel" ? { status, yearLevel: value } : dimension === "school" ? { status, schoolExact: value } : { status, barangay: value };
+    const rows = await fetchAllScholarsInformationForExport(filters);
+    setScholarRows(rows);
+    setLoadingScholars(false);
+  }
+
+  function handleBack() {
+    setDimension(null);
+    setRows(null);
+    setError("");
+  }
+
+  const dimensionLabel = STATUS_DIMENSIONS.find(d => d.key === dimension)?.label ?? "";
+
+  return (
+    <Modal title={dimension ? `${status} — By ${dimensionLabel}` : `${status} Scholars`} onClose={onClose}>
+      {!dimension ? (
+        <div className="space-y-3">
+          <p className="text-[12.5px] text-slate-500">Break this status down by:</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {STATUS_DIMENSIONS.map(d => (
+              <button key={d.key} onClick={() => handleChooseDimension(d.key)}
+                className="bg-white rounded-xl border border-[#e6ecf5] px-4 py-5 text-center font-bold text-[13px] text-[#062444] hover:border-[#0088cc]/40 hover:shadow-sm transition">
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <button onClick={handleBack} className="flex items-center gap-1 text-[12px] font-semibold text-[#0088cc] hover:underline">
+            <ChevronLeft size={13} /> Choose a different breakdown
+          </button>
+          {error && <p className="text-[13px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+          {loadingRows ? <LoadingPanel label="Loading…" /> : rows && (
+            <GroupCountBreakdown title={`${status} Scholars per ${dimensionLabel}`} columnLabel={dimensionLabel} rows={rows} onSelect={handleSelectValue} />
+          )}
+        </div>
+      )}
+
+      {selectedValue && (
+        <Modal elevated title={`${status} — ${dimensionLabel}: ${selectedValue}`} onClose={() => { setSelectedValue(null); setScholarRows(null); }}>
+          {loadingScholars ? <LoadingPanel label="Loading scholars…" /> : (
+            <ScholarListPanel
+              title={`${status} — ${selectedValue}`}
+              rows={scholarRows ?? []}
+              filtersSummary={`Filters: Status = ${status}; ${dimensionLabel} = ${selectedValue}`}
+              filenamePrefix={`scholars-${slugify(status)}-${slugify(dimensionLabel)}-${slugify(selectedValue)}`}
+              defaultExpanded
+            />
+          )}
+        </Modal>
+      )}
+    </Modal>
   );
 }
 
