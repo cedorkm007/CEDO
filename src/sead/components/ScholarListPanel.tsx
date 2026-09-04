@@ -60,13 +60,15 @@ const EXPORT_COLUMNS: { label: string; value: (r: ScholarInformationRow) => stri
  * panel represents (e.g. one barangay's scholars).
  */
 export function ScholarListPanel({
-  title, rows, filtersSummary, filenamePrefix, defaultExpanded = false,
+  title, rows, filtersSummary, filenamePrefix, defaultExpanded = false, modalLevel = 0,
 }: {
   title: string;
   rows: ScholarInformationRow[];
   filtersSummary: string;
   filenamePrefix: string;
   defaultExpanded?: boolean;
+  /** Nesting depth of whatever Modal (if any) this panel is already shown inside — the Preview popup below stacks one level above it. Defaults to 0 (a normal top-level modal); pass 1 when this panel is itself inside an `elevated` modal. */
+  modalLevel?: number;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [exportingCsv, setExportingCsv] = useState(false);
@@ -280,7 +282,7 @@ export function ScholarListPanel({
       )}
 
       {previewScholar && (
-        <Modal elevated title={`Preview — ${previewScholar.lastName}, ${previewScholar.firstName} ${previewScholar.middleName}`.trim()}
+        <Modal level={modalLevel + 1} title={`Preview — ${previewScholar.lastName}, ${previewScholar.firstName} ${previewScholar.middleName}`.trim()}
           onClose={() => { setPreviewScholar(null); setPreviewSections(null); }}>
           {!previewSections ? (
             <p className="text-[13px] text-slate-400 text-center py-8">Loading…</p>

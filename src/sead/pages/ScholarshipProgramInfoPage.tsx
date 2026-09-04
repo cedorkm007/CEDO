@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MapPin, School as SchoolIcon, BarChart3, ChevronLeft } from "lucide-react";
+import { MapPin, School as SchoolIcon, BarChart3, ChevronLeft, AlertTriangle } from "lucide-react";
 import {
   fetchScholarshipStatusCounts, fetchScholarsByBarangay, fetchAllScholarsInformationForExport,
   fetchScholarsBySchool, fetchScholarsBySchoolYearLevel, fetchScholarsBySchoolYearLevelCourse,
@@ -34,17 +34,19 @@ export function ScholarshipProgramInfoPage() {
   const [subtab, setSubtab] = useState<InfoSubtab>("barangay");
   const [activeStatus, setActiveStatus] = useState<ScholarshipStatus | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      const result = await fetchScholarshipStatusCounts();
-      if (result.ok && result.counts) {
-        setCounts(result.counts);
-      } else {
-        setError(result.error || "Failed to load Scholarship Status counts.");
-      }
-      setLoading(false);
-    })();
-  }, []);
+  async function loadCounts() {
+    setLoading(true);
+    setError("");
+    const result = await fetchScholarshipStatusCounts();
+    if (result.ok && result.counts) {
+      setCounts(result.counts);
+    } else {
+      setError(result.error || "Failed to load Scholarship Status counts.");
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { loadCounts(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   return (
     <div>
@@ -54,7 +56,7 @@ export function ScholarshipProgramInfoPage() {
       </div>
       <p className="text-[12.5px] text-slate-500 mb-5">A birds-eye view of the scholarship program.</p>
 
-      {error && <p className="mb-4 text-[13px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+      {error && <div className="mb-4"><ErrorRetry message={error} onRetry={loadCounts} /></div>}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <StatCard label="Regular" value={counts?.regular} loading={loading} colorClasses="bg-green-100 text-green-700" onClick={() => setActiveStatus("Regular")} />
@@ -187,7 +189,7 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
           <button onClick={handleBack} className="flex items-center gap-1 text-[12px] font-semibold text-[#0088cc] hover:underline">
             <ChevronLeft size={13} /> Choose a different breakdown
           </button>
-          {error && <p className="text-[13px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+          {error && <ErrorRetry message={error} onRetry={() => handleChooseDimension(dimension)} />}
           {loadingRows ? <LoadingPanel label="Loading…" /> : rows && (
             <GroupCountBreakdown title={`${status} Scholars per ${dimensionLabel}`} columnLabel={dimensionLabel} rows={rows} onSelect={handleSelectValue} />
           )}
@@ -203,6 +205,7 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
               filtersSummary={`Filters: Status = ${status}; ${dimensionLabel} = ${selectedValue}`}
               filenamePrefix={`scholars-${slugify(status)}-${slugify(dimensionLabel)}-${slugify(selectedValue)}`}
               defaultExpanded
+              modalLevel={1}
             />
           )}
         </Modal>
@@ -213,6 +216,16 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
 
 function LoadingPanel({ label }: { label: string }) {
   return <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">{label}</div>;
+}
+
+/** Consistent error + Retry affordance for every load failure in this tab, matching the AlertTriangle/Retry convention used elsewhere in the SEAD app (e.g. RankingsTab). */
+function ErrorRetry({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <p className="flex items-center gap-1.5 text-[13px] font-semibold text-red-600 bg-red-50 rounded-lg px-3 py-2">
+      <AlertTriangle size={13} /> {message}
+      <button onClick={onRetry} className="underline font-semibold ml-1">Retry</button>
+    </p>
+  );
 }
 
 /**
@@ -229,20 +242,22 @@ function BarangaySubtab() {
   const [scholarRows, setScholarRows] = useState<ScholarInformationRow[] | null>(null);
   const [loadingScholars, setLoadingScholars] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const result = await fetchScholarsByBarangay();
-      if (result.ok && result.counts) {
-        const byBarangay = new Map(result.counts.map(c => [c.barangay, c.count]));
-        const merged = ALL_BARANGAYS.map(b => ({ label: b, count: byBarangay.get(b) ?? 0 }))
-          .sort((a, b) => b.count - a.count);
-        setCounts(merged);
-      } else {
-        setError(result.error || "Failed to load barangay counts.");
-      }
-      setLoading(false);
-    })();
-  }, []);
+  async function loadCounts() {
+    setLoading(true);
+    setError("");
+    const result = await fetchScholarsByBarangay();
+    if (result.ok && result.counts) {
+      const byBarangay = new Map(result.counts.map(c => [c.barangay, c.count]));
+      const merged = ALL_BARANGAYS.map(b => ({ label: b, count: byBarangay.get(b) ?? 0 }))
+        .sort((a, b) => b.count - a.count);
+      setCounts(merged);
+    } else {
+      setError(result.error || "Failed to load barangay counts.");
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { loadCounts(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   async function handleSelect(barangay: string) {
     setSelected(barangay);
@@ -258,7 +273,7 @@ function BarangaySubtab() {
   }
 
   if (loading) return <LoadingPanel label="Loading…" />;
-  if (error) return <p className="text-[13px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>;
+  if (error) return <ErrorRetry message={error} onRetry={loadCounts} />;
   if (!counts) return null;
 
   return (
@@ -297,26 +312,30 @@ function SchoolSubtab() {
   const [selectedSchool, setSelectedSchool] = useState<string | null>(null);
   const [yearLevelCounts, setYearLevelCounts] = useState<GroupCountRow[] | null>(null);
   const [loadingYearLevels, setLoadingYearLevels] = useState(false);
+  const [yearLevelError, setYearLevelError] = useState("");
 
   const [selectedYearLevel, setSelectedYearLevel] = useState<string | null>(null);
   const [courseCounts, setCourseCounts] = useState<GroupCountRow[] | null>(null);
   const [loadingCourses, setLoadingCourses] = useState(false);
+  const [courseError, setCourseError] = useState("");
 
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [scholarRows, setScholarRows] = useState<ScholarInformationRow[] | null>(null);
   const [loadingScholars, setLoadingScholars] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const result = await fetchScholarsBySchool();
-      if (result.ok && result.counts) {
-        setSchoolCounts([...result.counts].map(c => ({ label: c.label, count: c.count })).sort((a, b) => b.count - a.count));
-      } else {
-        setError(result.error || "Failed to load school counts.");
-      }
-      setLoading(false);
-    })();
-  }, []);
+  async function loadSchoolCounts() {
+    setLoading(true);
+    setError("");
+    const result = await fetchScholarsBySchool();
+    if (result.ok && result.counts) {
+      setSchoolCounts([...result.counts].map(c => ({ label: c.label, count: c.count })).sort((a, b) => b.count - a.count));
+    } else {
+      setError(result.error || "Failed to load school counts.");
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { loadSchoolCounts(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   async function handleSelectSchool(school: string) {
     setSelectedSchool(school);
@@ -325,9 +344,11 @@ function SchoolSubtab() {
     setYearLevelCounts(null);
     setCourseCounts(null);
     setScholarRows(null);
+    setYearLevelError("");
     setLoadingYearLevels(true);
     const result = await fetchScholarsBySchoolYearLevel(school);
     if (result.ok && result.counts) setYearLevelCounts([...result.counts].sort((a, b) => b.count - a.count));
+    else setYearLevelError(result.error || "Failed to load year levels.");
     setLoadingYearLevels(false);
   }
 
@@ -337,9 +358,11 @@ function SchoolSubtab() {
     setSelectedCourse(null);
     setCourseCounts(null);
     setScholarRows(null);
+    setCourseError("");
     setLoadingCourses(true);
     const result = await fetchScholarsBySchoolYearLevelCourse(selectedSchool, yearLevel);
     if (result.ok && result.counts) setCourseCounts([...result.counts].sort((a, b) => b.count - a.count));
+    else setCourseError(result.error || "Failed to load courses.");
     setLoadingCourses(false);
   }
 
@@ -365,7 +388,7 @@ function SchoolSubtab() {
   }
 
   if (loading) return <LoadingPanel label="Loading…" />;
-  if (error) return <p className="text-[13px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>;
+  if (error) return <ErrorRetry message={error} onRetry={loadSchoolCounts} />;
   if (!schoolCounts) return null;
 
   return (
@@ -386,12 +409,16 @@ function SchoolSubtab() {
         <GroupCountBreakdown title="Scholars per School" columnLabel="School" rows={schoolCounts} onSelect={handleSelectSchool} />
       )}
       {selectedSchool && !selectedYearLevel && (
-        loadingYearLevels ? <LoadingPanel label="Loading year levels…" /> : (
+        loadingYearLevels ? <LoadingPanel label="Loading year levels…" /> : yearLevelError ? (
+          <ErrorRetry message={yearLevelError} onRetry={() => handleSelectSchool(selectedSchool)} />
+        ) : (
           <GroupCountBreakdown title={`Scholars per Year Level — ${selectedSchool}`} columnLabel="Year Level" rows={yearLevelCounts ?? []} onSelect={handleSelectYearLevel} />
         )
       )}
       {selectedSchool && selectedYearLevel && (
-        loadingCourses ? <LoadingPanel label="Loading courses…" /> : (
+        loadingCourses ? <LoadingPanel label="Loading courses…" /> : courseError ? (
+          <ErrorRetry message={courseError} onRetry={() => handleSelectYearLevel(selectedYearLevel)} />
+        ) : (
           <GroupCountBreakdown title={`Scholars per Course — ${selectedSchool}, ${selectedYearLevel}`} columnLabel="Course" rows={courseCounts ?? []} onSelect={handleSelectCourse} />
         )
       )}

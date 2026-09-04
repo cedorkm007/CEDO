@@ -10,7 +10,25 @@ import { X } from "lucide-react";
  * wrapper. Matches this feature's existing hand-rolled color palette
  * instead.
  */
-export function Modal({ title, onClose, children, elevated = false }: { title: string; onClose: () => void; children: React.ReactNode; elevated?: boolean }) {
+// One class per nesting depth: 0 = a normal top-level modal, 1 = stacked
+// above one already-open modal (`elevated`), 2 = stacked above that (e.g.
+// ScholarListPanel's own Preview popup, opened from a scholar list that's
+// itself already the elevated modal inside StatusDrilldown). Explicit
+// literal classes rather than a template string, since Tailwind's content
+// scanner needs the full class name present in source to generate it.
+const Z_INDEX_CLASSES = ["z-50", "z-[60]", "z-[70]"] as const;
+
+export function Modal({
+  title, onClose, children, elevated = false, level,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  /** Shorthand for level={1} — kept for existing call sites. */
+  elevated?: boolean;
+  /** Explicit nesting depth (0-2) when stacking more than two modals deep; overrides `elevated`. */
+  level?: number;
+}) {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -19,13 +37,11 @@ export function Modal({ title, onClose, children, elevated = false }: { title: s
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  // `elevated` stacks this modal above another already-open Modal (e.g. a
-  // scholar list popped up from a breakdown that's itself shown in a
-  // modal) — same z-50 default paints fine when there's only one modal at
-  // a time, but two modals need distinct z-index to guarantee stacking
-  // order regardless of DOM position.
+  const resolvedLevel = level ?? (elevated ? 1 : 0);
+  const zIndexClass = Z_INDEX_CLASSES[Math.min(resolvedLevel, Z_INDEX_CLASSES.length - 1)];
+
   return (
-    <div className={`fixed inset-0 ${elevated ? "z-[60]" : "z-50"} flex items-center justify-center p-4`}>
+    <div className={`fixed inset-0 ${zIndexClass} flex items-center justify-center p-4`}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-6xl max-h-[85vh] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 bg-[#062444] shrink-0">
