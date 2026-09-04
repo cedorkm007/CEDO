@@ -7,6 +7,22 @@ export interface GroupCountRow {
   count: number;
 }
 
+const AXIS_LABEL_MAX_CHARS = 22;
+
+/**
+ * Recharts wraps a category-axis tick's text onto multiple lines once it
+ * exceeds the axis's declared `width` — fine for a couple of long labels,
+ * but with many long school/course names (e.g. "University Of Science
+ * And Technology Of Southern Philippines") every wrapped label spans
+ * more vertical space than one bar's row height, so neighboring labels
+ * overlap. Truncating to a single line here avoids that; the full name
+ * is still available via the bar's hover tooltip (built from the raw
+ * data value, not this truncated tick text) and in the table below.
+ */
+function truncateAxisLabel(label: string): string {
+  return label.length > AXIS_LABEL_MAX_CHARS ? `${label.slice(0, AXIS_LABEL_MAX_CHARS - 1)}…` : label;
+}
+
 /**
  * Bar chart + table for a "count of scholars grouped by X" breakdown —
  * shared by every level of the Scholarship Program Information tab's
@@ -47,7 +63,7 @@ export function GroupCountBreakdown({
               <BarChart data={rows} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#eef2f7" />
                 <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: "#94a3b8" }} />
-                <YAxis type="category" dataKey="label" width={160} tick={{ fontSize: 10, fill: "#334155" }} interval={0} />
+                <YAxis type="category" dataKey="label" width={160} tick={{ fontSize: 10, fill: "#334155" }} interval={0} tickFormatter={truncateAxisLabel} />
                 <Tooltip cursor={{ fill: "#f8fafd" }} contentStyle={{ fontSize: 12, borderRadius: 8, borderColor: "#e6ecf5" }} />
                 <Bar dataKey="count" fill="#0088cc" radius={[0, 3, 3, 0]} />
               </BarChart>
