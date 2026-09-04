@@ -9,6 +9,7 @@ import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { toCsv, downloadCsv } from "../csvUtils";
 import { generateSubmissionRosterReport } from "@/lib/docGenerator";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
+import { usePaginatedList, ListPagination } from "@/app/components/PaginatedList";
 
 /**
  * Milestones 5-6 of the "Drive folder reorganization + submission
@@ -102,6 +103,17 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
     school: r => r.school || "No School Set",
     status: r => statusMeta(r.status).label,
   });
+
+  // A broadly-targeted activity's roster can span the whole scholar
+  // population (thousands of rows) — rendering every one of them into
+  // the DOM at once (no windowing) was the actual "slow loading" here,
+  // not the query itself (the RPC returns in well under a second even
+  // for the full roster). Same client-side pagination convention used
+  // elsewhere in the app (RankingsTab, the SDP checklist) rather than a
+  // new pattern. Exports still use the full sortedRows, not just the
+  // current page.
+  const { paged: pagedRows, page, setPage, totalPages, filteredCount, pageSize } = usePaginatedList(sortedRows, { pageSize: 50 });
+  useEffect(() => { setPage(1); }, [yearLevel, school, status, sortState.key, sortState.direction, setPage]);
 
   const [exportingCsv, setExportingCsv] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -304,7 +316,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
                 </tr>
               </thead>
               <tbody>
-                {sortedRows.map(row => {
+                {pagedRows.map(row => {
                   const meta = statusMeta(row.status);
                   return (
                     <tr key={row.scholarId} className="rounded-xl bg-[#f8fafc]">
@@ -321,6 +333,9 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
                 })}
               </tbody>
             </table>
+          )}
+          {!loading && !error && filteredRows.length > 0 && (
+            <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} filteredCount={filteredCount} pageSize={pageSize} itemLabel="scholars" />
           )}
         </div>
       </div>
