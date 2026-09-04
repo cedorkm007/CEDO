@@ -9,6 +9,9 @@ import { toCsv, downloadCsv } from "../csvUtils";
 import { exportTableAsPdf, exportComprehensiveScholarProfilePdf } from "../pdfTableExport";
 import { generateScholarsInformationReport, generateComprehensiveScholarProfile } from "@/lib/docGenerator";
 import { Modal } from "./Modal";
+import letterheadUrl from "@/imports/CEDO_Letterhead.png";
+import cdeoRisLogoUrl from "@/imports/CdeO_RIS_Logo.png";
+import sdgLogoUrl from "@/imports/SDG_Logo.png";
 
 interface ProfileSections {
   basicInfo: { label: string; value: string }[];
@@ -287,50 +290,86 @@ export function ScholarListPanel({
           {!previewSections ? (
             <p className="text-[13px] text-slate-400 text-center py-8">Loading…</p>
           ) : (
-            <div className="space-y-5">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">Basic Information</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 bg-white rounded-xl border border-[#e6ecf5] p-4">
-                  {previewSections.basicInfo.map(b => (
-                    <div key={b.label} className="flex items-center justify-between gap-2 text-[12.5px] border-b border-[#f8fafd] py-1 last:border-b-0">
-                      <span className="text-slate-400">{b.label}</span>
-                      <span className="font-semibold text-[#062444] text-right">{b.value || "—"}</span>
-                    </div>
-                  ))}
+            <div className="space-y-4">
+              {/* The "page" — sized and margined like a printed letter (same
+                  CEDO letterhead header / address-and-logos footer as the
+                  office's other documents), sitting on the modal's own
+                  light background so it reads as a sheet of paper rather
+                  than another web panel. Width is fixed to a page-like
+                  proportion; height is natural/scrolling rather than a
+                  literal fixed A4 height, since the amount of SDP/Formation/
+                  Quest data varies per scholar. */}
+              <div className="mx-auto w-full max-w-[800px] bg-white shadow-[0_2px_10px_rgba(15,23,42,0.10),0_10px_30px_rgba(15,23,42,0.12)] ring-1 ring-black/5">
+                <div className="px-10 pt-8 pb-5 border-b border-slate-200">
+                  <img src={letterheadUrl} alt="City Education and Development Office" className="h-[52px] w-auto" />
+                </div>
+
+                <div className="px-10 py-7 text-[#1a2432]">
+                  <div className="text-center mb-6">
+                    <h2 className="text-[16px] font-bold tracking-wide text-[#062444]">COMPREHENSIVE SCHOLAR PROFILE</h2>
+                    <p className="text-[10.5px] text-slate-500 mt-1">Generated {new Date().toLocaleString()}</p>
+                  </div>
+
+                  <DocSection title="Basic Information">
+                    <table className="w-full text-[12px] border-collapse">
+                      <tbody>
+                        {previewSections.basicInfo.map(b => (
+                          <tr key={b.label}>
+                            <td className="border border-slate-300 bg-slate-50 font-semibold px-3 py-1.5 w-[38%]">{b.label}</td>
+                            <td className="border border-slate-300 px-3 py-1.5">{b.value || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </DocSection>
+
+                  <DocSection title={`SDP — Completed Activities (${previewSections.sdpCompleted.length})`}>
+                    <DocTable
+                      columns={["Activity", "Category", "Date"]}
+                      rows={previewSections.sdpCompleted.map(a => [a.activityName, a.category || "—", a.date || "—"])}
+                      emptyMessage="No completed SDP activities."
+                    />
+                  </DocSection>
+
+                  <DocSection title={`Formation Activities — Attended (${previewSections.formationAttended.length})`}>
+                    <DocTable
+                      columns={["Activity", "Date", "Venue"]}
+                      rows={previewSections.formationAttended.map(f => [f.activityName, f.dateTime || "—", f.venue || "—"])}
+                      emptyMessage="No formation activity attendance recorded."
+                    />
+                  </DocSection>
+
+                  <DocSection title={`Quest — Subjects (${previewSections.questSubjects.length})`} last>
+                    <DocTable
+                      columns={["Subject", "Topics Completed", "Score", "Status"]}
+                      rows={previewSections.questSubjects.map(q => [q.subjectName, String(q.topicCount), `${q.percentage.toFixed(1)}%`, q.isCompleted ? "Completed" : "In Progress"])}
+                      emptyMessage="No Quest activity recorded."
+                    />
+                  </DocSection>
+                </div>
+
+                <div className="px-10 py-4 border-t border-slate-200 flex items-center justify-between gap-4">
+                  <img src={cdeoRisLogoUrl} alt="" className="h-9 w-auto shrink-0" />
+                  <div className="text-center text-[8.5px] leading-snug text-slate-600">
+                    <p>2/F POLICE STATION 1, CITY HALL COMPOUND, CAGAYAN DE ORO 9000 PH</p>
+                    <p>Email: cedo@cagayandeoro.gov.ph | Mobile: +63 929 819 0819 | Facebook: CDO City Scholarships Office</p>
+                  </div>
+                  <img src={sdgLogoUrl} alt="" className="h-9 w-auto shrink-0" />
                 </div>
               </div>
 
-              <PreviewSection
-                title={`SDP — Completed Activities (${previewSections.sdpCompleted.length})`}
-                columns={["Activity", "Category", "Date"]}
-                rows={previewSections.sdpCompleted.map(a => [a.activityName, a.category || "—", a.date || "—"])}
-                emptyMessage="No completed SDP activities."
-              />
-              <PreviewSection
-                title={`Formation Activities — Attended (${previewSections.formationAttended.length})`}
-                columns={["Activity", "Date", "Venue"]}
-                rows={previewSections.formationAttended.map(f => [f.activityName, f.dateTime || "—", f.venue || "—"])}
-                emptyMessage="No formation activity attendance recorded."
-              />
-              <PreviewSection
-                title={`Quest — Subjects (${previewSections.questSubjects.length})`}
-                columns={["Subject", "Topics Completed", "Score", "Status"]}
-                rows={previewSections.questSubjects.map(q => [q.subjectName, String(q.topicCount), `${q.percentage.toFixed(1)}%`, q.isCompleted ? "Completed" : "In Progress"])}
-                emptyMessage="No Quest activity recorded."
-              />
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#e6ecf5]">
+              <div className="flex items-center justify-center gap-2">
                 <button onClick={() => handleDownloadProfile(previewScholar, "csv", previewSections)} disabled={!!profileDownloading}
-                  className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 hover:bg-white bg-[#f8fafd] disabled:opacity-50">
-                  <FileSpreadsheet size={12} /> CSV
+                  className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-3 py-1.5 bg-white hover:bg-[#f8fafd] disabled:opacity-50">
+                  <FileSpreadsheet size={12} /> Download CSV
                 </button>
                 <button onClick={() => handleDownloadProfile(previewScholar, "pdf", previewSections)} disabled={!!profileDownloading}
-                  className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 hover:bg-white bg-[#f8fafd] disabled:opacity-50">
-                  <FileText size={12} /> PDF
+                  className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-3 py-1.5 bg-white hover:bg-[#f8fafd] disabled:opacity-50">
+                  <FileText size={12} /> Download PDF
                 </button>
                 <button onClick={() => handleDownloadProfile(previewScholar, "word", previewSections)} disabled={!!profileDownloading}
-                  className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 hover:bg-white bg-[#f8fafd] disabled:opacity-50">
-                  <FileType2 size={12} /> Word
+                  className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-3 py-1.5 bg-white hover:bg-[#f8fafd] disabled:opacity-50">
+                  <FileType2 size={12} /> Download Word
                 </button>
               </div>
             </div>
@@ -341,30 +380,35 @@ export function ScholarListPanel({
   );
 }
 
-function PreviewSection({ title, columns, rows, emptyMessage }: { title: string; columns: string[]; rows: string[][]; emptyMessage: string }) {
+/** One labeled block of the printed page — a bold section title followed by its table, spaced like the sections of the actual generated document. */
+function DocSection({ title, children, last = false }: { title: string; children: React.ReactNode; last?: boolean }) {
   return (
-    <div>
-      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">{title}</p>
-      {rows.length === 0 ? (
-        <p className="text-[12px] text-slate-400 italic bg-white rounded-xl border border-[#e6ecf5] px-4 py-3">{emptyMessage}</p>
-      ) : (
-        <div className="bg-white rounded-xl border border-[#e6ecf5] overflow-x-auto">
-          <table className="w-full text-[12.5px]">
-            <thead>
-              <tr className="bg-[#f8fafd] text-left text-[10.5px] uppercase tracking-wide text-[#0088cc]">
-                {columns.map(c => <th key={c} className="px-3 py-2 whitespace-nowrap">{c}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => (
-                <tr key={i} className="border-t border-[#f0f3f8]">
-                  {row.map((value, j) => <td key={j} className="px-3 py-2 text-slate-600 whitespace-nowrap">{value}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+    <div className={last ? "" : "mb-6"}>
+      <p className="text-[11.5px] font-bold uppercase tracking-wide text-[#062444] mb-2 pb-1 border-b-2 border-[#062444]/15">{title}</p>
+      {children}
     </div>
+  );
+}
+
+/** Bordered, print-style table (visible grid lines, shaded header row) rather than the app's usual rounded card + soft border — this is meant to read as part of a printed page. */
+function DocTable({ columns, rows, emptyMessage }: { columns: string[]; rows: string[][]; emptyMessage: string }) {
+  if (rows.length === 0) {
+    return <p className="text-[11.5px] text-slate-400 italic border border-slate-200 px-3 py-2.5">{emptyMessage}</p>;
+  }
+  return (
+    <table className="w-full text-[12px] border-collapse">
+      <thead>
+        <tr>
+          {columns.map(c => <th key={c} className="border border-slate-300 bg-slate-50 text-left font-semibold px-3 py-1.5">{c}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, i) => (
+          <tr key={i}>
+            {row.map((value, j) => <td key={j} className="border border-slate-300 px-3 py-1.5">{value}</td>)}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
