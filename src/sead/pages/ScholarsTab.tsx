@@ -10,6 +10,7 @@ import { toCsv, downloadCsv } from "../csvUtils";
 import { jsPDF } from "jspdf";
 import { generateScholarsInformationReport } from "@/lib/docGenerator";
 import { SCHOLARSHIP_STATUSES, type ScholarListItem, type ScholarshipStatus } from "../types";
+import { useSortState, SortableTh } from "@/app/components/SortableTable";
 
 type ScholarsSubtab = "account" | "information";
 
@@ -47,12 +48,13 @@ function ScholarsAccountSubtab() {
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
   const [showResetAll, setShowResetAll] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const { sortState, toggleSort } = useSortState();
 
   const totalPages = Math.max(1, Math.ceil(total / SCHOLARS_PAGE_SIZE));
 
   async function load(pageToLoad: number) {
     setLoading(true);
-    const result = await fetchScholars(search, pageToLoad);
+    const result = await fetchScholars(search, pageToLoad, sortState.key ? { column: sortState.key as "scholarIdNumber" | "name" | "school" | "status", direction: sortState.direction } : undefined);
     setScholars(result.items);
     setTotal(result.total);
     setLoading(false);
@@ -69,6 +71,14 @@ function ScholarsAccountSubtab() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
+
+  // A header click re-sorts the whole (server-side) result set, so jump
+  // back to page 1 the same way a new search does.
+  useEffect(() => {
+    setPage(1);
+    load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortState.key, sortState.direction]);
 
   function goToPage(p: number) {
     const clamped = Math.min(Math.max(1, p), totalPages);
@@ -145,10 +155,10 @@ function ScholarsAccountSubtab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
-              <th className="px-4 py-3">Scholar ID</th>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">School</th>
-              <th className="px-4 py-3">Status</th>
+              <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="Name" sortKey="name" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="School" sortKey="school" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="Status" sortKey="status" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -396,6 +406,7 @@ function ScholarsInformationSubtab() {
   const [scrollWidth, setScrollWidth] = useState(0);
 
   const activeFilterCount = Object.keys(appliedFilters).length;
+  const { sortState, toggleSort } = useSortState();
 
   const totalPages = Math.max(1, Math.ceil(total / SCHOLARS_PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * SCHOLARS_PAGE_SIZE + 1;
@@ -403,13 +414,24 @@ function ScholarsInformationSubtab() {
 
   async function load(pageToLoad: number, filters: ScholarInformationFilters) {
     setLoading(true);
-    const result = await fetchScholarsInformationPage(pageToLoad, filters);
+    const result = await fetchScholarsInformationPage(
+      pageToLoad, filters,
+      sortState.key ? { column: sortState.key as keyof ScholarInformationRow, direction: sortState.direction } : undefined,
+    );
     setRows(result.items);
     setTotal(result.total);
     setLoading(false);
   }
 
   useEffect(() => { load(1, EMPTY_FILTERS); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  // A header click re-sorts the whole (server-side) result set, so jump
+  // back to page 1 the same way a filter change does.
+  useEffect(() => {
+    setPage(1);
+    load(1, appliedFilters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortState.key, sortState.direction]);
 
   // Debounce draft filter fields into appliedFilters, and drop any field
   // that's blank/unset from the object entirely (rather than sending e.g.
@@ -811,9 +833,11 @@ function ScholarsInformationSubtab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
-              <th className="px-4 py-3 whitespace-nowrap">Scholar ID</th>
-              <th className="px-4 py-3 whitespace-nowrap">Name</th>
-              {activeColumns.map(c => <th key={c.key} className="px-4 py-3 whitespace-nowrap">{c.label}</th>)}
+              <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-4 py-3 whitespace-nowrap" />
+              <SortableTh label="Name" sortKey="lastName" sortState={sortState} onSort={toggleSort} className="px-4 py-3 whitespace-nowrap" />
+              {activeColumns.map(c => (
+                <SortableTh key={c.key} label={c.label} sortKey={c.key} sortState={sortState} onSort={toggleSort} className="px-4 py-3 whitespace-nowrap" />
+              ))}
             </tr>
           </thead>
           <tbody>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { X, ClipboardCheck, Clock } from "lucide-react";
 import { fetchScholarSDPHistory, type SDPHistoryRow } from "../sdpMonitorApi";
 import { SDP_CATEGORIES } from "@/scholar/sdpApi";
+import { useSort, SortableTh } from "@/app/components/SortableTable";
 
 interface SDPHistoryModalProps {
   scholarIdNumber: string;
@@ -14,6 +15,12 @@ function categoryLabel(category: SDPHistoryRow["category"]): string {
 }
 
 function HistoryTable({ rows, emptyLabel }: { rows: SDPHistoryRow[]; emptyLabel: string }) {
+  const { sorted: sortedRows, sortState, toggleSort } = useSort<SDPHistoryRow>(rows, {
+    activityName: r => r.activityName,
+    category: r => categoryLabel(r.category),
+    date: r => r.date,
+  });
+
   if (rows.length === 0) {
     return <p className="text-[12.5px] text-slate-400 italic py-3">{emptyLabel}</p>;
   }
@@ -22,13 +29,13 @@ function HistoryTable({ rows, emptyLabel }: { rows: SDPHistoryRow[]; emptyLabel:
       <table className="w-full text-[12.5px]">
         <thead>
           <tr className="bg-[#f8fafd] text-left text-[10.5px] uppercase tracking-wide text-[#0088cc]">
-            <th className="px-3 py-2">Name of Activity</th>
-            <th className="px-3 py-2">SDP Category</th>
-            <th className="px-3 py-2">Date of Activity</th>
+            <SortableTh label="Name of Activity" sortKey="activityName" sortState={sortState} onSort={toggleSort} className="px-3 py-2" />
+            <SortableTh label="SDP Category" sortKey="category" sortState={sortState} onSort={toggleSort} className="px-3 py-2" />
+            <SortableTh label="Date of Activity" sortKey="date" sortState={sortState} onSort={toggleSort} className="px-3 py-2" />
           </tr>
         </thead>
         <tbody>
-          {rows.map(r => (
+          {sortedRows.map(r => (
             <tr key={r.activityId} className="border-t border-[#f0f3f8]">
               <td className="px-3 py-2 text-[#062444] font-medium">{r.activityName}</td>
               <td className="px-3 py-2 text-[#062444] font-bold">{categoryLabel(r.category)}</td>

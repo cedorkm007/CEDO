@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Download, ChevronDown, ChevronUp, FileSpreadsheet, FileText, FileType2 } from "lucide-react";
+import { useSort, SortableTh } from "@/app/components/SortableTable";
 import type { ScholarInformationRow } from "../seadApi";
 import { fetchScholarQuestProgress } from "../seadApi";
 import { fetchScholarSDPHistory } from "../sdpMonitorApi";
@@ -69,6 +70,14 @@ export function ScholarListPanel({
   // Which scholar's name was clicked to open the CSV/PDF/Word download menu — only one open at a time.
   const [openProfileMenuFor, setOpenProfileMenuFor] = useState<string | null>(null);
 
+  const { sorted: sortedRows, sortState, toggleSort } = useSort<ScholarInformationRow>(rows, {
+    scholarIdNumber: r => r.scholarIdNumber,
+    name: r => `${r.lastName} ${r.firstName} ${r.middleName}`.trim(),
+    school: r => r.school,
+    course: r => r.course,
+    yearLevel: r => r.yearLevel,
+  });
+
   async function handleDownloadProfile(r: ScholarInformationRow, format: "csv" | "pdf" | "word") {
     if (profileDownloading) return;
     setOpenProfileMenuFor(null);
@@ -123,34 +132,34 @@ export function ScholarListPanel({
   }
 
   function handleExportCsv() {
-    if (busy || rows.length === 0) return;
+    if (busy || sortedRows.length === 0) return;
     setExportingCsv(true);
     try {
       downloadCsv(`${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`,
-        toCsv(EXPORT_COLUMNS.map(c => c.label), rows.map(r => EXPORT_COLUMNS.map(c => c.value(r)))));
+        toCsv(EXPORT_COLUMNS.map(c => c.label), sortedRows.map(r => EXPORT_COLUMNS.map(c => c.value(r)))));
     } finally {
       setExportingCsv(false);
     }
   }
 
   async function handleExportPdf() {
-    if (busy || rows.length === 0) return;
+    if (busy || sortedRows.length === 0) return;
     setExportingPdf(true);
     try {
-      await exportTableAsPdf({ title, columns: EXPORT_COLUMNS, rows, filtersSummary, filenamePrefix });
+      await exportTableAsPdf({ title, columns: EXPORT_COLUMNS, rows: sortedRows, filtersSummary, filenamePrefix });
     } finally {
       setExportingPdf(false);
     }
   }
 
   async function handleExportWord() {
-    if (busy || rows.length === 0) return;
+    if (busy || sortedRows.length === 0) return;
     setExportingWord(true);
     try {
       await generateScholarsInformationReport({
         columns: EXPORT_COLUMNS.map(c => c.label),
         columnWeights: EXPORT_COLUMNS.map(c => c.weight ?? 1),
-        rows: rows.map(r => EXPORT_COLUMNS.map(c => c.value(r))),
+        rows: sortedRows.map(r => EXPORT_COLUMNS.map(c => c.value(r))),
         generatedAt: new Date().toLocaleString(),
         filtersSummary,
       });
@@ -187,18 +196,18 @@ export function ScholarListPanel({
           <table className="w-full text-[12.5px]">
             <thead>
               <tr className="sticky top-0 z-10 bg-[#f8fafd] text-left text-[10.5px] uppercase tracking-wide text-[#0088cc]">
-                <th className="px-4 py-2 whitespace-nowrap">Scholar ID</th>
-                <th className="px-4 py-2 whitespace-nowrap">Name</th>
-                <th className="px-4 py-2 whitespace-nowrap">School</th>
-                <th className="px-4 py-2 whitespace-nowrap">Course</th>
-                <th className="px-4 py-2 whitespace-nowrap">Year Level</th>
+                <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-4 py-2 whitespace-nowrap" />
+                <SortableTh label="Name" sortKey="name" sortState={sortState} onSort={toggleSort} className="px-4 py-2 whitespace-nowrap" />
+                <SortableTh label="School" sortKey="school" sortState={sortState} onSort={toggleSort} className="px-4 py-2 whitespace-nowrap" />
+                <SortableTh label="Course" sortKey="course" sortState={sortState} onSort={toggleSort} className="px-4 py-2 whitespace-nowrap" />
+                <SortableTh label="Year Level" sortKey="yearLevel" sortState={sortState} onSort={toggleSort} className="px-4 py-2 whitespace-nowrap" />
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {sortedRows.length === 0 ? (
                 <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-400">No scholars found.</td></tr>
               ) : (
-                rows.map(r => {
+                sortedRows.map(r => {
                   const downloading = profileDownloading?.id === r.scholarIdNumber ? profileDownloading.format : null;
                   const menuOpen = openProfileMenuFor === r.scholarIdNumber;
                   return (

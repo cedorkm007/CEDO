@@ -5,6 +5,7 @@ import { fetchDistinctSchools } from "../formationApi";
 import { CLUSTERS, namedBarangaysInCluster, NUMBERED_BARANGAYS, type ClusterCode } from "@/lib/cdoBarangays";
 import type { QuestSubject } from "../types";
 import { ListPagination } from "@/app/components/PaginatedList";
+import { useSort, SortableTh } from "@/app/components/SortableTable";
 
 const TOP_N_OPTIONS = [10, 50, 100];
 
@@ -68,11 +69,19 @@ export function RankingsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, topN, yearLevel, school, locationMode, cluster, barangay]);
 
+  const { sorted: sortedRows, sortState, toggleSort } = useSort<RankingRow>(rows, {
+    rank: r => r.rank,
+    scholar: r => r.scholarName,
+    school: r => r.school,
+    yearLevel: r => r.yearLevel,
+    score: r => r.subjectPercentage,
+  });
+
   const [page, setPage] = useState(1);
   const pageSize = 10;
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pagedRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const pagedRows = sortedRows.slice((safePage - 1) * pageSize, safePage * pageSize);
   useEffect(() => { setPage(1); }, [rows]);
 
   if (selected) {
@@ -142,11 +151,11 @@ export function RankingsTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
-                <th className="px-4 py-3">Rank</th>
-                <th className="px-4 py-3">Scholar</th>
-                <th className="px-4 py-3">School</th>
-                <th className="px-4 py-3">Year Level</th>
-                <th className="px-4 py-3">Score</th>
+                <SortableTh label="Rank" sortKey="rank" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+                <SortableTh label="Scholar" sortKey="scholar" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+                <SortableTh label="School" sortKey="school" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+                <SortableTh label="Year Level" sortKey="yearLevel" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+                <SortableTh label="Score" sortKey="score" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>

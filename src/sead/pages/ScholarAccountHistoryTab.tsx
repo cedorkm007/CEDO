@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Search, PlusCircle, MinusCircle, RotateCcw, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
-import { fetchScholarAccountLog, ACCOUNT_LOG_PAGE_SIZE } from "../seadApi";
+import { fetchScholarAccountLog, ACCOUNT_LOG_PAGE_SIZE, type ScholarLogSortColumn } from "../seadApi";
+import { useSortState, SortableTh } from "@/app/components/SortableTable";
 import type { ScholarAccountLogEntry } from "../types";
 
 const SOURCE_LABEL: Record<ScholarAccountLogEntry["source"], string> = {
@@ -31,12 +32,14 @@ export function ScholarAccountHistoryTab() {
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState<ActionFilter>("");
   const [page, setPage] = useState(1);
+  const { sortState, toggleSort } = useSortState();
 
   async function load(pageToLoad: number) {
     setLoading(true);
     const result = await fetchScholarAccountLog(
       { search: search.trim() || undefined, action: actionFilter || undefined },
       pageToLoad,
+      sortState.key ? { column: sortState.key as ScholarLogSortColumn, direction: sortState.direction } : undefined,
     );
     setEntries(result.items);
     setTotal(result.total);
@@ -58,6 +61,14 @@ export function ScholarAccountHistoryTab() {
     void load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionFilter]);
+
+  // A header click re-sorts the whole (server-side) result set, so jump
+  // back to page 1 the same way search/action filtering does.
+  useEffect(() => {
+    setPage(1);
+    void load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortState.key, sortState.direction]);
 
   function goToPage(p: number) {
     const clamped = Math.min(Math.max(1, p), totalPages);
@@ -97,12 +108,12 @@ export function ScholarAccountHistoryTab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Change</th>
-              <th className="px-4 py-3">Scholar</th>
-              <th className="px-4 py-3">Description</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Staff</th>
+              <SortableTh label="Date" sortKey="createdAt" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="Change" sortKey="action" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="Scholar" sortKey="scholarName" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="Description" sortKey="description" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="Type" sortKey="source" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="Staff" sortKey="performedByName" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>

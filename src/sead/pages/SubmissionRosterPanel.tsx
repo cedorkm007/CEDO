@@ -8,6 +8,7 @@ import {
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { toCsv, downloadCsv } from "../csvUtils";
 import { generateSubmissionRosterReport } from "@/lib/docGenerator";
+import { useSort, SortableTh } from "@/app/components/SortableTable";
 
 /**
  * Milestones 5-6 of the "Drive folder reorganization + submission
@@ -95,6 +96,13 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
     return counts;
   }, [filteredRows]);
 
+  const { sorted: sortedRows, sortState, toggleSort } = useSort<SubmissionRosterRow>(filteredRows, {
+    scholar: r => `${r.lastName} ${r.firstName}`.trim(),
+    yearLevel: r => r.yearLevel,
+    school: r => r.school || "No School Set",
+    status: r => statusMeta(r.status).label,
+  });
+
   const [exportingCsv, setExportingCsv] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingWord, setExportingWord] = useState(false);
@@ -130,7 +138,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
     setExportError("");
     try {
       const columns = buildExportColumns();
-      const csv = toCsv(columns.map(c => c.label), filteredRows.map(r => columns.map(c => c.value(r))));
+      const csv = toCsv(columns.map(c => c.label), sortedRows.map(r => columns.map(c => c.value(r))));
       downloadCsv(csv, `Submission_Roster_${activeActivityName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.csv`);
     } catch {
       setExportError("Could not export CSV. Please try again.");
@@ -174,7 +182,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
       y += 4;
       pdf.setFont("helvetica", "normal");
 
-      for (const row of filteredRows) {
+      for (const row of sortedRows) {
         if (y > 280) { pdf.addPage(); y = 18; }
         x = marginX;
         columns.forEach((c, i) => { pdf.text(c.value(row), x, y, { maxWidth: colWidths[i] - 2 }); x += colWidths[i]; });
@@ -199,7 +207,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
         activityName: activeActivityName,
         columns: columns.map(c => c.label),
         columnWeights: [2.2, 1, 1.6, 1],
-        rows: filteredRows.map(r => columns.map(c => c.value(r))),
+        rows: sortedRows.map(r => columns.map(c => c.value(r))),
         generatedAt: new Date().toLocaleString(),
         filtersSummary: describeFilters(),
       });
@@ -289,14 +297,14 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
             <table className="w-full border-separate border-spacing-y-1.5 text-left text-[12.5px]">
               <thead>
                 <tr className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                  <th className="px-3 pb-1">Scholar</th>
-                  <th className="px-3 pb-1">Year Level</th>
-                  <th className="px-3 pb-1">School</th>
-                  <th className="px-3 pb-1">Status</th>
+                  <SortableTh label="Scholar" sortKey="scholar" sortState={sortState} onSort={toggleSort} className="px-3 pb-1" />
+                  <SortableTh label="Year Level" sortKey="yearLevel" sortState={sortState} onSort={toggleSort} className="px-3 pb-1" />
+                  <SortableTh label="School" sortKey="school" sortState={sortState} onSort={toggleSort} className="px-3 pb-1" />
+                  <SortableTh label="Status" sortKey="status" sortState={sortState} onSort={toggleSort} className="px-3 pb-1" />
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map(row => {
+                {sortedRows.map(row => {
                   const meta = statusMeta(row.status);
                   return (
                     <tr key={row.scholarId} className="rounded-xl bg-[#f8fafc]">

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Search, Filter, Award, CheckCircle2, XCircle, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
-import { fetchSubjects, fetchTopics, searchQuestScores, fetchSubjectProgressPage, type PassedFilter } from "../seadApi";
+import { fetchSubjects, fetchTopics, searchQuestScores, fetchSubjectProgressPage, type PassedFilter, type QuestScoreSortColumn } from "../seadApi";
 import type { QuestSubject, QuestTopic, ScoreRow } from "../types";
 import { ListPagination } from "@/app/components/PaginatedList";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
+import { useSortState, SortableTh } from "@/app/components/SortableTable";
 
 export function ScoresTab() {
   const [subjects, setSubjects] = useState<QuestSubject[]>([]);
@@ -115,13 +116,14 @@ export function ScoresTab() {
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [scoresError, setScoresError] = useState<string | null>(null);
+  const { sortState, toggleSort } = useSortState();
 
   async function loadScores(requestedPage: number) {
     setLoading(true);
     const result = await searchQuestScores({
       subjectId: subjectId || undefined, topicId: topicId || undefined,
       scholarSearch: scholarSearch || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
-    }, requestedPage, pageSize);
+    }, requestedPage, pageSize, sortState.key ? { column: sortState.key as QuestScoreSortColumn, direction: sortState.direction } : undefined);
     setRows(result.rows);
     setTotalCount(result.totalCount);
     setScholarCount(result.distinctScholarCount);
@@ -141,6 +143,14 @@ export function ScoresTab() {
   }
 
   useEffect(() => { void loadScores(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  // A header click re-sorts the whole (server-side) result set, so jump
+  // back to page 1 the same way applying filters does.
+  useEffect(() => {
+    setPage(1);
+    void loadScores(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortState.key, sortState.direction]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -303,12 +313,12 @@ export function ScoresTab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
-              <th className="px-4 py-3">Scholar</th>
-              <th className="px-4 py-3">Subject</th>
-              <th className="px-4 py-3">Topic</th>
-              <th className="px-4 py-3">Quest</th>
-              <th className="px-4 py-3">Score</th>
-              <th className="px-4 py-3">Date</th>
+              <SortableTh label="Scholar" sortKey="scholar" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="Subject" sortKey="subject" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="Topic" sortKey="topic" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="Quest" sortKey="quest" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="Score" sortKey="score" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
+              <SortableTh label="Date" sortKey="date" sortState={sortState} onSort={toggleSort} className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>

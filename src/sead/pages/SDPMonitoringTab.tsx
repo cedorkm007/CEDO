@@ -14,6 +14,7 @@ import { SDP_CATEGORIES } from "@/scholar/sdpApi";
 import { SDPHistoryModal } from "../components/SDPHistoryModal";
 import { ListPagination } from "@/app/components/PaginatedList";
 import { useUrlState } from "@/app/useUrlState";
+import { useSort, SortableTh } from "@/app/components/SortableTable";
 
 const STATUS_OPTIONS: SDPStatus[] = ["pending", "approved", "ongoing", "finished", "canceled", "rescheduled"];
 
@@ -734,11 +735,19 @@ function ChecklistSection() {
     return s.name.toLowerCase().includes(q) || s.scholarIdNumber.toLowerCase().includes(q);
   });
 
+  const { sorted: sortedScholars, sortState, toggleSort } = useSort<ScholarSDPChecklist>(filtered, {
+    scholarIdNumber: s => s.scholarIdNumber,
+    name: s => s.name,
+    communityService: s => (s.communityService ? 1 : 0),
+    communityVolunteerism: s => (s.communityVolunteerism ? 1 : 0),
+    formationProgram: s => (s.formationProgram ? 1 : 0),
+  });
+
   const [page, setPage] = useState(1);
   const pageSize = 50;
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(sortedScholars.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const paged = sortedScholars.slice((safePage - 1) * pageSize, safePage * pageSize);
   useEffect(() => { setPage(1); }, [search]);
 
   return (
@@ -755,11 +764,11 @@ function ChecklistSection() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
-              <th className="px-5 py-3">Scholar ID</th>
-              <th className="px-5 py-3">Scholar Name</th>
-              <th className="px-5 py-3">Community Service</th>
-              <th className="px-5 py-3">Community Volunteerism</th>
-              <th className="px-5 py-3">Formation Program</th>
+              <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
+              <SortableTh label="Scholar Name" sortKey="name" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
+              <SortableTh label="Community Service" sortKey="communityService" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
+              <SortableTh label="Community Volunteerism" sortKey="communityVolunteerism" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
+              <SortableTh label="Formation Program" sortKey="formationProgram" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
               <th className="px-5 py-3 text-right">SDP History</th>
             </tr>
           </thead>

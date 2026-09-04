@@ -795,8 +795,32 @@ function mapScholarInformationRow(r: Record<string, unknown>): ScholarInformatio
   };
 }
 
+export type ScholarInformationSortColumn = keyof ScholarInformationRow;
+export interface TableSort<TColumn extends string> {
+  column: TColumn;
+  direction: "asc" | "desc";
+}
+
+/** Frontend column key -> underlying scholars table column(s), in order (a multi-column sort like Name breaks ties on the second column). */
+const SCHOLAR_INFORMATION_SORT_COLUMNS: Record<ScholarInformationSortColumn, string[]> = {
+  scholarIdNumber: ["scholar_id_number"],
+  firstName: ["first_name", "last_name"],
+  lastName: ["last_name", "first_name"],
+  middleName: ["middle_name"],
+  yearLevel: ["year_level"],
+  school: ["school"],
+  status: ["status"],
+  barangay: ["barangay"],
+  course: ["course"],
+  birthday: ["birthday"],
+  civilStatus: ["civil_status"],
+  contactNo: ["contact_no"],
+};
+/** "Age" is displayed for the birthday column, so ascending Age (youngest first) is descending birthday (most recent date first) — the one column whose natural UI direction is inverted from its raw date direction. */
+const INVERTED_SORT_COLUMNS = new Set<ScholarInformationSortColumn>(["birthday"]);
+
 export async function fetchScholarsInformationPage(
-  page: number, filters: ScholarInformationFilters = {}
+  page: number, filters: ScholarInformationFilters = {}, sort?: TableSort<ScholarInformationSortColumn>
 ): Promise<{ items: ScholarInformationRow[]; total: number }> {
   const from = (page - 1) * SCHOLARS_PAGE_SIZE;
   let query = supabase.from("scholars").select(SCHOLAR_INFORMATION_SELECT, { count: "exact" });
@@ -806,9 +830,11 @@ export async function fetchScholarsInformationPage(
   // per the task, not a set of mutually-exclusive views.
   query = applyScholarInformationFilters(query, filters);
 
-  const { data, error, count } = await query
-    .order("last_name").order("first_name")
-    .range(from, from + SCHOLARS_PAGE_SIZE - 1);
+  const sortColumns = (sort && SCHOLAR_INFORMATION_SORT_COLUMNS[sort.column]) || ["last_name", "first_name"];
+  const ascending = sort ? (INVERTED_SORT_COLUMNS.has(sort.column) ? sort.direction === "desc" : sort.direction === "asc") : true;
+  for (const col of sortColumns) query = query.order(col, { ascending });
+
+  const { data, error, count } = await query.range(from, from + SCHOLARS_PAGE_SIZE - 1);
   if (error || !data) return { items: [], total: 0 };
   return { items: data.map(mapScholarInformationRow), total: count ?? data.length };
 }
@@ -852,11 +878,22 @@ export async function fetchAllScholarsInformationForExport(
   return all;
 }
 
-export async function fetchScholars(search: string, page: number = 1): Promise<ScholarPage> {
+export type ScholarAccountSortColumn = "scholarIdNumber" | "name" | "school" | "status";
+/** search_scholars() only understands these exact column names (see its CASE-based ORDER BY) — the fallback query below maps the same keys onto its own .order() calls. */
+const SCHOLAR_ACCOUNT_SORT_RPC_COLUMN: Record<ScholarAccountSortColumn, string> = {
+  scholarIdNumber: "scholarIdNumber", name: "name", school: "school", status: "status",
+};
+const SCHOLAR_ACCOUNT_SORT_FALLBACK_COLUMNS: Record<ScholarAccountSortColumn, string[]> = {
+  scholarIdNumber: ["scholar_id_number"], name: ["last_name", "first_name"], school: ["school"], status: ["status"],
+};
+
+export async function fetchScholars(search: string, page: number = 1, sort?: TableSort<ScholarAccountSortColumn>): Promise<ScholarPage> {
   const { data, error } = await supabase.rpc("search_scholars", {
     p_search: search.trim() || "",
     p_limit: SCHOLARS_PAGE_SIZE,
     p_offset: (page - 1) * SCHOLARS_PAGE_SIZE,
+    p_sort_column: sort ? SCHOLAR_ACCOUNT_SORT_RPC_COLUMN[sort.column] : null,
+    p_sort_direction: sort?.direction ?? "asc",
   });
   // Keep the Scholars tab usable until the matching RPC migration has been
   // applied. The primary path remains the RPC because it supports reliable
@@ -865,8 +902,9 @@ export async function fetchScholars(search: string, page: number = 1): Promise<S
   if (error || !data) {
     const term = search.trim().replace(/[,.()]/g, " ");
     let query = supabase.from("scholars")
-      .select("id, scholar_id_number, first_name, last_name, middle_name, school, status", { count: "exact" })
-      .order("last_name").order("first_name");
+      .select("id, scholar_id_number, first_name, last_name, middle_name, school, status", { count: "exact" });
+    const sortColumns = (sort && SCHOLAR_ACCOUNT_SORT_FALLBACK_COLUMNS[sort.column]) || ["last_name", "first_name"];
+    for (const col of sortColumns) query = query.order(col, { ascending: sort ? sort.direction === "asc" : true });
     if (term) {
       const pattern = "%" + term + "%";
       query = query.or("scholar_id_number.ilike." + pattern + ",first_name.ilike." + pattern + ",last_name.ilike." + pattern);
@@ -1342,10 +1380,17 @@ export interface ScholarLogFilters {
 
 const ACCOUNT_LOG_PAGE_SIZE = 50;
 
-export async function fetchScholarAccountLog(filters: ScholarLogFilters = {}, page: number = 1): Promise<{ items: ScholarAccountLogEntry[]; total: number }> {
+export type ScholarLogSortColumn = "createdAt" | "action" | "scholarName" | "description" | "source" | "performedByName";
+const SCHOLAR_LOG_SORT_COLUMNS: Record<ScholarLogSortColumn, string> = {
+  createdAt: "created_at", action: "action", scholarName: "scholar_name",
+  description: "description", source: "source", performedByName: "performed_by_name",
+};
+
+export async function fetchScholarAccountLog(
+  filters: ScholarLogFilters = {}, page: number = 1, sort?: TableSort<ScholarLogSortColumn>
+): Promise<{ items: ScholarAccountLogEntry[]; total: number }> {
   let query = supabase.from("sead_scholar_account_log")
-    .select("id, created_at, action, scholar_id_number, scholar_name, performed_by_name, batch_id, source, description", { count: "exact" })
-    .order("created_at", { ascending: false });
+    .select("id, created_at, action, scholar_id_number, scholar_name, performed_by_name, batch_id, source, description", { count: "exact" });
 
   if (filters.action) query = query.eq("action", filters.action);
   if (filters.dateFrom) query = query.gte("created_at", filters.dateFrom);
@@ -1354,6 +1399,9 @@ export async function fetchScholarAccountLog(filters: ScholarLogFilters = {}, pa
     const s = filters.search.trim();
     query = query.or(`scholar_id_number.ilike.%${s}%,scholar_name.ilike.%${s}%`);
   }
+
+  const sortColumn = (sort && SCHOLAR_LOG_SORT_COLUMNS[sort.column]) || "created_at";
+  query = query.order(sortColumn, { ascending: sort ? sort.direction === "asc" : false });
 
   const from = (page - 1) * ACCOUNT_LOG_PAGE_SIZE;
   const { data, error, count } = await query.range(from, from + ACCOUNT_LOG_PAGE_SIZE - 1);
@@ -1408,7 +1456,11 @@ export interface ScoreSearchResult {
  * (already-joined) rows. Table meaning is unchanged: rows are still
  * individual attempt records, not unique scholars.
  */
-export async function searchQuestScores(filters: ScoreFilters, page: number, pageSize: number): Promise<ScoreSearchResult> {
+export type QuestScoreSortColumn = "scholar" | "subject" | "topic" | "quest" | "score" | "date";
+
+export async function searchQuestScores(
+  filters: ScoreFilters, page: number, pageSize: number, sort?: TableSort<QuestScoreSortColumn>
+): Promise<ScoreSearchResult> {
   const { data, error } = await supabase.rpc("search_quest_scores", {
     p_subject_id: filters.subjectId || null,
     p_topic_id: filters.topicId || null,
@@ -1417,6 +1469,8 @@ export async function searchQuestScores(filters: ScoreFilters, page: number, pag
     p_date_to: filters.dateTo || null,
     p_limit: pageSize,
     p_offset: (page - 1) * pageSize,
+    p_sort_column: sort?.column ?? null,
+    p_sort_direction: sort?.direction ?? "asc",
   });
   if (error || !data) {
     return {
