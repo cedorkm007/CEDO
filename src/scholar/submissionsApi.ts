@@ -164,6 +164,51 @@ async function invokeScholarEdgeFunction<T = Record<string, unknown>>(
   return { ok: true, data: data as T };
 }
 
+const SUPABASE_FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * One raw XHR attempt at invoking an Edge Function with a FormData body.
+ * Not supabase.functions.invoke() (which wraps fetch) specifically
+ * because fetch has no upload-progress event — XHR's upload.onprogress
+ * is the only way to show a scholar on a slow connection that a large
+ * file is actually moving, not frozen.
+ *
+ * Resolves with whatever HTTP response comes back, including a 4xx/5xx
+ * one, so the caller can read the server's own error message. Rejects
+ * ONLY when no response arrives at all (connection dropped, DNS
+ * failure, timeout) — that specific failure mode is what
+ * uploadSubmissionFile below retries; a clean server error (wrong file
+ * type, locked activity, etc.) never will be, since retrying that would
+ * just fail the same way every time.
+ */
+function invokeEdgeFunctionWithProgress(
+  name: string, form: FormData, accessToken: string, onProgress?: (fraction: number) => void,
+): Promise<{ status: number; body: Record<string, unknown> | null }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${SUPABASE_FUNCTIONS_URL}/${name}`);
+    xhr.setRequestHeader("apikey", SUPABASE_ANON_KEY);
+    xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+    xhr.timeout = 5 * 60 * 1000; // 5 minutes — generous enough for a large file on a slow connection
+    if (onProgress) {
+      xhr.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    }
+    xhr.onload = () => {
+      let body: Record<string, unknown> | null = null;
+      try { body = JSON.parse(xhr.responseText); } catch { /* non-JSON response body */ }
+      resolve({ status: xhr.status, body });
+    };
+    xhr.onerror = () => reject(new Error("Network error"));
+    xhr.ontimeout = () => reject(new Error("Request timed out"));
+    xhr.send(form);
+  });
+}
+
 /**
  * Uploads one file for one activity/field through the secure
  * submission-upload-file Edge Function (see
@@ -173,23 +218,48 @@ async function invokeScholarEdgeFunction<T = Record<string, unknown>>(
  * credential is ever present in the browser. Server-side re-validates
  * file type and the field's max-files rule regardless of what the caller
  * already checked client-side.
+ *
+ * Automatically retries up to twice (three attempts total, with a short
+ * pause in between) if the connection drops before any response comes
+ * back — a scholar on a slow/unstable connection can otherwise lose an
+ * upload to a single transient blip that a moment later would have gone
+ * through fine. Never retries a real server response (even an error
+ * one), since that would just fail identically every time. `onProgress`
+ * (0-1) is reported per attempt, resetting to 0 at the start of a retry
+ * since the whole file re-sends from scratch — this simpler fix doesn't
+ * carry bytes over between attempts the way a true resumable upload would.
  */
 export async function uploadSubmissionFile(
-  activityId: string, fieldId: string, file: File,
+  activityId: string, fieldId: string, file: File, onProgress?: (fraction: number) => void,
 ): Promise<{
   ok: boolean;
   error?: string;
   upload?: { id: string; originalFileName: string; status: string; createdAt: string };
 }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { ok: false, error: "Your session has expired — please sign in again." };
+
   const form = new FormData();
   form.append("activityId", activityId);
   form.append("fieldId", fieldId);
   form.append("file", file, file.name);
-  const result = await invokeScholarEdgeFunction<{
-    upload?: { id: string; originalFileName: string; status: string; createdAt: string };
-  }>("submission-upload-file", form);
-  if (!result.ok) return { ok: false, error: result.error };
-  return { ok: true, upload: result.data?.upload };
+
+  const retryDelaysMs = [1000, 3000];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const { status, body } = await invokeEdgeFunctionWithProgress("submission-upload-file", form, session.access_token, onProgress);
+      if (status >= 200 && status < 300) {
+        return { ok: true, upload: body?.upload as { id: string; originalFileName: string; status: string; createdAt: string } | undefined };
+      }
+      return { ok: false, error: (body?.error as string | undefined) ?? `Upload failed (status ${status}).` };
+    } catch {
+      if (attempt >= retryDelaysMs.length) {
+        return { ok: false, error: "Couldn't reach the server after several attempts — please check your connection and try again." };
+      }
+      onProgress?.(0);
+      await sleep(retryDelaysMs[attempt]);
+    }
+  }
 }
 
 /**

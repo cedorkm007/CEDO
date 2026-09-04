@@ -55,7 +55,7 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [fileStatuses, setFileStatuses] = useState<Record<string, { status: FileUploadStatus; error?: string }>>({});
+  const [fileStatuses, setFileStatuses] = useState<Record<string, { status: FileUploadStatus; error?: string; progress?: number }>>({});
 
   useEffect(() => {
     if (activity.isUnlocked) fetchSubmissionUploadsForScholar(activity.id).then(setExistingUploads);
@@ -88,8 +88,10 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
 
   async function uploadOneFile(fieldId: string, file: File) {
     const key = fileKey(fieldId, file);
-    setFileStatuses(prev => ({ ...prev, [key]: { status: "uploading" } }));
-    const result = await uploadSubmissionFile(activity.id, fieldId, file);
+    setFileStatuses(prev => ({ ...prev, [key]: { status: "uploading", progress: 0 } }));
+    const result = await uploadSubmissionFile(activity.id, fieldId, file, fraction => {
+      setFileStatuses(prev => (prev[key]?.status === "uploading" ? { ...prev, [key]: { ...prev[key], progress: fraction } } : prev));
+    });
     if (result.ok && result.upload) {
       setFileStatuses(prev => ({ ...prev, [key]: { status: "uploaded" } }));
       setExistingUploads(prev => [...prev, {
@@ -191,7 +193,19 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
                     const status = fileStatuses[fileKey(field.id, f)];
                     return (
                       <li key={f.name + f.size} className="text-[11.5px]">
-                        {status?.status === "uploading" && <span className="text-slate-400">Uploading “{f.name}”…</span>}
+                        {status?.status === "uploading" && (
+                          <div>
+                            <span className="text-slate-400">
+                              Uploading “{f.name}”… {Math.round((status.progress ?? 0) * 100)}%
+                            </span>
+                            <div className="mt-1 h-1 w-full max-w-[220px] rounded-full bg-slate-100 overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-[#0088cc] transition-[width] duration-200"
+                                style={{ width: `${Math.round((status.progress ?? 0) * 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
                         {!status && <span className="text-slate-500">Selected: {f.name}</span>}
                         {status?.status === "error" && (
                           <span className="flex flex-wrap items-center gap-1 text-red-600">
