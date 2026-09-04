@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import { ExportButton } from "@/app/components/ExportButtons";
+import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
 import LITMLogo from "@/imports/LITM_Logo_Circular.png";
 import EPDPMLogo from "@/imports/EPDPM_Logo_Circular.png";
 import SEADLogo from "@/imports/SEAD_Logo_Circular.png";
@@ -2887,6 +2888,27 @@ export default function App() {
 
     return () => { cancelled = true; subscription.unsubscribe(); };
   }, []);
+
+  // Keep this account's own tool tags live: it.admin1 tagging (or
+  // untagging) this account from Staff Accounts used to only show up in
+  // the sidebar after a manual page reload, since fetchUserProfile only
+  // ran once on mount above. Re-fetching just the tags (not the whole
+  // profile) on any staff_account_tags change is enough, and cheap —
+  // this table changes rarely.
+  const currentUserId = currentUser?.id;
+  useRealtimeRefresh("staff_account_tags", () => {
+    if (!currentUserId) return;
+    void (async () => {
+      const { data: tagRows } = await supabase.from("staff_account_tags").select("tag_key").eq("staff_id", currentUserId);
+      const tags = (tagRows ?? []).map(t => t.tag_key as string);
+      setCurrentUser(prev => {
+        if (!prev) return prev;
+        const next = { ...prev, tags };
+        try { localStorage.setItem("litm_current_user", JSON.stringify(next)); } catch { /* ignore */ }
+        return next;
+      });
+    })();
+  }, Boolean(currentUserId));
 
   // ── Load users + restore task statuses from Supabase on mount ─
   useEffect(() => {

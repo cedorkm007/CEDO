@@ -4,6 +4,7 @@ import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import JSZip from "jszip";
 import { FORMATION_YEAR_LEVELS, type FormationActivity } from "@/scholar/formationActivitiesApi";
+import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
 import {
   addFormationAttendanceCodes, createFormationActivity, deleteFormationActivity, enableFormationAttendance, fetchFormationActivities, updateFormationActivity,
   fetchFormationAttendanceSummary, fetchFormationAttendanceRosterPage, fetchFormationAttendanceCodeBatchSummary, fetchFormationAttendanceCodesPage, fetchFormationAttendanceCodesForExport,
@@ -156,15 +157,15 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
   const [exportingPdf, setExportingPdf] = useState(false);
   const [pdfProgress, setPdfProgress] = useState<{ part: number; totalParts: number; zipping?: boolean } | null>(null);
 
-  async function loadSummary(activityId: string) {
-    setLoading(true);
+  async function loadSummary(activityId: string, silent = false) {
+    if (!silent) setLoading(true);
     const summary = await fetchFormationAttendanceSummary(activityId);
     if (!summary) {
       setSession(null);
       setPresentCount(0);
       setIncompleteCount(0);
       setBatchSummary([]);
-      setLoading(false);
+      if (!silent) setLoading(false);
       return;
     }
     setSession(summary.session);
@@ -176,9 +177,13 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
     // ready without a second click-triggered round trip, and does NOT
     // download any actual QR code data.
     setBatchSummary(await fetchFormationAttendanceCodeBatchSummary(summary.session.id));
-    setLoading(false);
-    setRosterPage(1);
-    void loadRosterPage(summary.session.id, 1);
+    if (!silent) setLoading(false);
+    if (silent) {
+      void loadRosterPage(summary.session.id, rosterPage);
+    } else {
+      setRosterPage(1);
+      void loadRosterPage(summary.session.id, 1);
+    }
   }
 
   async function loadRosterPage(sessionId: string, page: number) {
@@ -346,6 +351,16 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
     if (session) void loadRosterPage(session.id, rosterPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rosterPage]);
+
+  // Live-refresh Present/Incomplete counts and the roster when a QR scan
+  // writes a new attendance_records row anywhere — this tab used to only
+  // reflect attendance as of whenever an activity was selected, so a scan
+  // made while staff had it open needed a manual reload to show up. Silent
+  // (no loading flicker) since the existing summary stays visible/usable
+  // while the fresh one loads.
+  useRealtimeRefresh("attendance_records", () => {
+    if (selectedId) void loadSummary(selectedId, true);
+  });
 
   // Filter change resets to page 1 — same pattern used everywhere else in this
   // project (the roster's page 1 "means something different" once the filter

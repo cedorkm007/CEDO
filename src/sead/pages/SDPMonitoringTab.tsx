@@ -16,6 +16,7 @@ import { ListPagination } from "@/app/components/PaginatedList";
 import { useUrlState } from "@/app/useUrlState";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
 import { ExportButton } from "@/app/components/ExportButtons";
+import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
 
 const STATUS_OPTIONS: SDPStatus[] = ["pending", "approved", "ongoing", "finished", "canceled", "rescheduled"];
 
@@ -257,17 +258,23 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [showPdfMenu, setShowPdfMenu] = useState(false);
 
-  async function load() {
-    setLoading(true);
+  async function load(silent = false) {
+    if (!silent) setLoading(true);
     const result = await fetchAttendanceSession(activity.id);
     if (result) {
       setSession(result.session);
       setCodes(result.codes);
       setRoster(await fetchAttendanceRoster(result.session.id));
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   }
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activity.id]);
+
+  // Live-refresh the present count when a QR scan writes a new
+  // attendance_records row anywhere — this section used to only reflect
+  // attendance as of whenever it mounted, so a scan made while staff had it
+  // open needed a manual reload to show up.
+  useRealtimeRefresh("attendance_records", () => void load(true));
 
   async function handleEnable() {
     const n = Number(count);

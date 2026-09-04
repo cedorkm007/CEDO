@@ -11,6 +11,7 @@ import { toCsv, downloadCsv } from "../csvUtils";
 import { generateSubmissionRosterReport } from "@/lib/docGenerator";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
 import { usePaginatedList, ListPagination } from "@/app/components/PaginatedList";
+import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
 
 /**
  * Milestones 5-6 of the "Drive folder reorganization + submission
@@ -64,15 +65,22 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
   // shell for a status-remark feature to be built later.
   const [openRemarksFor, setOpenRemarksFor] = useState<string | null>(null);
 
-  async function load(forActivityId: string) {
-    setLoading(true);
+  async function load(forActivityId: string, silent = false) {
+    if (!silent) setLoading(true);
     setError("");
     const result = await fetchSubmissionRosterStatus(forActivityId);
     if (!result.ok) setError(result.error || "Couldn't load the submission roster.");
     setRows(result.rows ?? []);
-    setLoading(false);
+    if (!silent) setLoading(false);
   }
   useEffect(() => { void load(activityId); }, [activityId]);
+
+  // Live-refresh the roster when a scholar uploads/resubmits a file
+  // anywhere — this modal used to only reflect submission_uploads as of
+  // whenever it was opened, so a new upload while staff had it open
+  // needed a manual reload to show up. Silent (no loading flicker) since
+  // the existing rows stay visible/usable while the fresh set loads.
+  useRealtimeRefresh("submission_uploads", () => { void load(activityId, true); });
 
   // Reset filters that no longer apply when switching activities — a
   // school/year-level selected for one activity's roster may not exist
