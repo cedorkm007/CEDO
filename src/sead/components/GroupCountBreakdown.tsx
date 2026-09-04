@@ -1,6 +1,30 @@
-import { useState } from "react";
+import { useSyncExternalStore } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { ChevronDown, ChevronUp } from "lucide-react";
+
+// Module-level (not per-component) show/hide state: every GroupCountBreakdown
+// instance on the Scholarship Program Information tab shares one toggle, so
+// hiding the graph on Barangay stays hidden after switching to School, or
+// drilling into Year Level/Course — each of those is a fresh mount of this
+// component, and per-instance useState would reset back to visible every
+// time. Plain module state + useSyncExternalStore rather than React Context
+// so no provider needs threading through the page's subtab components.
+let sharedShowChart = true;
+const chartVisibilityListeners = new Set<() => void>();
+
+function setSharedShowChart(value: boolean): void {
+  sharedShowChart = value;
+  chartVisibilityListeners.forEach(listener => listener());
+}
+
+function subscribeToChartVisibility(listener: () => void): () => void {
+  chartVisibilityListeners.add(listener);
+  return () => chartVisibilityListeners.delete(listener);
+}
+
+function useSharedShowChart(): boolean {
+  return useSyncExternalStore(subscribeToChartVisibility, () => sharedShowChart);
+}
 
 export interface GroupCountRow {
   label: string;
@@ -45,14 +69,14 @@ export function GroupCountBreakdown({
   rows: GroupCountRow[];
   onSelect: (label: string) => void;
 }) {
-  const [showChart, setShowChart] = useState(true);
+  const showChart = useSharedShowChart();
   const rowHeight = rows.length > 30 ? 16 : 22;
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400">{title}</p>
-          <button onClick={() => setShowChart(v => !v)}
+          <button onClick={() => setSharedShowChart(!showChart)}
             className="flex items-center gap-1 text-[11px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-2 py-1 hover:bg-[#f8fafd]">
             {showChart ? <><ChevronUp size={12} /> Hide graph</> : <><ChevronDown size={12} /> Show graph</>}
           </button>
