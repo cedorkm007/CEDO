@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Download, ChevronDown, ChevronUp, FileSpreadsheet, FileText, FileType2, Eye } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye } from "lucide-react";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
+import { ExportButton, ExportButtonGroup, ExportMenuItem, type ExportFormat } from "@/app/components/ExportButtons";
 import type { ScholarInformationRow } from "../seadApi";
 import { fetchScholarQuestProgress } from "../seadApi";
 import { fetchScholarSDPHistory } from "../sdpMonitorApi";
@@ -74,10 +75,8 @@ export function ScholarListPanel({
   modalLevel?: number;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const [exportingCsv, setExportingCsv] = useState(false);
-  const [exportingPdf, setExportingPdf] = useState(false);
-  const [exportingWord, setExportingWord] = useState(false);
-  const busy = exportingCsv || exportingPdf || exportingWord;
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
+  const busy = exportingFormat !== null;
   // Which scholar's profile is currently being generated, and in which format — drives the per-row spinner/disabled state.
   const [profileDownloading, setProfileDownloading] = useState<{ id: string; format: "csv" | "pdf" | "word" } | null>(null);
   // Which scholar's name was clicked to open the CSV/PDF/Word download menu — only one open at a time.
@@ -157,28 +156,28 @@ export function ScholarListPanel({
 
   function handleExportCsv() {
     if (busy || sortedRows.length === 0) return;
-    setExportingCsv(true);
+    setExportingFormat("csv");
     try {
       downloadCsv(`${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`,
         toCsv(EXPORT_COLUMNS.map(c => c.label), sortedRows.map(r => EXPORT_COLUMNS.map(c => c.value(r)))));
     } finally {
-      setExportingCsv(false);
+      setExportingFormat(null);
     }
   }
 
   async function handleExportPdf() {
     if (busy || sortedRows.length === 0) return;
-    setExportingPdf(true);
+    setExportingFormat("pdf");
     try {
       await exportTableAsPdf({ title, columns: EXPORT_COLUMNS, rows: sortedRows, filtersSummary, filenamePrefix });
     } finally {
-      setExportingPdf(false);
+      setExportingFormat(null);
     }
   }
 
   async function handleExportWord() {
     if (busy || sortedRows.length === 0) return;
-    setExportingWord(true);
+    setExportingFormat("word");
     try {
       await generateScholarsInformationReport({
         columns: EXPORT_COLUMNS.map(c => c.label),
@@ -188,7 +187,7 @@ export function ScholarListPanel({
         filtersSummary,
       });
     } finally {
-      setExportingWord(false);
+      setExportingFormat(null);
     }
   }
 
@@ -199,20 +198,10 @@ export function ScholarListPanel({
           {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
           {title} <span className="font-normal text-slate-400">({rows.length.toLocaleString()})</span>
         </button>
-        <div className="flex items-center gap-2">
-          <button onClick={handleExportCsv} disabled={busy || rows.length === 0}
-            className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 hover:bg-[#f8fafd] disabled:opacity-50">
-            <Download size={12} /> {exportingCsv ? "…" : "CSV"}
-          </button>
-          <button onClick={handleExportPdf} disabled={busy || rows.length === 0}
-            className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 hover:bg-[#f8fafd] disabled:opacity-50">
-            <Download size={12} /> {exportingPdf ? "…" : "PDF"}
-          </button>
-          <button onClick={handleExportWord} disabled={busy || rows.length === 0}
-            className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 hover:bg-[#f8fafd] disabled:opacity-50">
-            <Download size={12} /> {exportingWord ? "…" : "Word"}
-          </button>
-        </div>
+        <ExportButtonGroup
+          onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} onExportWord={handleExportWord}
+          busyFormat={exportingFormat} disabled={rows.length === 0}
+        />
       </div>
 
       {expanded && (
@@ -255,18 +244,9 @@ export function ScholarListPanel({
                                   <Eye size={13} /> Preview
                                 </button>
                                 <div className="my-1 border-t border-[#f0f3f8]" />
-                                <button onClick={() => handleDownloadProfile(r, "csv")}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-normal text-[#062444] hover:bg-[#f8fafd]">
-                                  <FileSpreadsheet size={13} /> Download as CSV
-                                </button>
-                                <button onClick={() => handleDownloadProfile(r, "pdf")}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-normal text-[#062444] hover:bg-[#f8fafd]">
-                                  <FileText size={13} /> Download as PDF
-                                </button>
-                                <button onClick={() => handleDownloadProfile(r, "word")}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-normal text-[#062444] hover:bg-[#f8fafd]">
-                                  <FileType2 size={13} /> Download as Word
-                                </button>
+                                <ExportMenuItem format="csv" onClick={() => handleDownloadProfile(r, "csv")} />
+                                <ExportMenuItem format="pdf" onClick={() => handleDownloadProfile(r, "pdf")} />
+                                <ExportMenuItem format="word" onClick={() => handleDownloadProfile(r, "word")} />
                               </div>
                             </>
                           )}
@@ -359,18 +339,12 @@ export function ScholarListPanel({
               </div>
 
               <div className="flex items-center justify-center gap-2">
-                <button onClick={() => handleDownloadProfile(previewScholar, "csv", previewSections)} disabled={!!profileDownloading}
-                  className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-3 py-1.5 bg-white hover:bg-[#f8fafd] disabled:opacity-50">
-                  <FileSpreadsheet size={12} /> Download CSV
-                </button>
-                <button onClick={() => handleDownloadProfile(previewScholar, "pdf", previewSections)} disabled={!!profileDownloading}
-                  className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-3 py-1.5 bg-white hover:bg-[#f8fafd] disabled:opacity-50">
-                  <FileText size={12} /> Download PDF
-                </button>
-                <button onClick={() => handleDownloadProfile(previewScholar, "word", previewSections)} disabled={!!profileDownloading}
-                  className="flex items-center gap-1 text-[11.5px] font-semibold text-[#062444] border border-[#e6ecf5] rounded-lg px-3 py-1.5 bg-white hover:bg-[#f8fafd] disabled:opacity-50">
-                  <FileType2 size={12} /> Download Word
-                </button>
+                <ExportButton format="csv" onClick={() => handleDownloadProfile(previewScholar, "csv", previewSections)}
+                  disabled={!!profileDownloading} label="Download CSV" />
+                <ExportButton format="pdf" onClick={() => handleDownloadProfile(previewScholar, "pdf", previewSections)}
+                  disabled={!!profileDownloading} label="Download PDF" />
+                <ExportButton format="word" onClick={() => handleDownloadProfile(previewScholar, "word", previewSections)}
+                  disabled={!!profileDownloading} label="Download Word" />
               </div>
             </div>
           )}

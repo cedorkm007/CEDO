@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
-import { X, Download, Upload, AlertTriangle, CheckCircle2, UploadCloud } from "lucide-react";
+import { X, Upload, AlertTriangle, CheckCircle2, UploadCloud } from "lucide-react";
 import { bulkUpdateScholars, type BulkScholarUpdateInput, type BulkScholarUpdateRowResult } from "../seadApi";
 import { parseCsv, toCsv, downloadCsv, normalizeHeader, findColumn, cell } from "../csvUtils";
 import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
 import { SCHOLARSHIP_STATUSES } from "../types";
+import { ExportButton } from "@/app/components/ExportButtons";
 
 const TEMPLATE_HEADERS = [
   "Scholar ID Number", "First Name", "Last Name", "Middle Name", "Birthday (YYYY-MM-DD)",
@@ -197,10 +198,9 @@ export function BulkScholarUpdateModal({
                 Update existing scholars by Scholar ID Number — download the template, fill in <strong>only the fields you want to change</strong>, and leave the rest blank. Blank cells are never overwritten.
               </p>
 
-              <button onClick={downloadTemplate}
-                className="flex items-center gap-2 text-[12.5px] font-semibold text-[#0088cc] border border-[#0088cc]/30 rounded-lg px-3 py-2 mb-4 cursor-pointer hover:bg-[#0088cc]/10 hover:border-[#0088cc]/50 transition-colors">
-                <Download size={14} /> Download CSV Template
-              </button>
+              <div className="mb-4">
+                <ExportButton format="csv" onClick={downloadTemplate} label="Download CSV Template" />
+              </div>
 
               <div className="border-2 border-dashed border-[#062444]/15 rounded-xl px-4 py-6 text-center mb-4">
                 <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden"

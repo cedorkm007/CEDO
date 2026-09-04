@@ -15,6 +15,7 @@ import {
   ClipboardCheck, Plane, MessageCircle, Send, Lock,
 } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
+import { ExportButton } from "@/app/components/ExportButtons";
 import LITMLogo from "@/imports/LITM_Logo_Circular.png";
 import EPDPMLogo from "@/imports/EPDPM_Logo_Circular.png";
 import SEADLogo from "@/imports/SEAD_Logo_Circular.png";
@@ -1686,11 +1687,8 @@ function ReportModal({ currentUser, approvedDaily, month, year, daysInMonth, onC
 
       <div className="flex gap-3">
         <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-all">Cancel</button>
-        <button onClick={handleGenerate} disabled={selectedIds.size===0||generating}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${selectedIds.size>0&&!generating?"bg-accent text-accent-foreground hover:bg-accent/80":"bg-muted text-muted-foreground cursor-not-allowed"}`}>
-          <FileText size={14}/>
-          {generating ? "Generating…" : `Download Word (${selectedIds.size})`}
-        </button>
+        <ExportButton format="word" size="md" onClick={handleGenerate} disabled={selectedIds.size===0||generating}
+          busy={generating} busyLabel="Generating…" label={`Download Word (${selectedIds.size})`} className="flex-1 justify-center" />
       </div>
     </div>
   );
@@ -1987,10 +1985,7 @@ function HistoryPage({ submissions, allUsers }: { submissions: Submission[]; all
           <h1 className="text-xl font-bold text-foreground">Deliverable History</h1>
           <p className="text-sm text-muted-foreground mt-0.5">All approved and returned submissions by staff</p>
         </div>
-        <button onClick={downloadPDF}
-          className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all">
-          <FileText size={14}/> Download Word (.docx)
-        </button>
+        <ExportButton format="word" size="md" onClick={downloadPDF} label="Download Word (.docx)" />
       </div>
 
       {/* Filters */}
@@ -2299,10 +2294,8 @@ function FormsPage({ currentUser, leaveRequests, onSubmitLeave }: {
 
         {done === formType && <div className="p-2.5 rounded-xl bg-green-50 border border-green-200 text-xs text-green-700 flex items-center gap-2"><CheckCircle2 size={13}/><span>Document downloaded{also?" and request filed":""}.</span></div>}
 
-        <button onClick={formType==="cto" ? handleGenerateCTO : handleGeneratePassSlip}
-          className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-all flex items-center justify-center gap-2">
-          <FileText size={14}/> Generate {formType==="cto"?"CTO Application":"Pass Slip"} (.docx)
-        </button>
+        <ExportButton format="word" size="md" onClick={formType==="cto" ? handleGenerateCTO : handleGeneratePassSlip}
+          label={`Generate ${formType==="cto"?"CTO Application":"Pass Slip"} (.docx)`} className="w-full justify-center" />
       </div>
 
       {myRequests.length > 0 && (

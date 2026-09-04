@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
-import { X, Download, Upload, AlertTriangle, CheckCircle2, UploadCloud, Undo2 } from "lucide-react";
+import { X, Upload, AlertTriangle, CheckCircle2, UploadCloud, Undo2 } from "lucide-react";
 import { bulkCreateScholars, undoBulkScholarUpload, type NewScholarInput, type BulkScholarRowResult } from "../seadApi";
 import { parseCsv, toCsv, downloadCsv, normalizeHeader, findColumn, cell } from "../csvUtils";
+import { ExportButton } from "@/app/components/ExportButtons";
 
 const TEMPLATE_HEADERS = [
   "Scholar ID Number", "First Name", "Last Name", "Middle Name", "Birthday (YYYY-MM-DD)",
@@ -192,10 +193,9 @@ export function BulkScholarUploadModal({
                 {successCount} scholar account{successCount === 1 ? "" : "s"} created.
               </p>
               {successCount > 0 && (
-                <button onClick={downloadCredentials}
-                  className="flex items-center gap-2 mx-auto text-[12.5px] font-semibold text-[#0088cc] border border-[#0088cc]/30 rounded-lg px-3 py-2 mt-2 cursor-pointer hover:bg-[#0088cc]/10 hover:border-[#0088cc]/50 transition-colors">
-                  <Download size={14} /> Download Credentials CSV
-                </button>
+                <div className="mx-auto w-fit mt-2">
+                  <ExportButton format="csv" onClick={downloadCredentials} label="Download Credentials CSV" />
+                </div>
               )}
               {successCount > 0 && (
                 <p className="text-[12px] text-slate-400 mt-2 max-w-md mx-auto">
@@ -251,10 +251,9 @@ export function BulkScholarUploadModal({
                 Download the template, fill in one row per scholar, then upload it below. Each new account gets its own randomly generated password, delivered in a downloadable credentials file after upload.
               </p>
 
-              <button onClick={downloadTemplate}
-                className="flex items-center gap-2 text-[12.5px] font-semibold text-[#0088cc] border border-[#0088cc]/30 rounded-lg px-3 py-2 mb-4 cursor-pointer hover:bg-[#0088cc]/10 hover:border-[#0088cc]/50 transition-colors">
-                <Download size={14} /> Download CSV Template
-              </button>
+              <div className="mb-4">
+                <ExportButton format="csv" onClick={downloadTemplate} label="Download CSV Template" />
+              </div>
 
               <div className="border-2 border-dashed border-[#062444]/15 rounded-xl px-4 py-6 text-center mb-4">
                 <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden"

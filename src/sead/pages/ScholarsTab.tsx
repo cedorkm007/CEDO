@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw, Download } from "lucide-react";
+import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw } from "lucide-react";
 import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, updateScholarStatus, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, fetchAllScholarsInformationForExport, type ScholarInformationRow, type ScholarInformationFilters, type ScholarInformationEmptyableField } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
 import { BulkScholarUploadModal } from "../components/BulkScholarUploadModal";
@@ -11,6 +11,7 @@ import { jsPDF } from "jspdf";
 import { generateScholarsInformationReport } from "@/lib/docGenerator";
 import { SCHOLARSHIP_STATUSES, type ScholarListItem, type ScholarshipStatus } from "../types";
 import { useSortState, SortableTh } from "@/app/components/SortableTable";
+import { ExportButtonGroup, type ExportFormat } from "@/app/components/ExportButtons";
 
 type ScholarsSubtab = "account" | "information";
 
@@ -387,9 +388,7 @@ function ScholarsInformationSubtab() {
   // leaves this component, in the debounce effect below.
   const [emptyFieldsFilter, setEmptyFieldsFilter] = useState<Set<ScholarInformationEmptyableField>>(new Set());
   const [appliedFilters, setAppliedFilters] = useState<ScholarInformationFilters>(EMPTY_FILTERS);
-  const [exportingCsv, setExportingCsv] = useState(false);
-  const [exportingPdf, setExportingPdf] = useState(false);
-  const [exportingWord, setExportingWord] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
 
@@ -551,9 +550,9 @@ function ScholarsInformationSubtab() {
   }
 
   async function handleExportCsv() {
-    if (exportingCsv || exportingPdf || exportingWord || total === 0) return;
+    if (exportingFormat || total === 0) return;
     setExportError(null);
-    setExportingCsv(true);
+    setExportingFormat("csv");
     try {
       const allRows = await fetchAllScholarsInformationForExport(appliedFilters);
       const columns = buildExportColumns();
@@ -562,7 +561,7 @@ function ScholarsInformationSubtab() {
     } catch {
       setExportError("CSV export failed — please try again.");
     } finally {
-      setExportingCsv(false);
+      setExportingFormat(null);
     }
   }
 
@@ -576,9 +575,9 @@ function ScholarsInformationSubtab() {
    * once the final page count is known.
    */
   async function handleExportPdf() {
-    if (exportingCsv || exportingPdf || exportingWord || total === 0) return;
+    if (exportingFormat || total === 0) return;
     setExportError(null);
-    setExportingPdf(true);
+    setExportingFormat("pdf");
     try {
       const allRows = await fetchAllScholarsInformationForExport(appliedFilters);
       const exportColumns = buildExportColumns();
@@ -659,7 +658,7 @@ function ScholarsInformationSubtab() {
     } catch {
       setExportError("PDF export failed — please try again.");
     } finally {
-      setExportingPdf(false);
+      setExportingFormat(null);
     }
   }
 
@@ -676,9 +675,9 @@ function ScholarsInformationSubtab() {
    * different libraries (jsPDF hand-drawn vs. docx table cells).
    */
   async function handleExportWord() {
-    if (exportingCsv || exportingPdf || exportingWord || total === 0) return;
+    if (exportingFormat || total === 0) return;
     setExportError(null);
-    setExportingWord(true);
+    setExportingFormat("word");
     try {
       const allRows = await fetchAllScholarsInformationForExport(appliedFilters);
       const exportColumns = buildExportColumns();
@@ -693,7 +692,7 @@ function ScholarsInformationSubtab() {
     } catch {
       setExportError("Word export failed — please try again.");
     } finally {
-      setExportingWord(false);
+      setExportingFormat(null);
     }
   }
 
@@ -711,19 +710,11 @@ function ScholarsInformationSubtab() {
             <RotateCcw size={12} /> Clear filters
           </button>
         )}
-        <div className="ml-auto flex items-center gap-2">
-          <button onClick={handleExportCsv} disabled={exportingCsv || exportingPdf || exportingWord || total === 0}
-            className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
-            <Download size={13} /> {exportingCsv ? "Exporting…" : "Export CSV"}
-          </button>
-          <button onClick={handleExportPdf} disabled={exportingCsv || exportingPdf || exportingWord || total === 0}
-            className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
-            <Download size={13} /> {exportingPdf ? "Exporting…" : "Export PDF"}
-          </button>
-          <button onClick={handleExportWord} disabled={exportingCsv || exportingPdf || exportingWord || total === 0}
-            className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
-            <Download size={13} /> {exportingWord ? "Exporting…" : "Export Word"}
-          </button>
+        <div className="ml-auto">
+          <ExportButtonGroup
+            onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} onExportWord={handleExportWord}
+            busyFormat={exportingFormat} disabled={total === 0} labelPrefix="Export "
+          />
         </div>
       </div>
       {exportError && (

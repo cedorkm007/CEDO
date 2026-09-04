@@ -15,6 +15,7 @@ import { SDPHistoryModal } from "../components/SDPHistoryModal";
 import { ListPagination } from "@/app/components/PaginatedList";
 import { useUrlState } from "@/app/useUrlState";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
+import { ExportButton } from "@/app/components/ExportButtons";
 
 const STATUS_OPTIONS: SDPStatus[] = ["pending", "approved", "ongoing", "finished", "canceled", "rescheduled"];
 
@@ -449,9 +450,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
         <button onClick={() => setShowCodes(s => !s)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">
           {showCodes ? "Hide codes" : `View codes (${codes.length})`}
         </button>
-        <button onClick={downloadCodesCSV} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
-          <Download size={13} /> Export CSV
-        </button>
+        <ExportButton format="csv" onClick={downloadCodesCSV} label="Export CSV" />
         <div className="relative"><button onClick={() => setShowPdfMenu(value => !value)} disabled={exportingPdf} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline disabled:opacity-50"><Download size={13} /> {exportingPdf ? "Creating PDF..." : "Download QR PDF"}</button>{showPdfMenu && <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-[#e6ecf5] bg-white p-1 shadow-lg">{batches.map(batch => <button key={batch.number} onClick={() => { setShowPdfMenu(false); void downloadCodesPDF(batch.number, batch.codes); }} className="block w-full rounded px-3 py-2 text-left text-[12px] hover:bg-[#f8fafd]">Batch {batch.number} QR PDF</button>)}<button onClick={() => { setShowPdfMenu(false); void downloadCodesPDF(0, codes.filter(code => !code.redeemedByScholarId)); }} className="block w-full rounded px-3 py-2 text-left text-[12px] font-semibold text-[#0088cc] hover:bg-[#f8fafd]">Unclaimed QR codes PDF</button></div>}</div>
       </div>
 

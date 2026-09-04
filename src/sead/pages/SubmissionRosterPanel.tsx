@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Users, CheckCircle2, AlertCircle, Lock, Circle, Download } from "lucide-react";
+import { X, Users, CheckCircle2, AlertCircle, Lock, Circle } from "lucide-react";
+import { ExportButtonGroup, type ExportFormat } from "@/app/components/ExportButtons";
 import { jsPDF } from "jspdf";
 import {
   fetchSubmissionRosterStatus,
@@ -115,9 +116,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
   const { paged: pagedRows, page, setPage, totalPages, filteredCount, pageSize } = usePaginatedList(sortedRows, { pageSize: 50 });
   useEffect(() => { setPage(1); }, [yearLevel, school, status, sortState.key, sortState.direction, setPage]);
 
-  const [exportingCsv, setExportingCsv] = useState(false);
-  const [exportingPdf, setExportingPdf] = useState(false);
-  const [exportingWord, setExportingWord] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
   const [exportError, setExportError] = useState("");
 
   const activeActivityName = activities.find(a => a.id === activityId)?.name ?? "Submission Activity";
@@ -145,8 +144,8 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
   }
 
   async function handleExportCsv() {
-    if (exportingCsv || exportingPdf || exportingWord || filteredRows.length === 0) return;
-    setExportingCsv(true);
+    if (exportingFormat || filteredRows.length === 0) return;
+    setExportingFormat("csv");
     setExportError("");
     try {
       const columns = buildExportColumns();
@@ -155,13 +154,13 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
     } catch {
       setExportError("Could not export CSV. Please try again.");
     } finally {
-      setExportingCsv(false);
+      setExportingFormat(null);
     }
   }
 
   async function handleExportPdf() {
-    if (exportingCsv || exportingPdf || exportingWord || filteredRows.length === 0) return;
-    setExportingPdf(true);
+    if (exportingFormat || filteredRows.length === 0) return;
+    setExportingFormat("pdf");
     setExportError("");
     try {
       const columns = buildExportColumns();
@@ -205,13 +204,13 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
     } catch {
       setExportError("Could not export PDF. Please try again.");
     } finally {
-      setExportingPdf(false);
+      setExportingFormat(null);
     }
   }
 
   async function handleExportWord() {
-    if (exportingCsv || exportingPdf || exportingWord || filteredRows.length === 0) return;
-    setExportingWord(true);
+    if (exportingFormat || filteredRows.length === 0) return;
+    setExportingFormat("word");
     setExportError("");
     try {
       const columns = buildExportColumns();
@@ -226,7 +225,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
     } catch {
       setExportError("Could not export Word document. Please try again.");
     } finally {
-      setExportingWord(false);
+      setExportingFormat(null);
     }
   }
 
@@ -278,18 +277,10 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
 
         {!loading && !error && (
           <div className="flex shrink-0 items-center gap-2 border-b border-[#e6ecf5] px-6 py-3">
-            <button onClick={handleExportCsv} disabled={exportingCsv || exportingPdf || exportingWord || filteredRows.length === 0}
-              className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
-              <Download size={13} /> {exportingCsv ? "Exporting…" : "Export CSV"}
-            </button>
-            <button onClick={handleExportPdf} disabled={exportingCsv || exportingPdf || exportingWord || filteredRows.length === 0}
-              className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
-              <Download size={13} /> {exportingPdf ? "Exporting…" : "Export PDF"}
-            </button>
-            <button onClick={handleExportWord} disabled={exportingCsv || exportingPdf || exportingWord || filteredRows.length === 0}
-              className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] border border-[#e6ecf5] bg-white rounded-lg px-3 py-2 hover:bg-[#f8fafd] disabled:opacity-50 disabled:cursor-not-allowed">
-              <Download size={13} /> {exportingWord ? "Exporting…" : "Export Word"}
-            </button>
+            <ExportButtonGroup
+              onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} onExportWord={handleExportWord}
+              busyFormat={exportingFormat} disabled={filteredRows.length === 0} labelPrefix="Export "
+            />
           </div>
         )}
         {exportError && (
