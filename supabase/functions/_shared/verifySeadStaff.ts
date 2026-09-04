@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { throwJsonError } from "./cors.ts";
 
 /**
  * Every SEAD-staff-only Edge Function needs to answer one question first:
@@ -15,7 +16,7 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 export async function requireSeadStaff(req: Request): Promise<{ admin: SupabaseClient; callerId: string }> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) {
-    throw new Response(JSON.stringify({ error: "Missing Authorization header." }), { status: 401 });
+    throwJsonError("Missing Authorization header.", 401);
   }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -27,7 +28,7 @@ export async function requireSeadStaff(req: Request): Promise<{ admin: SupabaseC
   });
   const { data: { user }, error: userError } = await callerClient.auth.getUser();
   if (userError || !user) {
-    throw new Response(JSON.stringify({ error: "Invalid or expired session." }), { status: 401 });
+    throwJsonError("Invalid or expired session.", 401);
   }
 
   // Admin client — service role, bypasses RLS. Only used from here on for
@@ -41,8 +42,8 @@ export async function requireSeadStaff(req: Request): Promise<{ admin: SupabaseC
   .eq("tag_key", "scholar_management")
   .maybeSingle();
 
-if (tagError || !tagRow) {
-    throw new Response(JSON.stringify({ error: "This account is not authorized for SEAD staff tools." }), { status: 403 });
+  if (tagError || !tagRow) {
+    throwJsonError("This account is not authorized for SEAD staff tools.", 403);
   }
 
   return { admin, callerId: user.id };
