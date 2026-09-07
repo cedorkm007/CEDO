@@ -1,6 +1,9 @@
 import { supabase } from "@/lib/supabase";
 import { isValidHttpsUrl } from "@/lib/urlValidation";
-import type { QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, ScholarListItem, ScholarAccountLogEntry, ScoreRow, ScholarshipStatus } from "./types";
+import type {
+  QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, ScholarListItem, ScholarAccountLogEntry, ScoreRow, ScholarshipStatus,
+  Survey, SurveyActivityType, SurveyQuestion, SurveyQuestionType, SurveyChoiceDraft, SurveyChoiceResult, SurveyLikertResult,
+} from "./types";
 
 /**
  * Calls a Supabase Edge Function and returns its parsed JSON body.
@@ -578,6 +581,244 @@ export async function deleteQuestion(id: string): Promise<{ ok: boolean; error?:
 export async function toggleQuestionActive(id: string, isActive: boolean): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.from("quest_questions").update({ is_active: isActive }).eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+// ── Research Project Monitoring: Survey Tools ────────────────
+
+export interface ActivityOption { id: string; name: string; type: SurveyActivityType }
+
+/** Every SDP/Formation activity that doesn't already have a survey attached (one survey per activity — see the migration's unique indexes). `excludeSurveyId`, when editing an existing survey, keeps that survey's OWN current activity in the list even though it's technically "taken" by itself. */
+export async function fetchActivitiesWithoutSurvey(excludeSurveyId?: string): Promise<ActivityOption[]> {
+  const [sdpRes, formationRes, surveysRes] = await Promise.all([
+    supabase.from("sdp_activities").select("id, name").order("name"),
+    supabase.from("formation_activities").select("id, name").order("name"),
+    supabase.from("research_surveys").select("id, sdp_activity_id, formation_activity_id"),
+  ]);
+  const taken = new Set<string>();
+  for (const s of surveysRes.data ?? []) {
+    if (excludeSurveyId && s.id === excludeSurveyId) continue;
+    if (s.sdp_activity_id) taken.add(s.sdp_activity_id);
+    if (s.formation_activity_id) taken.add(s.formation_activity_id);
+  }
+  const sdpOptions: ActivityOption[] = (sdpRes.data ?? []).filter(a => !taken.has(a.id)).map(a => ({ id: a.id, name: a.name, type: "sdp" }));
+  const formationOptions: ActivityOption[] = (formationRes.data ?? []).filter(a => !taken.has(a.id)).map(a => ({ id: a.id, name: a.name, type: "formation" }));
+  return [...sdpOptions, ...formationOptions];
+}
+
+export async function fetchSurveys(): Promise<Survey[]> {
+  const { data, error } = await supabase.from("research_surveys").select("*").order("created_at", { ascending: false });
+  if (error || !data) return [];
+
+  const sdpIds = data.filter(s => s.sdp_activity_id).map(s => s.sdp_activity_id as string);
+  const formationIds = data.filter(s => s.formation_activity_id).map(s => s.formation_activity_id as string);
+  const [sdpNames, formationNames] = await Promise.all([
+    sdpIds.length ? supabase.from("sdp_activities").select("id, name").in("id", sdpIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    formationIds.length ? supabase.from("formation_activities").select("id, name").in("id", formationIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  ]);
+  const sdpNameMap = new Map((sdpNames.data ?? []).map(a => [a.id, a.name]));
+  const formationNameMap = new Map((formationNames.data ?? []).map(a => [a.id, a.name]));
+
+  return data.map(s => {
+    const activityType: SurveyActivityType = s.sdp_activity_id ? "sdp" : "formation";
+    const activityId = (s.sdp_activity_id ?? s.formation_activity_id) as string;
+    const activityName = (activityType === "sdp" ? sdpNameMap.get(activityId) : formationNameMap.get(activityId)) ?? "(deleted activity)";
+    return {
+      id: s.id, title: s.title, description: s.description ?? "", activityType, activityId, activityName,
+      isActive: s.is_active, createdAt: s.created_at,
+    };
+  });
+}
+
+export async function createSurvey(input: {
+  title: string; description: string; activityType: SurveyActivityType; activityId: string;
+}): Promise<{ ok: boolean; error?: string; id?: string }> {
+  const { data, error } = await supabase.from("research_surveys").insert({
+    title: input.title,
+    description: input.description,
+    sdp_activity_id: input.activityType === "sdp" ? input.activityId : null,
+    formation_activity_id: input.activityType === "formation" ? input.activityId : null,
+  }).select("id").single();
+  if (error || !data) return { ok: false, error: error?.message ?? "Failed to create survey." };
+  return { ok: true, id: data.id };
+}
+
+export async function updateSurvey(id: string, fields: {
+  title: string; description: string; isActive: boolean; activityType: SurveyActivityType; activityId: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("research_surveys").update({
+    title: fields.title,
+    description: fields.description,
+    is_active: fields.isActive,
+    sdp_activity_id: fields.activityType === "sdp" ? fields.activityId : null,
+    formation_activity_id: fields.activityType === "formation" ? fields.activityId : null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function deleteSurvey(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("research_surveys").delete().eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function fetchSurveyQuestions(surveyId: string): Promise<SurveyQuestion[]> {
+  const { data: questions, error } = await supabase
+    .from("research_survey_questions").select("*").eq("survey_id", surveyId).order("sort_order");
+  if (error || !questions) return [];
+
+  const ids = questions.map(q => q.id);
+  const { data: choices } = ids.length
+    ? await supabase.from("research_survey_choices").select("*").in("question_id", ids).order("sort_order")
+    : { data: [] as Record<string, unknown>[] };
+
+  return questions.map(q => ({
+    id: q.id,
+    surveyId: q.survey_id,
+    questionType: q.question_type,
+    questionText: q.question_text,
+    sortOrder: q.sort_order,
+    likertScaleMin: q.likert_scale_min,
+    likertScaleMax: q.likert_scale_max,
+    likertMinLabel: q.likert_min_label,
+    likertMaxLabel: q.likert_max_label,
+    choices: (choices ?? [])
+      .filter((c: Record<string, unknown>) => c.question_id === q.id)
+      .map((c: Record<string, unknown>) => ({ id: String(c.id), choiceText: String(c.choice_text) })),
+  }));
+}
+
+/** Creates (or fully replaces the choices of) a survey question in one call — mirrors saveQuestion's create-or-update-then-reinsert-choices pattern, minus the correct-answer machinery. */
+export async function saveSurveyQuestion(input: {
+  id?: string;
+  surveyId: string;
+  questionType: SurveyQuestionType;
+  questionText: string;
+  sortOrder: number;
+  likertScaleMin?: number;
+  likertScaleMax?: number;
+  likertMinLabel?: string;
+  likertMaxLabel?: string;
+  choices: SurveyChoiceDraft[];
+}): Promise<{ ok: boolean; error?: string }> {
+  if (input.questionType === "multiple_choice" && input.choices.filter(c => c.choiceText.trim()).length < 2) {
+    return { ok: false, error: "Add at least two choices." };
+  }
+  if (input.questionType === "likert") {
+    if (input.likertScaleMin === undefined || input.likertScaleMax === undefined || input.likertScaleMin >= input.likertScaleMax) {
+      return { ok: false, error: "Set a valid scale range (max must be greater than min)." };
+    }
+    if (!input.likertMinLabel?.trim() || !input.likertMaxLabel?.trim()) {
+      return { ok: false, error: "Label both ends of the scale." };
+    }
+  }
+
+  const row = {
+    survey_id: input.surveyId,
+    question_type: input.questionType,
+    question_text: input.questionText,
+    sort_order: input.sortOrder,
+    likert_scale_min: input.questionType === "likert" ? input.likertScaleMin : null,
+    likert_scale_max: input.questionType === "likert" ? input.likertScaleMax : null,
+    likert_min_label: input.questionType === "likert" ? input.likertMinLabel : null,
+    likert_max_label: input.questionType === "likert" ? input.likertMaxLabel : null,
+  };
+
+  let questionId = input.id;
+  if (questionId) {
+    const { error } = await supabase.from("research_survey_questions").update({ ...row, updated_at: new Date().toISOString() }).eq("id", questionId);
+    if (error) return { ok: false, error: error.message };
+    await supabase.from("research_survey_choices").delete().eq("question_id", questionId);
+  } else {
+    const { data, error } = await supabase.from("research_survey_questions").insert(row).select("id").single();
+    if (error || !data) return { ok: false, error: error?.message ?? "Failed to create question." };
+    questionId = data.id;
+  }
+
+  if (input.questionType === "multiple_choice") {
+    const validChoices = input.choices.filter(c => c.choiceText.trim());
+    const { error: choicesError } = await supabase.from("research_survey_choices").insert(
+      validChoices.map((c, i) => ({ question_id: questionId, choice_text: c.choiceText.trim(), sort_order: i }))
+    );
+    if (choicesError) return { ok: false, error: choicesError.message };
+  }
+  return { ok: true };
+}
+
+export interface BulkSurveyQuestionInput {
+  questionType: SurveyQuestionType;
+  questionText: string;
+  choices: SurveyChoiceDraft[]; // only used for multiple_choice rows
+  likertScaleMin?: number;
+  likertScaleMax?: number;
+  likertMinLabel?: string;
+  likertMaxLabel?: string;
+}
+
+export interface BulkSurveyQuestionRowResult {
+  index: number; // 0-based, matches the CSV row order
+  ok: boolean;
+  error?: string;
+}
+
+/** Mirrors bulkCreateQuestions: sequential inserts (not a single batch) so one bad row doesn't sink the whole file, with an orphaned-question rollback if a multiple_choice row's choices fail to insert. */
+export async function bulkCreateSurveyQuestions(
+  surveyId: string,
+  questions: BulkSurveyQuestionInput[]
+): Promise<{ created: number; results: BulkSurveyQuestionRowResult[] }> {
+  const results: BulkSurveyQuestionRowResult[] = [];
+  let created = 0;
+
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    const { data, error } = await supabase.from("research_survey_questions").insert({
+      survey_id: surveyId,
+      question_type: q.questionType,
+      question_text: q.questionText,
+      sort_order: i,
+      likert_scale_min: q.questionType === "likert" ? q.likertScaleMin : null,
+      likert_scale_max: q.questionType === "likert" ? q.likertScaleMax : null,
+      likert_min_label: q.questionType === "likert" ? q.likertMinLabel : null,
+      likert_max_label: q.questionType === "likert" ? q.likertMaxLabel : null,
+    }).select("id").single();
+    if (error || !data) {
+      results.push({ index: i, ok: false, error: error?.message ?? "Failed to create question." });
+      continue;
+    }
+
+    if (q.questionType === "multiple_choice") {
+      const { error: choicesError } = await supabase.from("research_survey_choices").insert(
+        q.choices.map((c, ci) => ({ question_id: data.id, choice_text: c.choiceText, sort_order: ci }))
+      );
+      if (choicesError) {
+        await supabase.from("research_survey_questions").delete().eq("id", data.id);
+        results.push({ index: i, ok: false, error: choicesError.message });
+        continue;
+      }
+    }
+
+    created++;
+    results.push({ index: i, ok: true });
+  }
+
+  return { created, results };
+}
+
+export async function deleteSurveyQuestion(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("research_survey_questions").delete().eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+// ── Research Project Monitoring: Survey Results ──────────────
+
+export async function fetchSurveyQuestionResults(questionId: string, questionType: SurveyQuestionType): Promise<{
+  ok: boolean; error?: string; choiceResults?: SurveyChoiceResult[]; likertResult?: SurveyLikertResult;
+}> {
+  const { data, error } = await supabase.rpc("research_survey_question_results", { p_question_id: questionId });
+  if (error) return { ok: false, error: error.message };
+  if (questionType === "multiple_choice") {
+    return { ok: true, choiceResults: (data ?? []) as SurveyChoiceResult[] };
+  }
+  return { ok: true, likertResult: data as SurveyLikertResult };
 }
 
 // ── Scholars ──────────────────────────────────────────────────

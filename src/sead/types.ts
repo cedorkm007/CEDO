@@ -72,3 +72,60 @@ export interface ScholarAccountLogEntry {
 }
 
 export type SeadTab = "scholars" | "question-bank" | "quests-monitoring" | "formation-activities" | "history" | "forms-management";
+
+// ── Research Project Monitoring: Survey Tools / Survey Results ──
+
+export type SurveyQuestionType = "multiple_choice" | "likert";
+
+export interface SurveyChoiceDraft {
+  id?: string;
+  choiceText: string;
+}
+
+export interface SurveyQuestion {
+  id: string;
+  surveyId: string;
+  questionType: SurveyQuestionType;
+  questionText: string;
+  sortOrder: number;
+  // Likert-only; null for multiple_choice questions.
+  likertScaleMin: number | null;
+  likertScaleMax: number | null;
+  likertMinLabel: string | null;
+  likertMaxLabel: string | null;
+  // Multiple-choice-only; [] for likert questions.
+  choices: SurveyChoiceDraft[];
+}
+
+export type SurveyActivityType = "sdp" | "formation";
+
+export interface Survey {
+  id: string;
+  title: string;
+  description: string;
+  activityType: SurveyActivityType;
+  activityId: string;
+  activityName: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface SurveyChoiceResult {
+  choiceId: string;
+  choiceText: string;
+  count: number;
+}
+
+export interface SurveyLikertDistributionPoint {
+  value: number;
+  count: number;
+  percentage: number;
+}
+
+export interface SurveyLikertResult {
+  n: number;
+  mean: number | null;
+  median: number | null;
+  stddev: number | null;
+  distribution: SurveyLikertDistributionPoint[];
+}
