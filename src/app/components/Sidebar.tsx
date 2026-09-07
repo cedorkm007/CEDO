@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3 } from "lucide-react";
+import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3, FlaskConical } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarSeparator,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
@@ -157,6 +157,7 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
     || user.tags.includes("forms_management")
     || user.tags.includes("kauban_content")
     || user.tags.includes("scholarship_program_info")
+    || user.tags.includes("research_project_monitoring")
     || user.username.toLowerCase() === IT_ADMIN_USERNAME;
 
   return (
@@ -329,6 +330,13 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
                     <SidebarMenuItem className="min-w-0">
                       <SidebarMenuButton isActive={page === "scholarshipProgramInfo"} onClick={() => setPage("scholarshipProgramInfo")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
                         <BarChart3 /> <span className="truncate">Scholarship Program Information</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {user.tags.includes("research_project_monitoring") && (
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "researchProjectMonitoring"} onClick={() => setPage("researchProjectMonitoring")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <FlaskConical /> <span className="truncate">Research Project Monitoring</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}

@@ -48,4 +48,9 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     label: "Scholarship Program Information",
     description: "Birds-eye statistics on the scholarship program — counts by status, barangay, school, year level, and course, with per-scholar profile exports.",
   },
+  {
+    key: "research_project_monitoring",
+    label: "Research Project Monitoring",
+    description: "Monitor research projects, build surveys for SDP/Formation activities, and review survey results.",
+  },
 ];
