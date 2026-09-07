@@ -134,3 +134,13 @@ export interface SurveyLikertResult {
   stddev: number | null;
   distribution: SurveyLikertDistributionPoint[];
 }
+
+/** A scholar's attendance-gating status for a survey — "in_progress" covers both an actual in-progress response AND a scholar whose attendance was gated but who hasn't opened the survey at all yet (see research_survey_gating_roster()'s union logic). */
+export type GatingRosterStatus = "in_progress" | "completed" | "declined";
+
+export interface GatingRosterEntry {
+  scholarIdNumber: string;
+  scholarName: string;
+  status: GatingRosterStatus;
+  updatedAt: string;
+}

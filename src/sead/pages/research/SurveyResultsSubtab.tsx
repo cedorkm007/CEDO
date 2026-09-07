@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { ListChecks, SlidersHorizontal } from "lucide-react";
-import { fetchSurveys, fetchSurveyQuestions, fetchSurveyQuestionResults } from "../../seadApi";
+import { ListChecks, SlidersHorizontal, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { fetchSurveys, fetchSurveyQuestions, fetchSurveyQuestionResults, fetchSurveyGatingRoster } from "../../seadApi";
 import { SurveyResultsChart } from "../../components/SurveyResultsChart";
-import type { Survey, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult } from "../../types";
+import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
+import type { Survey, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult, GatingRosterEntry, GatingRosterStatus } from "../../types";
 
 export function SurveyResultsSubtab() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -49,12 +50,116 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
     })();
   }, [survey.id]);
 
-  if (loading) return <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">Loading questions…</div>;
-  if (questions.length === 0) return <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">This survey has no questions yet.</div>;
-
   return (
     <div className="space-y-4">
-      {questions.map(q => <QuestionResultCard key={q.id} question={q} />)}
+      <GatingRosterSection surveyId={survey.id} />
+      {loading ? (
+        <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">Loading questions…</div>
+      ) : questions.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">This survey has no questions yet.</div>
+      ) : (
+        questions.map(q => <QuestionResultCard key={q.id} question={q} />)
+      )}
+    </div>
+  );
+}
+
+const STATUS_META: Record<GatingRosterStatus, { label: string; badgeClass: string; icon: React.ReactNode }> = {
+  in_progress: { label: "Pending Survey", badgeClass: "text-amber-700 bg-amber-100", icon: <Clock size={11} /> },
+  completed: { label: "Completed", badgeClass: "text-green-700 bg-green-100", icon: <CheckCircle2 size={11} /> },
+  declined: { label: "Declined", badgeClass: "text-slate-500 bg-slate-100", icon: <XCircle size={11} /> },
+};
+
+/**
+ * Every scholar whose time-out/voucher scan was ever gated by this survey,
+ * with their current status — lets staff see who hasn't finished (or
+ * hasn't even opened) the survey yet, separately from the per-question
+ * answer breakdowns below. Empty for a survey nothing has gated yet
+ * (never attached to an activity with a live scan, or no scans so far).
+ */
+function GatingRosterSection({ surveyId }: { surveyId: string }) {
+  const [roster, setRoster] = useState<GatingRosterEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<GatingRosterStatus | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      setStatusFilter(null);
+      setRoster(await fetchSurveyGatingRoster(surveyId));
+      setLoading(false);
+    })();
+  }, [surveyId]);
+
+  const counts = {
+    in_progress: roster.filter(r => r.status === "in_progress").length,
+    completed: roster.filter(r => r.status === "completed").length,
+    declined: roster.filter(r => r.status === "declined").length,
+  };
+
+  const { paged, search, setSearch, page, setPage, totalPages, filteredCount, pageSize } = usePaginatedList(roster, {
+    searchKeys: ["scholarIdNumber", "scholarName"],
+    filterFn: statusFilter ? r => r.status === statusFilter : undefined,
+  });
+
+  if (loading) return <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">Loading gating status…</div>;
+  if (roster.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4">
+        <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400 mb-1">Attendance Gating Status</p>
+        <p className="text-[13px] text-slate-400">No scholar has had a scan gated by this survey yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4">
+      <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400 mb-3">Attendance Gating Status</p>
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {(Object.keys(STATUS_META) as GatingRosterStatus[]).map(s => (
+          <button key={s} onClick={() => setStatusFilter(prev => prev === s ? null : s)}
+            className={`rounded-xl p-3 text-center border transition ${statusFilter === s ? "border-[#062444] bg-[#eef3fb]" : "border-[#e6ecf5] hover:bg-[#f8fafd]"}`}>
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400 mb-1">{STATUS_META[s].label}</p>
+            <p className="text-lg font-extrabold text-[#062444]">{counts[s]}</p>
+          </button>
+        ))}
+      </div>
+
+      <ListSearchBox value={search} onChange={setSearch} placeholder="Search by scholar ID or name…" />
+
+      <div className="mt-3 border border-[#e6ecf5] rounded-lg overflow-hidden">
+        <table className="w-full text-[12.5px]">
+          <thead>
+            <tr className="bg-[#f8fafd] text-left text-slate-400 text-[11px] font-bold uppercase tracking-wide">
+              <th className="px-3 py-2">Scholar ID</th>
+              <th className="px-3 py-2">Name</th>
+              <th className="px-3 py-2">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredCount === 0 ? (
+              <tr><td colSpan={3} className="px-3 py-6 text-center text-slate-400">No scholars match.</td></tr>
+            ) : (
+              paged.map(r => (
+                <tr key={r.scholarIdNumber} className="border-t border-[#f0f3f8]">
+                  <td className="px-3 py-2 text-[#062444] font-medium">{r.scholarIdNumber}</td>
+                  <td className="px-3 py-2 text-slate-600">{r.scholarName}</td>
+                  <td className="px-3 py-2">
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-bold ${STATUS_META[r.status].badgeClass}`}>
+                      {STATUS_META[r.status].icon} {STATUS_META[r.status].label}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      {filteredCount > 0 && (
+        <div className="mt-1">
+          <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} filteredCount={filteredCount} pageSize={pageSize} />
+        </div>
+      )}
     </div>
   );
 }

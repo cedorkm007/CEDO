@@ -3,6 +3,7 @@ import { isValidHttpsUrl } from "@/lib/urlValidation";
 import type {
   QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, ScholarListItem, ScholarAccountLogEntry, ScoreRow, ScholarshipStatus,
   Survey, SurveyActivityType, SurveyQuestion, SurveyQuestionType, SurveyChoiceDraft, SurveyChoiceResult, SurveyLikertResult,
+  GatingRosterEntry,
 } from "./types";
 
 /**
@@ -826,6 +827,13 @@ export async function fetchSurveyQuestionResults(questionId: string, questionTyp
     return { ok: true, choiceResults: (data ?? []) as SurveyChoiceResult[] };
   }
   return { ok: true, likertResult: data as SurveyLikertResult };
+}
+
+/** Every scholar whose attendance/voucher has ever been gated by this survey, with their current status — powers the "who hasn't finished yet" roster in Survey Results. */
+export async function fetchSurveyGatingRoster(surveyId: string): Promise<GatingRosterEntry[]> {
+  const { data, error } = await supabase.rpc("research_survey_gating_roster", { p_survey_id: surveyId });
+  if (error || !data) return [];
+  return data as GatingRosterEntry[];
 }
 
 // ── Scholars ──────────────────────────────────────────────────
