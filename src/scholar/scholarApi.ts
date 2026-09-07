@@ -159,11 +159,118 @@ export async function updateOwnContactInfo(fields: OwnProfileEditableFields): Pr
 
 /** Scholar redeems a time-in/time-out/voucher code, either scanned via QR or typed manually.
  *  All validation (already redeemed, invalid code, caller must be a scholar) happens inside
- *  the redeem_attendance_code() database function — this is a thin wrapper around it. */
-export async function redeemAttendanceCode(code: string): Promise<{ ok: boolean; error?: string; kind?: string; activityName?: string }> {
+ *  the redeem_attendance_code() database function — this is a thin wrapper around it.
+ *  `surveyPending`/`surveyId` are set when this was a time_out or voucher scan on an activity
+ *  with a survey attached that this scholar hasn't completed yet — the attendance/voucher is
+ *  recorded but held at status='pending_survey' until the survey is finished (see
+ *  SurveyResponseModal). time_in is never gated. */
+export async function redeemAttendanceCode(code: string): Promise<{ ok: boolean; error?: string; kind?: string; activityName?: string; surveyPending?: boolean; surveyId?: string }> {
   const { data, error } = await supabase.rpc("redeem_attendance_code", { p_code: code.trim() });
   if (error) return { ok: false, error: error.message };
-  return { ok: true, kind: data?.kind, activityName: data?.activityName };
+  return { ok: true, kind: data?.kind, activityName: data?.activityName, surveyPending: data?.surveyPending, surveyId: data?.surveyId };
+}
+
+// ── Survey response (attendance-gating) ──────────────────────
+
+export interface SurveyResponseChoice {
+  id: string;
+  choiceText: string;
+}
+export interface SurveyResponseQuestion {
+  id: string;
+  questionType: "multiple_choice" | "likert";
+  questionText: string;
+  sortOrder: number;
+  likertScaleMin: number | null;
+  likertScaleMax: number | null;
+  likertMinLabel: string | null;
+  likertMaxLabel: string | null;
+  choices: SurveyResponseChoice[];
+}
+export interface SurveyResponseAnswer {
+  questionId: string;
+  choiceId: string | null;
+  likertValue: number | null;
+}
+
+/** Starts a new survey response, or resumes an in-progress one — idempotent, safe to call both right after a gated scan and from the "resume your survey" dashboard banner. */
+export async function startOrResumeSurveyResponse(surveyId: string): Promise<{
+  ok: boolean; error?: string; responseId?: string; questions?: SurveyResponseQuestion[]; answers?: SurveyResponseAnswer[];
+}> {
+  const { data, error } = await supabase.rpc("start_or_resume_survey_response", { p_survey_id: surveyId });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, responseId: data?.responseId, questions: data?.questions ?? [], answers: data?.answers ?? [] };
+}
+
+/** Saves one question's answer — its own round trip, so an answered question survives the scholar closing the app before finishing the survey. */
+export async function submitSurveyAnswer(input: {
+  responseId: string; questionId: string; choiceId?: string; likertValue?: number;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("submit_survey_answer", {
+    p_response_id: input.responseId, p_question_id: input.questionId,
+    p_choice_id: input.choiceId ?? null, p_likert_value: input.likertValue ?? null,
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/** Finalizes the survey response — requires every question answered, then flips any of this scholar's attendance/voucher rows that were held pending on this survey to 'present'. */
+export async function submitSurveyResponse(responseId: string): Promise<{ ok: boolean; error?: string; finalizedCount?: number; activityName?: string }> {
+  const { data, error } = await supabase.rpc("submit_survey_response", { p_response_id: responseId });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, finalizedCount: data?.finalizedCount, activityName: data?.activityName };
+}
+
+export interface PendingSurvey {
+  surveyId: string;
+  surveyTitle: string;
+  activityName: string;
+}
+
+/** Every survey this scholar has an attendance/voucher scan held open on (status='pending_survey') — powers the dashboard's "resume your survey" banner. Permitted by the scholar's own existing RLS read access to attendance_records, so no new RPC is needed for this read. */
+export async function fetchMyPendingSurveys(): Promise<PendingSurvey[]> {
+  const { data, error } = await supabase
+    .from("attendance_records")
+    .select("pending_survey_id, session_id, attendance_sessions(sdp_activities(name), formation_activities(name), sdp_activity_id, formation_activity_id)")
+    .eq("status", "pending_survey");
+  if (error || !data) return [];
+
+  const surveyIds = [...new Set(data.map(r => r.pending_survey_id).filter((id): id is string => !!id))];
+  if (surveyIds.length === 0) return [];
+  const { data: surveys } = await supabase.from("research_surveys").select("id, title").in("id", surveyIds);
+  const titleMap = new Map((surveys ?? []).map(s => [s.id, s.title]));
+
+  return data
+    .filter(r => r.pending_survey_id)
+    .map(r => {
+      // Supabase's nested-relation typing can't express "one of these two
+      // is present" precisely, so this is read defensively rather than typed strictly.
+      const session = r.attendance_sessions as unknown as { sdp_activities?: { name: string } | null; formation_activities?: { name: string } | null } | null;
+      const activityName = session?.sdp_activities?.name ?? session?.formation_activities?.name ?? "the activity";
+      return { surveyId: r.pending_survey_id as string, surveyTitle: titleMap.get(r.pending_survey_id as string) ?? "Survey", activityName };
+    });
+}
+
+export interface AttendanceFinalizedNotification {
+  notificationId: string;
+  activityName: string;
+}
+
+/** Unread "your attendance/voucher was finalized" notices — finalization can happen in a later session than the scan (the scholar resumed the survey from the dashboard banner), so this covers that case separately from the immediate in-app confirmation shown right after a successful submitSurveyResponse. */
+export async function fetchAttendanceFinalizedNotifications(): Promise<AttendanceFinalizedNotification[]> {
+  const { data, error } = await supabase
+    .from("scholar_attendance_finalized_notifications")
+    .select("id, session_id, attendance_sessions(sdp_activities(name), formation_activities(name))")
+    .is("read_at", null);
+  if (error || !data) return [];
+  return data.map(n => {
+    const session = n.attendance_sessions as unknown as { sdp_activities?: { name: string } | null; formation_activities?: { name: string } | null } | null;
+    return { notificationId: n.id, activityName: session?.sdp_activities?.name ?? session?.formation_activities?.name ?? "the activity" };
+  });
+}
+
+export async function markAttendanceFinalizedNotificationsRead(notificationIds: string[]): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("scholar_attendance_finalized_notifications").update({ read_at: new Date().toISOString() }).in("id", notificationIds);
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 /** Scholar self-service password change — re-verifies the current password first. */

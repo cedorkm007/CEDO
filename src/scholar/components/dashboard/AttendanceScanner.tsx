@@ -4,6 +4,7 @@ import { Camera, Keyboard, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { redeemAttendanceCode } from "../../scholarApi";
 import { syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormUnlockNotification } from "../../formsApi";
 import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
+import { SurveyResponseModal } from "./SurveyResponseModal";
 
 type Mode = "scan" | "manual";
 type Result = { ok: boolean; message: string; tone: "success" | "error" | "warning" } | null;
@@ -15,6 +16,7 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
   const [result, setResult] = useState<Result>(null);
   const [cameraError, setCameraError] = useState("");
   const [newlyUnlocked, setNewlyUnlocked] = useState<FormUnlockNotification[]>([]);
+  const [pendingSurvey, setPendingSurvey] = useState<{ surveyId: string; kind?: string } | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -33,6 +35,14 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
     const res = await redeemAttendanceCode(code);
     setBusy(false);
     if (res.ok) {
+      if (res.surveyPending && res.surveyId) {
+        // Hold off on the success banner and any form-unlock check until
+        // the survey is actually finished — the attendance/voucher itself
+        // isn't finalized yet (see redeem_attendance_code's pending_survey
+        // status), so nothing has actually unlocked either.
+        setPendingSurvey({ surveyId: res.surveyId, kind: res.kind });
+        return;
+      }
       const label = res.kind === "time_in" ? "Timed in" : res.kind === "time_out" ? "Timed out" : "Hour credited";
       setResult({ ok: true, tone: "success", message: `${label} for "${res.activityName ?? "the activity"}".` });
       setNewlyUnlocked(await syncAndFetchUnreadFormUnlockNotifications());
@@ -42,6 +52,13 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
       // Allow retrying the same code after a failure (e.g. typo), just not spamming a success.
       lastAttemptedCode.current = "";
     }
+  }
+
+  async function handleSurveyFinalized(finalized: { finalizedCount: number; activityName: string }) {
+    const label = pendingSurvey?.kind === "voucher" ? "Hour credited" : "Timed out";
+    setPendingSurvey(null);
+    setResult({ ok: true, tone: "success", message: `${label} for "${finalized.activityName}".` });
+    setNewlyUnlocked(await syncAndFetchUnreadFormUnlockNotifications());
   }
 
   function dismissNewlyUnlocked() {
@@ -147,6 +164,13 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
       )}
     </div>
     <NewlyUnlockedModal notifications={newlyUnlocked} onGoToForms={onNavigateToForms} onClose={dismissNewlyUnlocked} />
+    {pendingSurvey && (
+      <SurveyResponseModal
+        surveyId={pendingSurvey.surveyId}
+        onClose={() => setPendingSurvey(null)}
+        onFinalized={handleSurveyFinalized}
+      />
+    )}
     </>
   );
 }

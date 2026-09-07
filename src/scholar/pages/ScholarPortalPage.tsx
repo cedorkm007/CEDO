@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
-import { LogOut } from "lucide-react";
-import { fetchCurrentScholarProfile, fetchSubjectsAndGrades, fetchQuestScores, scholarSignOut } from "../scholarApi";
+import { LogOut, ClipboardList, CheckCircle2, X as XIcon } from "lucide-react";
+import {
+  fetchCurrentScholarProfile, fetchSubjectsAndGrades, fetchQuestScores, scholarSignOut,
+  fetchMyPendingSurveys, fetchAttendanceFinalizedNotifications, markAttendanceFinalizedNotificationsRead,
+  type PendingSurvey, type AttendanceFinalizedNotification,
+} from "../scholarApi";
+import { SurveyResponseModal } from "../components/dashboard/SurveyResponseModal";
 import { ProfileBanner } from "../components/dashboard/ProfileBanner";
 import { DashboardHome } from "../components/dashboard/DashboardHome";
 import { CompactNav } from "../components/dashboard/CompactNav";
@@ -51,6 +56,9 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showProfilePopup, setShowProfilePopup] = useState(false);
   const [newlyUnlocked, setNewlyUnlocked] = useState<FormUnlockNotification[]>([]);
+  const [pendingSurveys, setPendingSurveys] = useState<PendingSurvey[]>([]);
+  const [finalizedNotifications, setFinalizedNotifications] = useState<AttendanceFinalizedNotification[]>([]);
+  const [openSurveyId, setOpenSurveyId] = useState<string | null>(null);
 
   function goToForms() { setPanel("services"); }
 
@@ -70,19 +78,26 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
       // stale ?panel=... on an unauthenticated load safely shows the
       // sign-in-again screen instead of a broken panel.
       if (p) {
-        const [g, s, status, pos, unread] = await Promise.all([
+        const [g, s, status, pos, unread, pendingSurveysResult, finalizedResult] = await Promise.all([
           fetchSubjectsAndGrades(p.scholarIdNumber), fetchQuestScores(p.scholarIdNumber), fetchScholarSDPCategoryStatus(p.scholarIdNumber),
           fetchOwnPositionLabels(p.scholarIdNumber),
           // Catches unlocks the scholar didn't personally just cause — staff
           // created a newly-qualifying material, loosened a condition, or
           // changed their year level since they were last here.
           syncAndFetchUnreadFormUnlockNotifications(),
+          // Any time-out/voucher scan still held on a survey they haven't
+          // finished — possible if they closed the app mid-survey in an
+          // earlier session (see AttendanceScanner/SurveyResponseModal).
+          fetchMyPendingSurveys(),
+          fetchAttendanceFinalizedNotifications(),
         ]);
         setGrades(g);
         setScores(s);
         setSdpStatus(status);
         setPositions(pos);
         setNewlyUnlocked(unread);
+        setPendingSurveys(pendingSurveysResult);
+        setFinalizedNotifications(finalizedResult);
       }
       setLoading(false);
     })();
@@ -92,6 +107,16 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
     const ids = newlyUnlocked.map(n => n.notificationId);
     setNewlyUnlocked([]);
     if (ids.length > 0) void markFormUnlockNotificationsRead(ids);
+  }
+
+  function handleSurveyFinalized(surveyId: string) {
+    setOpenSurveyId(null);
+    setPendingSurveys(prev => prev.filter(s => s.surveyId !== surveyId));
+  }
+
+  function dismissFinalizedNotification(notificationId: string) {
+    setFinalizedNotifications(prev => prev.filter(n => n.notificationId !== notificationId));
+    void markAttendanceFinalizedNotificationsRead([notificationId]);
   }
 
   async function handleSignOut() {
@@ -125,6 +150,37 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
               <LogOut size={15} /> Sign Out
             </button>
           </div>
+
+          {(pendingSurveys.length > 0 || finalizedNotifications.length > 0) && (
+            <div className="space-y-2 mb-4">
+              {pendingSurveys.map(s => (
+                <div key={s.surveyId} className="flex items-center justify-between gap-3 rounded-xl border border-[#F3BC00]/40 bg-[#F3BC00]/10 px-4 py-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <ClipboardList size={18} className="text-[#062444] shrink-0" />
+                    <p className="text-[13px] text-[#062444] min-w-0">
+                      Finish the survey for <span className="font-semibold">{s.activityName}</span> to finalize your attendance.
+                    </p>
+                  </div>
+                  <button onClick={() => setOpenSurveyId(s.surveyId)} className="shrink-0 bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-3.5 py-1.5">
+                    Resume
+                  </button>
+                </div>
+              ))}
+              {finalizedNotifications.map(n => (
+                <div key={n.notificationId} className="flex items-center justify-between gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <CheckCircle2 size={18} className="text-green-600 shrink-0" />
+                    <p className="text-[13px] text-green-800 min-w-0">
+                      Your attendance for <span className="font-semibold">{n.activityName}</span> was finalized.
+                    </p>
+                  </div>
+                  <button onClick={() => dismissFinalizedNotification(n.notificationId)} className="shrink-0 text-green-700 hover:text-green-900">
+                    <XIcon size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Desktop only — on mobile this info lives in the profile popup instead, and the
               home screen goes straight to the widget grid (matches the reference app's simpler
@@ -175,6 +231,13 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
       )}
       <BottomNav active={panel} onSelect={setPanel} />
       <NewlyUnlockedModal notifications={newlyUnlocked} onGoToForms={goToForms} onClose={dismissNewlyUnlocked} />
+      {openSurveyId && (
+        <SurveyResponseModal
+          surveyId={openSurveyId}
+          onClose={() => setOpenSurveyId(null)}
+          onFinalized={() => handleSurveyFinalized(openSurveyId)}
+        />
+      )}
     </>
   );
 }
