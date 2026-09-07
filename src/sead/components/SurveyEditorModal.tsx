@@ -9,6 +9,8 @@ export function SurveyEditorModal({
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [activityKey, setActivityKey] = useState(existing ? `${existing.activityType}:${existing.activityId}` : "");
+  const [requiresConsent, setRequiresConsent] = useState(existing?.requiresConsent ?? false);
+  const [consentText, setConsentText] = useState(existing?.consentText ?? "This survey is voluntary. Do you agree to participate?");
   const [activities, setActivities] = useState<ActivityOption[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -29,11 +31,12 @@ export function SurveyEditorModal({
     if (!title.trim()) { setError("Enter a survey title."); return; }
     const [activityType, activityId] = activityKey.split(":") as [SurveyActivityType, string];
     if (!activityType || !activityId) { setError("Choose which activity this survey is attached to."); return; }
+    if (requiresConsent && !consentText.trim()) { setError("Enter the consent question text."); return; }
 
     setBusy(true);
     const result = existing
-      ? await updateSurvey(existing.id, { title: title.trim(), description: description.trim(), isActive: existing.isActive, activityType, activityId })
-      : await createSurvey({ title: title.trim(), description: description.trim(), activityType, activityId });
+      ? await updateSurvey(existing.id, { title: title.trim(), description: description.trim(), isActive: existing.isActive, activityType, activityId, requiresConsent, consentText: consentText.trim() })
+      : await createSurvey({ title: title.trim(), description: description.trim(), activityType, activityId, requiresConsent, consentText: consentText.trim() });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save survey."); return; }
     onSaved();
@@ -64,6 +67,24 @@ export function SurveyEditorModal({
             ))}
           </select>
           <p className="text-[11px] text-slate-400 mt-1">Only activities without an existing survey are shown — one survey per activity.</p>
+        </div>
+
+        <div className="border-t border-[#f0f3f8] pt-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={requiresConsent} onChange={e => setRequiresConsent(e.target.checked)}
+              className="w-4 h-4 accent-[#062444]" />
+            <span className="text-[12.5px] font-semibold text-slate-600">Voluntary survey — ask for consent first</span>
+          </label>
+          <p className="text-[11px] text-slate-400 mt-1 ml-6">
+            The scholar can decline; declining skips the survey and their attendance/voucher is still recorded normally.
+          </p>
+          {requiresConsent && (
+            <div className="mt-2.5 ml-6">
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">Consent question</label>
+              <textarea value={consentText} onChange={e => setConsentText(e.target.value)} rows={2}
+                className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
+            </div>
+          )}
         </div>
 
         {error && <p className="text-[13px] text-red-600">{error}</p>}

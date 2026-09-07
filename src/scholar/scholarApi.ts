@@ -193,13 +193,26 @@ export interface SurveyResponseAnswer {
   likertValue: number | null;
 }
 
-/** Starts a new survey response, or resumes an in-progress one — idempotent, safe to call both right after a gated scan and from the "resume your survey" dashboard banner. */
+/** Starts a new survey response, or resumes an in-progress one — idempotent, safe to call both right after a gated scan and from the "resume your survey" dashboard banner. `requiresConsent`/`consentText`/`consented` describe a voluntary (client-satisfaction-style) survey's opt-in step — see submitSurveyConsent. */
 export async function startOrResumeSurveyResponse(surveyId: string): Promise<{
   ok: boolean; error?: string; responseId?: string; questions?: SurveyResponseQuestion[]; answers?: SurveyResponseAnswer[];
+  requiresConsent?: boolean; consentText?: string; consented?: boolean | null;
 }> {
   const { data, error } = await supabase.rpc("start_or_resume_survey_response", { p_survey_id: surveyId });
   if (error) return { ok: false, error: error.message };
-  return { ok: true, responseId: data?.responseId, questions: data?.questions ?? [], answers: data?.answers ?? [] };
+  return {
+    ok: true, responseId: data?.responseId, questions: data?.questions ?? [], answers: data?.answers ?? [],
+    requiresConsent: data?.requiresConsent, consentText: data?.consentText, consented: data?.consented,
+  };
+}
+
+/** Records agree/decline for a voluntary survey's consent step. Declining finalizes the held-open attendance/voucher immediately (same shape as submitSurveyResponse's success) and skips the rest of the survey; agreeing just clears the way to answer questions. */
+export async function submitSurveyConsent(responseId: string, agree: boolean): Promise<{
+  ok: boolean; error?: string; declined?: boolean; finalizedCount?: number; activityName?: string;
+}> {
+  const { data, error } = await supabase.rpc("submit_survey_consent", { p_response_id: responseId, p_agree: agree });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, declined: data?.declined, finalizedCount: data?.finalizedCount, activityName: data?.activityName };
 }
 
 /** Saves one question's answer — its own round trip, so an answered question survives the scholar closing the app before finishing the survey. */

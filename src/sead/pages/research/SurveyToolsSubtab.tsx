@@ -45,7 +45,7 @@ export function SurveyToolsSubtab() {
         onSelect={selectSurvey}
         onAdd={() => setEditingSurvey("new")}
         onEdit={s => setEditingSurvey(s)}
-        onToggleActive={async s => { await updateSurvey(s.id, { title: s.title, description: s.description, isActive: !s.isActive, activityType: s.activityType, activityId: s.activityId }); loadSurveys(); }}
+        onToggleActive={async s => { await updateSurvey(s.id, { title: s.title, description: s.description, isActive: !s.isActive, activityType: s.activityType, activityId: s.activityId, requiresConsent: s.requiresConsent, consentText: s.consentText }); loadSurveys(); }}
         onDelete={async id => { await deleteSurvey(id); if (selectedSurvey?.id === id) { setSelectedSurvey(null); setQuestions([]); } loadSurveys(); }}
       />
 
@@ -111,9 +111,14 @@ function SurveyColumn({ surveys, selected, onSelect, onAdd, onEdit, onToggleActi
                     {s.activityName} <span className="text-slate-300">·</span> {s.activityType === "sdp" ? "SDP" : "Formation"}
                   </p>
                 </div>
-                <span className={`shrink-0 text-[10px] font-bold rounded-full px-2 py-0.5 ${s.isActive ? "text-green-700 bg-green-100" : "text-slate-500 bg-slate-100"}`}>
-                  {s.isActive ? "Active" : "Inactive"}
-                </span>
+                <div className="shrink-0 flex items-center gap-1">
+                  {s.requiresConsent && (
+                    <span className="text-[10px] font-bold rounded-full px-2 py-0.5 text-amber-700 bg-amber-100">Voluntary</span>
+                  )}
+                  <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${s.isActive ? "text-green-700 bg-green-100" : "text-slate-500 bg-slate-100"}`}>
+                    {s.isActive ? "Active" : "Inactive"}
+                  </span>
+                </div>
               </div>
               <div className="flex items-center gap-3 text-[12px] mt-2">
                 <button onClick={e => { e.stopPropagation(); onEdit(s); }} className="flex items-center gap-1 text-[#0088cc] font-semibold hover:underline"><Pencil size={12} /> Edit</button>

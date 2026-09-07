@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { X, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
 import {
-  startOrResumeSurveyResponse, submitSurveyAnswer, submitSurveyResponse,
+  startOrResumeSurveyResponse, submitSurveyAnswer, submitSurveyResponse, submitSurveyConsent,
   type SurveyResponseQuestion, type SurveyResponseAnswer,
 } from "../../scholarApi";
 
@@ -26,7 +26,11 @@ export function SurveyResponseModal({
   const [index, setIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [finalized, setFinalized] = useState<{ finalizedCount: number; activityName: string } | null>(null);
+  const [finalized, setFinalized] = useState<{ finalizedCount: number; activityName: string; declined: boolean } | null>(null);
+  const [requiresConsent, setRequiresConsent] = useState(false);
+  const [consentText, setConsentText] = useState("");
+  const [consented, setConsented] = useState<boolean | null>(null);
+  const [decidingConsent, setDecidingConsent] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -39,6 +43,9 @@ export function SurveyResponseModal({
       }
       setResponseId(result.responseId);
       setQuestions(result.questions ?? []);
+      setRequiresConsent(result.requiresConsent ?? false);
+      setConsentText(result.consentText ?? "This survey is voluntary. Do you agree to participate?");
+      setConsented(result.consented ?? null);
       const byQuestion: Record<string, { choiceId?: string; likertValue?: number }> = {};
       for (const a of (result.answers ?? []) as SurveyResponseAnswer[]) {
         byQuestion[a.questionId] = { choiceId: a.choiceId ?? undefined, likertValue: a.likertValue ?? undefined };
@@ -50,6 +57,20 @@ export function SurveyResponseModal({
       setLoading(false);
     })();
   }, [surveyId]);
+
+  async function handleConsent(agree: boolean) {
+    if (!responseId) return;
+    setDecidingConsent(true);
+    setError("");
+    const result = await submitSurveyConsent(responseId, agree);
+    setDecidingConsent(false);
+    if (!result.ok) { setError(result.error || "Couldn't save your response."); return; }
+    if (result.declined) {
+      setFinalized({ finalizedCount: result.finalizedCount ?? 0, activityName: result.activityName ?? "the activity", declined: true });
+    } else {
+      setConsented(true);
+    }
+  }
 
   const current = questions[index];
   const currentAnswer = current ? answersByQuestion[current.id] : undefined;
@@ -92,7 +113,7 @@ export function SurveyResponseModal({
     const result = await submitSurveyResponse(responseId);
     setSubmitting(false);
     if (!result.ok) { setError(result.error || "Couldn't submit the survey."); return; }
-    setFinalized({ finalizedCount: result.finalizedCount ?? 0, activityName: result.activityName ?? "the activity" });
+    setFinalized({ finalizedCount: result.finalizedCount ?? 0, activityName: result.activityName ?? "the activity", declined: false });
   }
 
   function handleDone() {
@@ -114,9 +135,26 @@ export function SurveyResponseModal({
           ) : finalized ? (
             <div className="text-center py-4">
               <CheckCircle2 size={40} className="mx-auto text-green-600 mb-3" />
-              <p className="text-[14px] font-semibold text-[#062444] mb-1">Survey complete — thank you!</p>
+              <p className="text-[14px] font-semibold text-[#062444] mb-1">
+                {finalized.declined ? "Thanks for letting us know!" : "Survey complete — thank you!"}
+              </p>
               <p className="text-[13px] text-slate-500 mb-5">Your attendance for "{finalized.activityName}" has been finalized.</p>
               <button onClick={handleDone} className="bg-[#062444] text-white text-sm font-semibold rounded-lg px-6 py-2.5">Done</button>
+            </div>
+          ) : requiresConsent && consented !== true ? (
+            <div className="py-2">
+              <p className="text-[15px] font-semibold text-[#062444] leading-relaxed mb-6">{consentText}</p>
+              {error && <p className="text-[13px] text-red-600 mb-3">{error}</p>}
+              <div className="flex items-center gap-3">
+                <button onClick={() => handleConsent(false)} disabled={decidingConsent}
+                  className="flex-1 border border-[#e6ecf5] text-slate-500 disabled:opacity-50 text-[13.5px] font-semibold rounded-lg px-4 py-2.5 hover:bg-[#f8fafd]">
+                  No, thanks
+                </button>
+                <button onClick={() => handleConsent(true)} disabled={decidingConsent}
+                  className="flex-1 bg-gradient-to-br from-[#062444] to-[#0a3a6b] disabled:opacity-50 text-white text-[13.5px] font-semibold rounded-lg px-4 py-2.5">
+                  {decidingConsent ? "Saving…" : "Yes, I agree"}
+                </button>
+              </div>
             </div>
           ) : !current ? (
             <p className="text-[13px] text-red-600 text-center py-6">{error || "This survey has no questions."}</p>

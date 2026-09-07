@@ -108,6 +108,11 @@ export interface Survey {
   activityName: string;
   isActive: boolean;
   createdAt: string;
+  // Voluntary/client-satisfaction-style surveys: when true, the scholar is
+  // asked consentText and can decline — declining skips the survey and
+  // finalizes their attendance immediately, same as completing it.
+  requiresConsent: boolean;
+  consentText: string;
 }
 
 export interface SurveyChoiceResult {

@@ -625,18 +625,22 @@ export async function fetchSurveys(): Promise<Survey[]> {
     return {
       id: s.id, title: s.title, description: s.description ?? "", activityType, activityId, activityName,
       isActive: s.is_active, createdAt: s.created_at,
+      requiresConsent: s.requires_consent, consentText: s.consent_text,
     };
   });
 }
 
 export async function createSurvey(input: {
   title: string; description: string; activityType: SurveyActivityType; activityId: string;
+  requiresConsent: boolean; consentText: string;
 }): Promise<{ ok: boolean; error?: string; id?: string }> {
   const { data, error } = await supabase.from("research_surveys").insert({
     title: input.title,
     description: input.description,
     sdp_activity_id: input.activityType === "sdp" ? input.activityId : null,
     formation_activity_id: input.activityType === "formation" ? input.activityId : null,
+    requires_consent: input.requiresConsent,
+    consent_text: input.consentText,
   }).select("id").single();
   if (error || !data) return { ok: false, error: error?.message ?? "Failed to create survey." };
   return { ok: true, id: data.id };
@@ -644,6 +648,7 @@ export async function createSurvey(input: {
 
 export async function updateSurvey(id: string, fields: {
   title: string; description: string; isActive: boolean; activityType: SurveyActivityType; activityId: string;
+  requiresConsent: boolean; consentText: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.from("research_surveys").update({
     title: fields.title,
@@ -651,6 +656,8 @@ export async function updateSurvey(id: string, fields: {
     is_active: fields.isActive,
     sdp_activity_id: fields.activityType === "sdp" ? fields.activityId : null,
     formation_activity_id: fields.activityType === "formation" ? fields.activityId : null,
+    requires_consent: fields.requiresConsent,
+    consent_text: fields.consentText,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
