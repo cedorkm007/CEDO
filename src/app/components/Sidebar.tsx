@@ -212,6 +212,19 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
+              {/* Every staff account EXCEPT evaluators (research_project_monitoring
+                  tag) gets this — researchers submit proposals here, evaluators
+                  review them from the separate Research Project Monitoring tool
+                  in Region C below. The only tag-based exclusion in this
+                  otherwise-ungated region. */}
+              {!user.tags.includes("research_project_monitoring") && (
+                <SidebarMenuItem className="min-w-0">
+                  <SidebarMenuButton isActive={page === "myResearch"} onClick={() => setPage("myResearch")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                    <FlaskConical /> <span className="truncate">My Research</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
               <Collapsible open={formsOpen} onOpenChange={setFormsOpen} className="group/forms">
                 <SidebarMenuItem className="min-w-0">
                   <CollapsibleTrigger asChild>
