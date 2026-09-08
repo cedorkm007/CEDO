@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, Check, ClipboardList, Download, ImagePlus, MapPin, Pencil, Plus, QrCode, RefreshCw, Trash2, Users, X } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardList, Download, ImagePlus, MapPin, Pencil, Plus, QrCode, RefreshCw, Trash2, Users, X } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import JSZip from "jszip";
@@ -708,20 +708,119 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
   );
 }
 
+/**
+ * Month-grid view of every formation activity, keyed by its start date —
+ * mirrors the day-cell/dot/selected-day-list pattern the scholar portal's
+ * own Calendar and Activities uses (CalendarAndActivitiesPanel.tsx), but
+ * built fresh here rather than imported since that one is scoped to the
+ * scholar's own merged Formation+SDP shape and isn't exported.
+ */
+function FormationCalendarSubtab({ activities }: { activities: FormationActivity[] }) {
+  const [monthCursor, setMonthCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const activitiesByDate = new Map<string, FormationActivity[]>();
+  for (const a of activities) {
+    if (!a.dateTime) continue;
+    const key = a.dateTime.slice(0, 10);
+    activitiesByDate.set(key, [...(activitiesByDate.get(key) ?? []), a]);
+  }
+
+  const year = monthCursor.getFullYear();
+  const month = monthCursor.getMonth();
+  const firstDayOfWeek = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const cells: (number | null)[] = [...Array(firstDayOfWeek).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+
+  function dateKey(day: number) {
+    return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  const selectedActivities = selectedDate ? (activitiesByDate.get(selectedDate) ?? []) : [];
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+      <div className="rounded-2xl border border-[#e6ecf5] bg-white p-4">
+        <div className="mb-4 flex items-center justify-between">
+          <button onClick={() => setMonthCursor(new Date(year, month - 1, 1))} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]">
+            <ChevronLeft size={16} />
+          </button>
+          <p className="text-[14px] font-bold text-[#062444]">{monthCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</p>
+          <button onClick={() => setMonthCursor(new Date(year, month + 1, 1))} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]">
+            <ChevronRight size={16} />
+          </button>
+        </div>
+        <div className="mb-1 grid grid-cols-7 gap-1">
+          {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map(d => <p key={d} className="py-1 text-center text-[10.5px] font-bold text-slate-400">{d}</p>)}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {cells.map((day, i) => {
+            if (day === null) return <div key={i} />;
+            const key = dateKey(day);
+            const dayActivities = activitiesByDate.get(key) ?? [];
+            const hasEvents = dayActivities.length > 0;
+            const allDone = hasEvents && dayActivities.every(isActivityDone);
+            const isToday = key === todayKey;
+            const isSelected = key === selectedDate;
+            return (
+              <button key={i} onClick={() => setSelectedDate(hasEvents ? key : null)}
+                className={`flex aspect-square flex-col items-center justify-center gap-0.5 rounded-lg text-[12.5px] font-semibold transition-colors ${
+                  isSelected ? "bg-[#062444] text-white" : isToday ? "bg-[#eef3fb] text-[#062444]" : "text-slate-600 hover:bg-[#f8fafd]"
+                }`}>
+                {day}
+                {hasEvents && <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-[#F3BC00]" : allDone ? "bg-green-500" : "bg-[#0088cc]"}`} />}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-4 flex items-center gap-4 border-t border-[#f0f3f8] pt-3 text-[11px] text-slate-500">
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#0088cc]" /> Upcoming</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-green-500" /> Done</span>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-[#e6ecf5] bg-white p-4">
+        {!selectedDate ? (
+          <p className="text-[12.5px] text-slate-400">Select a highlighted day to see its activities.</p>
+        ) : selectedActivities.length === 0 ? (
+          <p className="text-[12.5px] text-slate-400">No activities on this day.</p>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-[11px] font-semibold uppercase text-slate-400">{new Date(selectedDate).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</p>
+            {selectedActivities.map(activity => (
+              <div key={activity.id} className="rounded-lg bg-[#f8fafd] px-3 py-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[13px] font-bold text-[#062444]">{activity.name}</p>
+                  {isActivityDone(activity)
+                    ? <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">Done</span>
+                    : <span className="shrink-0 rounded-full bg-[#0088cc]/10 px-2 py-0.5 text-[10px] font-bold text-[#0088cc]">Upcoming</span>}
+                </div>
+                <p className="mt-1 text-[11.5px] text-slate-500">{formatActivitySchedule(activity.dateTime, activity.endTime)}</p>
+                {activity.venue && <p className="mt-0.5 flex items-center gap-1 text-[11.5px] text-slate-400"><MapPin size={11} /> {activity.venue}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function FormationActivitiesTab() {
   const [activities, setActivities] = useState<FormationActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [editing, setEditing] = useState<FormationActivity | null>(null);
-  const [tab, setTab] = useState<"activities" | "attendance">("activities");
+  const [tab, setTab] = useState<"activities" | "calendar" | "attendance">("activities");
   async function load() { setLoading(true); setActivities(await fetchFormationActivities()); setLoading(false); }
   useEffect(() => { void load(); }, []);
 
   return (
     <div>
       <div className="mb-5 flex items-start justify-between gap-4"><div><h2 className="text-[15px] font-extrabold text-[#062444]">Formation Activities</h2><p className="mt-1 text-[12.5px] text-slate-500">Create activities for selected scholar year levels. Eligible scholars will see them in Calendar and Activities.</p></div>{tab === "activities" && <button onClick={() => setShowNew(true)} className="shrink-0 flex items-center gap-1.5 rounded-lg bg-[#062444] px-3 py-2 text-[12.5px] font-bold text-[#F3BC00]"><Plus size={15} /> New Activity</button>}</div>
-      <div className="mb-5 flex gap-1 border-b border-[#e6ecf5]"><button onClick={() => setTab("activities")} className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-[12.5px] font-bold ${tab === "activities" ? "border-[#0088cc] text-[#062444]" : "border-transparent text-slate-400"}`}><ClipboardList size={14} /> Create Activity</button><button onClick={() => setTab("attendance")} className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-[12.5px] font-bold ${tab === "attendance" ? "border-[#0088cc] text-[#062444]" : "border-transparent text-slate-400"}`}><QrCode size={14} /> Attendance Monitoring</button></div>
-      {loading ? <p className="text-[13px] text-slate-400">Loading…</p> : tab === "attendance" ? <FormationAttendanceMonitoring activities={activities} /> : activities.length === 0 ? <p className="rounded-xl border border-dashed border-[#d9e1eb] p-6 text-center text-[13px] text-slate-400">No formation activities yet.</p> : <div className="space-y-2.5">{activities.map(activity => <div key={activity.id} className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-3"><div className="flex items-start justify-between gap-3"><div><h3 className="text-[13.5px] font-bold text-[#062444]">{activity.name}</h3><p className="mt-1 text-[12px] text-slate-500">{activity.shortDescription}</p></div><div className="flex shrink-0 items-center gap-2">{activity.attendanceEnabled && <span className="flex items-center gap-1 rounded-full bg-[#0088cc]/10 px-2 py-0.5 text-[10.5px] font-bold text-[#0088cc]"><QrCode size={11} /> Attendance</span>}<button onClick={() => setEditing(activity)} className="text-slate-400 hover:text-[#0088cc]" aria-label={`Edit ${activity.name}`}><Pencil size={15} /></button><button onClick={async () => { if (!window.confirm(`Delete “${activity.name}”?`)) return; const result = await deleteFormationActivity(activity.id); if (!result.ok) window.alert(result.error || "Couldn't delete the activity."); else void load(); }} className="text-slate-400 hover:text-red-600" aria-label={`Delete ${activity.name}`}><Trash2 size={15} /></button></div></div><div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-slate-500"><span className="flex items-center gap-1"><CalendarDays size={12} />{formatActivitySchedule(activity.dateTime, activity.endTime)}</span><span className="flex items-center gap-1"><MapPin size={12} />{activity.venue}</span><span className="flex items-center gap-1"><Users size={12} />{activity.allYearLevels ? "All year levels" : activity.yearLevels.join(", ")}</span></div></div>)}</div>}
+      <div className="mb-5 flex gap-1 border-b border-[#e6ecf5]"><button onClick={() => setTab("activities")} className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-[12.5px] font-bold ${tab === "activities" ? "border-[#0088cc] text-[#062444]" : "border-transparent text-slate-400"}`}><ClipboardList size={14} /> Create Activity</button><button onClick={() => setTab("calendar")} className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-[12.5px] font-bold ${tab === "calendar" ? "border-[#0088cc] text-[#062444]" : "border-transparent text-slate-400"}`}><CalendarDays size={14} /> Calendar</button><button onClick={() => setTab("attendance")} className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-[12.5px] font-bold ${tab === "attendance" ? "border-[#0088cc] text-[#062444]" : "border-transparent text-slate-400"}`}><QrCode size={14} /> Attendance Monitoring</button></div>
+      {loading ? <p className="text-[13px] text-slate-400">Loading…</p> : tab === "attendance" ? <FormationAttendanceMonitoring activities={activities} /> : tab === "calendar" ? <FormationCalendarSubtab activities={activities} /> : activities.length === 0 ? <p className="rounded-xl border border-dashed border-[#d9e1eb] p-6 text-center text-[13px] text-slate-400">No formation activities yet.</p> : <div className="space-y-2.5">{activities.map(activity => <div key={activity.id} className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-3"><div className="flex items-start justify-between gap-3"><div><h3 className="text-[13.5px] font-bold text-[#062444]">{activity.name}</h3><p className="mt-1 text-[12px] text-slate-500">{activity.shortDescription}</p></div><div className="flex shrink-0 items-center gap-2">{isActivityDone(activity) ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10.5px] font-bold text-green-700">Done</span> : <span className="rounded-full bg-[#0088cc]/10 px-2 py-0.5 text-[10.5px] font-bold text-[#0088cc]">Upcoming</span>}{activity.attendanceEnabled && <span className="flex items-center gap-1 rounded-full bg-[#0088cc]/10 px-2 py-0.5 text-[10.5px] font-bold text-[#0088cc]"><QrCode size={11} /> Attendance</span>}<button onClick={() => setEditing(activity)} className="text-slate-400 hover:text-[#0088cc]" aria-label={`Edit ${activity.name}`}><Pencil size={15} /></button><button onClick={async () => { if (!window.confirm(`Delete “${activity.name}”?`)) return; const result = await deleteFormationActivity(activity.id); if (!result.ok) window.alert(result.error || "Couldn't delete the activity."); else void load(); }} className="text-slate-400 hover:text-red-600" aria-label={`Delete ${activity.name}`}><Trash2 size={15} /></button></div></div><div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-slate-500"><span className="flex items-center gap-1"><CalendarDays size={12} />{formatActivitySchedule(activity.dateTime, activity.endTime)}</span><span className="flex items-center gap-1"><MapPin size={12} />{activity.venue}</span><span className="flex items-center gap-1"><Users size={12} />{activity.allYearLevels ? "All year levels" : activity.yearLevels.join(", ")}</span></div></div>)}</div>}
       {showNew && <FormationActivityModal activity={null} onClose={() => setShowNew(false)} onCreated={() => void load()} />}
       {editing && <FormationActivityModal activity={editing} onClose={() => setEditing(null)} onCreated={() => { setEditing(null); void load(); }} />}
     </div>
