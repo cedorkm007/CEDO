@@ -184,6 +184,58 @@ export async function createResearchProject(input: ConceptFormInput): Promise<{ 
   return { ok: true, id: project.id };
 }
 
+// ── Proposal Development (stage 'proposal_development') ──
+
+export const MAX_OBJECTIVES = 6;
+export const MAX_WORK_PLAN_ACTIVITIES = 10;
+export const MAX_EXPECTED_OUTPUTS = 6;
+export const MAX_EXPECTED_OUTCOMES = 6;
+
+export interface ObjectiveItem { text: string }
+export interface WorkPlanActivity { activity: string; days: string; deliverable: string }
+export interface BudgetLineItem { quantity: string; unit: string; specification: string; unitCost: string; subtotal: string }
+export interface OutputItem { text: string }
+export interface OutcomeItem { text: string }
+
+/** form_data shape for stage='proposal_development'. `methodology` is added by Phase D.3 — optional until then. */
+export interface ProposalDevelopmentFormData {
+  statementOfProblem: string;
+  mainObjective: string;
+  objectives: ObjectiveItem[];
+  workPlanStart: string;
+  workPlanEnd: string;
+  workPlanActivities: WorkPlanActivity[];
+  budgetTotal: string;
+  budgetItems: BudgetLineItem[];
+  expectedOutputs: OutputItem[];
+  expectedOutcomes: OutcomeItem[];
+  methodology?: Record<string, unknown>;
+}
+
+/** Creates (first save) or updates (resubmission after "returned") the Proposal Development stage submission, resetting it to under_review. */
+export async function saveProposalDevelopmentSubmission(
+  projectId: string, existingSubmissionId: string | null, data: ProposalDevelopmentFormData,
+): Promise<{ ok: boolean; error?: string }> {
+  if (existingSubmissionId) {
+    const { error } = await supabase.from("research_project_stage_submissions").update({
+      form_data: data as unknown as Record<string, unknown>,
+      status: "under_review",
+      evaluator_comment: "",
+      reviewed_by: null,
+      reviewed_at: null,
+      submitted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", existingSubmissionId);
+    return error ? { ok: false, error: error.message } : { ok: true };
+  }
+  const { error } = await supabase.from("research_project_stage_submissions").insert({
+    project_id: projectId,
+    stage: "proposal_development",
+    form_data: data as unknown as Record<string, unknown>,
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 /** Re-edits the Concept submission after it was returned — updates both the project's own fields (so the list reflects the latest values) and the submission back to under_review. */
 export async function updateConceptSubmission(projectId: string, submissionId: string, input: ConceptFormInput): Promise<{ ok: boolean; error?: string }> {
   const { error: projectError } = await supabase.from("research_projects").update({

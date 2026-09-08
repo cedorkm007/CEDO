@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, FileEdit } from "lucide-react";
 import { fetchMyProjects, fetchStageSubmissionsForProjects, STATUS_REMARKS, STAGE_LABELS, type ResearchProject, type StageSubmission } from "../../researchProjectApi";
 import { ConceptFormModal } from "../../components/ConceptFormModal";
+import { ProposalDevelopmentWizard } from "../../components/ProposalDevelopmentWizard";
 
 const STATUS_LABELS: Record<StageSubmission["status"], string> = {
   under_review: "Under Review",
@@ -19,6 +20,7 @@ export function MyProposalsSubtab() {
   const [submissions, setSubmissions] = useState<StageSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<{ project: ResearchProject; submission: StageSubmission } | "new" | null>(null);
+  const [developing, setDeveloping] = useState<{ project: ResearchProject; submission: StageSubmission | null } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -75,11 +77,13 @@ export function MyProposalsSubtab() {
                         <div className="text-[10.5px] font-normal text-slate-400 mt-0.5">{STAGE_LABELS[project.currentStage]}</div>
                       </td>
                       <td className="px-4 py-3">
-                        {submission && (
+                        {submission ? (
                           <span className={`inline-block rounded-full px-2.5 py-0.5 font-bold ${STATUS_BADGE_CLASSES[submission.status]}`}>
                             {STATUS_LABELS[submission.status]}
                           </span>
-                        )}
+                        ) : project.currentStage === "proposal_development" ? (
+                          <span className="inline-block rounded-full px-2.5 py-0.5 font-bold text-slate-500 bg-slate-100">Not yet submitted</span>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 text-slate-500">{submission ? STATUS_REMARKS[submission.status] : ""}</td>
                       <td className="px-4 py-3">
@@ -89,8 +93,18 @@ export function MyProposalsSubtab() {
                           </button>
                         )}
                         {submission?.status === "approved" && project.currentStage === "concept" && (
-                          <button disabled title="Coming soon" className="text-slate-300 font-semibold cursor-not-allowed">
+                          <button disabled title="Waiting for the evaluator to move this project to Proposal Development" className="text-slate-300 font-semibold cursor-not-allowed">
                             Fill Proposal Development
+                          </button>
+                        )}
+                        {project.currentStage === "proposal_development" && !submission && (
+                          <button onClick={() => setDeveloping({ project, submission: null })} className="flex items-center gap-1 text-[#0088cc] font-semibold hover:underline">
+                            <FileEdit size={12} /> Fill Proposal Development
+                          </button>
+                        )}
+                        {project.currentStage === "proposal_development" && submission?.status === "returned" && (
+                          <button onClick={() => setDeveloping({ project, submission })} className="flex items-center gap-1 text-[#0088cc] font-semibold hover:underline">
+                            <Pencil size={12} /> Edit
                           </button>
                         )}
                       </td>
@@ -108,6 +122,15 @@ export function MyProposalsSubtab() {
           existing={editing === "new" ? null : editing}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }}
+        />
+      )}
+
+      {developing && (
+        <ProposalDevelopmentWizard
+          project={developing.project}
+          existing={developing.submission}
+          onClose={() => setDeveloping(null)}
+          onSaved={() => { setDeveloping(null); load(); }}
         />
       )}
     </div>
