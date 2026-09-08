@@ -133,19 +133,24 @@ export function ConceptFormModal({
         </div>
 
         <div>
-          <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Rationale</label>
-          <textarea value={rationale} onChange={e => setRationale(e.target.value)} rows={3}
-            className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
-        </div>
-        <div>
-          <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Significance</label>
-          <textarea value={significance} onChange={e => setSignificance(e.target.value)} rows={3}
-            className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
-        </div>
-        <div>
-          <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Expected outcomes (summary)</label>
-          <textarea value={expectedOutcomesSummary} onChange={e => setExpectedOutcomesSummary(e.target.value)} rows={3}
-            className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+          <p className="text-[13px] font-bold text-[#062444] mb-2">Summary</p>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Rationale</label>
+              <textarea value={rationale} onChange={e => setRationale(e.target.value)} rows={3}
+                className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+            </div>
+            <div>
+              <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Significance</label>
+              <textarea value={significance} onChange={e => setSignificance(e.target.value)} rows={3}
+                className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+            </div>
+            <div>
+              <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Expected Outcomes</label>
+              <textarea value={expectedOutcomesSummary} onChange={e => setExpectedOutcomesSummary(e.target.value)} rows={3}
+                className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+            </div>
+          </div>
         </div>
 
         {error && <p className="text-[13px] text-red-600">{error}</p>}
