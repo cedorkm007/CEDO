@@ -3,7 +3,7 @@ import { MapPin, School as SchoolIcon, BarChart3, ChevronLeft, AlertTriangle } f
 import {
   fetchScholarshipStatusCounts, fetchScholarsByBarangay, fetchAllScholarsInformationForExport,
   fetchScholarsBySchool, fetchScholarsBySchoolYearLevel, fetchScholarsBySchoolYearLevelCourse,
-  fetchScholarsByYearLevelForStatus, fetchScholarsBySchoolForStatus, fetchScholarsByBarangayForStatus,
+  fetchScholarsByYearLevelForStatus, fetchScholarsBySchoolForStatus, fetchScholarsByBarangayForStatus, fetchScholarsByCourseForStatus,
   type ScholarshipStatusCounts, type ScholarInformationRow,
 } from "../seadApi";
 import type { ScholarshipStatus } from "../types";
@@ -14,7 +14,15 @@ import { GroupCountBreakdown, type GroupCountRow } from "../components/GroupCoun
 import { Modal } from "../components/Modal";
 
 type InfoSubtab = "barangay" | "school";
-type StatusDimension = "yearLevel" | "school" | "barangay";
+type StatusDimension = "yearLevel" | "school" | "barangay" | "course";
+
+/** Matches the Regular/Probationary/On leave/Reconsidered badge colors used on this page's stat cards and in ScholarsTab.tsx — the saturated ("-700"/"-600") tone of each pair, used as a solid bar fill. */
+const STATUS_BAR_COLORS: Record<ScholarshipStatus, string> = {
+  "Regular": "#15803d",
+  "Probationary": "#dc2626",
+  "On leave": "#b45309",
+  "Reconsidered": "#1d4ed8",
+};
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -101,6 +109,7 @@ const STATUS_DIMENSIONS: { key: StatusDimension; label: string }[] = [
   { key: "yearLevel", label: "Year Level" },
   { key: "school", label: "School" },
   { key: "barangay", label: "Barangay" },
+  { key: "course", label: "Course" },
 ];
 
 /**
@@ -140,7 +149,7 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
       const result = await fetchScholarsBySchoolForStatus(status);
       if (result.ok && result.counts) setRows([...result.counts].sort((a, b) => b.count - a.count));
       else setError(result.error || "Failed to load the School breakdown.");
-    } else {
+    } else if (key === "barangay") {
       const result = await fetchScholarsByBarangayForStatus(status);
       if (result.ok && result.counts) {
         const byBarangay = new Map(result.counts.map(c => [c.label, c.count]));
@@ -148,6 +157,10 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
       } else {
         setError(result.error || "Failed to load the Barangay breakdown.");
       }
+    } else {
+      const result = await fetchScholarsByCourseForStatus(status);
+      if (result.ok && result.counts) setRows([...result.counts].sort((a, b) => b.count - a.count));
+      else setError(result.error || "Failed to load the Course breakdown.");
     }
     setLoadingRows(false);
   }
@@ -156,7 +169,11 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
     if (!dimension) return;
     setSelectedValue(value);
     setLoadingScholars(true);
-    const filters = dimension === "yearLevel" ? { status, yearLevel: value } : dimension === "school" ? { status, schoolExact: value } : { status, barangay: value };
+    const filters =
+      dimension === "yearLevel" ? { status, yearLevel: value } :
+      dimension === "school" ? { status, schoolExact: value } :
+      dimension === "course" ? { status, courseExact: value } :
+      { status, barangay: value };
     const rows = await fetchAllScholarsInformationForExport(filters);
     setScholarRows(rows);
     setLoadingScholars(false);
@@ -191,7 +208,7 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
           </button>
           {error && <ErrorRetry message={error} onRetry={() => handleChooseDimension(dimension)} />}
           {loadingRows ? <LoadingPanel label="Loading…" /> : rows && (
-            <GroupCountBreakdown title={`${status} Scholars per ${dimensionLabel}`} columnLabel={dimensionLabel} rows={rows} onSelect={handleSelectValue} />
+            <GroupCountBreakdown title={`${status} Scholars per ${dimensionLabel}`} columnLabel={dimensionLabel} rows={rows} onSelect={handleSelectValue} barColor={STATUS_BAR_COLORS[status]} />
           )}
         </div>
       )}

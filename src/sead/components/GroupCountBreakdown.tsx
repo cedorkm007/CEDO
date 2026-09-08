@@ -63,12 +63,14 @@ function truncateAxisLabel(label: string): string {
  * into, so it stays inert.
  */
 export function GroupCountBreakdown({
-  title, columnLabel, rows, onSelect,
+  title, columnLabel, rows, onSelect, barColor = "#0088cc",
 }: {
   title: string;
   columnLabel: string;
   rows: GroupCountRow[];
   onSelect: (label: string) => void;
+  /** Bar fill color — defaults to the SEAD blue accent; callers scoped to one status (e.g. the status stat-card drill-down) pass that status's color instead. */
+  barColor?: string;
 }) {
   const showChart = useSharedShowChart();
   const { sorted: sortedRows, sortState, toggleSort } = useSort<GroupCountRow>(rows, {
@@ -94,7 +96,7 @@ export function GroupCountBreakdown({
                 <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: "#94a3b8" }} />
                 <YAxis type="category" dataKey="label" width={160} tick={{ fontSize: 10, fill: "#334155" }} interval={0} tickFormatter={truncateAxisLabel} />
                 <Tooltip cursor={{ fill: "#f8fafd" }} contentStyle={{ fontSize: 12, borderRadius: 8, borderColor: "#e6ecf5" }} />
-                <Bar dataKey="count" fill="#0088cc" radius={[0, 3, 3, 0]} />
+                <Bar dataKey="count" fill={barColor} radius={[0, 3, 3, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

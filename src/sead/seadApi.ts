@@ -1234,6 +1234,12 @@ export async function fetchScholarsByBarangayForStatus(status: ScholarshipStatus
   return { ok: true, counts: mapGroupCountRows(data, "barangay") };
 }
 
+export async function fetchScholarsByCourseForStatus(status: ScholarshipStatus): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = await supabase.rpc("scholars_by_course_for_status", { p_status: status });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, counts: mapGroupCountRows(data, "course") };
+}
+
 export interface ScholarQuestSubjectProgress {
   subjectId: string;
   subjectName: string;
