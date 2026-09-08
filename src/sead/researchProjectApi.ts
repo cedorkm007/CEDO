@@ -318,3 +318,44 @@ export async function updateConceptSubmission(projectId: string, submissionId: s
   }).eq("id", submissionId);
   return submissionError ? { ok: false, error: submissionError.message } : { ok: true };
 }
+
+// ── Evaluator review (Research Project Monitoring → Monitoring subtab) ──
+
+/** Every research project visible to the caller — for a researcher this is just their own (per RLS); for an evaluator (is_research_monitoring_staff) RLS additionally grants every project, which is what this is meant to be called with. */
+export async function fetchAllResearchProjectsForEvaluator(): Promise<ResearchProject[]> {
+  const { data, error } = await supabase.from("research_projects").select("*").order("updated_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map(rowToProject);
+}
+
+/** The stage a project moves to once its current stage's submission is approved. Stages without a form yet (review/approval) are skipped — approving Proposal Development moves a project straight to Implementation. */
+const NEXT_STAGE_ON_APPROVAL: Partial<Record<ProjectStage, ProjectStage>> = {
+  concept: "proposal_development",
+  proposal_development: "implementation",
+};
+
+async function advanceProjectStage(projectId: string, nextStage: ProjectStage): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("advance_project_stage", { p_project_id: projectId, p_next_stage: nextStage });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/** Evaluator decision on one stage submission. Approving also advances the project's current_stage (see NEXT_STAGE_ON_APPROVAL); returning leaves the stage as-is so the researcher can revise and resubmit. */
+export async function reviewStageSubmission(
+  submissionId: string, projectId: string, currentStage: ProjectStage, outcome: "approved" | "returned", comment: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { data: auth } = await supabase.auth.getUser();
+  const { error } = await supabase.from("research_project_stage_submissions").update({
+    status: outcome,
+    evaluator_comment: comment,
+    reviewed_by: auth.user?.id ?? null,
+    reviewed_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", submissionId);
+  if (error) return { ok: false, error: error.message };
+
+  if (outcome === "approved") {
+    const next = NEXT_STAGE_ON_APPROVAL[currentStage];
+    if (next) return advanceProjectStage(projectId, next);
+  }
+  return { ok: true };
+}

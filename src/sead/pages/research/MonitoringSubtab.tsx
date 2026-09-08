@@ -1,57 +1,58 @@
+import { useEffect, useState } from "react";
 import { FolderKanban } from "lucide-react";
+import {
+  fetchAllResearchProjectsForEvaluator, fetchStageSubmissionsForProjects, STAGE_LABELS,
+  type ResearchProject, type StageSubmission,
+} from "../../researchProjectApi";
+import { ProjectReviewModal } from "../../components/ProjectReviewModal";
 
-/**
- * Every research project's tracked lifecycle stage. Defined here (rather
- * than deferred until a real backend exists) so the eventual research
- * projects table/RPC can be designed against a shape the UI already
- * expects, instead of the UI being reshaped around whatever the backend
- * ends up returning.
- */
-export const STAGE_PIPELINE = [
-  "Concept",
-  "Proposal Development",
-  "Review",
-  "Approval",
-  "Implementation",
-  "Monitoring",
-  "Dissemination",
-  "Utilization",
-  "Preservation",
-  "Institutional Learning",
-] as const;
-export type ResearchProjectStage = (typeof STAGE_PIPELINE)[number];
+type DashboardStatus = "Completed" | "For Review" | "Active";
 
-export type ResearchProjectStatus = "Drafting" | "Ongoing" | "For Review" | "Completed";
-export const RESEARCH_STATUSES: ResearchProjectStatus[] = ["Drafting", "Ongoing", "For Review", "Completed"];
-
-export interface ResearchProject {
-  id: string;
-  title: string;
-  status: ResearchProjectStatus;
-  stage: ResearchProjectStage;
-  lastUpdated: string;
-  nextAction: string;
+function statusFor(project: ResearchProject, submissions: StageSubmission[]): DashboardStatus {
+  if (project.currentStage === "implementation") return "Completed";
+  const active = submissions.find(s => s.stage === project.currentStage);
+  if (active?.status === "under_review") return "For Review";
+  return "Active";
 }
 
-const STATUS_COLOR_CLASSES: Record<ResearchProjectStatus, string> = {
-  Drafting: "bg-slate-100 text-slate-600",
-  Ongoing: "bg-blue-100 text-blue-700",
-  "For Review": "bg-amber-100 text-amber-700",
+function nextActionFor(project: ResearchProject, submissions: StageSubmission[], status: DashboardStatus): string {
+  if (status === "Completed") return "—";
+  if (status === "For Review") return "Review submission";
+  const active = submissions.find(s => s.stage === project.currentStage);
+  if (active?.status === "returned") return "Waiting on researcher's revision";
+  return "Waiting on researcher's submission";
+}
+
+const STATUS_COLOR_CLASSES: Record<DashboardStatus, string> = {
   Completed: "bg-green-100 text-green-700",
+  "For Review": "bg-amber-100 text-amber-700",
+  Active: "bg-blue-100 text-blue-700",
 };
 
-/**
- * UI-only shell — deliberately not wired to a real research_projects table
- * yet (see the approved plan's Phase A scope). The stat cards and matrix
- * below always render their empty state until a backend phase gives them
- * something to fetch; STAGE_PIPELINE/ResearchProjectStatus/ResearchProject
- * are kept here so that phase can slot straight into this shape.
- */
 export function MonitoringSubtab() {
-  const projects: ResearchProject[] = [];
-  const completedCount = projects.filter(p => p.status === "Completed").length;
-  const ongoingCount = projects.filter(p => p.status === "Ongoing").length;
-  const forReviewCount = projects.filter(p => p.status === "For Review").length;
+  const [projects, setProjects] = useState<ResearchProject[]>([]);
+  const [submissions, setSubmissions] = useState<StageSubmission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<ResearchProject | null>(null);
+
+  async function load() {
+    setLoading(true);
+    const p = await fetchAllResearchProjectsForEvaluator();
+    setProjects(p);
+    setSubmissions(await fetchStageSubmissionsForProjects(p.map(x => x.id)));
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+
+  const rows = projects.map(project => {
+    const status = statusFor(project, submissions);
+    return { project, status, nextAction: nextActionFor(project, submissions, status) };
+  });
+  const completedCount = rows.filter(r => r.status === "Completed").length;
+  const activeCount = rows.filter(r => r.status === "Active").length;
+  const forReviewCount = rows.filter(r => r.status === "For Review").length;
+
+  const selectedSubmissions = selected ? submissions.filter(s => s.projectId === selected.id) : [];
 
   return (
     <div>
@@ -61,7 +62,7 @@ export function MonitoringSubtab() {
           <p className="text-4xl font-extrabold text-white">{projects.length}</p>
         </div>
         <StatCard label="Completed" value={completedCount} colorClasses="bg-green-100 text-green-700" />
-        <StatCard label="Active" value={ongoingCount} colorClasses="bg-blue-100 text-blue-700" />
+        <StatCard label="Active" value={activeCount} colorClasses="bg-blue-100 text-blue-700" />
         <StatCard label="For Review" value={forReviewCount} colorClasses="bg-amber-100 text-amber-700" />
       </div>
 
@@ -78,25 +79,28 @@ export function MonitoringSubtab() {
               </tr>
             </thead>
             <tbody>
-              {projects.length === 0 ? (
+              {loading ? (
+                <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">Loading…</td></tr>
+              ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-10 text-center text-slate-400">
                     <div className="flex flex-col items-center gap-2">
                       <FolderKanban size={22} className="text-slate-300" />
-                      <span>No research projects yet — this view isn't wired to a data source yet.</span>
+                      <span>No research projects have been submitted yet.</span>
                     </div>
                   </td>
                 </tr>
               ) : (
-                projects.map(p => (
-                  <tr key={p.id} className="border-b border-[#f0f3f8] last:border-0">
-                    <td className="px-4 py-3 font-semibold text-[#062444]">{p.title}</td>
+                rows.map(({ project, status, nextAction }) => (
+                  <tr key={project.id} onClick={() => setSelected(project)}
+                    className="border-b border-[#f0f3f8] last:border-0 cursor-pointer hover:bg-[#f7f9fc]">
+                    <td className="px-4 py-3 font-semibold text-[#062444]">{project.title}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-block rounded-lg px-2 py-0.5 font-bold ${STATUS_COLOR_CLASSES[p.status]}`}>{p.status}</span>
+                      <span className={`inline-block rounded-lg px-2 py-0.5 font-bold ${STATUS_COLOR_CLASSES[status]}`}>{status}</span>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{p.stage}</td>
-                    <td className="px-4 py-3 text-slate-500">{p.lastUpdated}</td>
-                    <td className="px-4 py-3 text-slate-500">{p.nextAction}</td>
+                    <td className="px-4 py-3 text-slate-600">{STAGE_LABELS[project.currentStage]}</td>
+                    <td className="px-4 py-3 text-slate-500">{new Date(project.updatedAt).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-slate-500">{nextAction}</td>
                   </tr>
                 ))
               )}
@@ -104,6 +108,15 @@ export function MonitoringSubtab() {
           </table>
         </div>
       </div>
+
+      {selected && (
+        <ProjectReviewModal
+          project={selected}
+          submissions={selectedSubmissions}
+          onClose={() => setSelected(null)}
+          onReviewed={() => { setSelected(null); load(); }}
+        />
+      )}
     </div>
   );
 }
