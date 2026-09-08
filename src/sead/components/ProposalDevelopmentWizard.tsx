@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { X, Plus, Trash2, Lock } from "lucide-react";
+import { X, Plus, Trash2 } from "lucide-react";
 import {
   saveProposalDevelopmentSubmission,
   MAX_OBJECTIVES, MAX_WORK_PLAN_ACTIVITIES, MAX_EXPECTED_OUTPUTS, MAX_EXPECTED_OUTCOMES,
-  type ResearchProject, type StageSubmission, type ProposalDevelopmentFormData,
+  RESEARCH_APPROACHES, DESIGN_OPTIONS_BY_APPROACH, SAMPLING_CATEGORIES,
+  DATA_SOURCE_CATEGORIES, DATA_COLLECTION_CATEGORIES, DATA_ANALYSIS_OPTIONS,
+  type ResearchProject, type StageSubmission, type ProposalDevelopmentFormData, type ResearchApproach,
   type ObjectiveItem, type WorkPlanActivity, type BudgetLineItem, type OutputItem, type OutcomeItem,
 } from "../researchProjectApi";
 
@@ -39,11 +41,26 @@ function FTextarea({ value, onChange, placeholder, rows = 4 }: { value: string; 
   return <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows}
     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F3BC00] bg-white resize-none" />;
 }
+function FCheckbox({ options, selected, onChange }: { options: string[]; selected: string[]; onChange: (v: string[]) => void }) {
+  const toggle = (opt: string) => onChange(selected.includes(opt) ? selected.filter(s => s !== opt) : [...selected, opt]);
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map(opt => (
+        <button key={opt} type="button" onClick={() => toggle(opt)}
+          className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${selected.includes(opt) ? "bg-[#062444] text-white border-[#062444]" : "bg-white text-gray-600 border-gray-300"}`}>
+          <span className={`inline-block w-2.5 h-2.5 rounded border mr-1.5 align-middle ${selected.includes(opt) ? "bg-[#F3BC00] border-[#F3BC00]" : "border-gray-400"}`} />
+          {opt}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const emptyForm = (): ProposalDevelopmentFormData => ({
   statementOfProblem: "",
   mainObjective: "",
   objectives: [{ text: "" }, { text: "" }],
+  methodology: { approach: "", design: "", population: "", sampling: "", dataSources: [], dataCollectionMethods: [], dataAnalysis: [] },
   workPlanStart: "", workPlanEnd: "",
   workPlanActivities: [{ activity: "", days: "", deliverable: "" }],
   budgetTotal: "",
@@ -69,6 +86,10 @@ export function ProposalDevelopmentWizard({
   const setObjective = (i: number, v: string) => setField("objectives", form.objectives.map((r, idx) => idx === i ? { text: v } : r));
   const addObjective = () => { if (form.objectives.length >= MAX_OBJECTIVES) return; setField("objectives", [...form.objectives, { text: "" }]); };
   const delObjective = (i: number) => { if (form.objectives.length <= 1) return; setField("objectives", form.objectives.filter((_, idx) => idx !== i)); };
+
+  const setMethodology = <K extends keyof ProposalDevelopmentFormData["methodology"]>(key: K, value: ProposalDevelopmentFormData["methodology"][K]) =>
+    setField("methodology", { ...form.methodology, [key]: value });
+  const setApproach = (approach: ResearchApproach | "") => setField("methodology", { ...form.methodology, approach, design: "" });
 
   const setActivity = (i: number, col: keyof WorkPlanActivity, v: string) =>
     setField("workPlanActivities", form.workPlanActivities.map((r, idx) => idx === i ? { ...r, [col]: v } : r));
@@ -110,6 +131,11 @@ export function ProposalDevelopmentWizard({
     setError("");
     if (!form.statementOfProblem.trim()) { setError("Fill in the Statement of the Problem."); setStep("statement"); return; }
     if (!form.mainObjective.trim() || form.objectives.some(o => !o.text.trim())) { setError("Fill in the main objective and every objective row."); setStep("objectives"); return; }
+    const m = form.methodology;
+    if (!m.approach || !m.design || !m.population.trim() || !m.sampling) { setError("Fill in the Approach, Design, Population, and Sampling fields in Methodology."); setStep("methodology"); return; }
+    if (m.dataSources.length === 0 || m.dataCollectionMethods.length === 0 || m.dataAnalysis.length === 0) {
+      setError("Select at least one Data Source, Data Collection Method, and Data Analysis technique in Methodology."); setStep("methodology"); return;
+    }
     if (!form.workPlanStart || !form.workPlanEnd || form.workPlanActivities.some(a => !a.activity.trim() || !a.deliverable.trim())) {
       setError("Fill in the work plan timeframe and every activity row."); setStep("workPlan"); return;
     }
@@ -140,13 +166,11 @@ export function ProposalDevelopmentWizard({
           <div className="w-56 shrink-0 border-r border-[#e6ecf5] py-3 overflow-y-auto">
             {STEPS.map(s => (
               <button key={s.key} type="button"
-                onClick={() => s.key !== "methodology" && setStep(s.key)}
-                disabled={s.key === "methodology"}
-                className={`w-full text-left px-4 py-2.5 text-[12.5px] font-semibold flex items-center justify-between gap-2 ${
+                onClick={() => setStep(s.key)}
+                className={`w-full text-left px-4 py-2.5 text-[12.5px] font-semibold ${
                   step === s.key ? "bg-[#062444]/5 text-[#062444] border-r-2 border-[#062444]" : "text-slate-500 hover:bg-[#f7f9fc]"
-                } ${s.key === "methodology" ? "opacity-50 cursor-not-allowed" : ""}`}>
-                <span>{s.label}</span>
-                {s.key === "methodology" && <Lock size={12} />}
+                }`}>
+                {s.label}
               </button>
             ))}
           </div>
@@ -187,6 +211,81 @@ export function ProposalDevelopmentWizard({
                   ))}
                 </div>
                 <p className="text-[11px] text-slate-400 mt-2">{form.objectives.length} / {MAX_OBJECTIVES} objectives</p>
+              </div>
+            )}
+
+            {step === "methodology" && (
+              <div>
+                <FSec title="Methodology (Research Design)" />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <FLabel label="Approach" required />
+                    <select value={form.methodology.approach} onChange={e => setApproach(e.target.value as ResearchApproach | "")}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F3BC00] bg-white">
+                      <option value="">Select an approach…</option>
+                      {RESEARCH_APPROACHES.map(a => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <FLabel label="Design" required />
+                    <select value={form.methodology.design} onChange={e => setMethodology("design", e.target.value)} disabled={!form.methodology.approach}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F3BC00] bg-white disabled:opacity-50 disabled:cursor-not-allowed">
+                      <option value="">{form.methodology.approach ? "Select a design…" : "Select an approach first…"}</option>
+                      {(form.methodology.approach ? DESIGN_OPTIONS_BY_APPROACH[form.methodology.approach] : []).map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <FLabel label="Population" required />
+                <FInput value={form.methodology.population} onChange={v => setMethodology("population", v)} placeholder="Describe the study population…" />
+
+                <div className="mt-4">
+                  <FLabel label="Sampling" required />
+                  <select value={form.methodology.sampling} onChange={e => setMethodology("sampling", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F3BC00] bg-white">
+                    <option value="">Select a sampling method…</option>
+                    {SAMPLING_CATEGORIES.map(cat => (
+                      <optgroup key={cat.label} label={cat.label}>
+                        {cat.options.map(o => <option key={o} value={o}>{o}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mt-5">
+                  <FLabel label="Data Sources" required />
+                  <div className="space-y-3 mt-1">
+                    {DATA_SOURCE_CATEGORIES.map(cat => (
+                      <div key={cat.label}>
+                        <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">{cat.label}</p>
+                        <FCheckbox options={cat.options} selected={form.methodology.dataSources}
+                          onChange={v => setMethodology("dataSources", v)} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <FLabel label="Data Collection Methods" required />
+                  <div className="space-y-3 mt-1">
+                    {DATA_COLLECTION_CATEGORIES.map(cat => (
+                      <div key={cat.label}>
+                        <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">{cat.label}</p>
+                        <FCheckbox options={cat.options} selected={form.methodology.dataCollectionMethods}
+                          onChange={v => setMethodology("dataCollectionMethods", v)} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <FLabel label="Data Analysis" required />
+                  <div className="mt-1">
+                    <FCheckbox options={DATA_ANALYSIS_OPTIONS} selected={form.methodology.dataAnalysis}
+                      onChange={v => setMethodology("dataAnalysis", v)} />
+                  </div>
+                </div>
               </div>
             )}
 

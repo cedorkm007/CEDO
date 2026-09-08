@@ -197,11 +197,67 @@ export interface BudgetLineItem { quantity: string; unit: string; specification:
 export interface OutputItem { text: string }
 export interface OutcomeItem { text: string }
 
-/** form_data shape for stage='proposal_development'. `methodology` is added by Phase D.3 — optional until then. */
+// ── Methodology / Research Design (part of stage='proposal_development') ──
+
+export const RESEARCH_APPROACHES = ["Qualitative", "Quantitative", "Mixed Methods", "Action/Applied"] as const;
+export type ResearchApproach = (typeof RESEARCH_APPROACHES)[number];
+
+export const DESIGN_OPTIONS_BY_APPROACH: Record<ResearchApproach, string[]> = {
+  "Qualitative": ["Phenomenological", "Grounded Theory", "Ethnographic", "Case Study", "Narrative Research", "Historical"],
+  "Quantitative": [
+    "Experimental (True Experimental)", "Quasi-Experimental", "Pre-Experimental", "Correlational",
+    "Descriptive / Survey", "Causal-Comparative (Ex Post Facto)", "Longitudinal", "Cross-Sectional",
+  ],
+  "Mixed Methods": ["Convergent Parallel", "Explanatory Sequential", "Exploratory Sequential", "Embedded / Nested", "Transformative", "Multiphase"],
+  "Action/Applied": ["Participatory Action Research (PAR)", "Practical Action Research", "Design-Based Research (DBR)", "Evaluation Research"],
+};
+
+export interface OptionCategory { label: string; options: string[] }
+
+export const SAMPLING_CATEGORIES: OptionCategory[] = [
+  { label: "Probability Sampling (Random)", options: ["Simple Random", "Stratified Random", "Systematic", "Cluster", "Multi-Stage"] },
+  { label: "Non-Probability Sampling (Non-Random)", options: ["Purposive / Judgmental", "Convenience", "Snowball / Chain-Referral", "Quota", "Voluntary Response", "Theoretical"] },
+  { label: "Specialized & Mixed Sampling", options: ["Sequential", "Maximum Variation", "Critical Case", "Typical Case"] },
+];
+
+export const DATA_SOURCE_CATEGORIES: OptionCategory[] = [
+  { label: "Human & Participant Sources", options: ["Research Participants / Respondents", "Key Informants / Subject Matter Experts", "Focus Group Participants", "Students / Learners", "Teachers / Educators", "Administrators / Stakeholders"] },
+  { label: "Documentary & Textual Sources", options: ["Academic Journals & Literature", "Institutional / School Records", "Curriculum Standards & Syllabi", "Policy Documents & Legislation", "Historical Records & Archives", "Reports & Whitepapers"] },
+  { label: "Digital & System Sources", options: ["Learning Management System (LMS) Logs", "Application / Web Analytics & User Logs", "Database / API Repositories", "Social Media & Online Forums", "Open Data Portals / Public Repositories"] },
+  { label: "Observational & Physical Sources", options: ["Field Notes & Observation Checklists", "Audio / Video Recordings", "Physical Artifacts & Instructional Materials", "Sensor & Hardware Data"] },
+];
+
+export const DATA_COLLECTION_CATEGORIES: OptionCategory[] = [
+  { label: "Primary Data Collection Methods", options: ["Surveys / Questionnaires", "Structured Interviews", "Semi-Structured Interviews", "Unstructured / In-Depth Interviews", "Focus Group Discussions (FGD)", "Direct Observation (Participant / Non-Participant)", "Field Notes & Observation Checklists", "Standardized / Diagnostic Tests", "Experiments / Laboratory Measurements"] },
+  { label: "Secondary & Digital Data Collection", options: ["Document / Archival Review", "Content / Textual Analysis", "Log Files / User Activity Tracking", "API / Data Scraping", "Audio / Video Recordings"] },
+  { label: "Interactive & Continuous Methods", options: ["Daily Logs / Self-Reporting Journals", "Game-Based / Gamified Metrics", "Sensor / Wearable Data Retrieval", "Interactive Task Logs"] },
+];
+
+export const DATA_ANALYSIS_OPTIONS: string[] = [
+  "Descriptive Statistics (Mean, SD, Frequencies)", "Correlation Analysis (Pearson, Spearman)", "Independent Samples t-Test",
+  "Paired Samples t-Test", "One-Way / Two-Way ANOVA", "Linear / Multiple Regression Analysis", "Logistic Regression Analysis",
+  "Factor Analysis (EFA / CFA)", "Structural Equation Modeling (SEM)", "Non-Parametric Tests (Mann-Whitney, Wilcoxon, Chi-Square)",
+  "Thematic Analysis", "Content Analysis", "Discourse Analysis", "Narrative Analysis", "Interpretative Phenomenological Analysis (IPA)",
+  "Constant Comparative Method (Grounded Theory)", "Sequential Exploratory / Explanatory Integration", "Joint Display Matrix Analysis",
+  "Machine Learning / Predictive Analytics", "Sentiment Analysis", "User Interaction & Analytics Mining", "Network / Graph Analysis",
+];
+
+export interface MethodologyFormData {
+  approach: ResearchApproach | "";
+  design: string;
+  population: string;
+  sampling: string;
+  dataSources: string[];
+  dataCollectionMethods: string[];
+  dataAnalysis: string[];
+}
+
+/** form_data shape for stage='proposal_development'. */
 export interface ProposalDevelopmentFormData {
   statementOfProblem: string;
   mainObjective: string;
   objectives: ObjectiveItem[];
+  methodology: MethodologyFormData;
   workPlanStart: string;
   workPlanEnd: string;
   workPlanActivities: WorkPlanActivity[];
@@ -209,7 +265,6 @@ export interface ProposalDevelopmentFormData {
   budgetItems: BudgetLineItem[];
   expectedOutputs: OutputItem[];
   expectedOutcomes: OutcomeItem[];
-  methodology?: Record<string, unknown>;
 }
 
 /** Creates (first save) or updates (resubmission after "returned") the Proposal Development stage submission, resetting it to under_review. */
