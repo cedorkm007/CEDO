@@ -25,6 +25,7 @@ export interface SubmissionActivityForScholar {
   isUnlocked: boolean;
   unmetRequirements: { type: string; label: string }[];
   uploadFields: SubmissionUploadFieldForScholar[];
+  pubmatPath: string | null;
 }
 
 /**
@@ -78,6 +79,7 @@ export async function fetchSubmissionActivitiesForScholar(): Promise<SubmissionA
       isUnlocked: Boolean(row.is_unlocked),
       unmetRequirements: unmetRequirements.map(requirement => ({ type: String(requirement.type ?? ""), label: String(requirement.label ?? "") })),
       uploadFields: sortedFields.map(({ sortOrder: _sortOrder, ...field }) => field),
+      pubmatPath: (row.pubmat_path as string | null) ?? null,
     };
   });
 }

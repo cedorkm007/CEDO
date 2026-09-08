@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download } from "lucide-react";
+import { X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download, ImagePlus } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
@@ -11,6 +11,7 @@ import {
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
 } from "../sdpMonitorApi";
 import { SDP_CATEGORIES } from "@/scholar/sdpApi";
+import { uploadPubmat, pubmatUrl } from "../pubmatApi";
 import { SDPHistoryModal } from "../components/SDPHistoryModal";
 import { ListPagination } from "@/app/components/PaginatedList";
 import { useUrlState } from "@/app/useUrlState";
@@ -65,6 +66,7 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [attendanceType, setAttendanceType] = useState<AttendanceType>("time_in_time_out");
   const [attendanceCount, setAttendanceCount] = useState("");
   const [voucherHours, setVoucherHours] = useState(1);
+  const [pubmatFile, setPubmatFile] = useState<File | null>(null);
 
   async function handleCreate() {
     if (!name.trim()) { setError("Enter an activity name."); return; }
@@ -80,11 +82,13 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
     if (attendanceEnabled) {
       const attResult = await enableAttendanceForActivity(result.id, attendanceType, count, voucherHours);
-      setBusy(false);
-      if (!attResult.ok) { setError(`Activity created, but attendance setup failed: ${attResult.error}`); return; }
-    } else {
-      setBusy(false);
+      if (!attResult.ok) { setBusy(false); setError(`Activity created, but attendance setup failed: ${attResult.error}`); return; }
     }
+    if (pubmatFile) {
+      const pubmatResult = await uploadPubmat("sdp", result.id, pubmatFile, null);
+      if (!pubmatResult.ok) { setBusy(false); setError(`Activity created, but the pubmat upload failed: ${pubmatResult.error}`); return; }
+    }
+    setBusy(false);
     onCreated();
     onClose();
   }
@@ -110,6 +114,12 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
           <input value={venue} onChange={e => setVenue(e.target.value)} placeholder="Venue"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+
+          <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#062444]/15 px-3 py-2 text-[12px] font-semibold text-[#062444] hover:bg-[#f8fafd]">
+            <ImagePlus size={13} /> {pubmatFile ? pubmatFile.name : "Upload Pubmat (optional)"}
+            <input type="file" accept="image/*" className="hidden"
+              onChange={e => { const file = e.target.files?.[0]; if (file) setPubmatFile(file); }} />
+          </label>
 
           <div className="border-t border-[#f0f3f8] pt-3">
             <label className="flex items-center gap-2 text-[12.5px] font-semibold text-[#062444] cursor-pointer">
@@ -485,6 +495,17 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   const [category, setCategory] = useState<SDPCategory | null>(activity.category);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [pubmatPath, setPubmatPath] = useState(activity.pubmatPath);
+  const [pubmatBusy, setPubmatBusy] = useState(false);
+
+  async function handlePubmatFile(file: File) {
+    setPubmatBusy(true);
+    const result = await uploadPubmat("sdp", activity.id, file, pubmatPath);
+    setPubmatBusy(false);
+    if (!result.ok) { setError(result.error); return; }
+    setPubmatPath(result.path);
+    onChanged();
+  }
 
   async function handleSave() {
     setError("");
@@ -587,6 +608,14 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
                 <input value={headCluster} onChange={e => setHeadCluster(e.target.value)}
                   className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
               </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {pubmatPath && <img src={pubmatUrl(pubmatPath) ?? ""} alt="Pubmat" className="h-14 w-14 shrink-0 rounded-lg object-cover" />}
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#062444]/15 px-3 py-2 text-[12px] font-semibold text-[#062444] hover:bg-[#f8fafd]">
+                <ImagePlus size={13} /> {pubmatBusy ? "Uploading…" : pubmatPath ? "Replace Pubmat" : "Upload Pubmat"}
+                <input type="file" accept="image/*" className="hidden" disabled={pubmatBusy}
+                  onChange={e => { const file = e.target.files?.[0]; if (file) void handlePubmatFile(file); }} />
+              </label>
             </div>
           </div>
 

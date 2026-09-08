@@ -4,14 +4,14 @@ import type { QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult, QuizResult
 // Supabase projects can cap REST responses below the number of Quest rows a
 // scholar needs. Fetch in pages rather than silently showing only page one.
 const QUEST_PAGE_SIZE = 500;
-type QuizSubjectRow = { id: string; name: string; passing_rate_min: number | null; passing_rate_max: number | null; certificate_filename: string | null };
+type QuizSubjectRow = { id: string; name: string; passing_rate_min: number | null; passing_rate_max: number | null; certificate_filename: string | null; pubmat_path: string | null };
 type QuizTopicRow = { id: string; subject_id: string; name: string; max_attempts_per_day: number | null; video_url: string | null; slide_url: string | null; pdf_url: string | null };
 type QuizScoreRow = { topic_id: string | null; score?: number | null; max_score?: number | null };
 
 export async function fetchQuizSubjects(): Promise<QuizSubject[]> {
   const rows: QuizSubjectRow[] = [];
   for (let from = 0; ; from += QUEST_PAGE_SIZE) {
-    const { data, error } = await supabase.from("quest_subjects").select("id, name, passing_rate_min, passing_rate_max, certificate_filename").order("name").order("id")
+    const { data, error } = await supabase.from("quest_subjects").select("id, name, passing_rate_min, passing_rate_max, certificate_filename, pubmat_path").order("name").order("id")
       .range(from, from + QUEST_PAGE_SIZE - 1);
     if (error || !data) return [];
     rows.push(...(data as QuizSubjectRow[]));
@@ -21,6 +21,7 @@ export async function fetchQuizSubjects(): Promise<QuizSubject[]> {
     id: s.id, name: s.name,
     passingRateMin: Number(s.passing_rate_min ?? 75), passingRateMax: Number(s.passing_rate_max ?? 100),
     certificateFilename: s.certificate_filename ?? "",
+    pubmatPath: s.pubmat_path ?? null,
   }));
 }
 

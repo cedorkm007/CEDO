@@ -65,6 +65,7 @@ export interface QuizSubject {
   passingRateMin: number;
   passingRateMax: number;
   certificateFilename: string; // "" = no certificate attached to this subject
+  pubmatPath: string | null;
 }
 
 export interface QuizTopic {

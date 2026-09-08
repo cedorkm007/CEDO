@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Plus, Pencil, Trash2, Check, X as XIcon, GripVertical, UploadCloud, Video, Presentation,
-  FileCheck2, FileUp, Eye, FileText, Search,
+  FileCheck2, FileUp, Eye, FileText, Search, ImagePlus,
 } from "lucide-react";
 import {
   fetchSubjects, createSubject, renameSubject, deleteSubject, updateSubjectMaxAttempts,
@@ -9,6 +9,7 @@ import {
   fetchTopics, createTopic, updateTopic, deleteTopic, reorderTopics,
   fetchQuestions, deleteQuestion, toggleQuestionActive,
 } from "../seadApi";
+import { uploadPubmat, pubmatUrl } from "../pubmatApi";
 import { isValidHttpsUrl } from "@/lib/urlValidation";
 import { QuestionEditorModal } from "../components/QuestionEditorModal";
 import { BulkQuestionUploadModal } from "../components/BulkQuestionUploadModal";
@@ -70,6 +71,7 @@ export function QuestionBankTab() {
         onUpdatePassingRate={async (id, min, max) => { const r = await updateSubjectPassingRate(id, min, max); loadSubjects(); return r; }}
         onUploadCertificate={async (id, file) => { const r = await uploadSubjectCertificate(id, file); loadSubjects(); return r; }}
         onRemoveCertificate={async id => { const r = await removeSubjectCertificate(id); loadSubjects(); return r; }}
+        onUploadPubmat={async (id, file, previousPath) => { const r = await uploadPubmat("quest", id, file, previousPath); loadSubjects(); return r; }}
         onPreviewCertificate={fetchCertificatePreviewUrl}
         onDelete={async id => { const r = await deleteSubject(id); if (r.ok) { setSelectedSubject(null); setSelectedTopic(null); } loadSubjects(); return r; }}
       />
@@ -134,7 +136,7 @@ export function QuestionBankTab() {
 }
 
 // ── Column: Subjects ────────────────────────────────────────
-function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpdateMaxAttempts, onUpdatePassingRate, onUploadCertificate, onRemoveCertificate, onPreviewCertificate, onDelete }: {
+function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpdateMaxAttempts, onUpdatePassingRate, onUploadCertificate, onRemoveCertificate, onPreviewCertificate, onUploadPubmat, onDelete }: {
   subjects: QuestSubject[]; selected: QuestSubject | null; onSelect: (s: QuestSubject) => void;
   onCreate: (name: string, maxAttemptsPerDay: number, passingRateMin: number, passingRateMax: number) => Promise<{ ok: boolean; error?: string }>;
   onRename: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
@@ -143,6 +145,7 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
   onUploadCertificate: (id: string, file: File) => Promise<{ ok: boolean; error?: string }>;
   onRemoveCertificate: (id: string) => Promise<{ ok: boolean; error?: string }>;
   onPreviewCertificate: (id: string) => Promise<string | null>;
+  onUploadPubmat: (id: string, file: File, previousPath: string | null) => Promise<{ ok: boolean; error?: string }>;
   onDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [showCreate, setShowCreate] = useState(false);
@@ -154,6 +157,7 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
   const [editPassingMax, setEditPassingMax] = useState("");
   const [error, setError] = useState("");
   const [certBusyId, setCertBusyId] = useState<string | null>(null);
+  const [pubmatBusyId, setPubmatBusyId] = useState<string | null>(null);
 
   const filteredSubjects = search.trim()
     ? subjects.filter(s => s.name.toLowerCase().includes(search.trim().toLowerCase()))
@@ -205,6 +209,12 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
     const url = await onPreviewCertificate(id);
     if (url) window.open(url, "_blank", "noopener,noreferrer");
     else setError("Couldn't generate a preview link.");
+  }
+  async function handlePubmatFile(id: string, previousPath: string | null, file: File) {
+    setPubmatBusyId(id);
+    const result = await onUploadPubmat(id, file, previousPath);
+    setPubmatBusyId(null);
+    if (!result.ok) setError(result.error || "Failed to upload pubmat.");
   }
 
   return (
@@ -271,6 +281,18 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
                           onChange={e => { const f = e.target.files?.[0]; if (f) handleCertificateFile(s.id, f); }} />
                       </label>
                     )}
+                  </div>
+
+                  <div className="pt-1 border-t border-[#f0f3f8]">
+                    <span className="text-[11px] text-slate-400 block mb-1">Pubmat (image):</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {s.pubmatPath && <img src={pubmatUrl(s.pubmatPath) ?? ""} alt="Pubmat" className="w-10 h-10 rounded-lg object-cover shrink-0" />}
+                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-[#0088cc] cursor-pointer hover:underline w-fit">
+                        <ImagePlus size={12} /> {pubmatBusyId === s.id ? "Uploading…" : s.pubmatPath ? "Replace" : "Upload"}
+                        <input type="file" accept="image/*" className="hidden" disabled={pubmatBusyId === s.id}
+                          onChange={e => { const f = e.target.files?.[0]; if (f) handlePubmatFile(s.id, s.pubmatPath, f); }} />
+                      </label>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2 pt-1">

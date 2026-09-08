@@ -6,6 +6,7 @@ import {
   SUBMISSION_ALLOWED_FILE_TYPES, type SubmissionActivityForScholar, type SubmissionUploadFieldForScholar,
   type SubmissionUploadRecord,
 } from "../../submissionsApi";
+import { pubmatUrl } from "@/sead/pubmatApi";
 
 type FileUploadStatus = "uploading" | "uploaded" | "error";
 
@@ -125,13 +126,19 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
     setSubmitting(false);
   }
 
+  const pubmat = pubmatUrl(activity.pubmatPath);
   return (
     <div className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-3.5">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <p className="text-[13.5px] font-bold text-[#062444]">{activity.name}</p>
-        {activity.isUnlocked ? <OverallStatusBadge uploads={existingUploads} /> : <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-bold text-amber-700"><Lock size={10} /> Locked</span>}
+      <div className="flex gap-3">
+        {pubmat && <img src={pubmat} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0" />}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-[13.5px] font-bold text-[#062444]">{activity.name}</p>
+            {activity.isUnlocked ? <OverallStatusBadge uploads={existingUploads} /> : <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-bold text-amber-700"><Lock size={10} /> Locked</span>}
+          </div>
+          {activity.description && <p className="mt-1 text-[12px] text-slate-500">{activity.description}</p>}
+        </div>
       </div>
-      {activity.description && <p className="mt-1 text-[12px] text-slate-500">{activity.description}</p>}
 
       {!activity.isUnlocked ? (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">

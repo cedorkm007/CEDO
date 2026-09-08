@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, Check, ClipboardList, Download, MapPin, Pencil, Plus, QrCode, RefreshCw, Trash2, Users, X } from "lucide-react";
+import { CalendarDays, Check, ClipboardList, Download, ImagePlus, MapPin, Pencil, Plus, QrCode, RefreshCw, Trash2, Users, X } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import JSZip from "jszip";
@@ -11,6 +11,12 @@ import {
   type FormationCodeBatchSummary,
 } from "../formationActivitiesApi";
 import type { AttendanceCode, AttendanceRosterEntry, AttendanceSession, AttendanceType } from "../sdpMonitorApi";
+import { uploadPubmat, pubmatUrl } from "../pubmatApi";
+
+function isActivityDone(activity: FormationActivity): boolean {
+  const end = activity.endTime ?? activity.dateTime;
+  return new Date(end).getTime() <= Date.now();
+}
 
 function formatActivitySchedule(dateTime: string, endTime: string | null): string {
   const start = new Date(dateTime);
@@ -43,9 +49,25 @@ function FormationActivityModal({ activity, onClose, onCreated }: { activity: Fo
   const [voucherHours, setVoucherHours] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [pubmatPath, setPubmatPath] = useState(activity?.pubmatPath ?? null);
+  const [pubmatBusy, setPubmatBusy] = useState(false);
 
   function toggleYearLevel(level: string) {
     setYearLevels(levels => levels.includes(level) ? levels.filter(item => item !== level) : [...levels, level]);
+  }
+
+  async function handlePubmatFile(file: File) {
+    if (!activity) return;
+    setPubmatBusy(true);
+    const result = await uploadPubmat("formation", activity.id, file, pubmatPath);
+    setPubmatBusy(false);
+    if (!result.ok) { setError(result.error); return; }
+    // Deliberately not calling onCreated() here — for the edit path (this modal
+    // only shows the pubmat control when `activity` is set) it also closes the
+    // modal (see FormationActivitiesTab's `editing` render, onCreated -> setEditing(null)).
+    // Local state is enough for an immediate preview; the list picks up the
+    // change next time it reloads (Save Changes, or reopening the modal).
+    setPubmatPath(result.path);
   }
 
   async function handleSubmit() {
@@ -80,6 +102,17 @@ function FormationActivityModal({ activity, onClose, onCreated }: { activity: Fo
           <input type="date" value={date} onChange={event => setDate(event.target.value)} aria-label="Activity date" className="w-full rounded-lg border border-[#062444]/15 px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
           <div className="grid grid-cols-2 gap-3"><label className="text-[12px] font-semibold text-[#062444]">From<input type="time" value={startTime} onChange={event => setStartTime(event.target.value)} aria-label="From time" className="mt-1 w-full rounded-lg border border-[#062444]/15 px-3 py-2.5 text-sm font-normal outline-none focus:border-[#0088cc]" /></label><label className="text-[12px] font-semibold text-[#062444]">To<input type="time" value={endTime} onChange={event => setEndTime(event.target.value)} aria-label="To time" className="mt-1 w-full rounded-lg border border-[#062444]/15 px-3 py-2.5 text-sm font-normal outline-none focus:border-[#0088cc]" /></label></div>
           <input value={venue} onChange={event => setVenue(event.target.value)} placeholder="Venue" className="w-full rounded-lg border border-[#062444]/15 px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+
+          {activity && (
+            <div className="flex items-center gap-3 border-t border-[#f0f3f8] pt-3">
+              {pubmatPath && <img src={pubmatUrl(pubmatPath) ?? ""} alt="Pubmat" className="h-14 w-14 shrink-0 rounded-lg object-cover" />}
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#062444]/15 px-3 py-2 text-[12px] font-semibold text-[#062444] hover:bg-[#f8fafd]">
+                <ImagePlus size={13} /> {pubmatBusy ? "Uploading…" : pubmatPath ? "Replace Pubmat" : "Upload Pubmat"}
+                <input type="file" accept="image/*" className="hidden" disabled={pubmatBusy}
+                  onChange={event => { const file = event.target.files?.[0]; if (file) void handlePubmatFile(file); }} />
+              </label>
+            </div>
+          )}
 
           <fieldset className="border-t border-[#f0f3f8] pt-3">
             <legend className="mb-2 text-[12.5px] font-bold text-[#062444]">Activity for scholars with year level</legend>
@@ -411,7 +444,12 @@ function FormationAttendanceMonitoring({ activities }: { activities: FormationAc
             onClick={() => { setShowCodes(false); setShowPdfMenu(false); setSelectedId(activity.id); }}
             className={`w-full rounded-xl border p-3 text-left ${selectedId === activity.id ? "border-[#0088cc] bg-[#eef7fc]" : "border-[#e6ecf5] bg-white hover:bg-[#f8fafd]"}`}
           >
-            <p className="text-[13px] font-bold text-[#062444]">{activity.name}</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[13px] font-bold text-[#062444]">{activity.name}</p>
+              {isActivityDone(activity)
+                ? <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">Done</span>
+                : <span className="shrink-0 rounded-full bg-[#0088cc]/10 px-2 py-0.5 text-[10px] font-bold text-[#0088cc]">Upcoming</span>}
+            </div>
             <p className="mt-1 text-[11px] text-slate-400">{formatActivitySchedule(activity.dateTime, activity.endTime)}</p>
           </button>
         ))}

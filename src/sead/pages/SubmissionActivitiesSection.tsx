@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, Check, GripVertical, ClipboardList, ClipboardCheck, SlidersHorizontal, FolderSync, Users } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, GripVertical, ClipboardList, ClipboardCheck, SlidersHorizontal, FolderSync, Users, ImagePlus } from "lucide-react";
 import {
   fetchSubmissionActivities, createSubmissionActivity, updateSubmissionActivity, deleteSubmissionActivity,
   fetchSubmissionActivityConditions, setSubmissionActivityConditions, SUBMISSION_ALLOWED_FILE_TYPES,
   reorganizeActivityDriveFiles,
   type SubmissionActivity, type SubmissionActivityInput, type SubmissionActivityCondition, type SubmissionFileCategory,
 } from "../submissionActivitiesApi";
+import { uploadPubmat, pubmatUrl } from "../pubmatApi";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { SubmissionReviewPanel } from "./SubmissionReviewPanel";
 import { SubmissionRosterPanel } from "./SubmissionRosterPanel";
@@ -100,6 +101,18 @@ function SubmissionActivityModal({ activity, onClose, onSaved }: { activity: Sub
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [pubmatPath, setPubmatPath] = useState(activity?.pubmatPath ?? null);
+  const [pubmatBusy, setPubmatBusy] = useState(false);
+
+  async function handlePubmatFile(file: File) {
+    if (!activity) return;
+    setPubmatBusy(true);
+    const result = await uploadPubmat("submission", activity.id, file, pubmatPath);
+    setPubmatBusy(false);
+    if (!result.ok) { setError(result.error); return; }
+    setPubmatPath(result.path);
+    onSaved();
+  }
 
   function addField() { setFields(fs => [...fs, { label: "", isRequired: true, maxFiles: 1, allowedCategories: [...ALL_CATEGORY_LABELS] }]); }
   function removeField(index: number) { setFields(fs => fs.filter((_, i) => i !== index)); }
@@ -145,6 +158,17 @@ function SubmissionActivityModal({ activity, onClose, onSaved }: { activity: Sub
         <div className="space-y-4 p-6">
           <input value={name} onChange={event => setName(event.target.value)} placeholder="Activity name (e.g. Certificate of Participation Drive)" className="w-full rounded-lg border border-[#062444]/15 px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
           <textarea value={description} onChange={event => setDescription(event.target.value)} placeholder="Short description (optional)" rows={2} className="w-full resize-none rounded-lg border border-[#062444]/15 px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+
+          {activity && (
+            <div className="flex items-center gap-3">
+              {pubmatPath && <img src={pubmatUrl(pubmatPath) ?? ""} alt="Pubmat" className="h-14 w-14 shrink-0 rounded-lg object-cover" />}
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#062444]/15 px-3 py-2 text-[12px] font-semibold text-[#062444] hover:bg-[#f8fafd]">
+                <ImagePlus size={13} /> {pubmatBusy ? "Uploading…" : pubmatPath ? "Replace Pubmat" : "Upload Pubmat"}
+                <input type="file" accept="image/*" className="hidden" disabled={pubmatBusy}
+                  onChange={event => { const file = event.target.files?.[0]; if (file) void handlePubmatFile(file); }} />
+              </label>
+            </div>
+          )}
 
           <div>
             <p className="mb-1.5 text-[12px] font-bold text-[#062444]">Eligible year levels</p>

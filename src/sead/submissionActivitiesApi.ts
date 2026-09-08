@@ -37,6 +37,7 @@ export interface SubmissionActivity {
   allYearLevels: boolean;
   targetYearLevels: string[];
   uploadFields: SubmissionUploadField[];
+  pubmatPath: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +77,7 @@ function rowToActivity(row: Record<string, unknown>): SubmissionActivity {
     allYearLevels: Boolean(row.all_year_levels),
     targetYearLevels: Array.isArray(row.target_year_levels) ? (row.target_year_levels as unknown[]).map(String) : [],
     uploadFields: fieldRows.map(rowToUploadField).sort((a, b) => a.sortOrder - b.sortOrder),
+    pubmatPath: (row.pubmat_path as string | null) ?? null,
     createdAt: String(row.created_at ?? ""),
     updatedAt: String(row.updated_at ?? ""),
   };

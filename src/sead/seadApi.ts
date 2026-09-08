@@ -48,6 +48,7 @@ export async function fetchSubjects(): Promise<QuestSubject[]> {
     id: r.id, name: r.name, maxAttemptsPerDay: Number(r.max_attempts_per_day ?? 1),
     passingRateMin: Number(r.passing_rate_min ?? 75), passingRateMax: Number(r.passing_rate_max ?? 100),
     certificateFilename: r.certificate_filename ?? "",
+    pubmatPath: r.pubmat_path ?? null,
   }));
 }
 

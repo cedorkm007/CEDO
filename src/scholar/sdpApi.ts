@@ -38,6 +38,7 @@ export interface SDPActivity {
   workPlan: WorkPlanRow[];
   programFlow: ProgramFlowRow[];
   budgetItems: BudgetRow[];
+  pubmatPath: string | null;
   createdAt: string;
 }
 
@@ -89,6 +90,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     workPlan: (r.work_plan as WorkPlanRow[]) ?? [],
     programFlow: (r.program_flow as ProgramFlowRow[]) ?? [],
     budgetItems: (r.budget_items as BudgetRow[]) ?? [],
+    pubmatPath: (r.pubmat_path as string | null) ?? null,
     createdAt: String(r.created_at ?? ""),
   };
 }

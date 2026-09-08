@@ -12,6 +12,7 @@ export interface FormationActivity {
   yearLevels: string[];
   allYearLevels: boolean;
   attendanceEnabled: boolean;
+  pubmatPath: string | null;
   createdAt: string;
 }
 
@@ -21,6 +22,7 @@ function rowToActivity(row: Record<string, unknown>): FormationActivity {
     dateTime: String(row.date_time ?? ""), endTime: row.end_time ? String(row.end_time) : null, venue: String(row.venue ?? ""),
     yearLevels: Array.isArray(row.target_year_levels) ? row.target_year_levels.map(String) : [],
     allYearLevels: Boolean(row.all_year_levels), attendanceEnabled: Boolean(row.attendance_enabled),
+    pubmatPath: (row.pubmat_path as string | null) ?? null,
     createdAt: String(row.created_at ?? ""),
   };
 }

@@ -6,6 +6,7 @@ import { fetchApprovedSDPActivities, SDP_CATEGORIES, type SDPActivity } from "..
 import { fetchFormationActivitiesForScholar } from "../../formationActivitiesApi";
 import { SubmissionActivitiesList } from "./SubmissionActivitiesList";
 import { useUrlState } from "@/app/useUrlState";
+import { pubmatUrl } from "@/sead/pubmatApi";
 
 type Tab = "calendar" | "activities" | "attendance";
 const TABS: readonly Tab[] = ["calendar", "activities", "attendance"];
@@ -19,6 +20,7 @@ type CalendarActivity = {
   venue: string;
   label: string;
   attendanceEnabled: boolean;
+  pubmatUrl: string | null;
 };
 
 function categoryLabel(category: SDPActivity["category"]): string {
@@ -113,17 +115,20 @@ function ActivitiesList({ activities }: { activities: CalendarActivity[] }) {
   return (
     <div className="space-y-2.5">
       {activities.map(a => (
-        <div key={a.id} className="bg-[#f8fafd] border border-[#e6ecf5] rounded-xl px-4 py-3">
-          <div className="flex items-start justify-between gap-2 mb-1">
-            <p className="text-[13.5px] font-bold text-[#062444]">{a.name}</p>
-            <span className="shrink-0 text-[10.5px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{a.label}</span>
+        <div key={a.id} className="bg-[#f8fafd] border border-[#e6ecf5] rounded-xl px-4 py-3 flex gap-3">
+          {a.pubmatUrl && <img src={a.pubmatUrl} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0" />}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <p className="text-[13.5px] font-bold text-[#062444]">{a.name}</p>
+              <span className="shrink-0 text-[10.5px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{a.label}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-500">
+              {a.dateTime && <span>{new Date(a.dateTime).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}{a.endTime && ` – ${new Date(a.endTime).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}</span>}
+              {a.venue && <span className="flex items-center gap-1"><MapPin size={11} /> {a.venue}</span>}
+              {a.attendanceEnabled && <span className="font-semibold text-[#0088cc]">Attendance monitoring included</span>}
+            </div>
+            {a.shortDescription && <p className="mt-2 text-[12px] text-slate-500">{a.shortDescription}</p>}
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-500">
-            {a.dateTime && <span>{new Date(a.dateTime).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}{a.endTime && ` – ${new Date(a.endTime).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}</span>}
-            {a.venue && <span className="flex items-center gap-1"><MapPin size={11} /> {a.venue}</span>}
-            {a.attendanceEnabled && <span className="font-semibold text-[#0088cc]">Attendance monitoring included</span>}
-          </div>
-          {a.shortDescription && <p className="mt-2 text-[12px] text-slate-500">{a.shortDescription}</p>}
         </div>
       ))}
     </div>
@@ -140,10 +145,12 @@ export function CalendarAndActivitiesPanel({ onNavigateToForms }: { onNavigateTo
       const sdp = sdpActivities.map(activity => ({
         id: `sdp-${activity.id}`, name: activity.name, shortDescription: activity.rationale ?? "", dateTime: activity.dateTime,
         endTime: null, venue: activity.venue, label: categoryLabel(activity.category), attendanceEnabled: false,
+        pubmatUrl: pubmatUrl(activity.pubmatPath),
       }));
       const formation = formationActivities.map(activity => ({
         id: `formation-${activity.id}`, name: activity.name, shortDescription: activity.shortDescription, dateTime: activity.dateTime,
         endTime: activity.endTime, venue: activity.venue, label: "Formation Activity", attendanceEnabled: activity.attendanceEnabled,
+        pubmatUrl: pubmatUrl(activity.pubmatPath),
       }));
       setActivities([...sdp, ...formation].sort((a, b) => a.dateTime.localeCompare(b.dateTime)));
       setLoading(false);

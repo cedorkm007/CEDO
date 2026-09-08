@@ -8,6 +8,7 @@ import { fetchFormMaterialsForScholar, hasUnlockedMaterialForSubject, syncAndFet
 import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
 import { useUrlState } from "@/app/useUrlState";
+import { pubmatUrl } from "@/sead/pubmatApi";
 
 /** Which review-material panels are expanded inline on the quiz page. Independent per material — opening one doesn't close another. */
 type OpenMaterials = { video: boolean; slides: boolean; pdf: boolean };
@@ -282,18 +283,25 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
                 </p>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {subjects.map(s => (
-                    <button
-                      key={s.id}
-                      onClick={() => openSubject(s)}
-                      className="flex flex-col items-center justify-center gap-2 aspect-[1/0.85] rounded-2xl border border-[#e6ecf5] bg-white hover:border-[#0088cc]/40 hover:shadow-[0_4px_14px_rgba(6,36,68,0.08)] px-3 text-center transition-all"
-                    >
-                      <span className="w-12 h-12 rounded-xl bg-[#eef3fb] flex items-center justify-center text-[#062444]">
-                        <Trophy size={20} />
-                      </span>
-                      <span className="text-[13px] font-bold text-[#062444]">{s.name}</span>
-                    </button>
-                  ))}
+                  {subjects.map(s => {
+                    const pubmat = pubmatUrl(s.pubmatPath);
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => openSubject(s)}
+                        className="flex flex-col items-center justify-center gap-2 aspect-[1/0.85] rounded-2xl border border-[#e6ecf5] bg-white hover:border-[#0088cc]/40 hover:shadow-[0_4px_14px_rgba(6,36,68,0.08)] px-3 text-center transition-all"
+                      >
+                        {pubmat ? (
+                          <img src={pubmat} alt="" className="w-12 h-12 rounded-xl object-cover" />
+                        ) : (
+                          <span className="w-12 h-12 rounded-xl bg-[#eef3fb] flex items-center justify-center text-[#062444]">
+                            <Trophy size={20} />
+                          </span>
+                        )}
+                        <span className="text-[13px] font-bold text-[#062444]">{s.name}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </>

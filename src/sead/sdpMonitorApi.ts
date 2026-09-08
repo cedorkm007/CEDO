@@ -32,6 +32,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     workPlan: (r.work_plan as SDPActivity["workPlan"]) ?? [],
     programFlow: (r.program_flow as SDPActivity["programFlow"]) ?? [],
     budgetItems: (r.budget_items as SDPActivity["budgetItems"]) ?? [],
+    pubmatPath: (r.pubmat_path as string | null) ?? null,
     createdAt: String(r.created_at ?? ""),
   };
 }

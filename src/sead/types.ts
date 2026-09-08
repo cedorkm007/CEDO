@@ -5,6 +5,7 @@ export interface QuestSubject {
   passingRateMin: number;
   passingRateMax: number;
   certificateFilename: string; // "" = no certificate attached
+  pubmatPath: string | null;
 }
 
 export interface QuestTopic {

@@ -6,6 +6,7 @@ import {
   fetchApprovedSDPActivities, fetchMySDPActivities, submitSDPProposal, checkIsFormationOfficer, ORGANIZATIONS, SDP_CATEGORIES,
   type SDPActivity, type SDPStatus, type SDPCategory, type ObjectiveRow, type WorkPlanRow, type ProgramFlowRow, type BudgetRow, type SDPProposalInput,
 } from "../../sdpApi";
+import { pubmatUrl } from "@/sead/pubmatApi";
 
 const statusColors: Record<SDPStatus, string> = {
   finished: "bg-green-500", ongoing: "bg-blue-500", approved: "bg-[#F3BC00]",
@@ -353,10 +354,12 @@ function ProposalForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (a
 }
 
 function ActivityCard({ act, onClick }: { act: SDPActivity; onClick: () => void }) {
+  const pubmat = pubmatUrl(act.pubmatPath);
   return (
     <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={onClick}
       className="w-full bg-white rounded-xl shadow-sm p-4 flex items-center gap-3 text-left hover:shadow-md transition-all border border-gray-100">
       <div className={`w-1.5 self-stretch rounded-full shrink-0 ${statusColors[act.status]}`} />
+      {pubmat && <img src={pubmat} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0" />}
       <div className="flex-1 min-w-0">
         <p className="font-bold text-[#062444] text-sm truncate">{act.name}</p>
         <p className="text-xs text-gray-500 truncate">{act.organization}</p>
