@@ -6,7 +6,7 @@ import { SurveyQuestionEditorModal } from "../../components/SurveyQuestionEditor
 import { BulkSurveyQuestionUploadModal } from "../../components/BulkSurveyQuestionUploadModal";
 import { ColumnHeader, EmptyColumn } from "../../components/SeadUiShell";
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
-import type { Survey, SurveyQuestion } from "../../types";
+import type { Survey, SurveyActivityType, SurveyQuestion } from "../../types";
 
 export function SurveyToolsSubtab() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -48,7 +48,7 @@ export function SurveyToolsSubtab() {
         onSelect={selectSurvey}
         onAdd={() => setEditingSurvey("new")}
         onEdit={s => setEditingSurvey(s)}
-        onToggleActive={async s => { await updateSurvey(s.id, { title: s.title, description: s.description, isActive: !s.isActive, activityType: s.activityType, activityId: s.activityId, requiresConsent: s.requiresConsent, consentText: s.consentText }); loadSurveys(); }}
+        onToggleActive={async s => { await updateSurvey(s.id, { title: s.title, description: s.description, isActive: !s.isActive, activityType: s.activityType as SurveyActivityType, activityId: s.activityId, requiresConsent: s.requiresConsent, consentText: s.consentText }); loadSurveys(); }}
         onDelete={async id => { await deleteSurvey(id); if (selectedSurvey?.id === id) { setSelectedSurvey(null); setQuestions([]); } loadSurveys(); }}
       />
 
