@@ -66,6 +66,8 @@ export interface QuizSubject {
   passingRateMax: number;
   certificateFilename: string; // "" = no certificate attached to this subject
   pubmatPath: string | null;
+  // "survey_results" subjects are never graded — no progress %, passing rate, or certificate applies.
+  isSurveyMode: boolean;
 }
 
 export interface QuizTopic {
@@ -91,6 +93,9 @@ export interface QuizTopic {
 export interface QuizChoice {
   id: string;
   choiceText: string;
+  // Survey-mode questions only — picking this choice reveals a free-text
+  // box instead of just selecting a predefined answer.
+  isOther?: boolean;
 }
 
 export interface QuizQuestion {
@@ -98,6 +103,12 @@ export interface QuizQuestion {
   questionText: string;
   points: number;
   choices: QuizChoice[];
+}
+
+/** What a survey-mode ("Survey Results" subject) submission returns — no score, since there's nothing to grade. */
+export interface QuizSurveySubmitResult {
+  attemptsUsedToday: number;
+  maxAttemptsPerDay: number;
 }
 
 export interface QuizResultChoice {

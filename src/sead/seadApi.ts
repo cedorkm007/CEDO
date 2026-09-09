@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { isValidHttpsUrl } from "@/lib/urlValidation";
 import type {
   QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, ScholarListItem, ScholarAccountLogEntry, ScoreRow, ScholarshipStatus,
-  Survey, SurveyActivityType, SurveyQuestion, SurveyQuestionType, SurveyChoiceDraft, SurveyChoiceResult, SurveyLikertResult,
+  Survey, SurveyActivityType, SurveySource, SurveyQuestion, SurveyQuestionType, SurveyChoiceDraft, SurveyChoiceResult, SurveyLikertResult,
   GatingRosterEntry,
 } from "./types";
 
@@ -49,14 +49,23 @@ export async function fetchSubjects(): Promise<QuestSubject[]> {
     passingRateMin: Number(r.passing_rate_min ?? 75), passingRateMax: Number(r.passing_rate_max ?? 100),
     certificateFilename: r.certificate_filename ?? "",
     pubmatPath: r.pubmat_path ?? null,
+    answerDestination: (r.answer_destination as QuestSubject["answerDestination"]) ?? "quest_monitoring",
   }));
 }
 
 export async function createSubject(
-  name: string, maxAttemptsPerDay: number, passingRateMin = 75, passingRateMax = 100
+  name: string, maxAttemptsPerDay: number, passingRateMin = 75, passingRateMax = 100,
+  answerDestination: QuestSubject["answerDestination"] = "quest_monitoring"
 ): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.from("quest_subjects")
-    .insert({ name, max_attempts_per_day: maxAttemptsPerDay, passing_rate_min: passingRateMin, passing_rate_max: passingRateMax });
+    .insert({ name, max_attempts_per_day: maxAttemptsPerDay, passing_rate_min: passingRateMin, passing_rate_max: passingRateMax, answer_destination: answerDestination });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/** Switches where a subject's answers land — see supabase_migration_quest_survey_mode.sql for what this triggers (a research_surveys pointer row is kept in sync automatically). */
+export async function updateSubjectAnswerDestination(id: string, answerDestination: QuestSubject["answerDestination"]): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("quest_subjects")
+    .update({ answer_destination: answerDestination, updated_at: new Date().toISOString() }).eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
@@ -479,11 +488,11 @@ export async function fetchQuestions(topicId: string): Promise<QuestQuestion[]> 
     explanation: q.explanation ?? "",
     choices: (choices ?? [])
       .filter((c: Record<string, unknown>) => c.question_id === q.id)
-      .map((c: Record<string, unknown>) => ({ id: String(c.id), choiceText: String(c.choice_text), isCorrect: !!c.is_correct })),
+      .map((c: Record<string, unknown>) => ({ id: String(c.id), choiceText: String(c.choice_text), isCorrect: !!c.is_correct, isOther: !!c.is_other })),
   }));
 }
 
-/** Creates (or fully replaces the choices of) a question in one call. */
+/** Creates (or fully replaces the choices of) a question in one call. `mode` mirrors the owning subject's answerDestination — "quest_monitoring" requires a marked correct choice (unchanged behavior); "survey_results" skips that requirement and allows one choice flagged isOther instead. */
 export async function saveQuestion(input: {
   id?: string; // present = editing an existing question
   topicId: string;
@@ -491,12 +500,17 @@ export async function saveQuestion(input: {
   points: number;
   explanation: string;
   choices: QuestChoiceDraft[];
+  mode?: "quest_monitoring" | "survey_results";
 }): Promise<{ ok: boolean; error?: string }> {
-  if (!input.choices.some(c => c.isCorrect)) {
-    return { ok: false, error: "Mark at least one choice as correct." };
-  }
+  const mode = input.mode ?? "quest_monitoring";
   if (input.choices.length < 2) {
     return { ok: false, error: "Add at least two choices." };
+  }
+  if (mode === "quest_monitoring" && !input.choices.some(c => c.isCorrect)) {
+    return { ok: false, error: "Mark at least one choice as correct." };
+  }
+  if (mode === "survey_results" && input.choices.filter(c => c.isOther).length > 1) {
+    return { ok: false, error: "Only one choice can be the \"Other\" write-in." };
   }
 
   let questionId = input.id;
@@ -515,7 +529,11 @@ export async function saveQuestion(input: {
   }
 
   const { error: choicesError } = await supabase.from("quest_choices").insert(
-    input.choices.map((c, i) => ({ question_id: questionId, choice_text: c.choiceText, is_correct: c.isCorrect, sort_order: i }))
+    input.choices.map((c, i) => ({
+      question_id: questionId, choice_text: c.choiceText, sort_order: i,
+      is_correct: mode === "quest_monitoring" && c.isCorrect,
+      is_other: mode === "survey_results" && !!c.isOther,
+    }))
   );
   if (choicesError) return { ok: false, error: choicesError.message };
   return { ok: true };
@@ -613,17 +631,21 @@ export async function fetchSurveys(): Promise<Survey[]> {
 
   const sdpIds = data.filter(s => s.sdp_activity_id).map(s => s.sdp_activity_id as string);
   const formationIds = data.filter(s => s.formation_activity_id).map(s => s.formation_activity_id as string);
-  const [sdpNames, formationNames] = await Promise.all([
+  const questIds = data.filter(s => s.quest_subject_id).map(s => s.quest_subject_id as string);
+  const [sdpNames, formationNames, questNames] = await Promise.all([
     sdpIds.length ? supabase.from("sdp_activities").select("id, name").in("id", sdpIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
     formationIds.length ? supabase.from("formation_activities").select("id, name").in("id", formationIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    questIds.length ? supabase.from("quest_subjects").select("id, name").in("id", questIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
   const sdpNameMap = new Map((sdpNames.data ?? []).map(a => [a.id, a.name]));
   const formationNameMap = new Map((formationNames.data ?? []).map(a => [a.id, a.name]));
+  const questNameMap = new Map((questNames.data ?? []).map(a => [a.id, a.name]));
 
   return data.map(s => {
-    const activityType: SurveyActivityType = s.sdp_activity_id ? "sdp" : "formation";
-    const activityId = (s.sdp_activity_id ?? s.formation_activity_id) as string;
-    const activityName = (activityType === "sdp" ? sdpNameMap.get(activityId) : formationNameMap.get(activityId)) ?? "(deleted activity)";
+    const activityType: Survey["activityType"] = s.sdp_activity_id ? "sdp" : s.formation_activity_id ? "formation" : "quest";
+    const activityId = (s.sdp_activity_id ?? s.formation_activity_id ?? s.quest_subject_id) as string;
+    const nameMap = activityType === "sdp" ? sdpNameMap : activityType === "formation" ? formationNameMap : questNameMap;
+    const activityName = nameMap.get(activityId) ?? (activityType === "quest" ? "(deleted subject)" : "(deleted activity)");
     return {
       id: s.id, title: s.title, description: s.description ?? "", activityType, activityId, activityName,
       isActive: s.is_active, createdAt: s.created_at,
@@ -670,9 +692,40 @@ export async function deleteSurvey(id: string): Promise<{ ok: boolean; error?: s
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
-export async function fetchSurveyQuestions(surveyId: string): Promise<SurveyQuestion[]> {
+/** Every question for a quest-sourced survey (Survey.activityType === "quest") — read from Question Bank's own quest_questions/quest_choices under that subject's topics, since a "Survey Results" subject's questions are authored in Question Bank, not here. */
+async function fetchQuestSurveyQuestions(subjectId: string): Promise<SurveyQuestion[]> {
+  const { data: topics } = await supabase.from("quest_topics").select("id, name").eq("subject_id", subjectId).order("sort_order");
+  const topicIds = (topics ?? []).map(t => t.id);
+  const topicNameById = new Map((topics ?? []).map(t => [t.id, t.name as string]));
+  if (topicIds.length === 0) return [];
+
+  const { data: questions } = await supabase.from("quest_questions").select("*").in("topic_id", topicIds).order("created_at");
+  if (!questions || questions.length === 0) return [];
+
+  const ids = questions.map(q => q.id);
+  const { data: choices } = await supabase.from("quest_choices").select("*").in("question_id", ids).order("sort_order");
+
+  return questions
+    .sort((a, b) => topicIds.indexOf(a.topic_id) - topicIds.indexOf(b.topic_id))
+    .map((q, i) => ({
+      id: q.id,
+      surveyId: subjectId,
+      questionType: "multiple_choice" as SurveyQuestionType,
+      questionText: q.question_text,
+      sortOrder: i,
+      likertScaleMin: null, likertScaleMax: null, likertMinLabel: null, likertMaxLabel: null,
+      topicName: topicNameById.get(q.topic_id) ?? "",
+      choices: (choices ?? [])
+        .filter((c: Record<string, unknown>) => c.question_id === q.id)
+        .map((c: Record<string, unknown>) => ({ id: String(c.id), choiceText: String(c.choice_text), isOther: !!c.is_other })),
+    }));
+}
+
+export async function fetchSurveyQuestions(survey: Survey): Promise<SurveyQuestion[]> {
+  if (survey.activityType === "quest") return fetchQuestSurveyQuestions(survey.activityId);
+
   const { data: questions, error } = await supabase
-    .from("research_survey_questions").select("*").eq("survey_id", surveyId).order("sort_order");
+    .from("research_survey_questions").select("*").eq("survey_id", survey.id).order("sort_order");
   if (error || !questions) return [];
 
   const ids = questions.map(q => q.id);
@@ -819,10 +872,11 @@ export async function deleteSurveyQuestion(id: string): Promise<{ ok: boolean; e
 
 // ── Research Project Monitoring: Survey Results ──────────────
 
-export async function fetchSurveyQuestionResults(questionId: string, questionType: SurveyQuestionType): Promise<{
+export async function fetchSurveyQuestionResults(questionId: string, questionType: SurveyQuestionType, source: SurveySource = "sdp"): Promise<{
   ok: boolean; error?: string; choiceResults?: SurveyChoiceResult[]; likertResult?: SurveyLikertResult;
 }> {
-  const { data, error } = await supabase.rpc("research_survey_question_results", { p_question_id: questionId });
+  const rpcName = source === "quest" ? "quest_survey_question_results" : "research_survey_question_results";
+  const { data, error } = await supabase.rpc(rpcName, { p_question_id: questionId });
   if (error) return { ok: false, error: error.message };
   if (questionType === "multiple_choice") {
     return { ok: true, choiceResults: (data ?? []) as SurveyChoiceResult[] };

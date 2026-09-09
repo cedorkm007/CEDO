@@ -19,22 +19,25 @@ export function SurveyToolsSubtab() {
   useEffect(() => { loadSurveys(); }, []);
 
   async function loadSurveys() {
-    const s = await fetchSurveys();
+    // Quest-sourced surveys (a Question Bank subject flagged "Survey
+    // Results") aren't authored here — their questions live in Question
+    // Bank. They only ever appear in the Survey Results subtab.
+    const s = (await fetchSurveys()).filter(x => x.activityType !== "quest");
     setSurveys(s);
     if (selectedSurvey) {
       const stillExists = s.find(x => x.id === selectedSurvey.id);
       setSelectedSurvey(stillExists ?? null);
-      if (stillExists) setQuestions(await fetchSurveyQuestions(stillExists.id));
+      if (stillExists) setQuestions(await fetchSurveyQuestions(stillExists));
     }
   }
 
   async function selectSurvey(s: Survey) {
     setSelectedSurvey(s);
-    setQuestions(await fetchSurveyQuestions(s.id));
+    setQuestions(await fetchSurveyQuestions(s));
   }
 
   async function reloadQuestions() {
-    if (selectedSurvey) setQuestions(await fetchSurveyQuestions(selectedSurvey.id));
+    if (selectedSurvey) setQuestions(await fetchSurveyQuestions(selectedSurvey));
   }
 
   return (

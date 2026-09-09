@@ -1,3 +1,5 @@
+export type QuestAnswerDestination = "quest_monitoring" | "survey_results";
+
 export interface QuestSubject {
   id: string;
   name: string;
@@ -6,6 +8,10 @@ export interface QuestSubject {
   passingRateMax: number;
   certificateFilename: string; // "" = no certificate attached
   pubmatPath: string | null;
+  // "quest_monitoring" (default): graded, feeds Quests Monitoring. "survey_results":
+  // questions have no correct answer and answers land in Research Project
+  // Monitoring → Survey Results instead — see QuestChoiceDraft.isOther.
+  answerDestination: QuestAnswerDestination;
 }
 
 export interface QuestTopic {
@@ -23,6 +29,10 @@ export interface QuestChoiceDraft {
   id?: string;
   choiceText: string;
   isCorrect: boolean;
+  // Survey-mode questions only — at most one choice per question can be
+  // flagged "Other", which scholars answer with free text instead of
+  // picking a predefined option.
+  isOther?: boolean;
 }
 
 export interface QuestQuestion {
@@ -81,6 +91,8 @@ export type SurveyQuestionType = "multiple_choice" | "likert";
 export interface SurveyChoiceDraft {
   id?: string;
   choiceText: string;
+  // Quest-sourced ("Survey Results" subject) questions only.
+  isOther?: boolean;
 }
 
 export interface SurveyQuestion {
@@ -96,15 +108,24 @@ export interface SurveyQuestion {
   likertMaxLabel: string | null;
   // Multiple-choice-only; [] for likert questions.
   choices: SurveyChoiceDraft[];
+  // Set only for a quest-sourced survey (Survey.activityType === "quest") —
+  // the Question Bank topic this question belongs to, for grouping in Survey
+  // Tools/Results since a Quest subject can have several topics.
+  topicName?: string;
 }
 
 export type SurveyActivityType = "sdp" | "formation";
+// "quest" identifies a survey auto-created for a Question Bank subject
+// flagged "Survey Results" — its questions live in quest_questions/
+// quest_choices (authored in Question Bank, not here), activityId is that
+// subject's id, and activityName is the subject's name.
+export type SurveySource = SurveyActivityType | "quest";
 
 export interface Survey {
   id: string;
   title: string;
   description: string;
-  activityType: SurveyActivityType;
+  activityType: SurveySource;
   activityId: string;
   activityName: string;
   isActive: boolean;
@@ -120,6 +141,9 @@ export interface SurveyChoiceResult {
   choiceId: string;
   choiceText: string;
   count: number;
+  // Quest-sourced ("Survey Results" subject) questions only.
+  isOther?: boolean;
+  otherTexts?: string[];
 }
 
 export interface SurveyLikertDistributionPoint {

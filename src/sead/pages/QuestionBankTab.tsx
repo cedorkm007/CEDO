@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   fetchSubjects, createSubject, renameSubject, deleteSubject, updateSubjectMaxAttempts,
-  updateSubjectPassingRate, uploadSubjectCertificate, removeSubjectCertificate, fetchCertificatePreviewUrl,
+  updateSubjectPassingRate, updateSubjectAnswerDestination, uploadSubjectCertificate, removeSubjectCertificate, fetchCertificatePreviewUrl,
   fetchTopics, createTopic, updateTopic, deleteTopic, reorderTopics,
   fetchQuestions, deleteQuestion, toggleQuestionActive,
 } from "../seadApi";
@@ -13,7 +13,7 @@ import { uploadPubmat, pubmatUrl } from "../pubmatApi";
 import { isValidHttpsUrl } from "@/lib/urlValidation";
 import { QuestionEditorModal } from "../components/QuestionEditorModal";
 import { BulkQuestionUploadModal } from "../components/BulkQuestionUploadModal";
-import type { QuestSubject, QuestTopic, QuestQuestion } from "../types";
+import type { QuestSubject, QuestTopic, QuestQuestion, QuestAnswerDestination } from "../types";
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
 import { ModalShell, ColumnHeader, EmptyColumn } from "../components/SeadUiShell";
 
@@ -63,12 +63,13 @@ export function QuestionBankTab() {
         subjects={subjects}
         selected={selectedSubject}
         onSelect={selectSubject}
-        onCreate={async (name, maxAttemptsPerDay, passingRateMin, passingRateMax) => {
-          const r = await createSubject(name, maxAttemptsPerDay, passingRateMin, passingRateMax); loadSubjects(); return r;
+        onCreate={async (name, maxAttemptsPerDay, passingRateMin, passingRateMax, answerDestination) => {
+          const r = await createSubject(name, maxAttemptsPerDay, passingRateMin, passingRateMax, answerDestination); loadSubjects(); return r;
         }}
         onRename={async (id, name) => { const r = await renameSubject(id, name); loadSubjects(); return r; }}
         onUpdateMaxAttempts={async (id, maxAttemptsPerDay) => { const r = await updateSubjectMaxAttempts(id, maxAttemptsPerDay); loadSubjects(); return r; }}
         onUpdatePassingRate={async (id, min, max) => { const r = await updateSubjectPassingRate(id, min, max); loadSubjects(); return r; }}
+        onUpdateAnswerDestination={async (id, dest) => { const r = await updateSubjectAnswerDestination(id, dest); loadSubjects(); return r; }}
         onUploadCertificate={async (id, file) => { const r = await uploadSubjectCertificate(id, file); loadSubjects(); return r; }}
         onRemoveCertificate={async id => { const r = await removeSubjectCertificate(id); loadSubjects(); return r; }}
         onUploadPubmat={async (id, file, previousPath) => { const r = await uploadPubmat("quest", id, file, previousPath); loadSubjects(); return r; }}
@@ -101,6 +102,7 @@ export function QuestionBankTab() {
 
       <QuestionColumn
         topic={selectedTopic}
+        mode={selectedSubject?.answerDestination ?? "quest_monitoring"}
         questions={questions}
         onAdd={() => setEditingQuestion("new")}
         onBulkUpload={() => setShowBulkUpload(true)}
@@ -113,6 +115,7 @@ export function QuestionBankTab() {
       {editingQuestion && selectedTopic && (
         <QuestionEditorModal
           topicId={selectedTopic.id}
+          mode={selectedSubject?.answerDestination ?? "quest_monitoring"}
           existing={editingQuestion === "new" ? null : editingQuestion}
           onClose={() => setEditingQuestion(null)}
           onSaved={() => { setEditingQuestion(null); reloadQuestions(); }}
@@ -120,7 +123,7 @@ export function QuestionBankTab() {
       )}
 
       {previewQuestion && (
-        <QuestionPreviewModal question={previewQuestion} onClose={() => setPreviewQuestion(null)} />
+        <QuestionPreviewModal question={previewQuestion} mode={selectedSubject?.answerDestination ?? "quest_monitoring"} onClose={() => setPreviewQuestion(null)} />
       )}
 
       {showBulkUpload && selectedTopic && (
@@ -136,12 +139,13 @@ export function QuestionBankTab() {
 }
 
 // ── Column: Subjects ────────────────────────────────────────
-function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpdateMaxAttempts, onUpdatePassingRate, onUploadCertificate, onRemoveCertificate, onPreviewCertificate, onUploadPubmat, onDelete }: {
+function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpdateMaxAttempts, onUpdatePassingRate, onUpdateAnswerDestination, onUploadCertificate, onRemoveCertificate, onPreviewCertificate, onUploadPubmat, onDelete }: {
   subjects: QuestSubject[]; selected: QuestSubject | null; onSelect: (s: QuestSubject) => void;
-  onCreate: (name: string, maxAttemptsPerDay: number, passingRateMin: number, passingRateMax: number) => Promise<{ ok: boolean; error?: string }>;
+  onCreate: (name: string, maxAttemptsPerDay: number, passingRateMin: number, passingRateMax: number, answerDestination: QuestAnswerDestination) => Promise<{ ok: boolean; error?: string }>;
   onRename: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
   onUpdateMaxAttempts: (id: string, maxAttemptsPerDay: number) => Promise<{ ok: boolean; error?: string }>;
   onUpdatePassingRate: (id: string, min: number, max: number) => Promise<{ ok: boolean; error?: string }>;
+  onUpdateAnswerDestination: (id: string, dest: QuestAnswerDestination) => Promise<{ ok: boolean; error?: string }>;
   onUploadCertificate: (id: string, file: File) => Promise<{ ok: boolean; error?: string }>;
   onRemoveCertificate: (id: string) => Promise<{ ok: boolean; error?: string }>;
   onPreviewCertificate: (id: string) => Promise<string | null>;
@@ -155,6 +159,7 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
   const [editMaxAttempts, setEditMaxAttempts] = useState("");
   const [editPassingMin, setEditPassingMin] = useState("");
   const [editPassingMax, setEditPassingMax] = useState("");
+  const [editAnswerDestination, setEditAnswerDestination] = useState<QuestAnswerDestination>("quest_monitoring");
   const [error, setError] = useState("");
   const [certBusyId, setCertBusyId] = useState<string | null>(null);
   const [pubmatBusyId, setPubmatBusyId] = useState<string | null>(null);
@@ -173,7 +178,8 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
     setError("");
     const attempts = Number(editMaxAttempts);
     if (!Number.isFinite(attempts) || attempts < 1) { setError("Allowable attempts per day must be at least 1."); return; }
-    const rate = validatePassingRate(editPassingMin, editPassingMax);
+    const isSurvey = editAnswerDestination === "survey_results";
+    const rate = isSurvey ? { ok: true as const, min: 0, max: 100 } : validatePassingRate(editPassingMin, editPassingMax);
     if (!rate.ok) { setError("Passing rate must be 0–100%, with the minimum not exceeding the maximum."); return; }
 
     const original = subjects.find(s => s.id === id);
@@ -181,9 +187,12 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
     if (!renameResult.ok) { setError(renameResult.error || "Failed to rename."); return; }
     const attemptsResult = !original || original.maxAttemptsPerDay !== attempts ? await onUpdateMaxAttempts(id, attempts) : { ok: true as const };
     if (!attemptsResult.ok) { setError(attemptsResult.error || "Failed to update attempts limit."); return; }
-    const rateResult = !original || original.passingRateMin !== rate.min || original.passingRateMax !== rate.max
+    const rateResult = !isSurvey && (!original || original.passingRateMin !== rate.min || original.passingRateMax !== rate.max)
       ? await onUpdatePassingRate(id, rate.min, rate.max) : { ok: true as const };
     if (!rateResult.ok) { setError(rateResult.error || "Failed to update passing rate."); return; }
+    const destinationResult = !original || original.answerDestination !== editAnswerDestination
+      ? await onUpdateAnswerDestination(id, editAnswerDestination) : { ok: true as const };
+    if (!destinationResult.ok) { setError(destinationResult.error || "Failed to update answer monitoring."); return; }
     setEditingId(null);
   }
 
@@ -251,37 +260,56 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
                     <input type="number" min={1} value={editMaxAttempts} onChange={e => setEditMaxAttempts(e.target.value)}
                       className="w-16 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-slate-400 whitespace-nowrap">Passing rate:</span>
-                    <input type="number" min={0} max={100} value={editPassingMin} onChange={e => setEditPassingMin(e.target.value)}
-                      className="w-14 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
-                    <span className="text-[11px] text-slate-400">% –</span>
-                    <input type="number" min={0} max={100} value={editPassingMax} onChange={e => setEditPassingMax(e.target.value)}
-                      className="w-14 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
-                    <span className="text-[11px] text-slate-400">%</span>
-                  </div>
 
                   <div className="pt-1 border-t border-[#f0f3f8]">
-                    <span className="text-[11px] text-slate-400 block mb-1">Certificate (PDF):</span>
-                    {s.certificateFilename ? (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <FileCheck2 size={13} className="text-green-600 shrink-0" />
-                        <span className="text-[11.5px] text-[#062444] truncate max-w-[120px]">{s.certificateFilename}</span>
-                        <button onClick={() => handlePreviewCertificate(s.id)} className="text-[11px] font-semibold text-[#0088cc] hover:underline flex items-center gap-0.5">
-                          <Eye size={11} /> Preview
-                        </button>
-                        <button onClick={() => handleRemoveCertificate(s.id)} disabled={certBusyId === s.id} className="text-[11px] font-semibold text-red-500 hover:underline">
-                          {certBusyId === s.id ? "…" : "Remove"}
-                        </button>
-                      </div>
-                    ) : (
-                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-[#0088cc] cursor-pointer hover:underline w-fit">
-                        <FileUp size={12} /> {certBusyId === s.id ? "Uploading…" : "Upload PDF"}
-                        <input type="file" accept="application/pdf" className="hidden" disabled={certBusyId === s.id}
-                          onChange={e => { const f = e.target.files?.[0]; if (f) handleCertificateFile(s.id, f); }} />
-                      </label>
-                    )}
+                    <span className="text-[11px] text-slate-400 block mb-1">Answers land in:</span>
+                    <div className="flex items-center gap-1.5">
+                      <button type="button" onClick={() => setEditAnswerDestination("quest_monitoring")}
+                        className={`flex-1 rounded px-2 py-1 text-[11px] font-bold border ${editAnswerDestination === "quest_monitoring" ? "border-[#062444] bg-[#062444] text-white" : "border-[#0088cc]/30 text-slate-500"}`}>
+                        Quest Monitoring
+                      </button>
+                      <button type="button" onClick={() => setEditAnswerDestination("survey_results")}
+                        className={`flex-1 rounded px-2 py-1 text-[11px] font-bold border ${editAnswerDestination === "survey_results" ? "border-[#062444] bg-[#062444] text-white" : "border-[#0088cc]/30 text-slate-500"}`}>
+                        Survey Results
+                      </button>
+                    </div>
                   </div>
+
+                  {editAnswerDestination === "quest_monitoring" && (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] text-slate-400 whitespace-nowrap">Passing rate:</span>
+                        <input type="number" min={0} max={100} value={editPassingMin} onChange={e => setEditPassingMin(e.target.value)}
+                          className="w-14 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
+                        <span className="text-[11px] text-slate-400">% –</span>
+                        <input type="number" min={0} max={100} value={editPassingMax} onChange={e => setEditPassingMax(e.target.value)}
+                          className="w-14 text-sm border border-[#0088cc]/40 rounded px-2 py-1 outline-none" />
+                        <span className="text-[11px] text-slate-400">%</span>
+                      </div>
+
+                      <div className="pt-1 border-t border-[#f0f3f8]">
+                        <span className="text-[11px] text-slate-400 block mb-1">Certificate (PDF):</span>
+                        {s.certificateFilename ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <FileCheck2 size={13} className="text-green-600 shrink-0" />
+                            <span className="text-[11.5px] text-[#062444] truncate max-w-[120px]">{s.certificateFilename}</span>
+                            <button onClick={() => handlePreviewCertificate(s.id)} className="text-[11px] font-semibold text-[#0088cc] hover:underline flex items-center gap-0.5">
+                              <Eye size={11} /> Preview
+                            </button>
+                            <button onClick={() => handleRemoveCertificate(s.id)} disabled={certBusyId === s.id} className="text-[11px] font-semibold text-red-500 hover:underline">
+                              {certBusyId === s.id ? "…" : "Remove"}
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-[#0088cc] cursor-pointer hover:underline w-fit">
+                            <FileUp size={12} /> {certBusyId === s.id ? "Uploading…" : "Upload PDF"}
+                            <input type="file" accept="application/pdf" className="hidden" disabled={certBusyId === s.id}
+                              onChange={e => { const f = e.target.files?.[0]; if (f) handleCertificateFile(s.id, f); }} />
+                          </label>
+                        )}
+                      </div>
+                    </>
+                  )}
 
                   <div className="pt-1 border-t border-[#f0f3f8]">
                     <span className="text-[11px] text-slate-400 block mb-1">Pubmat (image):</span>
@@ -309,9 +337,15 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
                       <span className="text-[10.5px] font-semibold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">
                         {s.maxAttemptsPerDay}/day
                       </span>
-                      <span className="text-[10.5px] font-semibold text-[#F3BC00] bg-[#F3BC00]/15 rounded-full px-2 py-0.5">
-                        Pass: {s.passingRateMin}%–{s.passingRateMax}%
-                      </span>
+                      {s.answerDestination === "survey_results" ? (
+                        <span className="text-[10.5px] font-semibold text-purple-700 bg-purple-100 rounded-full px-2 py-0.5">
+                          Survey Results
+                        </span>
+                      ) : (
+                        <span className="text-[10.5px] font-semibold text-[#F3BC00] bg-[#F3BC00]/15 rounded-full px-2 py-0.5">
+                          Pass: {s.passingRateMin}%–{s.passingRateMax}%
+                        </span>
+                      )}
                       {s.certificateFilename && (
                         <span className="text-[10.5px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5 flex items-center gap-1">
                           <FileCheck2 size={10} /> Certificate
@@ -322,7 +356,8 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
                   <button onClick={e => {
                     e.stopPropagation();
                     setEditingId(s.id); setEditName(s.name); setEditMaxAttempts(String(s.maxAttemptsPerDay));
-                    setEditPassingMin(String(s.passingRateMin)); setEditPassingMax(String(s.passingRateMax)); setError("");
+                    setEditPassingMin(String(s.passingRateMin)); setEditPassingMax(String(s.passingRateMax));
+                    setEditAnswerDestination(s.answerDestination); setError("");
                   }} className="text-slate-300 hover:text-[#0088cc]"><Pencil size={13} /></button>
                   <button onClick={e => { e.stopPropagation(); handleDelete(s.id); }} className="text-slate-300 hover:text-red-500"><Trash2 size={13} /></button>
                 </div>
@@ -345,14 +380,17 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
 
 function CreateSubjectModal({ onClose, onCreate }: {
   onClose: () => void;
-  onCreate: (name: string, maxAttemptsPerDay: number, passingRateMin: number, passingRateMax: number) => Promise<{ ok: boolean; error?: string }>;
+  onCreate: (name: string, maxAttemptsPerDay: number, passingRateMin: number, passingRateMax: number, answerDestination: QuestAnswerDestination) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [name, setName] = useState("");
   const [maxAttempts, setMaxAttempts] = useState("3");
   const [passingMin, setPassingMin] = useState("75");
   const [passingMax, setPassingMax] = useState("100");
+  const [answerDestination, setAnswerDestination] = useState<QuestAnswerDestination>("quest_monitoring");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const isSurvey = answerDestination === "survey_results";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -361,11 +399,11 @@ function CreateSubjectModal({ onClose, onCreate }: {
     const attempts = Number(maxAttempts);
     if (!Number.isFinite(attempts) || attempts < 1) { setError("Allowable attempts per day must be at least 1."); return; }
     const min = Number(passingMin), max = Number(passingMax);
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 100 || min > max) {
+    if (!isSurvey && (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 100 || min > max)) {
       setError("Passing rate must be 0–100%, with the minimum not exceeding the maximum."); return;
     }
     setBusy(true);
-    const result = await onCreate(name.trim(), attempts, min, max);
+    const result = await onCreate(name.trim(), attempts, min, max, answerDestination);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save — check that this account is authorized."); return; }
     onClose();
@@ -381,16 +419,38 @@ function CreateSubjectModal({ onClose, onCreate }: {
           <input type="number" min={1} value={maxAttempts} onChange={e => setMaxAttempts(e.target.value)} disabled={busy}
             className="w-20 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] text-slate-500 whitespace-nowrap">Passing rate:</span>
-          <input type="number" min={0} max={100} value={passingMin} onChange={e => setPassingMin(e.target.value)} disabled={busy}
-            className="w-16 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
-          <span className="text-[12px] text-slate-500">% –</span>
-          <input type="number" min={0} max={100} value={passingMax} onChange={e => setPassingMax(e.target.value)} disabled={busy}
-            className="w-16 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
-          <span className="text-[12px] text-slate-500">%</span>
+
+        <div>
+          <span className="text-[12px] text-slate-500 block mb-1.5">Answers land in:</span>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={busy} onClick={() => setAnswerDestination("quest_monitoring")}
+              className={`flex-1 rounded-lg border px-3 py-2 text-[12.5px] font-bold ${!isSurvey ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
+              Quest Monitoring
+            </button>
+            <button type="button" disabled={busy} onClick={() => setAnswerDestination("survey_results")}
+              className={`flex-1 rounded-lg border px-3 py-2 text-[12.5px] font-bold ${isSurvey ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
+              Survey Results
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            {isSurvey
+              ? "Questions have no correct answer and won't be graded — one choice per question can be an \"Other\" write-in. Answers show up in Research Project Monitoring → Survey Results."
+              : "Graded multiple choice, one correct answer per question — feeds Quests Monitoring's scores, rankings, and completion status."}
+          </p>
         </div>
-        <p className="text-[11px] text-slate-400">Certificate upload is available after creating the subject (edit it to attach one).</p>
+
+        {!isSurvey && (
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-slate-500 whitespace-nowrap">Passing rate:</span>
+            <input type="number" min={0} max={100} value={passingMin} onChange={e => setPassingMin(e.target.value)} disabled={busy}
+              className="w-16 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
+            <span className="text-[12px] text-slate-500">% –</span>
+            <input type="number" min={0} max={100} value={passingMax} onChange={e => setPassingMax(e.target.value)} disabled={busy}
+              className="w-16 text-sm border border-[#062444]/15 rounded-lg px-2 py-1.5 outline-none focus:border-[#0088cc]" />
+            <span className="text-[12px] text-slate-500">%</span>
+          </div>
+        )}
+        {!isSurvey && <p className="text-[11px] text-slate-400">Certificate upload is available after creating the subject (edit it to attach one).</p>}
         {error && <p className="text-[12.5px] text-red-600">{error}</p>}
         <button type="submit" disabled={busy} className="w-full flex items-center justify-center gap-1.5 bg-[#062444] text-[#F3BC00] rounded-lg p-2.5 font-semibold disabled:opacity-50">
           <Plus size={15} /> {busy ? "Creating…" : "Add Subject"}
@@ -622,8 +682,8 @@ function CreateTopicModal({ subject, onClose, onCreate }: {
 }
 
 // ── Column: Questions ───────────────────────────────────────
-function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onView, onDelete, onToggleActive }: {
-  topic: QuestTopic | null; questions: QuestQuestion[]; onAdd: () => void; onBulkUpload: () => void; onEdit: (q: QuestQuestion) => void;
+function QuestionColumn({ topic, mode, questions, onAdd, onBulkUpload, onEdit, onView, onDelete, onToggleActive }: {
+  topic: QuestTopic | null; mode: QuestAnswerDestination; questions: QuestQuestion[]; onAdd: () => void; onBulkUpload: () => void; onEdit: (q: QuestQuestion) => void;
   onView: (q: QuestQuestion) => void; onDelete: (id: string) => void; onToggleActive: (id: string, active: boolean) => void;
 }) {
   if (!topic) {
@@ -636,9 +696,11 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onView,
       <div className="px-4 py-3 border-b border-[#e6ecf5] space-y-2">
         <h3 className="text-[12.5px] font-bold text-[#062444] truncate">Questions — {topic.name}</h3>
         <div className="flex items-center gap-3 flex-wrap">
-          <button onClick={onBulkUpload} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] shrink-0 hover:underline hover:text-[#006699]">
-            <UploadCloud size={14} /> Bulk Upload
-          </button>
+          {mode === "quest_monitoring" && (
+            <button onClick={onBulkUpload} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] shrink-0 hover:underline hover:text-[#006699]">
+              <UploadCloud size={14} /> Bulk Upload
+            </button>
+          )}
           <button onClick={onAdd} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] shrink-0 hover:underline hover:text-[#006699]">
             <Plus size={14} /> Add
           </button>
@@ -666,8 +728,11 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onView,
                 </button>
               </div>
               <div className="flex items-center gap-2 mb-2.5 flex-wrap">
-                <span className="text-[11px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{q.points} pt</span>
+                {mode === "quest_monitoring" && <span className="text-[11px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{q.points} pt</span>}
                 <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">{q.choices.length} choices</span>
+                {q.choices.some(c => c.isOther) && (
+                  <span className="text-[11px] font-semibold text-purple-700 bg-purple-100 rounded-full px-2 py-0.5">Has "Other"</span>
+                )}
                 <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${q.isActive ? "text-green-700 bg-green-100" : "text-slate-500 bg-slate-100"}`}>
                   {q.isActive ? "Active" : "Inactive"}
                 </span>
@@ -693,11 +758,12 @@ function QuestionColumn({ topic, questions, onAdd, onBulkUpload, onEdit, onView,
 }
 
 // ── Read-only full question preview (staff-authorized, shows correct answer) ──
-function QuestionPreviewModal({ question, onClose }: { question: QuestQuestion; onClose: () => void }) {
+function QuestionPreviewModal({ question, mode, onClose }: { question: QuestQuestion; mode: QuestAnswerDestination; onClose: () => void }) {
+  const isSurvey = mode === "survey_results";
   return (
     <ModalShell title="Question Preview" onClose={onClose} wide>
       <div className="flex items-center gap-2 flex-wrap mb-1">
-        <span className="text-[11px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{question.points} pt</span>
+        {!isSurvey && <span className="text-[11px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{question.points} pt</span>}
         <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${question.isActive ? "text-green-700 bg-green-100" : "text-slate-500 bg-slate-100"}`}>
           {question.isActive ? "Active" : "Inactive"}
         </span>
@@ -708,13 +774,16 @@ function QuestionPreviewModal({ question, onClose }: { question: QuestQuestion; 
       </p>
       <div className="space-y-2 pt-1">
         {question.choices.map(choice => (
-          <div key={choice.id} className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 ${choice.isCorrect ? "border-green-300 bg-green-50" : "border-[#e6ecf5]"}`}>
-            {choice.isCorrect ? (
+          <div key={choice.id} className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 ${!isSurvey && choice.isCorrect ? "border-green-300 bg-green-50" : "border-[#e6ecf5]"}`}>
+            {!isSurvey && choice.isCorrect ? (
               <Check size={16} className="text-green-600 shrink-0 mt-0.5" />
             ) : (
               <span className="w-4 h-4 shrink-0 mt-0.5" />
             )}
-            <p className={`text-[13.5px] break-words ${choice.isCorrect ? "font-semibold text-green-800" : "text-[#062444]"}`}>{choice.choiceText}</p>
+            <p className={`text-[13.5px] break-words flex-1 ${!isSurvey && choice.isCorrect ? "font-semibold text-green-800" : "text-[#062444]"}`}>{choice.choiceText}</p>
+            {isSurvey && choice.isOther && (
+              <span className="shrink-0 text-[10.5px] font-semibold text-purple-700 bg-purple-100 rounded-full px-2 py-0.5">Other (write-in)</span>
+            )}
           </div>
         ))}
       </div>

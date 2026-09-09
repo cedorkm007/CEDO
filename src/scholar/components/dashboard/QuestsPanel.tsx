@@ -6,7 +6,7 @@ import { SectionCard } from "./SectionCard";
 import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, getSlideEmbed, getPdfEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
 import { fetchFormMaterialsForScholar, hasUnlockedMaterialForSubject, syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormMaterial, type FormUnlockNotification } from "../../formsApi";
 import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
-import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult } from "../../types";
+import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult, QuizSurveySubmitResult } from "../../types";
 import { useUrlState } from "@/app/useUrlState";
 import { pubmatUrl } from "@/sead/pubmatApi";
 
@@ -31,8 +31,9 @@ function isPlausibleSubjectUrlValue(value: string): boolean {
 type Step =
   | { view: "browse" }
   | { view: "topics"; subject: QuizSubject }
-  | { view: "quiz"; subject: QuizSubject; topic: QuizTopic; questions: QuizQuestion[]; index: number }
-  | { view: "results"; subject: QuizSubject; topic: QuizTopic; result: QuizSubmitResult };
+  | { view: "quiz"; subject: QuizSubject; topic: QuizTopic; surveyMode: boolean; questions: QuizQuestion[]; index: number }
+  | { view: "results"; subject: QuizSubject; topic: QuizTopic; result: QuizSubmitResult }
+  | { view: "survey_done"; subject: QuizSubject; topic: QuizTopic; result: QuizSurveySubmitResult };
 
 interface QuestsPanelProps {
   scores: QuestScore[];
@@ -57,6 +58,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({}); // questionId -> choiceId
+  const [otherAnswers, setOtherAnswers] = useState<Record<string, string>>({}); // questionId -> free-text, only when the selected choice isOther
   const [submitting, setSubmitting] = useState(false);
   const [activeLecture, setActiveLecture] = useState<{ name: string; src: string } | null>(null);
   const lecturePlayerRef = useRef<HTMLDivElement>(null);
@@ -189,12 +191,17 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
     setLoading(false);
     if (!result.ok) { setError(result.error); return; }
     setAnswers({});
+    setOtherAnswers({});
     setOpenMaterials(CLOSED_MATERIALS);
-    setStep({ view: "quiz", subject, topic, questions: result.questions, index: 0 });
+    setStep({ view: "quiz", subject, topic, surveyMode: result.surveyMode, questions: result.questions, index: 0 });
   }
 
   function selectAnswer(questionId: string, choiceId: string) {
     setAnswers(a => ({ ...a, [questionId]: choiceId }));
+  }
+
+  function setOtherText(questionId: string, text: string) {
+    setOtherAnswers(a => ({ ...a, [questionId]: text }));
   }
 
   // Toggling a material panel open/closed is deliberately independent from
@@ -222,10 +229,19 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
   async function submitQuiz() {
     if (step.view !== "quiz") return;
     setSubmitting(true);
-    const answerList = step.questions.map(q => ({ questionId: q.id, choiceId: answers[q.id] ?? null }));
+    const answerList = step.questions.map(q => {
+      const choiceId = answers[q.id] ?? null;
+      const selectedChoice = choiceId ? q.choices.find(c => c.id === choiceId) : null;
+      return { questionId: q.id, choiceId, otherText: selectedChoice?.isOther ? otherAnswers[q.id] : undefined };
+    });
     const result = await submitQuizAttempt(step.topic.id, answerList);
     setSubmitting(false);
     if (!result.ok) { setError(result.error); return; }
+    if (result.surveyMode) {
+      setStep({ view: "survey_done", subject: step.subject, topic: step.topic, result: result.result });
+      onScoreSubmitted();
+      return;
+    }
     setStep({ view: "results", subject: step.subject, topic: step.topic, result: result.result });
     onScoreSubmitted();
 
@@ -317,7 +333,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
           <h4 className="text-[15px] font-extrabold text-[#062444] mb-1">{step.subject.name}</h4>
           <p className="text-sm text-slate-400 mb-2">Each topic has its own daily attempt limit.</p>
 
-          {(subjectProgress || step.subject.certificateFilename) && (() => {
+          {!step.subject.isSurveyMode && (subjectProgress || step.subject.certificateFilename) && (() => {
             const pct = subjectProgress?.percentage ?? 0;
             const passed = pct >= step.subject.passingRateMin && pct <= step.subject.passingRateMax;
             return (
@@ -345,7 +361,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
             );
           })()}
 
-          {subjectProgress && subjectProgress.percentage >= step.subject.passingRateMin && subjectProgress.percentage <= step.subject.passingRateMax
+          {!step.subject.isSurveyMode && subjectProgress && subjectProgress.percentage >= step.subject.passingRateMin && subjectProgress.percentage <= step.subject.passingRateMax
             && hasUnlockedMaterialForSubject(formMaterials, step.subject.id)
             && !visitedFormsForSubject.has(step.subject.id) && (
             <button
@@ -412,6 +428,8 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
       {step.view === "quiz" && (() => {
         const q = step.questions[step.index];
         const selected = answers[q.id];
+        const selectedChoice = q.choices.find(c => c.id === selected);
+        const otherTextRequired = !!selectedChoice?.isOther && !otherAnswers[q.id]?.trim();
         const isLast = step.index === step.questions.length - 1;
         const hasMaterials = !!(step.topic.videoUrl || step.topic.slideUrl || step.topic.pdfUrl);
         return (
@@ -445,22 +463,32 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
                 {error && <ErrorBox message={error} />}
 
                 <p className="text-sm font-semibold text-[#062444] mb-3">
-                  {q.questionText} <span className="text-[11px] font-normal text-slate-400">({q.points} pt{q.points === 1 ? "" : "s"})</span>
+                  {q.questionText} {!step.surveyMode && <span className="text-[11px] font-normal text-slate-400">({q.points} pt{q.points === 1 ? "" : "s"})</span>}
                 </p>
                 <div className="space-y-2 mb-7">
                   {q.choices.map(c => {
                     const isSelected = selected === c.id;
                     return (
-                      <button
-                        key={c.id}
-                        onClick={() => selectAnswer(q.id, c.id)}
-                        className={`w-full flex items-center gap-2.5 text-left px-4 py-2.5 rounded-lg border transition-colors ${
-                          isSelected ? "border-[#0088cc] bg-[#0088cc]/5" : "border-[#e6ecf5] hover:bg-[#f8fafd]"
-                        }`}
-                      >
-                        {isSelected ? <CheckCircle2 size={16} className="text-[#0088cc] shrink-0" /> : <Circle size={16} className="text-slate-300 shrink-0" />}
-                        <span className="text-sm text-[#062444]">{c.choiceText}</span>
-                      </button>
+                      <div key={c.id}>
+                        <button
+                          onClick={() => selectAnswer(q.id, c.id)}
+                          className={`w-full flex items-center gap-2.5 text-left px-4 py-2.5 rounded-lg border transition-colors ${
+                            isSelected ? "border-[#0088cc] bg-[#0088cc]/5" : "border-[#e6ecf5] hover:bg-[#f8fafd]"
+                          }`}
+                        >
+                          {isSelected ? <CheckCircle2 size={16} className="text-[#0088cc] shrink-0" /> : <Circle size={16} className="text-slate-300 shrink-0" />}
+                          <span className="text-sm text-[#062444]">{c.choiceText}</span>
+                        </button>
+                        {isSelected && c.isOther && (
+                          <input
+                            autoFocus
+                            value={otherAnswers[q.id] ?? ""}
+                            onChange={e => setOtherText(q.id, e.target.value)}
+                            placeholder="Please specify…"
+                            className="w-full mt-1.5 text-sm border border-[#0088cc]/40 rounded-lg px-3 py-2 outline-none focus:border-[#0088cc]"
+                          />
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -473,10 +501,10 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
                   )}
                   <button
                     onClick={goNext}
-                    disabled={!selected || submitting}
+                    disabled={!selected || otherTextRequired || submitting}
                     className="flex-1 bg-gradient-to-br from-[#062444] to-[#0a3a6b] disabled:opacity-50 text-white font-semibold text-sm rounded-xl py-3"
                   >
-                    {submitting ? "Submitting…" : !selected ? "Select an answer to continue" : isLast ? "Finish Quiz" : "Next Question"}
+                    {submitting ? "Submitting…" : !selected ? "Select an answer to continue" : otherTextRequired ? "Please specify your answer" : isLast ? (step.surveyMode ? "Submit Answers" : "Finish Quiz") : "Next Question"}
                   </button>
                 </div>
               </div>
@@ -527,6 +555,21 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
             ))}
           </div>
 
+          <button onClick={() => { setStep({ view: "topics", subject: step.subject }); reloadTopics(step.subject); }}
+            className="w-full bg-[#062444] text-white font-semibold text-sm rounded-xl py-3">
+            Back to Topics
+          </button>
+        </div>
+      )}
+
+      {step.view === "survey_done" && (
+        <div>
+          <div className="text-center py-8 mb-6">
+            <CheckCircle2 size={44} className="text-green-500 mx-auto mb-3" />
+            <p className="text-[17px] font-extrabold text-[#062444] mb-1">Thanks! Your answers were recorded.</p>
+            <p className="text-sm text-slate-400">{step.topic.name}</p>
+            <p className="text-sm text-slate-400 mt-1">{step.result.attemptsUsedToday}/{step.result.maxAttemptsPerDay} attempts used today for this topic</p>
+          </div>
           <button onClick={() => { setStep({ view: "topics", subject: step.subject }); reloadTopics(step.subject); }}
             className="w-full bg-[#062444] text-white font-semibold text-sm rounded-xl py-3">
             Back to Topics

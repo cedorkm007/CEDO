@@ -3,7 +3,7 @@ import { ListChecks, SlidersHorizontal, Clock, CheckCircle2, XCircle } from "luc
 import { fetchSurveys, fetchSurveyQuestions, fetchSurveyQuestionResults, fetchSurveyGatingRoster } from "../../seadApi";
 import { SurveyResultsChart } from "../../components/SurveyResultsChart";
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
-import type { Survey, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult, GatingRosterEntry, GatingRosterStatus } from "../../types";
+import type { Survey, SurveySource, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult, GatingRosterEntry, GatingRosterStatus } from "../../types";
 
 export function SurveyResultsSubtab() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -45,20 +45,37 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      setQuestions(await fetchSurveyQuestions(survey.id));
+      setQuestions(await fetchSurveyQuestions(survey));
       setLoading(false);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
   }, [survey.id]);
 
+  // A quest-sourced survey isn't attendance-gated at all — a scholar just
+  // takes the Quest freely — so the gating roster concept doesn't apply.
+  const isQuestSourced = survey.activityType === "quest";
+  let lastTopicName: string | null = null;
+
   return (
     <div className="space-y-4">
-      <GatingRosterSection surveyId={survey.id} />
+      {!isQuestSourced && <GatingRosterSection surveyId={survey.id} />}
       {loading ? (
         <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">Loading questions…</div>
       ) : questions.length === 0 ? (
         <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">This survey has no questions yet.</div>
       ) : (
-        questions.map(q => <QuestionResultCard key={q.id} question={q} />)
+        questions.map(q => {
+          const showTopicHeading = isQuestSourced && q.topicName !== lastTopicName;
+          lastTopicName = q.topicName ?? lastTopicName;
+          return (
+            <div key={q.id}>
+              {showTopicHeading && (
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mt-5 mb-1.5 first:mt-0">{q.topicName}</p>
+              )}
+              <QuestionResultCard question={q} source={survey.activityType} />
+            </div>
+          );
+        })
       )}
     </div>
   );
@@ -164,7 +181,7 @@ function GatingRosterSection({ surveyId }: { surveyId: string }) {
   );
 }
 
-function QuestionResultCard({ question }: { question: SurveyQuestion }) {
+function QuestionResultCard({ question, source }: { question: SurveyQuestion; source: SurveySource }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [choiceResults, setChoiceResults] = useState<SurveyChoiceResult[] | null>(null);
@@ -174,7 +191,7 @@ function QuestionResultCard({ question }: { question: SurveyQuestion }) {
     (async () => {
       setLoading(true);
       setError("");
-      const result = await fetchSurveyQuestionResults(question.id, question.questionType);
+      const result = await fetchSurveyQuestionResults(question.id, question.questionType, source);
       if (!result.ok) {
         setError(result.error || "Failed to load results.");
       } else {
@@ -184,7 +201,7 @@ function QuestionResultCard({ question }: { question: SurveyQuestion }) {
       setLoading(false);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
-  }, [question.id]);
+  }, [question.id, source]);
 
   const n = question.questionType === "multiple_choice"
     ? (choiceResults ?? []).reduce((sum, c) => sum + c.count, 0)
@@ -206,7 +223,19 @@ function QuestionResultCard({ question }: { question: SurveyQuestion }) {
       ) : n === 0 ? (
         <p className="text-[13px] text-slate-400">No responses yet.</p>
       ) : question.questionType === "multiple_choice" ? (
-        <SurveyResultsChart bars={(choiceResults ?? []).map(c => ({ label: c.choiceText, count: c.count }))} />
+        <div className="space-y-3">
+          <SurveyResultsChart bars={(choiceResults ?? []).map(c => ({ label: c.isOther ? `${c.choiceText} (write-in)` : c.choiceText, count: c.count }))} />
+          {(choiceResults ?? []).filter(c => c.isOther && c.otherTexts && c.otherTexts.length > 0).map(c => (
+            <div key={c.choiceId} className="bg-[#f8fafd] rounded-xl p-3">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">"{c.choiceText}" write-in answers</p>
+              <ul className="space-y-1.5">
+                {c.otherTexts!.map((t, i) => (
+                  <li key={i} className="text-[13px] text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-1.5">{t}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       ) : likertResult ? (
         <div className="space-y-3">
           <div className="grid grid-cols-4 gap-3">

@@ -1,17 +1,17 @@
 import { supabase } from "@/lib/supabase";
-import type { QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult, QuizResultItem } from "./types";
+import type { QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult, QuizResultItem, QuizSurveySubmitResult } from "./types";
 
 // Supabase projects can cap REST responses below the number of Quest rows a
 // scholar needs. Fetch in pages rather than silently showing only page one.
 const QUEST_PAGE_SIZE = 500;
-type QuizSubjectRow = { id: string; name: string; passing_rate_min: number | null; passing_rate_max: number | null; certificate_filename: string | null; pubmat_path: string | null };
+type QuizSubjectRow = { id: string; name: string; passing_rate_min: number | null; passing_rate_max: number | null; certificate_filename: string | null; pubmat_path: string | null; answer_destination: string | null };
 type QuizTopicRow = { id: string; subject_id: string; name: string; max_attempts_per_day: number | null; video_url: string | null; slide_url: string | null; pdf_url: string | null };
 type QuizScoreRow = { topic_id: string | null; score?: number | null; max_score?: number | null };
 
 export async function fetchQuizSubjects(): Promise<QuizSubject[]> {
   const rows: QuizSubjectRow[] = [];
   for (let from = 0; ; from += QUEST_PAGE_SIZE) {
-    const { data, error } = await supabase.from("quest_subjects").select("id, name, passing_rate_min, passing_rate_max, certificate_filename, pubmat_path").order("name").order("id")
+    const { data, error } = await supabase.from("quest_subjects").select("id, name, passing_rate_min, passing_rate_max, certificate_filename, pubmat_path, answer_destination").order("name").order("id")
       .range(from, from + QUEST_PAGE_SIZE - 1);
     if (error || !data) return [];
     rows.push(...(data as QuizSubjectRow[]));
@@ -22,6 +22,7 @@ export async function fetchQuizSubjects(): Promise<QuizSubject[]> {
     passingRateMin: Number(s.passing_rate_min ?? 75), passingRateMax: Number(s.passing_rate_max ?? 100),
     certificateFilename: s.certificate_filename ?? "",
     pubmatPath: s.pubmat_path ?? null,
+    isSurveyMode: s.answer_destination === "survey_results",
   }));
 }
 
@@ -152,30 +153,43 @@ async function fetchQuizTopicRows(subjectId: string, useSortOrder: boolean): Pro
 }
 
 export async function startQuizAttempt(topicId: string): Promise<
-  { ok: true; questions: QuizQuestion[]; attemptsUsedToday: number; maxAttemptsPerDay: number } | { ok: false; error: string }
+  | { ok: true; surveyMode: boolean; questions: QuizQuestion[]; attemptsUsedToday: number; maxAttemptsPerDay: number }
+  | { ok: false; error: string }
 > {
   const { data, error } = await supabase.rpc("start_quiz_attempt", { p_topic_id: topicId });
   if (error) return { ok: false, error: error.message };
   if (!data?.ok) return { ok: false, error: data?.error ?? "Couldn't start the quiz." };
   return {
     ok: true,
+    surveyMode: data.answerDestination === "survey_results",
     questions: (data.questions ?? []).map((q: Record<string, unknown>) => ({
       id: q.id, questionText: q.questionText, points: Number(q.points),
-      choices: (q.choices as Record<string, unknown>[] ?? []).map(c => ({ id: String(c.id), choiceText: String(c.choiceText) })),
+      choices: (q.choices as Record<string, unknown>[] ?? []).map(c => ({ id: String(c.id), choiceText: String(c.choiceText), isOther: !!c.isOther })),
     })),
     attemptsUsedToday: data.attemptsUsedToday, maxAttemptsPerDay: data.maxAttemptsPerDay,
   };
 }
 
 export async function submitQuizAttempt(
-  topicId: string, answers: { questionId: string; choiceId: string | null }[]
-): Promise<{ ok: true; result: QuizSubmitResult } | { ok: false; error: string }> {
+  topicId: string, answers: { questionId: string; choiceId: string | null; otherText?: string }[]
+): Promise<
+  | { ok: true; surveyMode: true; result: QuizSurveySubmitResult }
+  | { ok: true; surveyMode: false; result: QuizSubmitResult }
+  | { ok: false; error: string }
+> {
   const { data, error } = await supabase.rpc("submit_quiz_attempt", {
     p_topic_id: topicId,
-    p_answers: answers.map(a => ({ questionId: a.questionId, choiceId: a.choiceId })),
+    p_answers: answers.map(a => ({ questionId: a.questionId, choiceId: a.choiceId, otherText: a.otherText ?? null })),
   });
   if (error) return { ok: false, error: error.message };
   if (!data?.ok) return { ok: false, error: data?.error ?? "Couldn't submit the quiz." };
+
+  if (data.surveyMode) {
+    return {
+      ok: true, surveyMode: true,
+      result: { attemptsUsedToday: data.attemptsUsedToday, maxAttemptsPerDay: data.maxAttemptsPerDay },
+    };
+  }
 
   const results: QuizResultItem[] = (data.results ?? []).map((r: Record<string, unknown>) => ({
     questionId: String(r.questionId),
@@ -189,7 +203,7 @@ export async function submitQuizAttempt(
   }));
 
   return {
-    ok: true,
+    ok: true, surveyMode: false,
     result: {
       score: Number(data.score), maxScore: Number(data.maxScore),
       results, attemptsUsedToday: data.attemptsUsedToday, maxAttemptsPerDay: data.maxAttemptsPerDay,
