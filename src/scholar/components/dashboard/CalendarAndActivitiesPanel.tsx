@@ -41,6 +41,11 @@ function CalendarGrid({ activities }: { activities: CalendarActivity[] }) {
     return map;
   }, [activities]);
 
+  /** First pubmat found among a day's activities, if any — shown on the day cell in place of the plain dot. */
+  function pubmatForDay(dayActivities: CalendarActivity[]): string | null {
+    return dayActivities.find(a => a.pubmatUrl)?.pubmatUrl ?? null;
+  }
+
   const year = monthCursor.getFullYear();
   const month = monthCursor.getMonth();
   const firstDayOfWeek = new Date(year, month, 1).getDay();
@@ -79,7 +84,9 @@ function CalendarGrid({ activities }: { activities: CalendarActivity[] }) {
         {cells.map((day, i) => {
           if (day === null) return <div key={i} />;
           const key = dateKey(day);
-          const hasEvents = activitiesByDate.has(key);
+          const dayActivities = activitiesByDate.get(key) ?? [];
+          const hasEvents = dayActivities.length > 0;
+          const dayPubmat = pubmatForDay(dayActivities);
           const isToday = key === todayKey;
           const isSelected = key === selectedDate;
           return (
@@ -88,7 +95,13 @@ function CalendarGrid({ activities }: { activities: CalendarActivity[] }) {
                 isSelected ? "bg-[#062444] text-white" : isToday ? "bg-[#eef3fb] text-[#062444]" : "text-slate-600 hover:bg-[#f8fafd]"
               }`}>
               {day}
-              {hasEvents && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-[#F3BC00]" : "bg-[#0088cc]"}`} />}
+              {hasEvents && (
+                dayPubmat ? (
+                  <img src={dayPubmat} alt="" className="w-4 h-4 rounded-full object-cover ring-1 ring-white/70" />
+                ) : (
+                  <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-[#F3BC00]" : "bg-[#0088cc]"}`} />
+                )
+              )}
             </button>
           );
         })}
@@ -142,11 +155,21 @@ export function CalendarAndActivitiesPanel({ onNavigateToForms }: { onNavigateTo
 
   useEffect(() => {
     Promise.all([fetchApprovedSDPActivities(), fetchFormationActivitiesForScholar()]).then(([sdpActivities, formationActivities]) => {
-      const sdp = sdpActivities.map(activity => ({
-        id: `sdp-${activity.id}`, name: activity.name, shortDescription: activity.rationale ?? "", dateTime: activity.dateTime,
-        endTime: null, venue: activity.venue, label: categoryLabel(activity.category), attendanceEnabled: false,
-        pubmatUrl: pubmatUrl(activity.pubmatPath),
-      }));
+      const sdp = sdpActivities.flatMap(activity => {
+        const shared = {
+          name: activity.name, shortDescription: activity.rationale ?? "", endTime: null, venue: activity.venue,
+          label: categoryLabel(activity.category), attendanceEnabled: false, pubmatUrl: pubmatUrl(activity.pubmatPath),
+        };
+        const entries: CalendarActivity[] = [];
+        if (activity.dateTime) entries.push({ id: `sdp-${activity.id}`, dateTime: activity.dateTime, ...shared });
+        // Recurring activities can accumulate occurrence dates over time (added by
+        // staff from the activity's details) — each becomes its own calendar entry
+        // alongside the original dateTime, so scholars see every actual session.
+        activity.recurringDates.forEach((date, index) => {
+          entries.push({ id: `sdp-${activity.id}-occ-${index}`, dateTime: date, ...shared });
+        });
+        return entries;
+      });
       const formation = formationActivities.map(activity => ({
         id: `formation-${activity.id}`, name: activity.name, shortDescription: activity.shortDescription, dateTime: activity.dateTime,
         endTime: activity.endTime, venue: activity.venue, label: "Formation Activity", attendanceEnabled: activity.attendanceEnabled,
