@@ -556,11 +556,14 @@ export interface BulkQuestionRowResult {
  * Creates many questions (with their choices) under one topic, one at a
  * time. Sequential rather than a single batch insert so that one bad row
  * doesn't sink the whole file — every other valid row still gets created,
- * and the caller finds out exactly which row(s) failed and why.
+ * and the caller finds out exactly which row(s) failed and why. `mode`
+ * mirrors saveQuestion's — "survey_results" ignores points/explanation
+ * and writes each choice's isOther instead of isCorrect.
  */
 export async function bulkCreateQuestions(
   topicId: string,
-  questions: BulkQuestionInput[]
+  questions: BulkQuestionInput[],
+  mode: "quest_monitoring" | "survey_results" = "quest_monitoring"
 ): Promise<{ created: number; results: BulkQuestionRowResult[] }> {
   const results: BulkQuestionRowResult[] = [];
   let created = 0;
@@ -568,7 +571,11 @@ export async function bulkCreateQuestions(
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
     const { data, error } = await supabase.from("quest_questions")
-      .insert({ topic_id: topicId, question_text: q.questionText, points: q.points, explanation: q.explanation })
+      .insert({
+        topic_id: topicId, question_text: q.questionText,
+        points: mode === "survey_results" ? 0 : q.points,
+        explanation: mode === "survey_results" ? "" : q.explanation,
+      })
       .select("id").single();
     if (error || !data) {
       results.push({ index: i, ok: false, error: error?.message ?? "Failed to create question." });
@@ -576,7 +583,11 @@ export async function bulkCreateQuestions(
     }
 
     const { error: choicesError } = await supabase.from("quest_choices").insert(
-      q.choices.map((c, ci) => ({ question_id: data.id, choice_text: c.choiceText, is_correct: c.isCorrect, sort_order: ci }))
+      q.choices.map((c, ci) => ({
+        question_id: data.id, choice_text: c.choiceText, sort_order: ci,
+        is_correct: mode === "quest_monitoring" && c.isCorrect,
+        is_other: mode === "survey_results" && !!c.isOther,
+      }))
     );
     if (choicesError) {
       // Roll back the orphaned question so a retry doesn't leave a

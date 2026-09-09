@@ -130,6 +130,7 @@ export function QuestionBankTab() {
         <BulkQuestionUploadModal
           topicId={selectedTopic.id}
           topicName={selectedTopic.name}
+          mode={selectedSubject?.answerDestination ?? "quest_monitoring"}
           onClose={() => setShowBulkUpload(false)}
           onDone={reloadQuestions}
         />
@@ -696,11 +697,9 @@ function QuestionColumn({ topic, mode, questions, onAdd, onBulkUpload, onEdit, o
       <div className="px-4 py-3 border-b border-[#e6ecf5] space-y-2">
         <h3 className="text-[12.5px] font-bold text-[#062444] truncate">Questions — {topic.name}</h3>
         <div className="flex items-center gap-3 flex-wrap">
-          {mode === "quest_monitoring" && (
-            <button onClick={onBulkUpload} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] shrink-0 hover:underline hover:text-[#006699]">
-              <UploadCloud size={14} /> Bulk Upload
-            </button>
-          )}
+          <button onClick={onBulkUpload} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] shrink-0 hover:underline hover:text-[#006699]">
+            <UploadCloud size={14} /> Bulk Upload
+          </button>
           <button onClick={onAdd} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] shrink-0 hover:underline hover:text-[#006699]">
             <Plus size={14} /> Add
           </button>

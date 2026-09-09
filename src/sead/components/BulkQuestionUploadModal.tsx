@@ -2,16 +2,23 @@ import { useRef, useState } from "react";
 import { X, Upload, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { bulkCreateQuestions, type BulkQuestionInput } from "../seadApi";
 import { parseCsv, toCsv, downloadCsv, normalizeHeader, findColumn, cell } from "../csvUtils";
-import type { QuestChoiceDraft } from "../types";
+import type { QuestChoiceDraft, QuestAnswerDestination } from "../types";
 import { ExportButton } from "@/app/components/ExportButtons";
 
-const TEMPLATE_HEADERS = [
+const QUEST_TEMPLATE_HEADERS = [
   "Question", "Points", "Choice 1", "Choice 2", "Choice 3", "Choice 4", "Choice 5", "Choice 6", "Correct Choice (1-6)", "Explanation",
 ];
-
-const TEMPLATE_SAMPLE_ROWS = [
+const QUEST_TEMPLATE_SAMPLE_ROWS = [
   ["What is the capital of the Philippines?", "1", "Manila", "Cebu", "Davao", "Quezon City", "", "", "1", "Manila has been the capital since the Spanish colonial period."],
   ["Which planet is known as the Red Planet?", "1", "Venus", "Mars", "Jupiter", "", "", "", "2", "Mars appears red due to iron oxide (rust) on its surface."],
+];
+
+const SURVEY_TEMPLATE_HEADERS = [
+  "Question", "Choice 1", "Choice 2", "Choice 3", "Choice 4", "Choice 5", "Choice 6", "Other Choice (1-6)",
+];
+const SURVEY_TEMPLATE_SAMPLE_ROWS = [
+  ["What's your favorite subject?", "Math", "Science", "English", "", "", "", ""],
+  ["How did you hear about this program?", "School", "Social Media", "Friend", "Something else", "", "", "4"],
 ];
 
 interface ParsedRow {
@@ -22,11 +29,15 @@ interface ParsedRow {
   preview: string;
 }
 
-function downloadTemplate() {
-  downloadCsv("question-bank-template.csv", toCsv(TEMPLATE_HEADERS, TEMPLATE_SAMPLE_ROWS));
+function downloadTemplate(mode: QuestAnswerDestination) {
+  if (mode === "survey_results") {
+    downloadCsv("survey-questions-template.csv", toCsv(SURVEY_TEMPLATE_HEADERS, SURVEY_TEMPLATE_SAMPLE_ROWS));
+  } else {
+    downloadCsv("question-bank-template.csv", toCsv(QUEST_TEMPLATE_HEADERS, QUEST_TEMPLATE_SAMPLE_ROWS));
+  }
 }
 
-function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: string } {
+function parseAndValidateQuest(text: string): { rows: ParsedRow[]; headerError?: string } {
   const raw = parseCsv(text);
   if (raw.length < 1) return { rows: [], headerError: "The file is empty." };
 
@@ -85,9 +96,62 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
   return { rows: parsed };
 }
 
+function parseAndValidateSurvey(text: string): { rows: ParsedRow[]; headerError?: string } {
+  const raw = parseCsv(text);
+  if (raw.length < 1) return { rows: [], headerError: "The file is empty." };
+
+  const headers = raw[0].map(normalizeHeader);
+  const idx = {
+    question: findColumn(headers, ["question", "question text"]),
+    c1: findColumn(headers, ["choice 1", "choice1"]),
+    c2: findColumn(headers, ["choice 2", "choice2"]),
+    c3: findColumn(headers, ["choice 3", "choice3"]),
+    c4: findColumn(headers, ["choice 4", "choice4"]),
+    c5: findColumn(headers, ["choice 5", "choice5"]),
+    c6: findColumn(headers, ["choice 6", "choice6"]),
+    other: findColumn(headers, ["other choice (1-6)", "other choice", "other"]),
+  };
+
+  if (idx.question === -1) return { rows: [], headerError: 'Missing a "Question" column.' };
+  if (idx.c1 === -1 || idx.c2 === -1) return { rows: [], headerError: 'Missing "Choice 1" / "Choice 2" columns — at least two choices are required.' };
+
+  const dataRows = raw.slice(1);
+  const parsed: ParsedRow[] = dataRows.map((r, i) => {
+    const rowNumber = i + 2; // account for header row
+    const questionText = cell(r, idx.question);
+    const preview = questionText || `(row ${rowNumber})`;
+
+    if (!questionText) return { rowNumber, ok: false, error: "Question text is empty.", preview };
+
+    const choiceTexts = [idx.c1, idx.c2, idx.c3, idx.c4, idx.c5, idx.c6]
+      .map(ci => cell(r, ci))
+      .filter(t => t !== "");
+    if (choiceTexts.length < 2) return { rowNumber, ok: false, error: "Needs at least two non-empty choices.", preview };
+
+    const otherRaw = idx.other !== -1 ? cell(r, idx.other) : "";
+    let otherIndex = -1;
+    if (otherRaw) {
+      const asNumber = Number(otherRaw);
+      if (Number.isInteger(asNumber) && asNumber >= 1 && asNumber <= choiceTexts.length) {
+        otherIndex = asNumber - 1;
+      } else {
+        otherIndex = choiceTexts.findIndex(t => t.toLowerCase() === otherRaw.toLowerCase());
+      }
+      if (otherIndex === -1) {
+        return { rowNumber, ok: false, error: `"Other Choice" value "${otherRaw}" doesn't match a choice number (1-${choiceTexts.length}) or choice text.`, preview };
+      }
+    }
+
+    const choices: QuestChoiceDraft[] = choiceTexts.map((choiceText, ci) => ({ choiceText, isCorrect: false, isOther: ci === otherIndex }));
+    return { rowNumber, ok: true, preview, question: { questionText, points: 0, explanation: "", choices } };
+  });
+
+  return { rows: parsed };
+}
+
 export function BulkQuestionUploadModal({
-  topicId, topicName, onClose, onDone,
-}: { topicId: string; topicName: string; onClose: () => void; onDone: () => void }) {
+  topicId, topicName, mode, onClose, onDone,
+}: { topicId: string; topicName: string; mode: QuestAnswerDestination; onClose: () => void; onDone: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
@@ -106,7 +170,7 @@ export function BulkQuestionUploadModal({
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result ?? "");
-      const { rows: parsed, headerError: hErr } = parseAndValidate(text);
+      const { rows: parsed, headerError: hErr } = mode === "survey_results" ? parseAndValidateSurvey(text) : parseAndValidateQuest(text);
       setRows(parsed);
       setHeaderError(hErr ?? null);
     };
@@ -117,7 +181,7 @@ export function BulkQuestionUploadModal({
     if (validRows.length === 0) return;
     setUploading(true);
     const inputs = validRows.map(r => r.question!);
-    const { created, results } = await bulkCreateQuestions(topicId, inputs);
+    const { created, results } = await bulkCreateQuestions(topicId, inputs, mode);
     setUploading(false);
     setCreatedCount(created);
     const errs = results
@@ -173,7 +237,7 @@ export function BulkQuestionUploadModal({
               </p>
 
               <div className="mb-4">
-                <ExportButton format="csv" onClick={downloadTemplate} label="Download CSV Template" />
+                <ExportButton format="csv" onClick={() => downloadTemplate(mode)} label="Download CSV Template" />
               </div>
 
               <div className="border-2 border-dashed border-[#062444]/15 rounded-xl px-4 py-6 text-center mb-4">
