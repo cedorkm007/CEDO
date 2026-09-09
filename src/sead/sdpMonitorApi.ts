@@ -1,11 +1,11 @@
 import { supabase } from "@/lib/supabase";
-import type { SDPActivity, SDPStatus, SDPCategory, SDPActivityType } from "@/scholar/sdpApi";
+import type { SDPActivity, SDPStatus, SDPCategory, SDPActivityType, RecurringOccurrence } from "@/scholar/sdpApi";
 
 // Re-export so consumers of this module don't also need to import from
 // src/scholar/sdpApi directly — same underlying `sdp_activities` table,
 // just accessed here with staff (sdp_monitoring tag) RLS instead of
 // scholar RLS.
-export type { SDPActivity, SDPStatus, SDPCategory, SDPActivityType };
+export type { SDPActivity, SDPStatus, SDPCategory, SDPActivityType, RecurringOccurrence };
 
 function rowToActivity(r: Record<string, unknown>): SDPActivity {
   return {
@@ -34,7 +34,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     budgetItems: (r.budget_items as SDPActivity["budgetItems"]) ?? [],
     pubmatPath: (r.pubmat_path as string | null) ?? null,
     activityType: (r.activity_type as SDPActivityType | null) ?? "one_time",
-    recurringDates: (r.recurring_dates as string[] | null) ?? [],
+    recurringDates: (r.recurring_dates as RecurringOccurrence[] | null) ?? [],
     createdAt: String(r.created_at ?? ""),
   };
 }
@@ -48,7 +48,7 @@ export async function fetchAllSDPActivities(): Promise<SDPActivity[]> {
 }
 
 export async function updateSDPActivity(
-  id: string, fields: { status: SDPStatus; projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: string[] }
+  id: string, fields: { status: SDPStatus; projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: RecurringOccurrence[] }
 ): Promise<{ ok: boolean; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
   const { error } = await supabase.from("sdp_activities").update({

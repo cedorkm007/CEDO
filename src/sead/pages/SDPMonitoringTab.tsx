@@ -516,6 +516,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   const [pubmatBusy, setPubmatBusy] = useState(false);
   const [recurringDates, setRecurringDates] = useState(activity.recurringDates);
   const [newRecurringDate, setNewRecurringDate] = useState("");
+  const [newRecurringVenue, setNewRecurringVenue] = useState(activity.venue);
 
   async function handlePubmatFile(file: File) {
     setPubmatBusy(true);
@@ -529,12 +530,15 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   function addRecurringDate() {
     if (!newRecurringDate) return;
     const iso = new Date(newRecurringDate).toISOString();
-    if (recurringDates.includes(iso)) { setNewRecurringDate(""); return; }
-    setRecurringDates(dates => [...dates, iso].sort());
+    if (recurringDates.some(d => d.date === iso)) { setNewRecurringDate(""); return; }
+    setRecurringDates(dates => [...dates, { date: iso, venue: newRecurringVenue.trim() }].sort((a, b) => a.date.localeCompare(b.date)));
     setNewRecurringDate("");
   }
   function removeRecurringDate(iso: string) {
-    setRecurringDates(dates => dates.filter(d => d !== iso));
+    setRecurringDates(dates => dates.filter(d => d.date !== iso));
+  }
+  function updateRecurringVenue(iso: string, venue: string) {
+    setRecurringDates(dates => dates.map(d => d.date === iso ? { ...d, venue } : d));
   }
 
   async function handleSave() {
@@ -596,11 +600,13 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
             <div className="border-t border-[#f0f3f8] pt-4">
               <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Occurrence Dates</label>
               {recurringDates.length > 0 ? (
-                <ul className="mb-2 space-y-1">
-                  {recurringDates.map(iso => (
-                    <li key={iso} className="flex items-center justify-between rounded-lg bg-[#f8fafd] px-3 py-1.5 text-[12.5px] text-[#062444]">
-                      <span>{new Date(iso).toLocaleString()}</span>
-                      <button type="button" onClick={() => removeRecurringDate(iso)} className="text-slate-400 hover:text-red-600"><Trash2 size={13} /></button>
+                <ul className="mb-2 space-y-1.5">
+                  {recurringDates.map(occ => (
+                    <li key={occ.date} className="flex items-center gap-2 rounded-lg bg-[#f8fafd] px-3 py-1.5">
+                      <span className="text-[12.5px] text-[#062444] shrink-0">{new Date(occ.date).toLocaleString()}</span>
+                      <input value={occ.venue} onChange={e => updateRecurringVenue(occ.date, e.target.value)} placeholder="Venue"
+                        className="flex-1 min-w-0 rounded-md border border-[#062444]/15 bg-white px-2 py-1 text-[12px] outline-none focus:border-[#0088cc]" />
+                      <button type="button" onClick={() => removeRecurringDate(occ.date)} className="shrink-0 text-slate-400 hover:text-red-600"><Trash2 size={13} /></button>
                     </li>
                   ))}
                 </ul>
@@ -609,6 +615,8 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
               )}
               <div className="flex gap-2">
                 <input type="datetime-local" value={newRecurringDate} onChange={e => setNewRecurringDate(e.target.value)}
+                  className="flex-1 rounded-lg border border-[#062444]/15 px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+                <input value={newRecurringVenue} onChange={e => setNewRecurringVenue(e.target.value)} placeholder="Venue"
                   className="flex-1 rounded-lg border border-[#062444]/15 px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
                 <button type="button" onClick={addRecurringDate} className="shrink-0 rounded-lg bg-[#eef7fc] px-3 py-2 text-[12px] font-bold text-[#0088cc] hover:bg-[#e0f0fa]">
                   <Plus size={13} className="mr-1 inline" />Add Date

@@ -157,16 +157,17 @@ export function CalendarAndActivitiesPanel({ onNavigateToForms }: { onNavigateTo
     Promise.all([fetchApprovedSDPActivities(), fetchFormationActivitiesForScholar()]).then(([sdpActivities, formationActivities]) => {
       const sdp = sdpActivities.flatMap(activity => {
         const shared = {
-          name: activity.name, shortDescription: activity.rationale ?? "", endTime: null, venue: activity.venue,
+          name: activity.name, shortDescription: activity.rationale ?? "", endTime: null,
           label: categoryLabel(activity.category), attendanceEnabled: false, pubmatUrl: pubmatUrl(activity.pubmatPath),
         };
         const entries: CalendarActivity[] = [];
-        if (activity.dateTime) entries.push({ id: `sdp-${activity.id}`, dateTime: activity.dateTime, ...shared });
+        if (activity.dateTime) entries.push({ id: `sdp-${activity.id}`, dateTime: activity.dateTime, venue: activity.venue, ...shared });
         // Recurring activities can accumulate occurrence dates over time (added by
-        // staff from the activity's details) — each becomes its own calendar entry
-        // alongside the original dateTime, so scholars see every actual session.
-        activity.recurringDates.forEach((date, index) => {
-          entries.push({ id: `sdp-${activity.id}-occ-${index}`, dateTime: date, ...shared });
+        // staff from the activity's details), each with its own venue since a
+        // recurring activity's venue can change between sessions — each becomes
+        // its own calendar entry alongside the original dateTime.
+        activity.recurringDates.forEach((occurrence, index) => {
+          entries.push({ id: `sdp-${activity.id}-occ-${index}`, dateTime: occurrence.date, venue: occurrence.venue || activity.venue, ...shared });
         });
         return entries;
       });
