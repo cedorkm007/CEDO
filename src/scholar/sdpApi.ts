@@ -166,6 +166,22 @@ export async function fetchScholarSDPCategoryStatus(scholarIdNumber: string): Pr
   return status;
 }
 
+export type SDPCreditCounts = Record<SDPCategory, number>;
+
+/** This scholar's accumulated credits per SDP category (3 needed to complete one) — sums each credited activity's `credits`, not just a count of attendances. */
+export async function fetchScholarSDPCreditCounts(scholarIdNumber: string): Promise<SDPCreditCounts> {
+  const fallback: SDPCreditCounts = { community_service: 0, community_volunteerism: 0, formation_program: 0 };
+  const { data, error } = await supabase.from("sdp_attendance")
+    .select("sdp_activities(category, credits)").eq("scholar_id_number", scholarIdNumber);
+  if (error || !data) return fallback;
+  const totals = { ...fallback };
+  for (const row of data as unknown as { sdp_activities: { category: SDPCategory | null; credits: number | null } | null }[]) {
+    const activity = row.sdp_activities;
+    if (activity?.category) totals[activity.category] += Number(activity.credits ?? 1);
+  }
+  return totals;
+}
+
 export async function submitSDPProposal(
   scholarIdNumber: string, input: SDPProposalInput
 ): Promise<{ ok: boolean; error?: string }> {

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Plus, Trash2, ClipboardList, FileText, ChevronRight, Award, List, Lightbulb, Lock } from "lucide-react";
+import { X, Plus, Trash2, ClipboardList, FileText, ChevronRight, Award, List, Lightbulb, Lock, CheckCircle2 } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import {
-  fetchApprovedSDPActivities, fetchMySDPActivities, submitSDPProposal, checkIsFormationOfficer, ORGANIZATIONS, SDP_CATEGORIES,
-  type SDPActivity, type SDPStatus, type SDPCategory, type ObjectiveRow, type WorkPlanRow, type ProgramFlowRow, type BudgetRow, type SDPProposalInput,
+  fetchApprovedSDPActivities, fetchMySDPActivities, submitSDPProposal, checkIsFormationOfficer, fetchScholarSDPCreditCounts, ORGANIZATIONS, SDP_CATEGORIES,
+  type SDPActivity, type SDPStatus, type SDPCategory, type SDPCreditCounts, type ObjectiveRow, type WorkPlanRow, type ProgramFlowRow, type BudgetRow, type SDPProposalInput,
 } from "../../sdpApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
 
@@ -379,6 +379,34 @@ function ActivityCard({ act, onClick }: { act: SDPActivity; onClick: () => void 
   );
 }
 
+const CREDITS_REQUIRED = 3;
+
+/** Per-category progress toward the 3 credits needed to complete it — mirrors the checkmark/circle badges already shown on the scholar's own Profile, but with the actual running count instead of just done/not-done. */
+function CreditProgress({ credits }: { credits: SDPCreditCounts }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-5">
+      {SDP_CATEGORIES.map(c => {
+        const count = credits[c.key] ?? 0;
+        const complete = count >= CREDITS_REQUIRED;
+        return (
+          <div key={c.key} className={`rounded-xl border p-3 ${complete ? "bg-green-50 border-green-200" : "bg-[#f7f9fc] border-transparent"}`}>
+            <div className="flex items-center justify-between gap-1 mb-1.5">
+              <span className="text-[11px] font-bold text-[#062444] leading-tight">{c.label}</span>
+              {complete && <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0" />}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 rounded-full bg-white overflow-hidden">
+                <div className={`h-full rounded-full ${complete ? "bg-green-500" : "bg-[#0088cc]"}`} style={{ width: `${Math.min(100, (count / CREDITS_REQUIRED) * 100)}%` }} />
+              </div>
+              <span className="text-[10.5px] font-bold text-slate-500 shrink-0">{count}/{CREDITS_REQUIRED}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 interface SDPPanelProps {
   scholarIdNumber: string;
 }
@@ -398,15 +426,17 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   const [listView, setListView] = useState<"approved" | "mine">("approved");
   const [showProposal, setShowProposal] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<SDPActivity | null>(null);
+  const [credits, setCredits] = useState<SDPCreditCounts>({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
 
   async function loadAll() {
     setLoading(true);
-    const [a, m, officer] = await Promise.all([
-      fetchApprovedSDPActivities(), fetchMySDPActivities(scholarIdNumber), checkIsFormationOfficer(scholarIdNumber),
+    const [a, m, officer, c] = await Promise.all([
+      fetchApprovedSDPActivities(), fetchMySDPActivities(scholarIdNumber), checkIsFormationOfficer(scholarIdNumber), fetchScholarSDPCreditCounts(scholarIdNumber),
     ]);
     setApproved(a);
     setMine(m);
     setIsOfficer(officer);
+    setCredits(c);
     setLoading(false);
   }
   useEffect(() => { loadAll(); }, [scholarIdNumber]);
@@ -424,6 +454,8 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
 
   return (
     <SectionCard icon={<Lightbulb size={14} />} title="Scholars' Development Program (SDP)">
+      {!loading && <CreditProgress credits={credits} />}
+
       <div className="grid grid-cols-3 gap-2.5 mb-6">
         <motion.button whileTap={{ scale: 0.97 }} onClick={() => setListView("approved")}
           className={`rounded-xl p-3 flex flex-col items-center gap-1.5 border-2 transition-all ${listView === "approved" ? "bg-[#062444] border-[#F3BC00]" : "bg-[#f7f9fc] border-transparent hover:border-[#e6ecf5]"}`}>
