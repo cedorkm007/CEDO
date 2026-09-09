@@ -1,8 +1,6 @@
-import { Users, BookOpen, BarChart3, History, CalendarDays } from "lucide-react";
+import { Users, History, CalendarDays } from "lucide-react";
 import { ScholarsTab } from "./pages/ScholarsTab";
-import { QuestionBankTab } from "./pages/QuestionBankTab";
 import { ScholarAccountHistoryTab } from "./pages/ScholarAccountHistoryTab";
-import { QuestsMonitoringTab } from "./pages/QuestsMonitoringTab";
 import { FormationActivitiesTab } from "./pages/FormationActivitiesTab";
 import { useUrlState } from "@/app/useUrlState";
 import type { SeadTab } from "./types";
@@ -17,12 +15,13 @@ import type { SeadTab } from "./types";
  *
  * Forms Management is a separate staff tool in the main navigation; it is
  * intentionally not embedded as a Scholar Management Tools sub-tab.
+ * Question Bank / Quests Monitoring likewise moved out into their own
+ * "Quest Management Tools" page (QuestManagementToolsPage.tsx), gated by
+ * its own tag so it can be granted independently.
  */
 export function ScholarManagementToolsPage() {
   const TABS: { key: SeadTab; label: string; icon: React.ReactNode }[] = [
     { key: "scholars", label: "Scholars", icon: <Users size={14} /> },
-    { key: "question-bank", label: "Question Bank", icon: <BookOpen size={14} /> },
-    { key: "quests-monitoring", label: "Quests Monitoring", icon: <BarChart3 size={14} /> },
     { key: "formation-activities", label: "Formation Activities", icon: <CalendarDays size={14} /> },
     { key: "history", label: "Account History", icon: <History size={14} /> },
   ];
@@ -34,7 +33,7 @@ export function ScholarManagementToolsPage() {
   return (
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Scholar Management Tools</h1>
-      <p className="text-sm text-muted-foreground mb-5">Manage scholar accounts and the Quests question bank.</p>
+      <p className="text-sm text-muted-foreground mb-5">Manage scholar accounts, formation activities, and account history.</p>
 
       <div className="flex w-full gap-1 border-b border-border mb-5">
         {TABS.map(t => (
@@ -51,8 +50,6 @@ export function ScholarManagementToolsPage() {
       </div>
 
       {tab === "scholars" && <ScholarsTab />}
-      {tab === "question-bank" && <QuestionBankTab />}
-      {tab === "quests-monitoring" && <QuestsMonitoringTab />}
       {tab === "formation-activities" && <FormationActivitiesTab />}
       {tab === "history" && <ScholarAccountHistoryTab />}
     </div>

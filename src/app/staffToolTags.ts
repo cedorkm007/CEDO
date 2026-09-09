@@ -21,7 +21,12 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
   {
     key: "scholar_management",
     label: "Scholar Management Tools",
-    description: "Question bank, scholar accounts, quest scores, and account history.",
+    description: "Scholar accounts, formation activities, and account history.",
+  },
+  {
+    key: "quest_management",
+    label: "Quest Management Tools",
+    description: "Question bank and quest score monitoring.",
   },
   {
     key: "sdp_monitoring",

@@ -23,6 +23,7 @@ import SEADLogo from "@/imports/SEAD_Logo_Circular.png";
 import AFLogo from "@/imports/AF_Logo_Circular.png";
 import CEDOSeal from "@/imports/CEDO_Seal.png";
 import { ScholarManagementToolsPage } from "@/sead/ScholarManagementToolsPage";
+import { QuestManagementToolsPage } from "@/sead/QuestManagementToolsPage";
 import { SDPMonitoringTab } from "@/sead/pages/SDPMonitoringTab";
 import { FormationToolsTab } from "@/sead/pages/FormationToolsTab";
 import { FormsManagementTab } from "@/sead/pages/FormsManagementTab";
@@ -57,7 +58,7 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
-export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "researchProjectMonitoring" | "myResearch" | "staffAccounts";
+export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "questManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "researchProjectMonitoring" | "myResearch" | "staffAccounts";
 
 /** "Scholar Management Tools" (question bank + scholar accounts) is now gated by
  *  the "scholar_management" tag (see src/app/staffToolTags.ts) instead of a fixed
@@ -78,7 +79,7 @@ export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitorin
 // hand-copied a third time into a different file.
 export const IT_ADMIN_USERNAME = "it.admin1";
 
-const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "researchProjectMonitoring", "myResearch", "staffAccounts"];
+const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "questManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "researchProjectMonitoring", "myResearch", "staffAccounts"];
 
 /**
  * Mirrors the exact gating conditions in the render switch at the bottom
@@ -95,6 +96,7 @@ function isPageAuthorizedFor(page: Page, user: UserProfile): boolean {
     case "monitoring": case "history": return user.isAdmin;
     case "admin": return user.role === "super_admin";
     case "scholarManagement": return user.tags.includes("scholar_management");
+    case "questManagement": return user.tags.includes("quest_management");
     case "sdpMonitoring": return user.tags.includes("sdp_monitoring");
     case "formationTools": return user.tags.includes("scholars_formation");
     case "formsManagement": return user.tags.includes("forms_management");
@@ -3454,6 +3456,9 @@ export default function App() {
           )}
           {page==="scholarManagement" && currentUser.tags.includes("scholar_management") && (
             <ScholarManagementToolsPage />
+          )}
+          {page==="questManagement" && currentUser.tags.includes("quest_management") && (
+            <QuestManagementToolsPage />
           )}
           {page==="sdpMonitoring" && currentUser.tags.includes("sdp_monitoring") && (
             <SDPMonitoringTab/>

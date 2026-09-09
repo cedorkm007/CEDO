@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3, FlaskConical } from "lucide-react";
+import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3, FlaskConical, Trophy } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarSeparator,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
@@ -152,6 +152,7 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
   // this is a named variable rather than inlined at the render site.
   const hasAnySpecificTool =
     user.tags.includes("scholar_management")
+    || user.tags.includes("quest_management")
     || user.tags.includes("sdp_monitoring")
     || user.tags.includes("scholars_formation")
     || user.tags.includes("forms_management")
@@ -308,6 +309,13 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
                     <SidebarMenuItem className="min-w-0">
                       <SidebarMenuButton isActive={page === "scholarManagement"} onClick={() => setPage("scholarManagement")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
                         <GraduationCap /> <span className="truncate">Scholar Management Tools</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {user.tags.includes("quest_management") && (
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "questManagement"} onClick={() => setPage("questManagement")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <Trophy /> <span className="truncate">Quest Management Tools</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
