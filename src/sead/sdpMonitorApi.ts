@@ -170,16 +170,24 @@ export interface ScholarSDPChecklist {
  * JavaScript — this was the slowest list found investigating "lists load
  * very slowly" on the admin side.
  */
+const SDP_CHECKLIST_PAGE_SIZE = 1000;
+
+/** Paginated via .range() because scholars_sdp_checklist() returns one row per scholar — PostgREST caps any single response (RPCs included) at 1000 rows, well under this project's scholar count. */
 export async function fetchAllScholarsSDPChecklist(): Promise<ScholarSDPChecklist[]> {
-  const { data, error } = await supabase.rpc("scholars_sdp_checklist");
-  if (error || !data) return [];
-  return (data as { scholar_id_number: string; name: string; community_service: boolean; community_volunteerism: boolean; formation_program: boolean }[]).map(r => ({
-    scholarIdNumber: r.scholar_id_number,
-    name: r.name,
-    communityService: r.community_service,
-    communityVolunteerism: r.community_volunteerism,
-    formationProgram: r.formation_program,
-  }));
+  const out: ScholarSDPChecklist[] = [];
+  for (let from = 0; ; from += SDP_CHECKLIST_PAGE_SIZE) {
+    const { data, error } = await supabase.rpc("scholars_sdp_checklist").range(from, from + SDP_CHECKLIST_PAGE_SIZE - 1);
+    if (error || !data) break;
+    out.push(...(data as { scholar_id_number: string; name: string; community_service: boolean; community_volunteerism: boolean; formation_program: boolean }[]).map(r => ({
+      scholarIdNumber: r.scholar_id_number,
+      name: r.name,
+      communityService: r.community_service,
+      communityVolunteerism: r.community_volunteerism,
+      formationProgram: r.formation_program,
+    })));
+    if (data.length < SDP_CHECKLIST_PAGE_SIZE) break;
+  }
+  return out;
 }
 
 export interface SDPHistoryRow {
