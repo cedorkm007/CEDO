@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "motion/react";
 import { Calendar as CalendarIcon, ClipboardList, QrCode, ChevronLeft, ChevronRight, MapPin } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { AttendanceScanner } from "./AttendanceScanner";
@@ -97,7 +98,14 @@ function CalendarGrid({ activities }: { activities: CalendarActivity[] }) {
               {day}
               {hasEvents && (
                 dayPubmat ? (
-                  <img src={dayPubmat} alt="" className="w-4 h-4 rounded-full object-cover ring-1 ring-white/70" />
+                  <motion.img
+                    src={dayPubmat} alt="" className="w-4 h-4 rounded-full object-cover ring-1 ring-white/70"
+                    animate={{
+                      scale: [1, 1.3, 1],
+                      boxShadow: ["0 0 0 0 rgba(243,188,0,0)", "0 0 6px 3px rgba(243,188,0,0.9)", "0 0 0 0 rgba(243,188,0,0)"],
+                    }}
+                    transition={{ duration: 0.9, repeat: Infinity, repeatDelay: 4.1, ease: "easeInOut" }}
+                  />
                 ) : (
                   <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-[#F3BC00]" : "bg-[#0088cc]"}`} />
                 )
