@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download, ImagePlus } from "lucide-react";
+import { X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
@@ -733,10 +733,56 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** One activity row — pubmat thumbnail (or a placeholder icon), name, org/submitter. No status shown here; status stays in the activity's own detail modal. */
+function ActivityRow({ activity, onSelect }: { activity: SDPActivity; onSelect: (a: SDPActivity) => void }) {
+  const pubmat = pubmatUrl(activity.pubmatPath);
+  return (
+    <button onClick={() => onSelect(activity)}
+      className="w-full flex items-center justify-between gap-3 px-5 py-3.5 text-left hover:bg-[#f8fafd] transition-colors">
+      <div className="flex items-center gap-3 min-w-0">
+        {pubmat ? (
+          <img src={pubmat} alt="" className="w-11 h-11 rounded-lg object-cover shrink-0" />
+        ) : (
+          <span className="w-11 h-11 rounded-lg bg-[#eef3fb] flex items-center justify-center shrink-0 text-[#0088cc]">
+            <ImageIcon size={18} />
+          </span>
+        )}
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-[#062444] truncate">{activity.name}</p>
+          <p className="text-[12px] text-slate-400 truncate">
+            {activity.organization || "—"} {activity.submittedByScholarId ? `· Scholar ID ${activity.submittedByScholarId}` : "· Staff-created"}
+          </p>
+        </div>
+      </div>
+      {activity.activityType === "recurring" && (
+        <span className="shrink-0 rounded-full bg-[#0088cc]/10 px-2 py-0.5 text-[10.5px] font-bold text-[#0088cc]">Recurring</span>
+      )}
+    </button>
+  );
+}
+
+/** One SDP-category section — header (label + count) and its own activities, or an empty state. */
+function CategoryGroup({ label, activities, onSelect }: { label: string; activities: SDPActivity[]; onSelect: (a: SDPActivity) => void }) {
+  return (
+    <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 bg-[#f8fafd] border-b border-[#e6ecf5]">
+        <p className="text-[12.5px] font-bold text-[#062444]">{label}</p>
+        <span className="text-[11px] font-semibold text-slate-400">{activities.length} activit{activities.length === 1 ? "y" : "ies"}</span>
+      </div>
+      {activities.length === 0 ? (
+        <p className="text-center text-slate-400 py-8 text-[13px]">No activities in this category yet.</p>
+      ) : (
+        <div className="divide-y divide-[#f0f3f8]">
+          {activities.map(a => <ActivityRow key={a.id} activity={a} onSelect={onSelect} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ActivitiesSection() {
   const [activities, setActivities] = useState<SDPActivity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<SDPStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<SDPActivity | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -749,18 +795,12 @@ function ActivitiesSection() {
   useEffect(() => { load(); }, []);
 
   const filtered = activities.filter(a => {
-    if (statusFilter !== "all" && a.status !== statusFilter) return false;
-    if (search.trim() && !a.name.toLowerCase().includes(search.trim().toLowerCase()) && !a.organization.toLowerCase().includes(search.trim().toLowerCase())) return false;
-    return true;
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    return a.name.toLowerCase().includes(q) || a.organization.toLowerCase().includes(q);
   });
 
-  const [page, setPage] = useState(1);
-  const pageSize = 50;
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-  useEffect(() => { setPage(1); }, [search, statusFilter]);
-
+  const uncategorized = filtered.filter(a => !a.category);
   const pendingCount = activities.filter(a => a.status === "pending").length;
 
   return (
@@ -775,53 +815,29 @@ function ActivitiesSection() {
         </button>
       </div>
 
-      <div className="flex items-center justify-between gap-3 my-4 flex-wrap">
-        <div className="flex items-center gap-2 bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 flex-1 max-w-sm">
-          <Search size={15} className="text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or organization…"
-            className="w-full text-sm outline-none" />
-        </div>
-        <div className="flex items-center gap-1 bg-white border border-[#e6ecf5] rounded-lg p-1 flex-wrap">
-          {(["all", ...STATUS_OPTIONS] as const).map(s => (
-            <button key={s} onClick={() => setStatusFilter(s)}
-              className={`text-[12px] font-semibold px-2.5 py-1.5 rounded-md ${statusFilter === s ? "bg-[#062444] text-white" : "text-slate-500 hover:bg-[#f8fafd]"}`}>
-              {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center gap-2 bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 max-w-sm my-4">
+        <Search size={15} className="text-slate-400" />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or organization…"
+          className="w-full text-sm outline-none" />
       </div>
 
-      <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden">
-        {loading ? (
-          <p className="text-center text-slate-400 py-10 text-sm">Loading…</p>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-14 text-slate-400">
-            <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">No activities match this filter.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-[#f0f3f8]">
-            {paged.map(a => (
-              <button key={a.id} onClick={() => setSelected(a)}
-                className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-[#f8fafd] transition-colors">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[#062444] truncate">{a.name}</p>
-                  <p className="text-[12px] text-slate-400 truncate">
-                    {a.organization || "—"} {a.submittedByScholarId ? `· Scholar ID ${a.submittedByScholarId}` : "· Staff-created"} · {categoryLabel(a.category)}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {a.activityType === "recurring" && (
-                    <span className="rounded-full bg-[#0088cc]/10 px-2 py-0.5 text-[10.5px] font-bold text-[#0088cc]">Recurring</span>
-                  )}
-                  <StatusBadge status={a.status} />
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      <ListPagination page={safePage} totalPages={totalPages} onPageChange={setPage} filteredCount={filtered.length} pageSize={pageSize} />
+      {loading ? (
+        <p className="text-center text-slate-400 py-10 text-sm">Loading…</p>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-14 text-slate-400 bg-white rounded-2xl border border-[#e6ecf5]">
+          <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p className="text-sm">No activities match your search.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {SDP_CATEGORIES.map(c => (
+            <CategoryGroup key={c.key} label={c.label} activities={filtered.filter(a => a.category === c.key)} onSelect={setSelected} />
+          ))}
+          {uncategorized.length > 0 && (
+            <CategoryGroup label="Uncategorized" activities={uncategorized} onSelect={setSelected} />
+          )}
+        </div>
+      )}
 
       {selected && <DetailModal activity={selected} onClose={() => setSelected(null)} onChanged={load} />}
       {showNew && <NewActivityModal onClose={() => setShowNew(false)} onCreated={load} />}
