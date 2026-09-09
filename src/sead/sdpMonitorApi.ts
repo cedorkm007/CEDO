@@ -1,11 +1,11 @@
 import { supabase } from "@/lib/supabase";
-import type { SDPActivity, SDPStatus, SDPCategory } from "@/scholar/sdpApi";
+import type { SDPActivity, SDPStatus, SDPCategory, SDPActivityType } from "@/scholar/sdpApi";
 
 // Re-export so consumers of this module don't also need to import from
 // src/scholar/sdpApi directly — same underlying `sdp_activities` table,
 // just accessed here with staff (sdp_monitoring tag) RLS instead of
 // scholar RLS.
-export type { SDPActivity, SDPStatus, SDPCategory };
+export type { SDPActivity, SDPStatus, SDPCategory, SDPActivityType };
 
 function rowToActivity(r: Record<string, unknown>): SDPActivity {
   return {
@@ -33,6 +33,8 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     programFlow: (r.program_flow as SDPActivity["programFlow"]) ?? [],
     budgetItems: (r.budget_items as SDPActivity["budgetItems"]) ?? [],
     pubmatPath: (r.pubmat_path as string | null) ?? null,
+    activityType: (r.activity_type as SDPActivityType | null) ?? "one_time",
+    recurringDates: (r.recurring_dates as string[] | null) ?? [],
     createdAt: String(r.created_at ?? ""),
   };
 }
@@ -46,7 +48,7 @@ export async function fetchAllSDPActivities(): Promise<SDPActivity[]> {
 }
 
 export async function updateSDPActivity(
-  id: string, fields: { status: SDPStatus; projectHead?: string; headCluster?: string; category?: SDPCategory | null }
+  id: string, fields: { status: SDPStatus; projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: string[] }
 ): Promise<{ ok: boolean; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
   const { error } = await supabase.from("sdp_activities").update({
@@ -54,6 +56,7 @@ export async function updateSDPActivity(
     project_head: fields.projectHead,
     head_cluster: fields.headCluster,
     category: fields.category,
+    ...(fields.recurringDates ? { recurring_dates: fields.recurringDates } : {}),
     reviewed_by: auth.user?.id ?? null,
     reviewed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -76,6 +79,7 @@ export interface NewApprovedActivityInput {
   dateTime: string;
   venue: string;
   nature: string[];
+  activityType: SDPActivityType;
 }
 
 function localDateTimeToIso(value: string): string | null {
@@ -94,6 +98,7 @@ export async function createApprovedActivity(input: NewApprovedActivityInput): P
     date_time: localDateTimeToIso(input.dateTime),
     venue: input.venue,
     nature: input.nature,
+    activity_type: input.activityType,
     status: "approved",
   }).select("id").single();
   return error ? { ok: false, error: error.message } : { ok: true, id: data.id };

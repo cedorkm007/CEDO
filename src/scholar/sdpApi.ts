@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 
 export type SDPStatus = "finished" | "ongoing" | "approved" | "pending" | "canceled" | "rescheduled";
 export type SDPCategory = "community_service" | "community_volunteerism" | "formation_program";
+export type SDPActivityType = "one_time" | "recurring";
 
 export const SDP_CATEGORIES: { key: SDPCategory; label: string }[] = [
   { key: "community_service", label: "Community Service" },
@@ -39,6 +40,8 @@ export interface SDPActivity {
   programFlow: ProgramFlowRow[];
   budgetItems: BudgetRow[];
   pubmatPath: string | null;
+  activityType: SDPActivityType;
+  recurringDates: string[];
   createdAt: string;
 }
 
@@ -91,6 +94,8 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     programFlow: (r.program_flow as ProgramFlowRow[]) ?? [],
     budgetItems: (r.budget_items as BudgetRow[]) ?? [],
     pubmatPath: (r.pubmat_path as string | null) ?? null,
+    activityType: (r.activity_type as SDPActivityType | null) ?? "one_time",
+    recurringDates: (r.recurring_dates as string[] | null) ?? [],
     createdAt: String(r.created_at ?? ""),
   };
 }

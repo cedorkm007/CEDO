@@ -7,7 +7,7 @@ import {
   fetchAttendanceForActivity, creditAttendance, removeAttendance,
   fetchAllScholarsSDPChecklist,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
-  type SDPActivity, type SDPStatus, type SDPCategory, type AttendanceEntry, type ScholarSDPChecklist,
+  type SDPActivity, type SDPStatus, type SDPCategory, type SDPActivityType, type AttendanceEntry, type ScholarSDPChecklist,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
 } from "../sdpMonitorApi";
 import { SDP_CATEGORIES } from "@/scholar/sdpApi";
@@ -59,6 +59,7 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [organization, setOrganization] = useState("");
   const [dateTime, setDateTime] = useState("");
   const [venue, setVenue] = useState("");
+  const [activityType, setActivityType] = useState<SDPActivityType>("one_time");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -77,7 +78,7 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
       return;
     }
     setBusy(true);
-    const result = await createApprovedActivity({ name: name.trim(), category, organization: organization.trim(), dateTime, venue: venue.trim(), nature: [] });
+    const result = await createApprovedActivity({ name: name.trim(), category, organization: organization.trim(), dateTime, venue: venue.trim(), nature: [], activityType });
     if (!result.ok || !result.id) { setBusy(false); setError(result.error || "Failed to create."); return; }
 
     if (attendanceEnabled) {
@@ -107,6 +108,22 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">SDP Category</label>
             <CategorySelect value={category} onChange={setCategory} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Type of Activity</label>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setActivityType("one_time")}
+                className={`flex-1 px-3 py-2 rounded-lg border text-[12px] font-bold ${activityType === "one_time" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}>
+                One-time
+              </button>
+              <button type="button" onClick={() => setActivityType("recurring")}
+                className={`flex-1 px-3 py-2 rounded-lg border text-[12px] font-bold ${activityType === "recurring" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}>
+                Recurring
+              </button>
+            </div>
+            {activityType === "recurring" && (
+              <p className="mt-1.5 text-[11px] text-slate-400">Additional occurrence dates can be added later from the activity's details.</p>
+            )}
           </div>
           <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder="Organization"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
@@ -497,6 +514,8 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   const [error, setError] = useState("");
   const [pubmatPath, setPubmatPath] = useState(activity.pubmatPath);
   const [pubmatBusy, setPubmatBusy] = useState(false);
+  const [recurringDates, setRecurringDates] = useState(activity.recurringDates);
+  const [newRecurringDate, setNewRecurringDate] = useState("");
 
   async function handlePubmatFile(file: File) {
     setPubmatBusy(true);
@@ -507,11 +526,22 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
     onChanged();
   }
 
+  function addRecurringDate() {
+    if (!newRecurringDate) return;
+    const iso = new Date(newRecurringDate).toISOString();
+    if (recurringDates.includes(iso)) { setNewRecurringDate(""); return; }
+    setRecurringDates(dates => [...dates, iso].sort());
+    setNewRecurringDate("");
+  }
+  function removeRecurringDate(iso: string) {
+    setRecurringDates(dates => dates.filter(d => d !== iso));
+  }
+
   async function handleSave() {
     setError("");
     if (!category) { setError("Choose which SDP category this activity counts toward."); return; }
     setBusy(true);
-    const result = await updateSDPActivity(activity.id, { status, projectHead, headCluster, category });
+    const result = await updateSDPActivity(activity.id, { status, projectHead, headCluster, category, recurringDates });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save."); return; }
     onChanged();
@@ -557,9 +587,35 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
             <Field label="Nature" value={activity.nature.join(", ")} />
             <Field label="Date / Time" value={activity.dateTime ? new Date(activity.dateTime).toLocaleString() : "—"} />
             <Field label="Venue" value={activity.venue} />
+            <Field label="Type of Activity" value={activity.activityType === "recurring" ? "Recurring" : "One-time"} />
             <Field label="Budget" value={activity.budgetaryRequirement ? `₱${activity.budgetaryRequirement}` : "—"} />
             <Field label="Source of Fund" value={activity.sourceOfFund.join(", ") || "—"} />
           </div>
+
+          {activity.activityType === "recurring" && (
+            <div className="border-t border-[#f0f3f8] pt-4">
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Occurrence Dates</label>
+              {recurringDates.length > 0 ? (
+                <ul className="mb-2 space-y-1">
+                  {recurringDates.map(iso => (
+                    <li key={iso} className="flex items-center justify-between rounded-lg bg-[#f8fafd] px-3 py-1.5 text-[12.5px] text-[#062444]">
+                      <span>{new Date(iso).toLocaleString()}</span>
+                      <button type="button" onClick={() => removeRecurringDate(iso)} className="text-slate-400 hover:text-red-600"><Trash2 size={13} /></button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mb-2 text-[12px] text-slate-400 italic">No occurrence dates recorded yet.</p>
+              )}
+              <div className="flex gap-2">
+                <input type="datetime-local" value={newRecurringDate} onChange={e => setNewRecurringDate(e.target.value)}
+                  className="flex-1 rounded-lg border border-[#062444]/15 px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+                <button type="button" onClick={addRecurringDate} className="shrink-0 rounded-lg bg-[#eef7fc] px-3 py-2 text-[12px] font-bold text-[#0088cc] hover:bg-[#e0f0fa]">
+                  <Plus size={13} className="mr-1 inline" />Add Date
+                </button>
+              </div>
+            </div>
+          )}
 
           {activity.rationale && (
             <div>
@@ -729,7 +785,12 @@ function ActivitiesSection() {
                     {a.organization || "—"} {a.submittedByScholarId ? `· Scholar ID ${a.submittedByScholarId}` : "· Staff-created"} · {categoryLabel(a.category)}
                   </p>
                 </div>
-                <StatusBadge status={a.status} />
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {a.activityType === "recurring" && (
+                    <span className="rounded-full bg-[#0088cc]/10 px-2 py-0.5 text-[10.5px] font-bold text-[#0088cc]">Recurring</span>
+                  )}
+                  <StatusBadge status={a.status} />
+                </div>
               </button>
             ))}
           </div>
