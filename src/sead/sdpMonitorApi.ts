@@ -35,6 +35,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     pubmatPath: (r.pubmat_path as string | null) ?? null,
     activityType: (r.activity_type as SDPActivityType | null) ?? "one_time",
     recurringDates: (r.recurring_dates as RecurringOccurrence[] | null) ?? [],
+    credits: Number(r.credits ?? 1),
     createdAt: String(r.created_at ?? ""),
   };
 }
@@ -48,7 +49,7 @@ export async function fetchAllSDPActivities(): Promise<SDPActivity[]> {
 }
 
 export async function updateSDPActivity(
-  id: string, fields: { status: SDPStatus; projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: RecurringOccurrence[] }
+  id: string, fields: { status: SDPStatus; projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: RecurringOccurrence[]; credits?: number }
 ): Promise<{ ok: boolean; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
   const { error } = await supabase.from("sdp_activities").update({
@@ -57,6 +58,7 @@ export async function updateSDPActivity(
     head_cluster: fields.headCluster,
     category: fields.category,
     ...(fields.recurringDates ? { recurring_dates: fields.recurringDates } : {}),
+    ...(fields.credits !== undefined ? { credits: fields.credits } : {}),
     reviewed_by: auth.user?.id ?? null,
     reviewed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -80,6 +82,7 @@ export interface NewApprovedActivityInput {
   venue: string;
   nature: string[];
   activityType: SDPActivityType;
+  credits: number;
 }
 
 function localDateTimeToIso(value: string): string | null {
@@ -99,6 +102,7 @@ export async function createApprovedActivity(input: NewApprovedActivityInput): P
     venue: input.venue,
     nature: input.nature,
     activity_type: input.activityType,
+    credits: input.credits,
     status: "approved",
   }).select("id").single();
   return error ? { ok: false, error: error.message } : { ok: true, id: data.id };

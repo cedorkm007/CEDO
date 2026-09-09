@@ -60,6 +60,7 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [dateTime, setDateTime] = useState("");
   const [venue, setVenue] = useState("");
   const [activityType, setActivityType] = useState<SDPActivityType>("one_time");
+  const [credits, setCredits] = useState("1");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -72,13 +73,15 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   async function handleCreate() {
     if (!name.trim()) { setError("Enter an activity name."); return; }
     if (!category) { setError("Choose which SDP category this activity counts toward."); return; }
+    const creditsValue = Number(credits);
+    if (!credits.trim() || creditsValue < 1) { setError("Enter how many credits scholars earn per attendance."); return; }
     const count = Number(attendanceCount);
     if (attendanceEnabled && (!attendanceCount.trim() || count < 1)) {
       setError("Enter the expected number of participants.");
       return;
     }
     setBusy(true);
-    const result = await createApprovedActivity({ name: name.trim(), category, organization: organization.trim(), dateTime, venue: venue.trim(), nature: [], activityType });
+    const result = await createApprovedActivity({ name: name.trim(), category, organization: organization.trim(), dateTime, venue: venue.trim(), nature: [], activityType, credits: creditsValue });
     if (!result.ok || !result.id) { setBusy(false); setError(result.error || "Failed to create."); return; }
 
     if (attendanceEnabled) {
@@ -124,6 +127,12 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
             {activityType === "recurring" && (
               <p className="mt-1.5 text-[11px] text-slate-400">Additional occurrence dates can be added later from the activity's details.</p>
             )}
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Credits per Attendance</label>
+            <input type="number" min={1} value={credits} onChange={e => setCredits(e.target.value)}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+            <p className="mt-1.5 text-[11px] text-slate-400">Scholars need 3 credits total in a category to complete it — a bigger activity can be worth more than one credit.</p>
           </div>
           <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder="Organization"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
@@ -517,6 +526,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   const [recurringDates, setRecurringDates] = useState(activity.recurringDates);
   const [newRecurringDate, setNewRecurringDate] = useState("");
   const [newRecurringVenue, setNewRecurringVenue] = useState(activity.venue);
+  const [credits, setCredits] = useState(String(activity.credits));
 
   async function handlePubmatFile(file: File) {
     setPubmatBusy(true);
@@ -544,8 +554,10 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   async function handleSave() {
     setError("");
     if (!category) { setError("Choose which SDP category this activity counts toward."); return; }
+    const creditsValue = Number(credits);
+    if (!credits.trim() || creditsValue < 1) { setError("Enter how many credits scholars earn per attendance."); return; }
     setBusy(true);
-    const result = await updateSDPActivity(activity.id, { status, projectHead, headCluster, category, recurringDates });
+    const result = await updateSDPActivity(activity.id, { status, projectHead, headCluster, category, recurringDates, credits: creditsValue });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save."); return; }
     onChanged();
@@ -647,6 +659,11 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">SDP Category</label>
               <CategorySelect value={category} onChange={setCategory} />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Credits per Attendance</label>
+              <input type="number" min={1} value={credits} onChange={e => setCredits(e.target.value)}
+                className="w-32 border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Status</label>
@@ -870,7 +887,7 @@ function ChecklistSection() {
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
               <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
               <SortableTh label="Scholar Name" sortKey="name" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
-              <SortableTh label="Community Service" sortKey="communityService" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
+              <SortableTh label="Institutional Volunteerism" sortKey="communityService" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
               <SortableTh label="Community Volunteerism" sortKey="communityVolunteerism" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
               <SortableTh label="Formation Program" sortKey="formationProgram" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
               <th className="px-5 py-3 text-right">SDP History</th>

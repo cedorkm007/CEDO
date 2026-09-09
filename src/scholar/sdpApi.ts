@@ -6,7 +6,7 @@ export type SDPActivityType = "one_time" | "recurring";
 export interface RecurringOccurrence { date: string; venue: string; }
 
 export const SDP_CATEGORIES: { key: SDPCategory; label: string }[] = [
-  { key: "community_service", label: "Community Service" },
+  { key: "community_service", label: "Institutional Volunteerism" },
   { key: "community_volunteerism", label: "Community Volunteerism" },
   { key: "formation_program", label: "Formation Program" },
 ];
@@ -43,6 +43,7 @@ export interface SDPActivity {
   pubmatPath: string | null;
   activityType: SDPActivityType;
   recurringDates: RecurringOccurrence[];
+  credits: number;
   createdAt: string;
 }
 
@@ -97,6 +98,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     pubmatPath: (r.pubmat_path as string | null) ?? null,
     activityType: (r.activity_type as SDPActivityType | null) ?? "one_time",
     recurringDates: (r.recurring_dates as RecurringOccurrence[] | null) ?? [],
+    credits: Number(r.credits ?? 1),
     createdAt: String(r.created_at ?? ""),
   };
 }
