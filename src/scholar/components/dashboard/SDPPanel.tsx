@@ -384,21 +384,21 @@ const CREDITS_REQUIRED = 3;
 /** Per-category progress toward the 3 credits needed to complete it — mirrors the checkmark/circle badges already shown on the scholar's own Profile, but with the actual running count instead of just done/not-done. */
 function CreditProgress({ credits }: { credits: SDPCreditCounts }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-5">
+    <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 mb-5">
       {SDP_CATEGORIES.map(c => {
         const count = credits[c.key] ?? 0;
         const complete = count >= CREDITS_REQUIRED;
         return (
-          <div key={c.key} className={`rounded-xl border p-3 ${complete ? "bg-green-50 border-green-200" : "bg-[#f7f9fc] border-transparent"}`}>
-            <div className="flex items-center justify-between gap-1 mb-1.5">
-              <span className="text-[11px] font-bold text-[#062444] leading-tight">{c.label}</span>
-              {complete && <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0" />}
+          <div key={c.key} className={`rounded-lg sm:rounded-xl border px-1.5 py-1.5 sm:p-3 ${complete ? "bg-green-50 border-green-200" : "bg-[#f7f9fc] border-transparent"}`}>
+            <div className="flex items-center justify-between gap-1 mb-1 sm:mb-1.5">
+              <span className="text-[8.5px] sm:text-[11px] font-bold text-[#062444] leading-tight line-clamp-2">{c.label}</span>
+              {complete && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-600 shrink-0" />}
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-1.5 rounded-full bg-white overflow-hidden">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <div className="flex-1 h-1 sm:h-1.5 rounded-full bg-white overflow-hidden">
                 <div className={`h-full rounded-full ${complete ? "bg-green-500" : "bg-[#0088cc]"}`} style={{ width: `${Math.min(100, (count / CREDITS_REQUIRED) * 100)}%` }} />
               </div>
-              <span className="text-[10.5px] font-bold text-slate-500 shrink-0">{count}/{CREDITS_REQUIRED}</span>
+              <span className="text-[8.5px] sm:text-[10.5px] font-bold text-slate-500 shrink-0">{count}/{CREDITS_REQUIRED}</span>
             </div>
           </div>
         );
