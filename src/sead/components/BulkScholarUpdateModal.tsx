@@ -8,7 +8,7 @@ import { ExportButton } from "@/app/components/ExportButtons";
 
 const TEMPLATE_HEADERS = [
   "Scholar ID Number", "First Name", "Last Name", "Middle Name", "Birthday (YYYY-MM-DD)",
-  "School", "Course", "Year Level", "Civil Status", "Contact No.", "Scholarship Status",
+  "School", "Program", "Year Level", "Civil Status", "Contact No.", "Scholarship Status",
   "House/Unit No.", "Street", "Barangay", "City/Municipality", "Province/Region", "Country", "Zip Code",
 ];
 
@@ -47,7 +47,7 @@ const FIELD_DEFS: { key: keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">; 
   { key: "middleName", label: "Middle Name", aliases: ["middle name", "middlename"] },
   { key: "birthday", label: "Birthday", aliases: ["birthday (yyyy-mm-dd)", "birthday", "birthdate", "date of birth"], isBirthday: true },
   { key: "school", label: "School", aliases: ["school"] },
-  { key: "course", label: "Course", aliases: ["course"] },
+  { key: "course", label: "Program", aliases: ["course", "program"] },
   { key: "yearLevel", label: "Year Level", aliases: ["year level", "yearlevel", "year"] },
   { key: "civilStatus", label: "Civil Status", aliases: ["civil status", "civilstatus"] },
   { key: "contactNo", label: "Contact No.", aliases: ["contact no.", "contact no", "contact number", "contact"] },

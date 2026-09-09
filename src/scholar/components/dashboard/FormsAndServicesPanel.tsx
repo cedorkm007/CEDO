@@ -13,7 +13,7 @@ const REQUIREMENT_TYPE_LABELS: Record<string, string> = {
   quest_subject: "Pass Quest subject",
   formation_activity: "Attend Formation activity",
   sdp_activity: "Complete SDP activity",
-  course: "Be enrolled in course",
+  course: "Be enrolled in program",
 };
 
 function requirementText(req: UnmetRequirement): string {

@@ -109,7 +109,7 @@ const STATUS_DIMENSIONS: { key: StatusDimension; label: string }[] = [
   { key: "yearLevel", label: "Year Level" },
   { key: "school", label: "School" },
   { key: "barangay", label: "Barangay" },
-  { key: "course", label: "Course" },
+  { key: "course", label: "Program" },
 ];
 
 /**
@@ -160,7 +160,7 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
     } else {
       const result = await fetchScholarsByCourseForStatus(status);
       if (result.ok && result.counts) setRows([...result.counts].sort((a, b) => b.count - a.count));
-      else setError(result.error || "Failed to load the Course breakdown.");
+      else setError(result.error || "Failed to load the Program breakdown.");
     }
     setLoadingRows(false);
   }
@@ -379,7 +379,7 @@ function SchoolSubtab() {
     setLoadingCourses(true);
     const result = await fetchScholarsBySchoolYearLevelCourse(selectedSchool, yearLevel);
     if (result.ok && result.counts) setCourseCounts([...result.counts].sort((a, b) => b.count - a.count));
-    else setCourseError(result.error || "Failed to load courses.");
+    else setCourseError(result.error || "Failed to load programs.");
     setLoadingCourses(false);
   }
 
@@ -433,10 +433,10 @@ function SchoolSubtab() {
         )
       )}
       {selectedSchool && selectedYearLevel && (
-        loadingCourses ? <LoadingPanel label="Loading courses…" /> : courseError ? (
+        loadingCourses ? <LoadingPanel label="Loading programs…" /> : courseError ? (
           <ErrorRetry message={courseError} onRetry={() => handleSelectYearLevel(selectedYearLevel)} />
         ) : (
-          <GroupCountBreakdown title={`Scholars per Course — ${selectedSchool}, ${selectedYearLevel}`} columnLabel="Course" rows={courseCounts ?? []} onSelect={handleSelectCourse} />
+          <GroupCountBreakdown title={`Scholars per Program — ${selectedSchool}, ${selectedYearLevel}`} columnLabel="Program" rows={courseCounts ?? []} onSelect={handleSelectCourse} />
         )
       )}
       {selectedSchool && selectedYearLevel && selectedCourse && (
@@ -445,7 +445,7 @@ function SchoolSubtab() {
             <ScholarListPanel
               title={`Scholars — ${selectedSchool}, ${selectedYearLevel}, ${selectedCourse}`}
               rows={scholarRows ?? []}
-              filtersSummary={`Filters: School = ${selectedSchool}; Year Level = ${selectedYearLevel}; Course = ${selectedCourse}`}
+              filtersSummary={`Filters: School = ${selectedSchool}; Year Level = ${selectedYearLevel}; Program = ${selectedCourse}`}
               filenamePrefix={`scholars-${slugify(selectedSchool)}-${slugify(selectedYearLevel)}-${slugify(selectedCourse)}`}
               defaultExpanded
             />

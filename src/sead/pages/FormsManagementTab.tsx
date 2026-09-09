@@ -157,7 +157,7 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
       case "sdp_activity":
         return `SDP Activity: ${c.sdpActivityName || sdpActivities.find(a => a.id === c.sdpActivityId)?.name || "Unknown activity"}`;
       case "course":
-        return `Course: ${c.course}`;
+        return `Program: ${c.course}`;
       case "year_level":
         return c.allYearLevels ? "Year Level: Any" : `Year Level: ${c.yearLevels.join(", ") || "None selected"}`;
     }
@@ -185,10 +185,10 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
       setNewSdpActivityId("");
     } else if (newType === "course") {
       const trimmed = newCourse.trim();
-      if (!trimmed) { setError("Enter a course."); return; }
+      if (!trimmed) { setError("Enter a program."); return; }
       // Matches DB matching, which is also case/whitespace-insensitive — so
       // "BSIT" and "bsit" are treated as the same rule here too.
-      if (conditions.some(c => c.type === "course" && c.course.trim().toLowerCase() === trimmed.toLowerCase())) { setError("That course rule already exists."); return; }
+      if (conditions.some(c => c.type === "course" && c.course.trim().toLowerCase() === trimmed.toLowerCase())) { setError("That program rule already exists."); return; }
       setConditions(cs => [...cs, { type: "course", course: trimmed }]);
       setNewCourse("");
     } else {
@@ -253,7 +253,7 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
               <option value="quest_subject">Quest Subject</option>
               <option value="formation_activity">Formation Activity</option>
               <option value="sdp_activity">SDP Activity</option>
-              <option value="course">Course</option>
+              <option value="course">Program</option>
               <option value="year_level">Year Level</option>
             </select>
 
@@ -282,7 +282,7 @@ function FormMaterialConditionsModal({ material, onClose, onSaved }: { material:
                   placeholder="e.g. BSIT"
                   className="w-full rounded-lg border border-[#062444]/15 px-3 py-2 text-[12.5px] outline-none focus:border-[#0088cc]"
                 />
-                <p className="mt-1 text-[11px] text-slate-400">Matched case- and whitespace-insensitively against each scholar's course on file.</p>
+                <p className="mt-1 text-[11px] text-slate-400">Matched case- and whitespace-insensitively against each scholar's program on file.</p>
               </div>
             ) : (
               <div className="space-y-2">

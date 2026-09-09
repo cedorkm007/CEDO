@@ -41,7 +41,7 @@ function SubmissionActivityConditionsModal({ activity, onClose, onSaved }: { act
     if (condition.type === "quest_subject") { const subject = subjects.find(item => item.id === condition.subjectId); return "Pass: " + (condition.subjectName || subject?.name || "Quest subject") + " (" + (subject?.passingRateMin ?? "?") + "%–" + (subject?.passingRateMax ?? "?") + "%)"; }
     if (condition.type === "formation_activity") return "Formation attendance: " + (condition.formationActivityName || formationActivities.find(item => item.id === condition.formationActivityId)?.name || "Activity");
     if (condition.type === "sdp_activity") return "SDP attendance: " + (condition.sdpActivityName || sdpActivities.find(item => item.id === condition.sdpActivityId)?.name || "Activity");
-    if (condition.type === "course") return "Course: " + condition.course;
+    if (condition.type === "course") return "Program: " + condition.course;
     return condition.allYearLevels ? "Year level: Any" : "Year level: " + condition.yearLevels.join(", ");
   }
 
@@ -54,8 +54,8 @@ function SubmissionActivityConditionsModal({ activity, onClose, onSaved }: { act
     }
     if (type === "course") {
       const value = course.trim();
-      if (!value) { setError("Enter a course."); return; }
-      if (conditions.some(condition => condition.type === "course" && condition.course.trim().toLowerCase() === value.toLowerCase())) { setError("That course rule already exists."); return; }
+      if (!value) { setError("Enter a program."); return; }
+      if (conditions.some(condition => condition.type === "course" && condition.course.trim().toLowerCase() === value.toLowerCase())) { setError("That program rule already exists."); return; }
       setConditions(current => [...current, { type, course: value }]); setCourse(""); return;
     }
     if (!selected) { setError("Choose an activity or subject."); return; }
@@ -73,7 +73,7 @@ function SubmissionActivityConditionsModal({ activity, onClose, onSaved }: { act
     <div className="flex items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4"><h3 className="text-[15px] font-bold text-white">Unlock Conditions — {activity.name}</h3><button onClick={onClose} className="text-white"><X size={18} /></button></div>
     <div className="space-y-4 p-6"><p className="text-[12px] text-slate-500">All listed rules are required before a scholar can upload files. No rules means the activity is available to its eligible year levels.</p>
       <div className="space-y-2">{conditions.map((condition, index) => <div key={index} className="flex items-center justify-between rounded-lg border border-[#e6ecf5] bg-[#f8fafd] px-3 py-2 text-[12px] font-semibold text-[#062444]"><span>{conditionLabel(condition)}</span><button onClick={() => setConditions(current => current.filter((_, itemIndex) => itemIndex !== index))} className="text-slate-400 hover:text-red-600"><Trash2 size={14} /></button></div>)}</div>
-      <div className="space-y-2 rounded-lg border border-dashed border-[#062444]/20 p-3"><select value={type} onChange={event => { setType(event.target.value as SubmissionActivityCondition["type"]); setSelected(""); }} className="w-full rounded-lg border p-2 text-sm"><option value="quest_subject">Quest Subject</option><option value="formation_activity">Formation Activity</option><option value="sdp_activity">SDP Activity</option><option value="course">Course</option><option value="year_level">Year Level</option></select>
+      <div className="space-y-2 rounded-lg border border-dashed border-[#062444]/20 p-3"><select value={type} onChange={event => { setType(event.target.value as SubmissionActivityCondition["type"]); setSelected(""); }} className="w-full rounded-lg border p-2 text-sm"><option value="quest_subject">Quest Subject</option><option value="formation_activity">Formation Activity</option><option value="sdp_activity">SDP Activity</option><option value="course">Program</option><option value="year_level">Year Level</option></select>
       {type === "course" ? <input value={course} onChange={event => setCourse(event.target.value)} placeholder="e.g. BSIT" className="w-full rounded-lg border p-2 text-sm" /> : type === "year_level" ? <><label className="flex gap-2 text-sm"><input type="checkbox" checked={allYears} onChange={event => setAllYears(event.target.checked)} /> Any year level</label>{!allYears && <div className="flex flex-wrap gap-1">{FORMATION_YEAR_LEVELS.map(year => <label key={year} className="rounded border px-2 py-1 text-xs"><input type="checkbox" checked={years.includes(year)} onChange={() => setYears(current => current.includes(year) ? current.filter(item => item !== year) : [...current, year])} /> {year}</label>)}</div>}</> : <select value={selected} onChange={event => setSelected(event.target.value)} className="w-full rounded-lg border p-2 text-sm"><option value="">Select…</option>{options.map(item => <option key={item.id} value={item.id}>{item.name}{item.rate ? " — " + item.rate : ""}</option>)}</select>}
       <button onClick={addCondition} className="w-full rounded-lg bg-[#eef7fc] py-2 text-xs font-bold text-[#0088cc]"><Plus size={13} className="mr-1 inline" />Add required condition</button></div>
       {error && <p className="text-sm text-red-600">{error}</p>}<button onClick={() => void save()} disabled={busy} className="w-full rounded-lg bg-[#062444] py-2.5 text-sm font-bold text-white">{busy ? "Saving…" : "Save Conditions"}</button>

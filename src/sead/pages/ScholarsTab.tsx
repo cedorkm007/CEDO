@@ -244,7 +244,7 @@ const INFO_COLUMNS: { key: keyof ScholarInformationRow; label: string }[] = [
   { key: "school", label: "School" },
   { key: "status", label: "Scholarship Status" },
   { key: "barangay", label: "Barangay" },
-  { key: "course", label: "Course" },
+  { key: "course", label: "Program" },
   { key: "birthday", label: "Age" }, // displayed as a computed age, stored/fetched as birthday
   { key: "civilStatus", label: "Civil Status" },
   { key: "contactNo", label: "Contact Number" },
@@ -262,7 +262,7 @@ const EMPTY_FIELD_OPTIONS: { key: ScholarInformationEmptyableField; label: strin
   { key: "yearLevel", label: "Year Level" },
   { key: "school", label: "School" },
   { key: "barangay", label: "Barangay" },
-  { key: "course", label: "Course" },
+  { key: "course", label: "Program" },
   { key: "civilStatus", label: "Civil Status" },
   { key: "contactNo", label: "Contact Number" },
 ];
@@ -312,7 +312,7 @@ function describeAppliedFilters(filters: ScholarInformationFilters): string {
   const parts: string[] = [];
   if (filters.name) parts.push(`Name contains "${filters.name}"`);
   if (filters.barangay) parts.push(`Barangay = ${filters.barangay}`);
-  if (filters.course) parts.push(`Course contains "${filters.course}"`);
+  if (filters.course) parts.push(`Program contains "${filters.course}"`);
   if (filters.school) parts.push(`School contains "${filters.school}"`);
   if (filters.yearLevel) parts.push(`Year Level = ${filters.yearLevel}`);
   if (filters.status) parts.push(`Scholarship Status = ${filters.status}`);
@@ -739,7 +739,7 @@ function ScholarsInformationSubtab() {
             </select>
           </div>
           <div>
-            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Course</label>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Program</label>
             <input value={courseFilter} onChange={e => setCourseFilter(e.target.value)} placeholder="e.g. BSIT"
               className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc]" />
           </div>

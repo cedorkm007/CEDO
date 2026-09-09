@@ -6,7 +6,7 @@ import { ExportButton } from "@/app/components/ExportButtons";
 
 const TEMPLATE_HEADERS = [
   "Scholar ID Number", "First Name", "Last Name", "Middle Name", "Birthday (YYYY-MM-DD)",
-  "Address", "School", "Course", "Civil Status", "Contact No.",
+  "Address", "School", "Program", "Civil Status", "Contact No.",
 ];
 
 const TEMPLATE_SAMPLE_ROWS = [
@@ -50,7 +50,7 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
     birthday: findColumn(headers, ["birthday (yyyy-mm-dd)", "birthday", "birthdate", "birth date", "date of birth", "dob"]),
     address: findColumn(headers, ["address"]),
     school: findColumn(headers, ["school"]),
-    course: findColumn(headers, ["course"]),
+    course: findColumn(headers, ["course", "program"]),
     civilStatus: findColumn(headers, ["civil status", "civilstatus"]),
     contactNo: findColumn(headers, ["contact no.", "contact no", "contact number", "contact"]),
   };

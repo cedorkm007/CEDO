@@ -732,7 +732,7 @@ export async function generateComprehensiveScholarProfile(opts: ComprehensiveSch
             labeledRow('Scholar ID', s.scholarIdNumber),
             labeledRow('Name', `${s.lastName}, ${s.firstName} ${s.middleName}`.trim()),
             labeledRow('School', s.school || '—'),
-            labeledRow('Course', s.course || '—'),
+            labeledRow('Program', s.course || '—'),
             labeledRow('Year Level', s.yearLevel || '—'),
             labeledRow('Status', s.status || '—'),
             labeledRow('Barangay', s.barangay || '—'),

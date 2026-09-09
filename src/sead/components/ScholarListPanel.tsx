@@ -33,7 +33,7 @@ async function loadProfileSections(r: ScholarInformationRow): Promise<ProfileSec
       { label: "Scholar ID", value: r.scholarIdNumber },
       { label: "Name", value: `${r.lastName}, ${r.firstName} ${r.middleName}`.trim() },
       { label: "School", value: r.school || "" },
-      { label: "Course", value: r.course || "" },
+      { label: "Program", value: r.course || "" },
       { label: "Year Level", value: r.yearLevel || "" },
       { label: "Status", value: r.status || "" },
       { label: "Barangay", value: r.barangay || "" },
@@ -51,7 +51,7 @@ const EXPORT_COLUMNS: { label: string; value: (r: ScholarInformationRow) => stri
   { label: "Scholar ID", value: r => r.scholarIdNumber },
   { label: "Name", value: r => `${r.lastName}, ${r.firstName} ${r.middleName}`.trim(), weight: 1.6 },
   { label: "School", value: r => r.school || "" },
-  { label: "Course", value: r => r.course || "" },
+  { label: "Program", value: r => r.course || "" },
   { label: "Year Level", value: r => r.yearLevel || "" },
 ];
 
@@ -212,7 +212,7 @@ export function ScholarListPanel({
                 <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-4 py-2 whitespace-nowrap" />
                 <SortableTh label="Name" sortKey="name" sortState={sortState} onSort={toggleSort} className="px-4 py-2 whitespace-nowrap" />
                 <SortableTh label="School" sortKey="school" sortState={sortState} onSort={toggleSort} className="px-4 py-2 whitespace-nowrap" />
-                <SortableTh label="Course" sortKey="course" sortState={sortState} onSort={toggleSort} className="px-4 py-2 whitespace-nowrap" />
+                <SortableTh label="Program" sortKey="course" sortState={sortState} onSort={toggleSort} className="px-4 py-2 whitespace-nowrap" />
                 <SortableTh label="Year Level" sortKey="yearLevel" sortState={sortState} onSort={toggleSort} className="px-4 py-2 whitespace-nowrap" />
               </tr>
             </thead>
