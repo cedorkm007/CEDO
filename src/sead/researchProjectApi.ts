@@ -77,6 +77,11 @@ export interface StageSubmission {
   id: string;
   projectId: string;
   stage: ProjectStage;
+  // "main" for every stage with a single combined form (Concept, and any
+  // later stage that never gets split); one of PROPOSAL_DEV_FORM_KEYS for
+  // proposal_development, where each key is its own independently
+  // submitted/reviewed form.
+  formKey: string;
   formData: Record<string, unknown>;
   status: SubmissionStatus;
   evaluatorComment: string;
@@ -110,6 +115,7 @@ function rowToSubmission(r: Record<string, unknown>): StageSubmission {
     id: r.id as string,
     projectId: r.project_id as string,
     stage: r.stage as ProjectStage,
+    formKey: (r.form_key as string | null) ?? "main",
     formData: (r.form_data as Record<string, unknown> | null) ?? {},
     status: r.status as SubmissionStatus,
     evaluatorComment: (r.evaluator_comment as string) ?? "",
@@ -267,13 +273,51 @@ export interface ProposalDevelopmentFormData {
   expectedOutcomes: OutcomeItem[];
 }
 
-/** Creates (first save) or updates (resubmission after "returned") the Proposal Development stage submission, resetting it to under_review. */
-export async function saveProposalDevelopmentSubmission(
-  projectId: string, existingSubmissionId: string | null, data: ProposalDevelopmentFormData,
+// Proposal Development is split into these 6 independently
+// submitted/reviewed forms — the researcher accomplishes them one at a
+// time, in this order; a form only unlocks once the one before it is
+// approved (see proposalDevFormStatus in ProposalDevelopmentWizard.tsx).
+export const PROPOSAL_DEV_FORM_KEYS = ["statement", "objectives", "methodology", "workPlan", "budget", "outputs"] as const;
+export type ProposalDevFormKey = (typeof PROPOSAL_DEV_FORM_KEYS)[number];
+export const PROPOSAL_DEV_FORM_LABELS: Record<ProposalDevFormKey, string> = {
+  statement: "Statement of the Problem",
+  objectives: "Objectives",
+  methodology: "Methodology",
+  workPlan: "Work Plan and Timeline",
+  budget: "Budget Requirement",
+  outputs: "Expected Outputs and Outcomes",
+};
+
+// What one of the 6 forms' own row (if any) means for whether it's open for
+// input right now — "editable" is either the very first form with no
+// submission yet, or one that came back "returned" for revision. A form is
+// only reachable once every form before it is "approved"; anything after
+// the first non-approved one is "locked".
+export type StepGateStatus = "editable" | "under_review" | "returned" | "approved" | "locked";
+
+/** Per-form gate status for every one of PROPOSAL_DEV_FORM_KEYS, given whichever of that project's proposal_development submissions exist so far. Shared between the researcher's wizard (which form is open for input) and the proposals list (progress at a glance). */
+export function computeProposalDevFormStatuses(existingSubmissions: StageSubmission[]): Record<ProposalDevFormKey, StepGateStatus> {
+  const byKey = new Map(existingSubmissions.map(s => [s.formKey, s]));
+  const result = {} as Record<ProposalDevFormKey, StepGateStatus>;
+  let previousApproved = true; // the first form has nothing before it to wait on
+  for (const key of PROPOSAL_DEV_FORM_KEYS) {
+    const submission = byKey.get(key);
+    if (submission?.status === "approved") result[key] = "approved";
+    else if (submission?.status === "under_review") result[key] = "under_review";
+    else if (submission?.status === "returned") result[key] = "returned";
+    else result[key] = previousApproved ? "editable" : "locked";
+    previousApproved = result[key] === "approved";
+  }
+  return result;
+}
+
+/** Creates (first save) or updates (resubmission after "returned") ONE Proposal Development form's submission, resetting it to under_review. Each of the 6 forms (see PROPOSAL_DEV_FORM_KEYS) is its own row, reviewed independently. */
+export async function saveProposalDevelopmentFormStep(
+  projectId: string, formKey: ProposalDevFormKey, existingSubmissionId: string | null, data: Record<string, unknown>,
 ): Promise<{ ok: boolean; error?: string }> {
   if (existingSubmissionId) {
     const { error } = await supabase.from("research_project_stage_submissions").update({
-      form_data: data as unknown as Record<string, unknown>,
+      form_data: data,
       status: "under_review",
       evaluator_comment: "",
       reviewed_by: null,
@@ -286,7 +330,8 @@ export async function saveProposalDevelopmentSubmission(
   const { error } = await supabase.from("research_project_stage_submissions").insert({
     project_id: projectId,
     stage: "proposal_development",
-    form_data: data as unknown as Record<string, unknown>,
+    form_key: formKey,
+    form_data: data,
   });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
@@ -339,7 +384,23 @@ async function advanceProjectStage(projectId: string, nextStage: ProjectStage): 
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
-/** Evaluator decision on one stage submission. Approving also advances the project's current_stage (see NEXT_STAGE_ON_APPROVAL); returning leaves the stage as-is so the researcher can revise and resubmit. */
+/** True once every one of the 6 Proposal Development forms (PROPOSAL_DEV_FORM_KEYS) has its own approved row — the gate for advancing the project to Implementation. */
+async function isProposalDevelopmentFullyApproved(projectId: string): Promise<boolean> {
+  const { data, error } = await supabase.from("research_project_stage_submissions")
+    .select("form_key, status").eq("project_id", projectId).eq("stage", "proposal_development");
+  if (error || !data) return false;
+  return PROPOSAL_DEV_FORM_KEYS.every(key => data.some(row => row.form_key === key && row.status === "approved"));
+}
+
+/**
+ * Evaluator decision on one stage/form submission. Approving Concept
+ * (the only form on that stage) advances the project straight to
+ * Proposal Development. Approving one of Proposal Development's 6 forms
+ * only advances the project to Implementation once ALL 6 are approved —
+ * otherwise the project just stays put while the researcher works
+ * through the remaining forms. Returning always leaves the stage as-is
+ * so the researcher can revise and resubmit just that one form.
+ */
 export async function reviewStageSubmission(
   submissionId: string, projectId: string, currentStage: ProjectStage, outcome: "approved" | "returned", comment: string,
 ): Promise<{ ok: boolean; error?: string }> {
@@ -355,7 +416,12 @@ export async function reviewStageSubmission(
 
   if (outcome === "approved") {
     const next = NEXT_STAGE_ON_APPROVAL[currentStage];
-    if (next) return advanceProjectStage(projectId, next);
+    if (next) {
+      if (currentStage === "proposal_development" && !(await isProposalDevelopmentFullyApproved(projectId))) {
+        return { ok: true };
+      }
+      return advanceProjectStage(projectId, next);
+    }
   }
   return { ok: true };
 }

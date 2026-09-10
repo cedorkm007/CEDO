@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { Plus, Pencil, FileEdit } from "lucide-react";
-import { fetchMyProjects, fetchStageSubmissionsForProjects, STATUS_REMARKS, STAGE_LABELS, type ResearchProject, type StageSubmission } from "../../researchProjectApi";
+import {
+  fetchMyProjects, fetchStageSubmissionsForProjects, computeProposalDevFormStatuses,
+  STATUS_REMARKS, STAGE_LABELS, PROPOSAL_DEV_FORM_KEYS, PROPOSAL_DEV_FORM_LABELS,
+  type ResearchProject, type StageSubmission,
+} from "../../researchProjectApi";
 import { ConceptFormModal } from "../../components/ConceptFormModal";
 import { ProposalDevelopmentWizard } from "../../components/ProposalDevelopmentWizard";
 
@@ -20,7 +24,7 @@ export function MyProposalsSubtab() {
   const [submissions, setSubmissions] = useState<StageSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<{ project: ResearchProject; submission: StageSubmission } | "new" | null>(null);
-  const [developing, setDeveloping] = useState<{ project: ResearchProject; submission: StageSubmission | null } | null>(null);
+  const [developing, setDeveloping] = useState<ResearchProject | null>(null);
 
   async function load() {
     setLoading(true);
@@ -32,8 +36,32 @@ export function MyProposalsSubtab() {
 
   useEffect(() => { load(); }, []);
 
+  // Concept has exactly one form ("main") — a single submission is enough.
   function currentSubmissionFor(project: ResearchProject): StageSubmission | null {
     return submissions.find(s => s.projectId === project.id && s.stage === project.currentStage) ?? null;
+  }
+
+  function proposalDevSubmissionsFor(project: ResearchProject): StageSubmission[] {
+    return submissions.filter(s => s.projectId === project.id && s.stage === "proposal_development");
+  }
+
+  /** Proposal Development's "Status"/"Remarks" columns show the form that's actually blocking progress right now, plus how many of the 6 are done. */
+  function proposalDevProgressFor(project: ResearchProject): { label: string; badgeClass: string; remarks: string } | null {
+    const projectSubmissions = proposalDevSubmissionsFor(project);
+    const statuses = computeProposalDevFormStatuses(projectSubmissions);
+    const approvedCount = PROPOSAL_DEV_FORM_KEYS.filter(k => statuses[k] === "approved").length;
+    const activeKey = PROPOSAL_DEV_FORM_KEYS.find(k => statuses[k] !== "approved");
+    if (!activeKey) return null; // all 6 approved — project will have already moved to Implementation
+    const activeStatus = statuses[activeKey];
+    const progress = `(${approvedCount}/${PROPOSAL_DEV_FORM_KEYS.length} forms approved)`;
+    if (activeStatus === "editable") {
+      return { label: "Not yet submitted", badgeClass: "text-slate-500 bg-slate-100", remarks: `${PROPOSAL_DEV_FORM_LABELS[activeKey]} ${progress}` };
+    }
+    return {
+      label: STATUS_LABELS[activeStatus as StageSubmission["status"]],
+      badgeClass: STATUS_BADGE_CLASSES[activeStatus as StageSubmission["status"]],
+      remarks: `${PROPOSAL_DEV_FORM_LABELS[activeKey]} ${progress}`,
+    };
   }
 
   // "My Proposals" tracks projects still moving through Concept/Proposal
@@ -69,7 +97,8 @@ export function MyProposalsSubtab() {
                 <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-400">You haven't submitted any research proposals yet.</td></tr>
               ) : (
                 activeProjects.map(project => {
-                  const submission = currentSubmissionFor(project);
+                  const submission = project.currentStage === "concept" ? currentSubmissionFor(project) : null;
+                  const proposalDevProgress = project.currentStage === "proposal_development" ? proposalDevProgressFor(project) : null;
                   return (
                     <tr key={project.id} className="border-t border-[#f0f3f8]">
                       <td className="px-4 py-3 font-semibold text-[#062444]">
@@ -81,11 +110,15 @@ export function MyProposalsSubtab() {
                           <span className={`inline-block rounded-full px-2.5 py-0.5 font-bold ${STATUS_BADGE_CLASSES[submission.status]}`}>
                             {STATUS_LABELS[submission.status]}
                           </span>
-                        ) : project.currentStage === "proposal_development" ? (
-                          <span className="inline-block rounded-full px-2.5 py-0.5 font-bold text-slate-500 bg-slate-100">Not yet submitted</span>
+                        ) : proposalDevProgress ? (
+                          <span className={`inline-block rounded-full px-2.5 py-0.5 font-bold ${proposalDevProgress.badgeClass}`}>
+                            {proposalDevProgress.label}
+                          </span>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3 text-slate-500">{submission ? STATUS_REMARKS[submission.status] : ""}</td>
+                      <td className="px-4 py-3 text-slate-500">
+                        {submission ? STATUS_REMARKS[submission.status] : proposalDevProgress ? proposalDevProgress.remarks : ""}
+                      </td>
                       <td className="px-4 py-3">
                         {submission?.status === "returned" && project.currentStage === "concept" && (
                           <button onClick={() => setEditing({ project, submission })} className="flex items-center gap-1 text-[#0088cc] font-semibold hover:underline">
@@ -97,14 +130,9 @@ export function MyProposalsSubtab() {
                             Fill Proposal Development
                           </button>
                         )}
-                        {project.currentStage === "proposal_development" && !submission && (
-                          <button onClick={() => setDeveloping({ project, submission: null })} className="flex items-center gap-1 text-[#0088cc] font-semibold hover:underline">
-                            <FileEdit size={12} /> Fill Proposal Development
-                          </button>
-                        )}
-                        {project.currentStage === "proposal_development" && submission?.status === "returned" && (
-                          <button onClick={() => setDeveloping({ project, submission })} className="flex items-center gap-1 text-[#0088cc] font-semibold hover:underline">
-                            <Pencil size={12} /> Edit
+                        {project.currentStage === "proposal_development" && (
+                          <button onClick={() => setDeveloping(project)} className="flex items-center gap-1 text-[#0088cc] font-semibold hover:underline">
+                            <FileEdit size={12} /> {proposalDevProgress?.label === "Not yet submitted" ? "Fill Proposal Development" : "Continue Proposal Development"}
                           </button>
                         )}
                       </td>
@@ -127,8 +155,8 @@ export function MyProposalsSubtab() {
 
       {developing && (
         <ProposalDevelopmentWizard
-          project={developing.project}
-          existing={developing.submission}
+          project={developing}
+          existingSubmissions={proposalDevSubmissionsFor(developing)}
           onClose={() => setDeveloping(null)}
           onSaved={() => { setDeveloping(null); load(); }}
         />

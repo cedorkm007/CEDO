@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { X, CheckCircle2, AlertCircle } from "lucide-react";
+import { X, CheckCircle2, AlertCircle, Clock, Lock } from "lucide-react";
 import {
-  reviewStageSubmission, STAGE_LABELS,
-  type ResearchProject, type StageSubmission, type ProposalDevelopmentFormData,
+  reviewStageSubmission, computeProposalDevFormStatuses, STAGE_LABELS, PROPOSAL_DEV_FORM_KEYS, PROPOSAL_DEV_FORM_LABELS,
+  type ResearchProject, type StageSubmission, type ProposalDevelopmentFormData, type ProposalDevFormKey,
 } from "../researchProjectApi";
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -31,55 +31,129 @@ function Pills({ items }: { items: string[] }) {
   );
 }
 
-function ProposalDevelopmentReadout({ data }: { data: ProposalDevelopmentFormData }) {
+/** Renders just the fields one Proposal Development form is responsible for — mirrors sliceForStep in ProposalDevelopmentWizard.tsx. */
+function ProposalDevFormReadout({ formKey, data }: { formKey: ProposalDevFormKey; data: Partial<ProposalDevelopmentFormData> }) {
+  switch (formKey) {
+    case "statement":
+      return <Field label="Statement of the Problem" value={data.statementOfProblem} />;
+    case "objectives":
+      return (
+        <>
+          <Field label="Main Objective" value={data.mainObjective} />
+          <Field label="Specific Objectives" value={data.objectives?.map((o, i) => `${i + 1}. ${o.text}`).join("\n")} />
+        </>
+      );
+    case "methodology": {
+      const m = data.methodology;
+      if (!m) return null;
+      return (
+        <>
+          <Field label="Approach" value={m.approach} />
+          <Field label="Design" value={m.design} />
+          <Field label="Population" value={m.population} />
+          <Field label="Sampling" value={m.sampling} />
+          <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1 mt-2">Data Sources</p>
+          <Pills items={m.dataSources ?? []} />
+          <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1 mt-2">Data Collection Methods</p>
+          <Pills items={m.dataCollectionMethods ?? []} />
+          <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1 mt-2">Data Analysis</p>
+          <Pills items={m.dataAnalysis ?? []} />
+        </>
+      );
+    }
+    case "workPlan":
+      return (
+        <>
+          <Field label="Timeframe" value={data.workPlanStart && data.workPlanEnd ? `${data.workPlanStart} to ${data.workPlanEnd}` : ""} />
+          <Field label="Work Plan Activities" value={data.workPlanActivities?.map(a => `${a.activity} (${a.days} day(s)) — ${a.deliverable}`).join("\n")} />
+        </>
+      );
+    case "budget":
+      return (
+        <>
+          <Field label="Total Budget" value={data.budgetTotal ? `₱${data.budgetTotal}` : ""} />
+          <Field label="Budget Items" value={data.budgetItems?.map(b => `${b.quantity} ${b.unit} — ${b.specification} @ ₱${b.unitCost} = ₱${b.subtotal}`).join("\n")} />
+        </>
+      );
+    case "outputs":
+      return (
+        <>
+          <Field label="Expected Outputs" value={data.expectedOutputs?.map((o, i) => `${i + 1}. ${o.text}`).join("\n")} />
+          <Field label="Expected Outcomes" value={data.expectedOutcomes?.map((o, i) => `${i + 1}. ${o.text}`).join("\n")} />
+        </>
+      );
+  }
+}
+
+/** One review card for a single stage/form submission — the shared UI for both Concept's one form and each of Proposal Development's 6. */
+function SubmissionReviewCard({
+  title, submission, readout, locked, onReviewed,
+}: { title: string; submission: StageSubmission | null; readout: React.ReactNode; locked?: boolean; onReviewed: (submissionId: string, outcome: "approved" | "returned", comment: string) => Promise<{ ok: boolean; error?: string }> }) {
+  const [comment, setComment] = useState(submission?.evaluatorComment ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function decide(outcome: "approved" | "returned") {
+    if (!submission) return;
+    if (outcome === "returned" && !comment.trim()) { setError("Add a comment explaining what needs revision."); return; }
+    setBusy(true);
+    setError("");
+    const result = await onReviewed(submission.id, outcome, comment.trim());
+    setBusy(false);
+    if (!result.ok) setError(result.error || "Couldn't save the review.");
+  }
+
   return (
-    <>
-      <Field label="Statement of the Problem" value={data.statementOfProblem} />
-      <Field label="Main Objective" value={data.mainObjective} />
-      <Field label="Specific Objectives" value={data.objectives.map((o, i) => `${i + 1}. ${o.text}`).join("\n")} />
-
-      <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1 mt-3">Methodology</p>
-      <Field label="Approach" value={data.methodology.approach} />
-      <Field label="Design" value={data.methodology.design} />
-      <Field label="Population" value={data.methodology.population} />
-      <Field label="Sampling" value={data.methodology.sampling} />
-      <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1 mt-2">Data Sources</p>
-      <Pills items={data.methodology.dataSources} />
-      <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1 mt-2">Data Collection Methods</p>
-      <Pills items={data.methodology.dataCollectionMethods} />
-      <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1 mt-2">Data Analysis</p>
-      <Pills items={data.methodology.dataAnalysis} />
-
-      <Field label="Timeframe" value={data.workPlanStart && data.workPlanEnd ? `${data.workPlanStart} to ${data.workPlanEnd}` : ""} />
-      <Field label="Work Plan Activities" value={data.workPlanActivities.map(a => `${a.activity} (${a.days} day(s)) — ${a.deliverable}`).join("\n")} />
-
-      <Field label="Total Budget" value={data.budgetTotal ? `₱${data.budgetTotal}` : ""} />
-      <Field label="Budget Items" value={data.budgetItems.map(b => `${b.quantity} ${b.unit} — ${b.specification} @ ₱${b.unitCost} = ₱${b.subtotal}`).join("\n")} />
-
-      <Field label="Expected Outputs" value={data.expectedOutputs.map((o, i) => `${i + 1}. ${o.text}`).join("\n")} />
-      <Field label="Expected Outcomes" value={data.expectedOutcomes.map((o, i) => `${i + 1}. ${o.text}`).join("\n")} />
-    </>
+    <Section title={title}>
+      {!submission ? (
+        <p className="text-[12.5px] text-slate-400 italic flex items-center gap-1.5">
+          {locked ? <><Lock size={13} /> Not reached yet — an earlier form is still pending.</> : "The researcher hasn't submitted this form yet."}
+        </p>
+      ) : (
+        <>
+          {readout}
+          {submission.status === "under_review" ? (
+            <div className="mt-2">
+              {error && <p className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg mb-3">{error}</p>}
+              <textarea value={comment} onChange={e => setComment(e.target.value)} rows={3}
+                placeholder="Comment (required to return for revision — shown to the researcher)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F3BC00] bg-white resize-none mb-3" />
+              <div className="flex gap-2">
+                <button type="button" disabled={busy} onClick={() => void decide("approved")}
+                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-[12.5px] font-bold text-white disabled:opacity-50">
+                  <CheckCircle2 size={14} /> Approve
+                </button>
+                <button type="button" disabled={busy} onClick={() => void decide("returned")}
+                  className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-[12.5px] font-bold text-white disabled:opacity-50">
+                  <AlertCircle size={14} /> Return for Revision
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[12.5px] text-slate-500 mt-1 flex items-center gap-1.5">
+              {submission.status === "approved" ? <CheckCircle2 size={13} className="text-emerald-600" /> : <AlertCircle size={13} className="text-red-500" />}
+              {submission.status === "approved" ? "Approved" : "Returned for revision"}
+              {submission.reviewedAt ? ` on ${new Date(submission.reviewedAt).toLocaleString()}` : ""}.
+              {submission.evaluatorComment && <span className="italic">"{submission.evaluatorComment}"</span>}
+            </p>
+          )}
+        </>
+      )}
+    </Section>
   );
 }
 
 export function ProjectReviewModal({
   project, submissions, onClose, onReviewed,
 }: { project: ResearchProject; submissions: StageSubmission[]; onClose: () => void; onReviewed: () => void }) {
-  const activeSubmission = submissions.find(s => s.stage === project.currentStage) ?? null;
-  const proposalDevSubmission = submissions.find(s => s.stage === "proposal_development") ?? null;
-  const [comment, setComment] = useState(activeSubmission?.evaluatorComment ?? "");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const conceptSubmission = submissions.find(s => s.stage === "concept") ?? null;
+  const proposalDevSubmissions = submissions.filter(s => s.stage === "proposal_development");
+  const proposalDevStatuses = computeProposalDevFormStatuses(proposalDevSubmissions);
 
-  async function decide(outcome: "approved" | "returned") {
-    if (!activeSubmission) return;
-    if (outcome === "returned" && !comment.trim()) { setError("Add a comment explaining what needs revision."); return; }
-    setBusy(true);
-    setError("");
-    const result = await reviewStageSubmission(activeSubmission.id, project.id, project.currentStage, outcome, comment.trim());
-    setBusy(false);
-    if (!result.ok) { setError(result.error || "Couldn't save the review."); return; }
-    onReviewed();
+  async function decide(submissionId: string, outcome: "approved" | "returned", comment: string) {
+    const result = await reviewStageSubmission(submissionId, project.id, project.currentStage, outcome, comment);
+    if (result.ok) onReviewed();
+    return result;
   }
 
   return (
@@ -104,41 +178,36 @@ export function ProjectReviewModal({
             <Field label="Expected Outcomes (Summary)" value={project.expectedOutcomesSummary} />
           </Section>
 
-          {proposalDevSubmission && Object.keys(proposalDevSubmission.formData).length > 0 && (
-            <Section title="Proposal Development">
-              <ProposalDevelopmentReadout data={proposalDevSubmission.formData as unknown as ProposalDevelopmentFormData} />
-            </Section>
+          {project.currentStage === "concept" && (
+            conceptSubmission ? (
+              <SubmissionReviewCard
+                title="Review — Concept"
+                submission={conceptSubmission}
+                readout={null}
+                onReviewed={(id, outcome, comment) => decide(id, outcome, comment)}
+              />
+            ) : (
+              <p className="text-[12.5px] text-slate-400 italic">The researcher hasn't submitted this stage yet.</p>
+            )
           )}
 
-          {activeSubmission ? (
-            activeSubmission.status === "under_review" ? (
-              <Section title={`Review — ${STAGE_LABELS[project.currentStage]}`}>
-                {error && <p className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg mb-3">{error}</p>}
-                <textarea value={comment} onChange={e => setComment(e.target.value)} rows={3}
-                  placeholder="Comment (required to return for revision — shown to the researcher)"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F3BC00] bg-white resize-none mb-3" />
-                <div className="flex gap-2">
-                  <button type="button" disabled={busy} onClick={() => void decide("approved")}
-                    className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-[12.5px] font-bold text-white disabled:opacity-50">
-                    <CheckCircle2 size={14} /> Approve
-                  </button>
-                  <button type="button" disabled={busy} onClick={() => void decide("returned")}
-                    className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-[12.5px] font-bold text-white disabled:opacity-50">
-                    <AlertCircle size={14} /> Return for Revision
-                  </button>
-                </div>
-              </Section>
-            ) : (
-              <Section title={`Review — ${STAGE_LABELS[project.currentStage]}`}>
-                <p className="text-[12.5px] text-slate-500 mb-1">
-                  {activeSubmission.status === "approved" ? "Approved" : "Returned for revision"}
-                  {activeSubmission.reviewedAt ? ` on ${new Date(activeSubmission.reviewedAt).toLocaleString()}` : ""}.
-                </p>
-                {activeSubmission.evaluatorComment && <p className="text-[12.5px] text-slate-600 italic">"{activeSubmission.evaluatorComment}"</p>}
-              </Section>
-            )
-          ) : (
-            <p className="text-[12.5px] text-slate-400 italic">The researcher hasn't submitted this stage yet.</p>
+          {project.currentStage === "proposal_development" && PROPOSAL_DEV_FORM_KEYS.map(key => {
+            const submission = proposalDevSubmissions.find(s => s.formKey === key) ?? null;
+            const locked = proposalDevStatuses[key] === "locked";
+            return (
+              <SubmissionReviewCard
+                key={key}
+                title={`${PROPOSAL_DEV_FORM_LABELS[key]}${locked ? " (locked)" : ""}`}
+                submission={submission}
+                locked={locked}
+                readout={submission ? <ProposalDevFormReadout formKey={key} data={submission.formData as Partial<ProposalDevelopmentFormData>} /> : null}
+                onReviewed={(id, outcome, comment) => decide(id, outcome, comment)}
+              />
+            );
+          })}
+
+          {project.currentStage !== "concept" && project.currentStage !== "proposal_development" && (
+            <p className="text-[12.5px] text-slate-400 italic flex items-center gap-1.5"><Clock size={13} /> No form is defined for {STAGE_LABELS[project.currentStage]} yet.</p>
           )}
         </div>
       </div>

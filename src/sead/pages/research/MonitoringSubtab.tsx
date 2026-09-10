@@ -1,25 +1,40 @@
 import { useEffect, useState } from "react";
 import { FolderKanban } from "lucide-react";
 import {
-  fetchAllResearchProjectsForEvaluator, fetchStageSubmissionsForProjects, STAGE_LABELS,
+  fetchAllResearchProjectsForEvaluator, fetchStageSubmissionsForProjects, computeProposalDevFormStatuses,
+  STAGE_LABELS, PROPOSAL_DEV_FORM_KEYS,
   type ResearchProject, type StageSubmission,
 } from "../../researchProjectApi";
 import { ProjectReviewModal } from "../../components/ProjectReviewModal";
 
 type DashboardStatus = "Completed" | "For Review" | "Active";
 
+/** For proposal_development (up to 6 independent forms), the stage this project's own submissions are actually in right now — the one form that's under_review, returned, or not yet submitted, since only one is ever open at a time (see computeProposalDevFormStatuses' sequential gating). undefined once every form is approved (the project will have already advanced to Implementation by then). */
+function activeProposalDevStatus(projectId: string, submissions: StageSubmission[]): StageSubmission["status"] | "not_submitted" | undefined {
+  const projectSubmissions = submissions.filter(s => s.projectId === projectId && s.stage === "proposal_development");
+  const statuses = computeProposalDevFormStatuses(projectSubmissions);
+  const activeKey = PROPOSAL_DEV_FORM_KEYS.find(k => statuses[k] !== "approved");
+  if (!activeKey) return undefined;
+  const activeStatus = statuses[activeKey];
+  return activeStatus === "under_review" || activeStatus === "returned" ? activeStatus : "not_submitted";
+}
+
 function statusFor(project: ResearchProject, submissions: StageSubmission[]): DashboardStatus {
   if (project.currentStage === "implementation") return "Completed";
-  const active = submissions.find(s => s.stage === project.currentStage);
-  if (active?.status === "under_review") return "For Review";
+  const active = project.currentStage === "proposal_development"
+    ? activeProposalDevStatus(project.id, submissions)
+    : submissions.find(s => s.stage === project.currentStage)?.status;
+  if (active === "under_review") return "For Review";
   return "Active";
 }
 
 function nextActionFor(project: ResearchProject, submissions: StageSubmission[], status: DashboardStatus): string {
   if (status === "Completed") return "—";
   if (status === "For Review") return "Review submission";
-  const active = submissions.find(s => s.stage === project.currentStage);
-  if (active?.status === "returned") return "Waiting on researcher's revision";
+  const active = project.currentStage === "proposal_development"
+    ? activeProposalDevStatus(project.id, submissions)
+    : submissions.find(s => s.stage === project.currentStage)?.status;
+  if (active === "returned") return "Waiting on researcher's revision";
   return "Waiting on researcher's submission";
 }
 
