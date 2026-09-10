@@ -7,7 +7,7 @@ import {
   fetchAttendanceForActivity, creditAttendance, removeAttendance,
   fetchAllScholarsSDPChecklist,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
-  type SDPActivity, type SDPStatus, type SDPCategory, type SDPActivityType, type AttendanceEntry, type ScholarSDPChecklist,
+  type SDPActivity, type SDPCategory, type SDPActivityType, type AttendanceEntry, type ScholarSDPChecklist,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
 } from "../sdpMonitorApi";
 import { SDP_CATEGORIES } from "@/scholar/sdpApi";
@@ -18,13 +18,6 @@ import { useUrlState } from "@/app/useUrlState";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
 import { ExportButton } from "@/app/components/ExportButtons";
 import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
-
-const STATUS_OPTIONS: SDPStatus[] = ["pending", "approved", "ongoing", "finished", "canceled", "rescheduled"];
-
-const statusColors: Record<SDPStatus, string> = {
-  finished: "bg-green-500", ongoing: "bg-blue-500", approved: "bg-[#F3BC00] text-[#062444]",
-  pending: "bg-orange-400", canceled: "bg-red-500", rescheduled: "bg-purple-500",
-};
 
 function categoryLabel(category: SDPCategory | null): string {
   return SDP_CATEGORIES.find(c => c.key === category)?.label ?? "No category set";
@@ -37,14 +30,6 @@ function localDatePart(value: string): string {
 function localTimePart(value: string): string {
   const date = new Date(value);
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-}
-
-function StatusBadge({ status }: { status: SDPStatus }) {
-  return (
-    <span className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-bold text-white ${statusColors[status]}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </span>
-  );
 }
 
 function CategorySelect({ value, onChange }: { value: SDPCategory | null; onChange: (v: SDPCategory) => void }) {
@@ -114,7 +99,7 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
           <button onClick={onClose} className="text-white/70 hover:text-white"><X size={18} /></button>
         </div>
         <div className="p-6 space-y-3">
-          <p className="text-[12.5px] text-slate-500 mb-1">Open to all scholars immediately, starting as "Approved" — no scholar proposal needed.</p>
+          <p className="text-[12.5px] text-slate-500 mb-1">Open to all scholars immediately once created.</p>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Activity name"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
           <div>
@@ -528,7 +513,6 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   const [organization, setOrganization] = useState(activity.organization);
   const [dateTime, setDateTime] = useState(activity.dateTime ? `${localDatePart(activity.dateTime)}T${localTimePart(activity.dateTime)}` : "");
   const [venue, setVenue] = useState(activity.venue);
-  const [status, setStatus] = useState<SDPStatus>(activity.status);
   const [projectHead, setProjectHead] = useState(activity.projectHead);
   const [headCluster, setHeadCluster] = useState(activity.headCluster);
   const [category, setCategory] = useState<SDPCategory | null>(activity.category);
@@ -572,7 +556,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
     if (!credits.trim() || creditsValue < 1) { setError("Enter how many credits scholars earn per attendance."); return; }
     setBusy(true);
     const result = await updateSDPActivity(activity.id, {
-      status, projectHead, headCluster, category, recurringDates, credits: creditsValue,
+      projectHead, headCluster, category, recurringDates, credits: creditsValue,
       name: name.trim(), organization: organization.trim(), venue: venue.trim(),
       dateTime: dateTime ? new Date(dateTime).toISOString() : null,
     });
@@ -705,19 +689,6 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
               <input type="number" min={1} value={credits} onChange={e => setCredits(e.target.value)}
                 className="w-32 border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
             </div>
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Status</label>
-              <div className="flex flex-wrap gap-1.5">
-                {STATUS_OPTIONS.map(s => (
-                  <button key={s} onClick={() => setStatus(s)}
-                    className={`px-3 py-1.5 rounded-lg border text-[12px] font-bold transition-all ${
-                      status === s ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"
-                    }`}>
-                    {s.charAt(0).toUpperCase() + s.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-semibold text-slate-500 mb-1">Project Head</label>
@@ -773,7 +744,7 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** One activity row — pubmat thumbnail (or a placeholder icon), name, org/submitter. No status shown here; status stays in the activity's own detail modal. */
+/** One activity row — pubmat thumbnail (or a placeholder icon), name, org/submitter. */
 function ActivityRow({ activity, onSelect }: { activity: SDPActivity; onSelect: (a: SDPActivity) => void }) {
   const pubmat = pubmatUrl(activity.pubmatPath);
   return (
@@ -841,14 +812,11 @@ function ActivitiesSection() {
   });
 
   const uncategorized = filtered.filter(a => !a.category);
-  const pendingCount = activities.filter(a => a.status === "pending").length;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <p className="text-sm text-muted-foreground">
-          Review scholars' SDP activity proposals and manage staff-created activities. {pendingCount > 0 && <span className="font-semibold text-orange-500">{pendingCount} pending review.</span>}
-        </p>
+        <p className="text-sm text-muted-foreground">Manage staff-created SDP activities.</p>
         <button onClick={() => setShowNew(true)}
           className="flex items-center gap-2 bg-gradient-to-br from-[#062444] to-[#0a3a6b] text-white text-[13px] font-semibold rounded-lg px-4 py-2.5 shrink-0 ml-4">
           <Plus size={15} /> New Approved Activity

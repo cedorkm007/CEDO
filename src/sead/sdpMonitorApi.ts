@@ -1,11 +1,11 @@
 import { supabase } from "@/lib/supabase";
-import type { SDPActivity, SDPStatus, SDPCategory, SDPActivityType, RecurringOccurrence } from "@/scholar/sdpApi";
+import type { SDPActivity, SDPCategory, SDPActivityType, RecurringOccurrence } from "@/scholar/sdpApi";
 
 // Re-export so consumers of this module don't also need to import from
 // src/scholar/sdpApi directly — same underlying `sdp_activities` table,
 // just accessed here with staff (sdp_monitoring tag) RLS instead of
 // scholar RLS.
-export type { SDPActivity, SDPStatus, SDPCategory, SDPActivityType, RecurringOccurrence };
+export type { SDPActivity, SDPCategory, SDPActivityType, RecurringOccurrence };
 
 function rowToActivity(r: Record<string, unknown>): SDPActivity {
   return {
@@ -19,7 +19,6 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     venue: String(r.venue ?? ""),
     projectHead: String(r.project_head ?? ""),
     headCluster: String(r.head_cluster ?? ""),
-    status: r.status as SDPStatus,
     budgetaryRequirement: String(r.budgetary_requirement ?? ""),
     sourceOfFund: (r.source_of_fund as string[]) ?? [],
     sourceOfFundOther: String(r.source_of_fund_other ?? ""),
@@ -50,13 +49,12 @@ export async function fetchAllSDPActivities(): Promise<SDPActivity[]> {
 
 export async function updateSDPActivity(
   id: string, fields: {
-    status: SDPStatus; projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: RecurringOccurrence[]; credits?: number;
+    projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: RecurringOccurrence[]; credits?: number;
     name?: string; organization?: string; venue?: string; dateTime?: string | null;
   }
 ): Promise<{ ok: boolean; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
   const { error } = await supabase.from("sdp_activities").update({
-    status: fields.status,
     project_head: fields.projectHead,
     head_cluster: fields.headCluster,
     category: fields.category,
@@ -98,7 +96,7 @@ function localDateTimeToIso(value: string): string | null {
   return Number.isNaN(date.getTime()) ? value : date.toISOString();
 }
 
-/** Staff can create an activity directly (no scholar proposal), open to all — starts 'approved'. */
+/** Staff can create an activity directly — open to every scholar immediately, no review/approval step. */
 export async function createApprovedActivity(input: NewApprovedActivityInput): Promise<{ ok: boolean; error?: string; id?: string }> {
   const { data, error } = await supabase.from("sdp_activities").insert({
     name: input.name,
@@ -110,7 +108,6 @@ export async function createApprovedActivity(input: NewApprovedActivityInput): P
     nature: input.nature,
     activity_type: input.activityType,
     credits: input.credits,
-    status: "approved",
   }).select("id").single();
   return error ? { ok: false, error: error.message } : { ok: true, id: data.id };
 }
@@ -204,11 +201,11 @@ export interface SDPHistoryRow {
   date: string; // "" if unset
 }
 
-/** Attended (credited) vs. Available (approved/ongoing, not yet attended) activities for one scholar. */
+/** Attended (credited) vs. Available (not yet attended) activities for one scholar. */
 export async function fetchScholarSDPHistory(scholarIdNumber: string): Promise<{ attended: SDPHistoryRow[]; available: SDPHistoryRow[] }> {
   const [{ data: attendanceRows }, { data: openActivities }] = await Promise.all([
     supabase.from("sdp_attendance").select("activity_id, attended_date, sdp_activities(name, category)").eq("scholar_id_number", scholarIdNumber),
-    supabase.from("sdp_activities").select("id, name, category, date_time").in("status", ["approved", "ongoing"]),
+    supabase.from("sdp_activities").select("id, name, category, date_time"),
   ]);
 
   const attended: SDPHistoryRow[] = (attendanceRows ?? []).map((r: Record<string, unknown>) => {
