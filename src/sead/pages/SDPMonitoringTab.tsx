@@ -30,6 +30,15 @@ function categoryLabel(category: SDPCategory | null): string {
   return SDP_CATEGORIES.find(c => c.key === category)?.label ?? "No category set";
 }
 
+function localDatePart(value: string): string {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+function localTimePart(value: string): string {
+  const date = new Date(value);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
 function StatusBadge({ status }: { status: SDPStatus }) {
   return (
     <span className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-bold text-white ${statusColors[status]}`}>
@@ -515,6 +524,10 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
 
 function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; onClose: () => void; onChanged: () => void }) {
   const [tab, setTab] = useState<"details" | "attendance">("details");
+  const [name, setName] = useState(activity.name);
+  const [organization, setOrganization] = useState(activity.organization);
+  const [dateTime, setDateTime] = useState(activity.dateTime ? `${localDatePart(activity.dateTime)}T${localTimePart(activity.dateTime)}` : "");
+  const [venue, setVenue] = useState(activity.venue);
   const [status, setStatus] = useState<SDPStatus>(activity.status);
   const [projectHead, setProjectHead] = useState(activity.projectHead);
   const [headCluster, setHeadCluster] = useState(activity.headCluster);
@@ -553,11 +566,16 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
 
   async function handleSave() {
     setError("");
+    if (!name.trim()) { setError("Enter an activity name."); return; }
     if (!category) { setError("Choose which SDP category this activity counts toward."); return; }
     const creditsValue = Number(credits);
     if (!credits.trim() || creditsValue < 1) { setError("Enter how many credits scholars earn per attendance."); return; }
     setBusy(true);
-    const result = await updateSDPActivity(activity.id, { status, projectHead, headCluster, category, recurringDates, credits: creditsValue });
+    const result = await updateSDPActivity(activity.id, {
+      status, projectHead, headCluster, category, recurringDates, credits: creditsValue,
+      name: name.trim(), organization: organization.trim(), venue: venue.trim(),
+      dateTime: dateTime ? new Date(dateTime).toISOString() : null,
+    });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save."); return; }
     onChanged();
@@ -581,7 +599,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
         <div className="flex items-start justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-5 rounded-t-2xl">
           <div>
             <p className="text-[#F3BC00] text-[11px] font-bold uppercase tracking-wide mb-1">SDP Activity</p>
-            <h3 className="text-white font-bold text-lg leading-tight">{activity.name}</h3>
+            <h3 className="text-white font-bold text-lg leading-tight">{name}</h3>
             <p className="text-white/50 text-[11px] mt-1">
               {activity.submittedByScholarId ? `Submitted by Scholar ID ${activity.submittedByScholarId}` : "Staff-created (open to all)"}
             </p>
@@ -598,11 +616,33 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
 
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {tab === "details" && <>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Activity Name</label>
+              <input value={name} onChange={e => setName(e.target.value)}
+                className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Organization</label>
+                <input value={organization} onChange={e => setOrganization(e.target.value)}
+                  className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Date / Time</label>
+                <input type="datetime-local" value={dateTime} onChange={e => setDateTime(e.target.value)}
+                  className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Venue</label>
+                <input value={venue} onChange={e => setVenue(e.target.value)}
+                  className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3 text-[13px]">
-            <Field label="Organization" value={activity.organization} />
             <Field label="Nature" value={activity.nature.join(", ")} />
-            <Field label="Date / Time" value={activity.dateTime ? new Date(activity.dateTime).toLocaleString() : "—"} />
-            <Field label="Venue" value={activity.venue} />
             <Field label="Type of Activity" value={activity.activityType === "recurring" ? "Recurring" : "One-time"} />
             <Field label="Budget" value={activity.budgetaryRequirement ? `₱${activity.budgetaryRequirement}` : "—"} />
             <Field label="Source of Fund" value={activity.sourceOfFund.join(", ") || "—"} />

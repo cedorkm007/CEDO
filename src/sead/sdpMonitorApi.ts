@@ -49,7 +49,10 @@ export async function fetchAllSDPActivities(): Promise<SDPActivity[]> {
 }
 
 export async function updateSDPActivity(
-  id: string, fields: { status: SDPStatus; projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: RecurringOccurrence[]; credits?: number }
+  id: string, fields: {
+    status: SDPStatus; projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: RecurringOccurrence[]; credits?: number;
+    name?: string; organization?: string; venue?: string; dateTime?: string | null;
+  }
 ): Promise<{ ok: boolean; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
   const { error } = await supabase.from("sdp_activities").update({
@@ -59,6 +62,10 @@ export async function updateSDPActivity(
     category: fields.category,
     ...(fields.recurringDates ? { recurring_dates: fields.recurringDates } : {}),
     ...(fields.credits !== undefined ? { credits: fields.credits } : {}),
+    ...(fields.name !== undefined ? { name: fields.name } : {}),
+    ...(fields.organization !== undefined ? { organization: fields.organization } : {}),
+    ...(fields.venue !== undefined ? { venue: fields.venue } : {}),
+    ...(fields.dateTime !== undefined ? { date_time: fields.dateTime } : {}),
     reviewed_by: auth.user?.id ?? null,
     reviewed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
