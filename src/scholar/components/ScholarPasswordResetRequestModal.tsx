@@ -32,8 +32,8 @@ export function ScholarPasswordResetRequestModal({ onClose }: { onClose: () => v
     const result = await selfResetScholarPassword({ scholarIdNumber: scholarId.trim(), lastName: lastName.trim(), firstName: firstName.trim() });
     setBusy(false);
     if (!result.ok) { setError(result.error); return; }
-    if (result.reset) { setResetPassword(result.newPassword); return; }
-    if (result.needsAnswer) { setSecurityQuestion(result.question); return; }
+    if ("reset" in result) { setResetPassword(result.newPassword); return; }
+    if ("needsAnswer" in result) { setSecurityQuestion(result.question); return; }
   }
 
   async function submitAnswer(e: React.FormEvent) {
@@ -50,7 +50,7 @@ export function ScholarPasswordResetRequestModal({ onClose }: { onClose: () => v
       if (result.needsAnswer && result.question) setSecurityQuestion(result.question);
       return;
     }
-    if (result.reset) setResetPassword(result.newPassword);
+    if ("reset" in result) setResetPassword(result.newPassword);
   }
 
   return (
