@@ -8,6 +8,7 @@ const SOURCE_LABEL: Record<ScholarAccountLogEntry["source"], string> = {
   single: "Single",
   bulk: "Bulk",
   undo: "Bulk undo",
+  self_service: "Self-service",
 };
 
 const ACTION_META: Record<ScholarAccountLogEntry["action"], { label: string; icon: typeof PlusCircle; className: string }> = {

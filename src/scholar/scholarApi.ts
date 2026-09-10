@@ -72,6 +72,7 @@ function rowToProfile(r: Record<string, unknown>): ScholarProfile {
     country: String(r.country ?? ""),
     zipCode: String(r.zip_code ?? ""),
     status: (r.status as ScholarProfile["status"]) ?? "active",
+    hasSecurityQuestion: !!r.security_question,
   };
 }
 
@@ -299,37 +300,79 @@ export async function changeOwnPassword(currentPassword: string, newPassword: st
   return { ok: true };
 }
 
-export interface PasswordResetRequestInput {
-  scholarId: string; // optional — caller may pass ""
-  lastName: string;
-  firstName: string;
-  middleInitial: string;
-  school: string;
-  yearLevel: string;
+/** Benchmarked against the standard set of security questions used by most account-recovery flows (banks, email providers, etc.) — kept short and hard to guess from a scholar's public profile info. */
+export const SECURITY_QUESTIONS = [
+  "What was the name of your first pet?",
+  "What is your mother's maiden name?",
+  "What elementary school did you attend?",
+  "What was your childhood nickname?",
+  "What is the name of your best friend growing up?",
+  "In what city or town were you born?",
+  "Who is your favorite teacher, and what subject did they teach?",
+];
+
+/** Sets (or replaces) the signed-in scholar's own security question + answer — used later by scholar-self-reset-password to verify their identity without staff involvement. */
+export async function setScholarSecurityQuestion(question: string, answer: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("set_scholar_security_question", { p_question: question, p_answer: answer });
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 /**
- * Submits a manual password-reset request for a scholar who can't log in
- * (the real forgot-password flow isn't functional yet) — recorded by the
- * scholar-password-reset-request Edge Function as a row in a staff-managed
- * Google Sheet for someone to verify and reset by hand. Deliberately
- * callable while signed out (the function is deployed with
- * --no-verify-jwt) — there's no session to invoke this with otherwise.
+ * Shared error-parsing for the two signed-out password-reset Edge
+ * Functions — supabase-js only gives a generic message on a non-2xx
+ * response; the real body (error text, plus any extra fields like
+ * needsAnswer/question) lives in error.context, not the top-level `data`.
  */
-export async function requestScholarPasswordReset(input: PasswordResetRequestInput): Promise<{ ok: boolean; error?: string }> {
-  const { data, error } = await supabase.functions.invoke("scholar-password-reset-request", { body: input });
+async function invokeSignedOutEdgeFunction<T = Record<string, unknown>>(
+  name: string, body: object
+): Promise<{ ok: boolean; error?: string; data?: T }> {
+  const { data, error } = await supabase.functions.invoke(name, { body });
   if (error) {
     let message = error.message;
+    let parsedBody: (T & { error?: string }) | undefined;
     const context = (error as { context?: Response }).context;
     if (context && typeof context.json === "function") {
       try {
-        const parsed = await context.clone().json();
-        if (parsed?.error) message = parsed.error;
+        parsedBody = await context.clone().json();
+        if (parsedBody?.error) message = parsedBody.error;
       } catch { /* not JSON */ }
     }
-    return { ok: false, error: message };
+    return { ok: false, error: message, data: parsedBody };
   }
-  const payload = data as { error?: string } | null;
-  if (payload?.error) return { ok: false, error: payload.error };
-  return { ok: true };
+  const payload = data as (T & { error?: string }) | null;
+  if (payload?.error) return { ok: false, error: payload.error, data: payload };
+  return { ok: true, data: data as T };
 }
+
+export interface SelfResetPasswordInput {
+  scholarIdNumber: string;
+  lastName: string;
+  firstName: string;
+  securityAnswer?: string;
+}
+
+export type SelfResetPasswordResult =
+  | { ok: true; reset: true; newPassword: string }
+  | { ok: true; needsAnswer: true; question: string }
+  | { ok: false; error: string; needsAnswer?: true; question?: string };
+
+/**
+ * Instant self-service password reset — calls scholar-self-reset-password
+ * (deployed with --no-verify-jwt, since there's no session to invoke this
+ * with while locked out). Two-step protocol: call once with just the
+ * identity fields; if the scholar has a security question set, the result
+ * comes back as `needsAnswer` with the question text instead of resetting,
+ * and the caller re-invokes with `securityAnswer` filled in.
+ */
+export async function selfResetScholarPassword(input: SelfResetPasswordInput): Promise<SelfResetPasswordResult> {
+  const result = await invokeSignedOutEdgeFunction<{ reset?: true; newPassword?: string; needsAnswer?: true; question?: string }>(
+    "scholar-self-reset-password", input
+  );
+  if (!result.ok) {
+    return { ok: false, error: result.error || "Couldn't reset your password.", needsAnswer: result.data?.needsAnswer, question: result.data?.question };
+  }
+  if (result.data?.reset) return { ok: true, reset: true, newPassword: result.data.newPassword ?? "123456" };
+  if (result.data?.needsAnswer) return { ok: true, needsAnswer: true, question: result.data.question ?? "" };
+  return { ok: false, error: "Unexpected response." };
+}
+

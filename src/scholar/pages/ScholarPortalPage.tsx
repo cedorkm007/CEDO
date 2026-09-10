@@ -21,6 +21,7 @@ import { fetchScholarSDPCategoryStatus, type SDPCategoryStatus } from "../sdpApi
 import { fetchOwnPositionLabels } from "../formationApi";
 import { CalendarAndActivitiesPanel } from "../components/dashboard/CalendarAndActivitiesPanel";
 import { ChangePasswordModal } from "../components/dashboard/ChangePasswordModal";
+import { SecurityQuestionSetupModal } from "../components/dashboard/SecurityQuestionSetupModal";
 import { NewlyUnlockedModal } from "../components/dashboard/NewlyUnlockedModal";
 import { syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormUnlockNotification } from "../formsApi";
 import { useUrlState } from "@/app/useUrlState";
@@ -54,6 +55,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
   const panel: DashPanelKey | null = panelUrlValue === "home" ? null : panelUrlValue;
   function setPanel(next: DashPanelKey | null) { setPanelUrlValue(next ?? "home"); }
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showSecurityQuestionSetup, setShowSecurityQuestionSetup] = useState(false);
   const [showProfilePopup, setShowProfilePopup] = useState(false);
   const [newlyUnlocked, setNewlyUnlocked] = useState<FormUnlockNotification[]>([]);
   const [pendingSurveys, setPendingSurveys] = useState<PendingSurvey[]>([]);
@@ -78,6 +80,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
       // stale ?panel=... on an unauthenticated load safely shows the
       // sign-in-again screen instead of a broken panel.
       if (p) {
+        setShowSecurityQuestionSetup(!p.hasSecurityQuestion);
         const [g, s, status, pos, unread, pendingSurveysResult, finalizedResult] = await Promise.all([
           fetchSubjectsAndGrades(p.scholarIdNumber), fetchQuestScores(p.scholarIdNumber), fetchScholarSDPCategoryStatus(p.scholarIdNumber),
           fetchOwnPositionLabels(p.scholarIdNumber),
@@ -218,6 +221,12 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
       </div>
 
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+      {showSecurityQuestionSetup && (
+        <SecurityQuestionSetupModal
+          onClose={() => setShowSecurityQuestionSetup(false)}
+          onSaved={() => { setShowSecurityQuestionSetup(false); setProfile(p => p ? { ...p, hasSecurityQuestion: true } : p); }}
+        />
+      )}
       {showProfilePopup && (
         <ProfilePopupModal
           profile={profile}

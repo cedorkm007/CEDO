@@ -27,6 +27,9 @@ export interface ScholarProfile {
   country: string;
   zipCode: string;
   status: "active" | "probation" | "inactive" | "graduated";
+  // Powers the "set a security question" prompt shown after login — see
+  // set_scholar_security_question() / scholar-self-reset-password.
+  hasSecurityQuestion: boolean;
 }
 
 export interface SubjectGrade {

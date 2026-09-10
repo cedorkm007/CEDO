@@ -78,7 +78,7 @@ export interface ScholarAccountLogEntry {
   scholarName: string;
   performedByName: string;
   batchId: string | null;
-  source: "single" | "bulk" | "undo";
+  source: "single" | "bulk" | "undo" | "self_service";
   description: string;
 }
 

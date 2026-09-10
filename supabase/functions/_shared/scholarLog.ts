@@ -8,7 +8,7 @@ export async function getStaffName(admin: SupabaseClient, staffId: string): Prom
 }
 
 export type ScholarLogAction = "added" | "removed" | "reset" | "updated";
-export type ScholarLogSource = "single" | "bulk" | "undo";
+export type ScholarLogSource = "single" | "bulk" | "undo" | "self_service";
 
 /**
  * Records one scholar-account change. Never throws — logging failures
@@ -20,7 +20,8 @@ export async function logScholarChange(admin: SupabaseClient, entry: {
   scholarId: string | null;
   scholarIdNumber: string;
   scholarName: string;
-  performedBy: string;
+  // null for a "self_service" source — no staff member performed it.
+  performedBy: string | null;
   performedByName: string;
   batchId?: string | null;
   source: ScholarLogSource;
