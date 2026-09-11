@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import { X, CheckCircle2, AlertCircle, Clock, ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import {
   reviewStageSubmission, computeProposalDevFormStatuses, STAGE_LABELS, PROPOSAL_DEV_FORM_KEYS, PROPOSAL_DEV_FORM_LABELS,
   type ResearchProject, type StageSubmission, type ProposalDevelopmentFormData, type ProposalDevFormKey,
@@ -28,6 +28,20 @@ function Pills({ items }: { items: string[] }) {
     <div className="flex flex-wrap gap-1.5">
       {items.map(i => <span key={i} className="text-[11.5px] bg-slate-100 text-slate-600 rounded-full px-2.5 py-0.5">{i}</span>)}
     </div>
+  );
+}
+
+function ConceptReadout({ project }: { project: ResearchProject }) {
+  return (
+    <>
+      <Field label="Research Agenda" value={project.researchAgenda} />
+      <Field label="Leader" value={project.leaderName} />
+      <Field label="Members" value={project.members.join(", ")} />
+      <Field label="Stakeholders" value={project.stakeholders} />
+      <Field label="Rationale" value={project.rationale} />
+      <Field label="Significance" value={project.significance} />
+      <Field label="Expected Outcomes (Summary)" value={project.expectedOutcomesSummary} />
+    </>
   );
 }
 
@@ -85,7 +99,9 @@ function ProposalDevFormReadout({ formKey, data }: { formKey: ProposalDevFormKey
   }
 }
 
-/** One review card for a single stage/form submission — the shared UI for both Concept's one form and each of Proposal Development's 6. */
+/** One review card for a single stage/form submission — the shared UI for both Concept's one form and each of Proposal Development's 6.
+ * Doubles as the read-only view for an already-decided (approved/returned) submission: the Approve/Return controls
+ * only render while status is "under_review", so paging back to a past, already-approved section is automatically read-only. */
 function SubmissionReviewCard({
   title, submission, readout, onReviewed,
 }: { title: string; submission: StageSubmission | null; readout: React.ReactNode; onReviewed: (submissionId: string, outcome: "approved" | "returned", comment: string) => Promise<{ ok: boolean; error?: string }> }) {
@@ -141,6 +157,15 @@ function SubmissionReviewCard({
   );
 }
 
+type PageKey = "concept" | ProposalDevFormKey;
+interface ReviewPage {
+  key: PageKey;
+  title: string;
+  submission: StageSubmission | null;
+  readout: React.ReactNode;
+  isCurrent: boolean;
+}
+
 export function ProjectReviewModal({
   project, submissions, onClose, onReviewed,
 }: { project: ResearchProject; submissions: StageSubmission[]; onClose: () => void; onReviewed: () => void }) {
@@ -148,10 +173,32 @@ export function ProjectReviewModal({
   const proposalDevSubmissions = submissions.filter(s => s.stage === "proposal_development");
   const proposalDevStatuses = computeProposalDevFormStatuses(proposalDevSubmissions);
   // Exactly one form is ever "active" at a time (editable/returned/under_review) — everything before it is
-  // already approved and everything after is locked, so that's the only section worth showing the evaluator.
+  // already approved and everything after is locked.
   const currentFormKey = PROPOSAL_DEV_FORM_KEYS.find(k => proposalDevStatuses[k] !== "approved" && proposalDevStatuses[k] !== "locked");
   const approvedCount = PROPOSAL_DEV_FORM_KEYS.filter(k => proposalDevStatuses[k] === "approved").length;
-  const currentFormSubmission = currentFormKey ? proposalDevSubmissions.find(s => s.formKey === currentFormKey) ?? null : null;
+
+  // One page per reviewable section — Concept plus (once reached) each Proposal Development form that has
+  // been submitted at least once. Locked forms have no data yet, so they're left out entirely.
+  const pages: ReviewPage[] = [
+    { key: "concept", title: "Concept", submission: conceptSubmission, readout: <ConceptReadout project={project} />, isCurrent: project.currentStage === "concept" },
+  ];
+  if (project.currentStage === "proposal_development") {
+    for (const key of PROPOSAL_DEV_FORM_KEYS) {
+      if (proposalDevStatuses[key] === "locked") continue;
+      const submission = proposalDevSubmissions.find(s => s.formKey === key) ?? null;
+      pages.push({
+        key,
+        title: PROPOSAL_DEV_FORM_LABELS[key],
+        submission,
+        readout: submission ? <ProposalDevFormReadout formKey={key} data={submission.formData as Partial<ProposalDevelopmentFormData>} /> : null,
+        isCurrent: key === currentFormKey,
+      });
+    }
+  }
+  const defaultIdx = pages.findIndex(p => p.isCurrent);
+  const [pageIdx, setPageIdx] = useState(defaultIdx >= 0 ? defaultIdx : pages.length - 1);
+  const [fullView, setFullView] = useState(false);
+  const activePage = pages[Math.min(pageIdx, pages.length - 1)];
 
   async function decide(submissionId: string, outcome: "approved" | "returned", comment: string) {
     const result = await reviewStageSubmission(submissionId, project.id, project.currentStage, outcome, comment);
@@ -167,56 +214,72 @@ export function ProjectReviewModal({
             <h3 className="text-white font-bold text-[15px]">{project.title}</h3>
             <p className="text-white/60 text-xs mt-0.5">{STAGE_LABELS[project.currentStage]}</p>
           </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white"><X size={18} /></button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setFullView(v => !v)}
+              className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs font-semibold bg-white/10 hover:bg-white/20 rounded-lg px-3 py-1.5">
+              <FileText size={13} /> {fullView ? "Back to Review" : "View Full Proposal"}
+            </button>
+            <button onClick={onClose} className="text-white/70 hover:text-white"><X size={18} /></button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          <Section title="Concept">
-            <Field label="Research Agenda" value={project.researchAgenda} />
-            <Field label="Leader" value={project.leaderName} />
-            <Field label="Members" value={project.members.join(", ")} />
-            <Field label="Stakeholders" value={project.stakeholders} />
-            <Field label="Rationale" value={project.rationale} />
-            <Field label="Significance" value={project.significance} />
-            <Field label="Expected Outcomes (Summary)" value={project.expectedOutcomesSummary} />
-          </Section>
+          {fullView ? (
+            <>
+              <ConceptReadoutSection project={project} />
+              {pages.slice(1).map(p => (
+                <Section key={p.key} title={p.title}>
+                  {p.readout ?? <p className="text-[12.5px] text-slate-400 italic">Not yet submitted.</p>}
+                </Section>
+              ))}
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <button type="button" onClick={() => setPageIdx(i => Math.max(0, i - 1))} disabled={pageIdx === 0}
+                  className="flex items-center justify-center w-8 h-8 rounded-full border border-gray-200 text-[#062444] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50">
+                  <ChevronLeft size={16} />
+                </button>
+                <div className="text-center">
+                  <p className="text-[11px] text-slate-400 font-semibold">
+                    Section {pageIdx + 1} of {pages.length}
+                    {project.currentStage === "proposal_development" && ` · ${approvedCount}/${PROPOSAL_DEV_FORM_KEYS.length} forms approved`}
+                  </p>
+                  <p className="text-sm font-bold text-[#062444]">{activePage.title}</p>
+                </div>
+                <button type="button" onClick={() => setPageIdx(i => Math.min(pages.length - 1, i + 1))} disabled={pageIdx === pages.length - 1}
+                  className="flex items-center justify-center w-8 h-8 rounded-full border border-gray-200 text-[#062444] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50">
+                  <ChevronRight size={16} />
+                </button>
+              </div>
 
-          {project.currentStage === "concept" && (
-            conceptSubmission ? (
               <SubmissionReviewCard
-                title="Review — Concept"
-                submission={conceptSubmission}
-                readout={null}
+                key={activePage.key}
+                title={activePage.title}
+                submission={activePage.submission}
+                readout={activePage.readout}
                 onReviewed={(id, outcome, comment) => decide(id, outcome, comment)}
               />
-            ) : (
-              <p className="text-[12.5px] text-slate-400 italic">The researcher hasn't submitted this stage yet.</p>
-            )
-          )}
 
-          {project.currentStage === "proposal_development" && (
-            currentFormKey ? (
-              <>
-                <p className="text-[11px] text-slate-400 font-semibold mb-3">
-                  Form {PROPOSAL_DEV_FORM_KEYS.indexOf(currentFormKey) + 1} of {PROPOSAL_DEV_FORM_KEYS.length} — {approvedCount}/{PROPOSAL_DEV_FORM_KEYS.length} forms approved so far
-                </p>
-                <SubmissionReviewCard
-                  title={PROPOSAL_DEV_FORM_LABELS[currentFormKey]}
-                  submission={currentFormSubmission}
-                  readout={currentFormSubmission ? <ProposalDevFormReadout formKey={currentFormKey} data={currentFormSubmission.formData as Partial<ProposalDevelopmentFormData>} /> : null}
-                  onReviewed={(id, outcome, comment) => decide(id, outcome, comment)}
-                />
-              </>
-            ) : (
-              <p className="text-[12.5px] text-slate-400 italic flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-600" /> All {PROPOSAL_DEV_FORM_KEYS.length} forms have been approved.</p>
-            )
-          )}
+              {project.currentStage === "proposal_development" && !currentFormKey && (
+                <p className="text-[12.5px] text-slate-400 italic flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-600" /> All {PROPOSAL_DEV_FORM_KEYS.length} forms have been approved.</p>
+              )}
 
-          {project.currentStage !== "concept" && project.currentStage !== "proposal_development" && (
-            <p className="text-[12.5px] text-slate-400 italic flex items-center gap-1.5"><Clock size={13} /> No form is defined for {STAGE_LABELS[project.currentStage]} yet.</p>
+              {project.currentStage !== "concept" && project.currentStage !== "proposal_development" && (
+                <p className="text-[12.5px] text-slate-400 italic flex items-center gap-1.5"><Clock size={13} /> No form is defined for {STAGE_LABELS[project.currentStage]} yet.</p>
+              )}
+            </>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+function ConceptReadoutSection({ project }: { project: ResearchProject }) {
+  return (
+    <Section title="Concept">
+      <ConceptReadout project={project} />
+    </Section>
   );
 }
