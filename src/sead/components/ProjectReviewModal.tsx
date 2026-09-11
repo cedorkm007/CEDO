@@ -79,7 +79,25 @@ function ProposalDevFormReadout({ formKey, data }: { formKey: ProposalDevFormKey
       return (
         <>
           <Field label="Timeframe" value={data.workPlanStart && data.workPlanEnd ? `${data.workPlanStart} to ${data.workPlanEnd}` : ""} />
-          <Field label="Work Plan Activities" value={data.workPlanActivities?.map(a => `${a.activity} (${a.days} day(s)) — ${a.deliverable}`).join("\n")} />
+          {data.workPlanActivities && data.workPlanActivities.length > 0 && (
+            <div className="mb-2.5">
+              <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Work Plan Activities</p>
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+                <div className="grid grid-cols-[1fr_70px_1fr] bg-[#062444]/5 min-w-[420px]">
+                  <div className="px-3 py-2 text-[11px] font-bold text-[#062444] border-r border-gray-200">Activity</div>
+                  <div className="px-3 py-2 text-[11px] font-bold text-[#062444] border-r border-gray-200">Days</div>
+                  <div className="px-3 py-2 text-[11px] font-bold text-[#062444]">Deliverable</div>
+                </div>
+                {data.workPlanActivities.map((a, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_70px_1fr] border-t border-gray-100 min-w-[420px]">
+                    <div className="px-3 py-2 text-[12.5px] text-[#062444] border-r border-gray-100">{a.activity}</div>
+                    <div className="px-3 py-2 text-[12.5px] text-[#062444] border-r border-gray-100">{a.days}</div>
+                    <div className="px-3 py-2 text-[12.5px] text-[#062444]">{a.deliverable}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       );
     case "budget":
