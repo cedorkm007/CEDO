@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Plus, Trash2, CheckCircle2, Clock, Lock, AlertCircle, Check } from "lucide-react";
+import { X, Plus, Trash2, CheckCircle2, Clock, Lock, AlertCircle, Check, ChevronDown } from "lucide-react";
 import {
   saveProposalDevelopmentFormStep, computeProposalDevFormStatuses, PROPOSAL_DEV_FORM_KEYS, PROPOSAL_DEV_FORM_LABELS,
   MAX_OBJECTIVES, MAX_WORK_PLAN_ACTIVITIES, MAX_EXPECTED_OUTPUTS, MAX_EXPECTED_OUTCOMES,
@@ -102,6 +102,31 @@ function FCheckbox({ options, selected, onChange, disabled }: { options: string[
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/** One collapsible category card — collapsed by default, so a scholar isn't confronted with every option in every subcategory at once. The header always shows how many are selected inside, even while collapsed. */
+function CollapsibleCategory({ label, options, selected, onChange, disabled }: { label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const selectedCount = options.filter(o => selected.includes(o)).length;
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left bg-gray-50 hover:bg-gray-100 transition-colors">
+        <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wide">{label}</span>
+        <span className="flex items-center gap-2 shrink-0">
+          {selectedCount > 0 && (
+            <span className="text-[10.5px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{selectedCount} selected</span>
+          )}
+          <ChevronDown size={14} className={`text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+        </span>
+      </button>
+      {open && (
+        <div className="p-3 border-t border-gray-200">
+          <FCheckbox options={options} selected={selected} onChange={onChange} disabled={disabled} />
+        </div>
+      )}
     </div>
   );
 }
@@ -333,13 +358,10 @@ export function ProposalDevelopmentWizard({
                     <FLabel label="Data Sources" required />
                     <span className="text-[10.5px] font-bold text-[#0088cc]">{form.methodology.dataSources.length} selected</span>
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {DATA_SOURCE_CATEGORIES.map(cat => (
-                      <div key={cat.label} className="border border-gray-200 rounded-lg p-3">
-                        <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">{cat.label}</p>
-                        <FCheckbox options={cat.options} selected={form.methodology.dataSources}
-                          onChange={v => setMethodology("dataSources", v)} disabled={!editable} />
-                      </div>
+                      <CollapsibleCategory key={cat.label} label={cat.label} options={cat.options} selected={form.methodology.dataSources}
+                        onChange={v => setMethodology("dataSources", v)} disabled={!editable} />
                     ))}
                   </div>
                 </div>
@@ -349,13 +371,10 @@ export function ProposalDevelopmentWizard({
                     <FLabel label="Data Collection Methods" required />
                     <span className="text-[10.5px] font-bold text-[#0088cc]">{form.methodology.dataCollectionMethods.length} selected</span>
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {DATA_COLLECTION_CATEGORIES.map(cat => (
-                      <div key={cat.label} className="border border-gray-200 rounded-lg p-3">
-                        <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">{cat.label}</p>
-                        <FCheckbox options={cat.options} selected={form.methodology.dataCollectionMethods}
-                          onChange={v => setMethodology("dataCollectionMethods", v)} disabled={!editable} />
-                      </div>
+                      <CollapsibleCategory key={cat.label} label={cat.label} options={cat.options} selected={form.methodology.dataCollectionMethods}
+                        onChange={v => setMethodology("dataCollectionMethods", v)} disabled={!editable} />
                     ))}
                   </div>
                 </div>
@@ -365,13 +384,10 @@ export function ProposalDevelopmentWizard({
                     <FLabel label="Data Analysis" required />
                     <span className="text-[10.5px] font-bold text-[#0088cc]">{form.methodology.dataAnalysis.length} selected</span>
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {DATA_ANALYSIS_CATEGORIES.map(cat => (
-                      <div key={cat.label} className="border border-gray-200 rounded-lg p-3">
-                        <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">{cat.label}</p>
-                        <FCheckbox options={cat.options} selected={form.methodology.dataAnalysis}
-                          onChange={v => setMethodology("dataAnalysis", v)} disabled={!editable} />
-                      </div>
+                      <CollapsibleCategory key={cat.label} label={cat.label} options={cat.options} selected={form.methodology.dataAnalysis}
+                        onChange={v => setMethodology("dataAnalysis", v)} disabled={!editable} />
                     ))}
                   </div>
                 </div>
