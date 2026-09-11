@@ -368,6 +368,22 @@ export function ProjectReviewModal({
       isCurrent: true,
     });
   }
+
+  // "View Full Proposal" always shows the complete original proposal (Concept through Expected Outputs and
+  // Outcomes) regardless of what stage the project has since advanced to — unlike `pages` above, which is
+  // scoped to whatever is current so the paginated reviewer view only shows what needs attention right now.
+  const fullProposalSections: { key: string; title: string; readout: React.ReactNode }[] = [
+    { key: "concept", title: "Concept", readout: <ConceptReadout project={project} /> },
+    ...PROPOSAL_DEV_FORM_KEYS.map(key => {
+      const submission = proposalDevSubmissions.find(s => s.formKey === key) ?? null;
+      return {
+        key,
+        title: PROPOSAL_DEV_FORM_LABELS[key],
+        readout: submission ? <ProposalDevFormReadout formKey={key} data={submission.formData as Partial<ProposalDevelopmentFormData>} /> : null,
+      };
+    }),
+  ];
+
   const defaultIdx = pages.findIndex(p => p.isCurrent);
   const [pageIdx, setPageIdx] = useState(defaultIdx >= 0 ? defaultIdx : pages.length - 1);
   const [fullView, setFullView] = useState(false);
@@ -399,10 +415,9 @@ export function ProjectReviewModal({
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {fullView ? (
             <>
-              <ConceptReadoutSection project={project} />
-              {pages.slice(1).map(p => (
-                <Section key={p.key} title={p.title}>
-                  {p.readout ?? <p className="text-[12.5px] text-slate-400 italic">Not yet submitted.</p>}
+              {fullProposalSections.map(s => (
+                <Section key={s.key} title={s.title}>
+                  {s.readout ?? <p className="text-[12.5px] text-slate-400 italic">Not yet submitted.</p>}
                 </Section>
               ))}
             </>
@@ -451,13 +466,5 @@ export function ProjectReviewModal({
         </div>
       </div>
     </div>
-  );
-}
-
-function ConceptReadoutSection({ project }: { project: ResearchProject }) {
-  return (
-    <Section title="Concept">
-      <ConceptReadout project={project} />
-    </Section>
   );
 }
