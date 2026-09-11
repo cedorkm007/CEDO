@@ -103,9 +103,8 @@ function isPageAuthorizedFor(page: Page, user: UserProfile): boolean {
     case "kaubanContent": return user.tags.includes("kauban_content");
     case "scholarshipProgramInfo": return user.tags.includes("scholarship_program_info");
     case "researchProjectMonitoring": return user.tags.includes("research_project_monitoring");
-    case "myResearch": return !user.tags.includes("research_project_monitoring");
     case "staffAccounts": return user.username.toLowerCase() === IT_ADMIN_USERNAME;
-    default: return true; // home, profile, tasks, accomplishments, notifications, forms — open to any signed-in user
+    default: return true; // home, profile, tasks, accomplishments, notifications, forms, myResearch — open to any signed-in user
   }
 }
 
@@ -3478,7 +3477,7 @@ export default function App() {
           {page==="researchProjectMonitoring" && currentUser.tags.includes("research_project_monitoring") && (
             <ResearchProjectMonitoringTab/>
           )}
-          {page==="myResearch" && !currentUser.tags.includes("research_project_monitoring") && (
+          {page==="myResearch" && (
             <MyResearchPage/>
           )}
           {page==="staffAccounts" && currentUser.username.toLowerCase()===IT_ADMIN_USERNAME && (

@@ -7,10 +7,12 @@ type MyResearchTab = "proposals" | "approved";
 
 /**
  * Embedded in the main staff app (src/app/App.tsx) as "My Research" —
- * visible to every staff account EXCEPT evaluators (the
- * "research_project_monitoring" tag), who review submissions from the
- * separate Research Project Monitoring tool instead. See the approved
- * Phase D plan for the full research proposal workflow this is part of.
+ * visible to every staff account, including evaluators (the
+ * "research_project_monitoring" tag). An evaluator can submit their own
+ * research proposals here same as anyone else; they additionally get the
+ * separate Research Project Monitoring tool to review other staff's
+ * submissions. See the approved Phase D plan for the full research
+ * proposal workflow this is part of.
  */
 export function MyResearchPage() {
   const TABS: { key: MyResearchTab; label: string; icon: React.ReactNode }[] = [
