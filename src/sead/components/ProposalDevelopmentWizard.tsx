@@ -209,8 +209,12 @@ export function ProposalDevelopmentWizard({
   const delOutcome = (i: number) => { if (form.expectedOutcomes.length <= 1) return; setField("expectedOutcomes", form.expectedOutcomes.filter((_, idx) => idx !== i)); };
 
   const budgetGrandTotal = form.budgetItems.reduce((sum, r) => sum + (parseFloat(r.subtotal) || 0), 0);
-  const budgetTotalField = parseFloat(form.budgetTotal) || 0;
-  const budgetMismatch = form.budgetTotal.trim() !== "" && Math.abs(budgetGrandTotal - budgetTotalField) > 0.01;
+  const computedBudgetTotal = budgetGrandTotal.toFixed(2);
+
+  useEffect(() => {
+    if (form.budgetTotal !== computedBudgetTotal) setField("budgetTotal", computedBudgetTotal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [computedBudgetTotal]);
 
   const activitiesDaysSum = form.workPlanActivities.reduce((sum, a) => sum + (parseFloat(a.days) || 0), 0);
   const computedWorkPlanEnd = form.workPlanStart ? addDaysInclusive(form.workPlanStart, activitiesDaysSum) : "";
@@ -463,7 +467,10 @@ export function ProposalDevelopmentWizard({
               <div>
                 <FSec title="Budget Requirement" />
                 <FLabel label="Total Budget (₱)" required />
-                <FInput type="number" value={form.budgetTotal} onChange={v => setField("budgetTotal", v)} placeholder="0.00" disabled={!editable} />
+                <div className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600 font-semibold">
+                  ₱{computedBudgetTotal}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">Calculated automatically from the itemized breakdown below.</p>
 
                 <div className="mt-4 flex items-center justify-between mb-1.5">
                   <FLabel label="Itemized Breakdown" required />
@@ -495,15 +502,7 @@ export function ProposalDevelopmentWizard({
                       </div>
                     </div>
                   ))}
-                  <div className="border-t border-gray-100 p-2 text-right">
-                    <span className="text-xs font-bold text-[#062444]">Itemized total: ₱{budgetGrandTotal.toFixed(2)}</span>
-                  </div>
                 </div>
-                {budgetMismatch && (
-                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    The itemized total (₱{budgetGrandTotal.toFixed(2)}) doesn't match the total budget (₱{budgetTotalField.toFixed(2)}) — double-check the figures.
-                  </p>
-                )}
               </div>
             )}
 
