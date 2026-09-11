@@ -2,8 +2,12 @@ import { useState } from "react";
 import { X, CheckCircle2, AlertCircle, Clock, ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import {
   reviewStageSubmission, computeProposalDevFormStatuses, STAGE_LABELS, PROPOSAL_DEV_FORM_KEYS, PROPOSAL_DEV_FORM_LABELS,
-  type ResearchProject, type StageSubmission, type ProposalDevelopmentFormData, type ProposalDevFormKey,
+  POST_APPROVAL_STAGE_KEYS,
+  type ResearchProject, type StageSubmission, type ProposalDevelopmentFormData, type ProposalDevFormKey, type PostApprovalStageKey,
+  type ImplementationFormData, type MonitoringFormData, type DisseminationFormData, type UtilizationFormData,
+  type PreservationFormData, type InstitutionalLearningFormData, type EvidenceFile,
 } from "../researchProjectApi";
+import { fetchEvidencePreviewUrl } from "../researchEvidenceApi";
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   if (value === "" || value === null || value === undefined) return null;
@@ -158,6 +162,105 @@ function ProposalDevFormReadout({ formKey, data }: { formKey: ProposalDevFormKey
   }
 }
 
+/** Opens a private evidence file in a new tab via a short-lived signed URL, fetched on click. */
+function FileLink({ file }: { file: EvidenceFile | null }) {
+  if (!file) return <span className="text-slate-400 italic">No file</span>;
+  async function open() {
+    const url = await fetchEvidencePreviewUrl(file!);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  }
+  return (
+    <button type="button" onClick={open} className="flex items-center gap-1 text-[#0088cc] font-semibold hover:underline">
+      <FileText size={12} /> {file.fileName}
+    </button>
+  );
+}
+
+/** Renders the single "main" submission's data for one Implementation-onward stage. */
+function PostApprovalReadout({ stage, data, dataAnalysis }: { stage: PostApprovalStageKey; data: Record<string, unknown>; dataAnalysis: string[] }) {
+  switch (stage) {
+    case "implementation": {
+      const rows = (data as Partial<ImplementationFormData>).evidence ?? [];
+      if (rows.length === 0) return null;
+      return (
+        <div className="mb-2.5">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+            <div className="grid grid-cols-[1fr_1fr_140px] bg-[#062444]/5 min-w-[500px]">
+              <div className="px-3 py-2 text-[11px] font-bold text-[#062444] border-r border-gray-200">Objective</div>
+              <div className="px-3 py-2 text-[11px] font-bold text-[#062444] border-r border-gray-200">Description</div>
+              <div className="px-3 py-2 text-[11px] font-bold text-[#062444]">Evidence</div>
+            </div>
+            {rows.map((r, i) => (
+              <div key={i} className="grid grid-cols-[1fr_1fr_140px] border-t border-gray-100 min-w-[500px]">
+                <div className="px-3 py-2 text-[12.5px] text-[#062444] border-r border-gray-100">{r.objectiveText}</div>
+                <div className="px-3 py-2 text-[12.5px] text-[#062444] border-r border-gray-100 whitespace-pre-wrap">{r.description}</div>
+                <div className="px-3 py-2 text-[12.5px]"><FileLink file={r.file} /></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    case "monitoring": {
+      const rows = (data as Partial<MonitoringFormData>).results ?? [];
+      return (
+        <>
+          {dataAnalysis.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5 mb-2.5">
+              <p className="text-[10.5px] font-bold text-blue-700 uppercase tracking-wide mb-1">Proposed Analysis Techniques</p>
+              <p className="text-[12px] text-blue-800">{dataAnalysis.join(", ")}</p>
+            </div>
+          )}
+          {rows.length > 0 && (
+            <div className="mb-2.5">
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+                <div className="grid grid-cols-3 bg-[#062444]/5 min-w-[500px]">
+                  <div className="px-3 py-2 text-[11px] font-bold text-[#062444] border-r border-gray-200">Objective</div>
+                  <div className="px-3 py-2 text-[11px] font-bold text-[#062444] border-r border-gray-200">Results</div>
+                  <div className="px-3 py-2 text-[11px] font-bold text-[#062444]">Insights / Findings</div>
+                </div>
+                {rows.map((r, i) => (
+                  <div key={i} className="grid grid-cols-3 border-t border-gray-100 min-w-[500px]">
+                    <div className="px-3 py-2 text-[12.5px] text-[#062444] border-r border-gray-100">{r.objectiveText}</div>
+                    <div className="px-3 py-2 text-[12.5px] text-[#062444] border-r border-gray-100 whitespace-pre-wrap">{r.results}</div>
+                    <div className="px-3 py-2 text-[12.5px] text-[#062444] whitespace-pre-wrap">{r.insights}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <Field label="Overall Conclusion" value={(data as Partial<MonitoringFormData>).overallConclusion} />
+        </>
+      );
+    }
+    case "dissemination":
+    case "utilization": {
+      const rows = stage === "dissemination" ? (data as Partial<DisseminationFormData>).evidence ?? [] : (data as Partial<UtilizationFormData>).certificates ?? [];
+      if (rows.length === 0) return null;
+      return (
+        <div className="mb-2.5">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+            <div className="grid grid-cols-[1fr_140px] bg-[#062444]/5 min-w-[420px]">
+              <div className="px-3 py-2 text-[11px] font-bold text-[#062444] border-r border-gray-200">Description</div>
+              <div className="px-3 py-2 text-[11px] font-bold text-[#062444]">File</div>
+            </div>
+            {rows.map((r, i) => (
+              <div key={i} className="grid grid-cols-[1fr_140px] border-t border-gray-100 min-w-[420px]">
+                <div className="px-3 py-2 text-[12.5px] text-[#062444] border-r border-gray-100 whitespace-pre-wrap">{r.description}</div>
+                <div className="px-3 py-2 text-[12.5px]"><FileLink file={r.file} /></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    case "preservation":
+      return <div className="mb-2.5"><FileLink file={(data as Partial<PreservationFormData>).file ?? null} /></div>;
+    case "institutional_learning":
+      return <Field label="Way Forward / Future Plans" value={(data as Partial<InstitutionalLearningFormData>).wayForward} />;
+  }
+}
+
 /** One review card for a single stage/form submission — the shared UI for both Concept's one form and each of Proposal Development's 6.
  * Doubles as the read-only view for an already-decided (approved/returned) submission: the Approve/Return controls
  * only render while status is "under_review", so paging back to a past, already-approved section is automatically read-only. */
@@ -216,7 +319,7 @@ function SubmissionReviewCard({
   );
 }
 
-type PageKey = "concept" | ProposalDevFormKey;
+type PageKey = "concept" | ProposalDevFormKey | PostApprovalStageKey;
 interface ReviewPage {
   key: PageKey;
   title: string;
@@ -253,6 +356,17 @@ export function ProjectReviewModal({
         isCurrent: key === currentFormKey,
       });
     }
+  } else if ((POST_APPROVAL_STAGE_KEYS as readonly string[]).includes(project.currentStage)) {
+    const stage = project.currentStage as PostApprovalStageKey;
+    const submission = submissions.find(s => s.stage === stage) ?? null;
+    const methodologyData = proposalDevSubmissions.find(s => s.formKey === "methodology")?.formData as Partial<ProposalDevelopmentFormData> | undefined;
+    pages.push({
+      key: stage,
+      title: STAGE_LABELS[stage],
+      submission,
+      readout: submission ? <PostApprovalReadout stage={stage} data={submission.formData} dataAnalysis={methodologyData?.methodology?.dataAnalysis ?? []} /> : null,
+      isCurrent: true,
+    });
   }
   const defaultIdx = pages.findIndex(p => p.isCurrent);
   const [pageIdx, setPageIdx] = useState(defaultIdx >= 0 ? defaultIdx : pages.length - 1);
@@ -324,7 +438,12 @@ export function ProjectReviewModal({
                 <p className="text-[12.5px] text-slate-400 italic flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-600" /> All {PROPOSAL_DEV_FORM_KEYS.length} forms have been approved.</p>
               )}
 
-              {project.currentStage !== "concept" && project.currentStage !== "proposal_development" && (
+              {project.currentStage === "completed" && (
+                <p className="text-[12.5px] text-slate-400 italic flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-600" /> This research project has completed every stage.</p>
+              )}
+
+              {project.currentStage !== "concept" && project.currentStage !== "proposal_development" && project.currentStage !== "completed"
+                && !(POST_APPROVAL_STAGE_KEYS as readonly string[]).includes(project.currentStage) && (
                 <p className="text-[12.5px] text-slate-400 italic flex items-center gap-1.5"><Clock size={13} /> No form is defined for {STAGE_LABELS[project.currentStage]} yet.</p>
               )}
             </>

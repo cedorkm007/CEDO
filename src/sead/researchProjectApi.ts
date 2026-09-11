@@ -30,7 +30,7 @@ export function agendaTypeFor(agenda: string): AgendaType {
 
 export const PROJECT_STAGES = [
   "concept", "proposal_development", "review", "approval", "implementation",
-  "monitoring", "dissemination", "utilization", "preservation", "institutional_learning",
+  "monitoring", "dissemination", "utilization", "preservation", "institutional_learning", "completed",
 ] as const;
 export type ProjectStage = (typeof PROJECT_STAGES)[number];
 
@@ -45,7 +45,17 @@ export const STAGE_LABELS: Record<ProjectStage, string> = {
   utilization: "Utilization",
   preservation: "Preservation",
   institutional_learning: "Institutional Learning",
+  completed: "Completed",
 };
+
+// The stages from Implementation onward — each is a single ("main"-keyed)
+// submission, like Concept, rather than Proposal Development's 6
+// independently-gated forms. Reaching "completed" (the terminal stage) has
+// no form of its own — it's simply where Institutional Learning advances to.
+export const POST_APPROVAL_STAGE_KEYS = [
+  "implementation", "monitoring", "dissemination", "utilization", "preservation", "institutional_learning",
+] as const;
+export type PostApprovalStageKey = (typeof POST_APPROVAL_STAGE_KEYS)[number];
 
 export type SubmissionStatus = "under_review" | "returned" | "approved";
 
@@ -54,6 +64,17 @@ export const STATUS_REMARKS: Record<SubmissionStatus, string> = {
   under_review: "Evaluation ongoing",
   returned: "Proposal Revision",
   approved: "Move to next stage",
+};
+
+export const STATUS_LABELS: Record<SubmissionStatus, string> = {
+  under_review: "Under Review",
+  returned: "Returned",
+  approved: "Approved",
+};
+export const STATUS_BADGE_CLASSES: Record<SubmissionStatus, string> = {
+  under_review: "text-amber-700 bg-amber-100",
+  returned: "text-red-700 bg-red-100",
+  approved: "text-green-700 bg-green-100",
 };
 
 export interface ResearchProject {
@@ -370,6 +391,58 @@ export async function updateConceptSubmission(projectId: string, submissionId: s
   return submissionError ? { ok: false, error: submissionError.message } : { ok: true };
 }
 
+// ── Post-approval stages (Implementation onward) ──
+
+export interface EvidenceFile { id: string; fileName: string; filePath: string; fileType: string }
+
+// Implementation: one evidence file + description per specific objective
+// (never the main objective) — rows track the approved Proposal
+// Development objectives list, so they aren't independently added/removed.
+export interface ObjectiveEvidenceItem { objectiveText: string; description: string; file: EvidenceFile | null }
+export interface ImplementationFormData { evidence: ObjectiveEvidenceItem[] }
+
+// Monitoring: results + insights per specific objective, plus one overall
+// conclusion for the whole project.
+export interface ObjectiveResultItem { objectiveText: string; results: string; insights: string }
+export interface MonitoringFormData { results: ObjectiveResultItem[]; overallConclusion: string }
+
+// Dissemination/Utilization: a free-form (add/remove) list of evidence
+// items, since these aren't tied to specific objectives.
+export interface EvidenceListItem { id: string; description: string; file: EvidenceFile | null }
+export interface DisseminationFormData { evidence: EvidenceListItem[] }
+export interface UtilizationFormData { certificates: EvidenceListItem[] }
+
+export interface PreservationFormData { file: EvidenceFile | null }
+export interface InstitutionalLearningFormData { wayForward: string }
+
+export const MAX_DISSEMINATION_EVIDENCE = 6;
+export const MAX_UTILIZATION_CERTIFICATES = 6;
+
+/** Creates (first save) or updates (resubmission after "returned") the single "main" submission for one post-approval stage — mirrors updateConceptSubmission's submission-row half. */
+export async function submitPostApprovalStageForm(
+  projectId: string, stage: PostApprovalStageKey, existingSubmissionId: string | null, data: Record<string, unknown>,
+): Promise<{ ok: boolean; error?: string }> {
+  if (existingSubmissionId) {
+    const { error } = await supabase.from("research_project_stage_submissions").update({
+      form_data: data,
+      status: "under_review",
+      evaluator_comment: "",
+      reviewed_by: null,
+      reviewed_at: null,
+      submitted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", existingSubmissionId);
+    return error ? { ok: false, error: error.message } : { ok: true };
+  }
+  const { error } = await supabase.from("research_project_stage_submissions").insert({
+    project_id: projectId,
+    stage,
+    form_key: "main",
+    form_data: data,
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 // ── Evaluator review (Research Project Monitoring → Monitoring subtab) ──
 
 /** Every research project visible to the caller — for a researcher this is just their own (per RLS); for an evaluator (is_research_monitoring_staff) RLS additionally grants every project, which is what this is meant to be called with. */
@@ -379,10 +452,16 @@ export async function fetchAllResearchProjectsForEvaluator(): Promise<ResearchPr
   return data.map(rowToProject);
 }
 
-/** The stage a project moves to once its current stage's submission is approved. Stages without a form yet (review/approval) are skipped — approving Proposal Development moves a project straight to Implementation. */
+/** The stage a project moves to once its current stage's submission is approved. Stages without a form yet (review/approval) are skipped — approving Proposal Development moves a project straight to Implementation. Implementation onward follows the fixed pipeline through to "completed". */
 const NEXT_STAGE_ON_APPROVAL: Partial<Record<ProjectStage, ProjectStage>> = {
   concept: "proposal_development",
   proposal_development: "implementation",
+  implementation: "monitoring",
+  monitoring: "dissemination",
+  dissemination: "utilization",
+  utilization: "preservation",
+  preservation: "institutional_learning",
+  institutional_learning: "completed",
 };
 
 async function advanceProjectStage(projectId: string, nextStage: ProjectStage): Promise<{ ok: boolean; error?: string }> {

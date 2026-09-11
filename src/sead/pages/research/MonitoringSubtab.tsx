@@ -20,7 +20,7 @@ function activeProposalDevStatus(projectId: string, submissions: StageSubmission
 }
 
 function statusFor(project: ResearchProject, submissions: StageSubmission[]): DashboardStatus {
-  if (project.currentStage === "implementation") return "Completed";
+  if (project.currentStage === "completed") return "Completed";
   const active = project.currentStage === "proposal_development"
     ? activeProposalDevStatus(project.id, submissions)
     : submissions.find(s => s.stage === project.currentStage)?.status;

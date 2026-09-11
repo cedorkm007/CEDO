@@ -2,22 +2,11 @@ import { useEffect, useState } from "react";
 import { Plus, Pencil, FileEdit } from "lucide-react";
 import {
   fetchMyProjects, fetchStageSubmissionsForProjects, computeProposalDevFormStatuses,
-  STATUS_REMARKS, STAGE_LABELS, PROPOSAL_DEV_FORM_KEYS, PROPOSAL_DEV_FORM_LABELS,
+  STATUS_REMARKS, STATUS_LABELS, STATUS_BADGE_CLASSES, STAGE_LABELS, PROPOSAL_DEV_FORM_KEYS, PROPOSAL_DEV_FORM_LABELS,
   type ResearchProject, type StageSubmission,
 } from "../../researchProjectApi";
 import { ConceptFormModal } from "../../components/ConceptFormModal";
 import { ProposalDevelopmentWizard } from "../../components/ProposalDevelopmentWizard";
-
-const STATUS_LABELS: Record<StageSubmission["status"], string> = {
-  under_review: "Under Review",
-  returned: "Returned",
-  approved: "Approved",
-};
-const STATUS_BADGE_CLASSES: Record<StageSubmission["status"], string> = {
-  under_review: "text-amber-700 bg-amber-100",
-  returned: "text-red-700 bg-red-100",
-  approved: "text-green-700 bg-green-100",
-};
 
 export function MyProposalsSubtab() {
   const [projects, setProjects] = useState<ResearchProject[]>([]);
