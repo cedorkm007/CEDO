@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, Plus, Trash2, CheckCircle2, Clock, Lock, AlertCircle, Check, ChevronDown } from "lucide-react";
 import {
   saveProposalDevelopmentFormStep, computeProposalDevFormStatuses, PROPOSAL_DEV_FORM_KEYS, PROPOSAL_DEV_FORM_LABELS,
@@ -57,12 +57,15 @@ const STEP_STATUS_ICON: Record<StepGateStatus, React.ReactNode> = {
   locked: <Lock size={12} className="text-slate-300" />,
 };
 
-// Timezone-safe inclusive day count between two yyyy-mm-dd dates (mirrors App.tsx's dateRangeArray/CTOLeaveModal).
-function dayCount(from: string, to: string): number {
+// The date `totalDays` (inclusive) after `from` (mirrors the day-count logic in App.tsx's dateRangeArray/CTOLeaveModal).
+function addDaysInclusive(from: string, totalDays: number): string {
   const start = new Date(from + "T00:00:00");
-  const end = new Date(to + "T00:00:00");
-  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return 0;
-  return Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+  if (isNaN(start.getTime()) || totalDays <= 0) return "";
+  start.setDate(start.getDate() + totalDays - 1);
+  const y = start.getFullYear();
+  const m = String(start.getMonth() + 1).padStart(2, "0");
+  const d = String(start.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function FSec({ title }: { title: string }) {
@@ -209,9 +212,13 @@ export function ProposalDevelopmentWizard({
   const budgetTotalField = parseFloat(form.budgetTotal) || 0;
   const budgetMismatch = form.budgetTotal.trim() !== "" && Math.abs(budgetGrandTotal - budgetTotalField) > 0.01;
 
-  const workPlanDaysTotal = dayCount(form.workPlanStart, form.workPlanEnd);
   const activitiesDaysSum = form.workPlanActivities.reduce((sum, a) => sum + (parseFloat(a.days) || 0), 0);
-  const workPlanMismatch = form.workPlanStart && form.workPlanEnd && workPlanDaysTotal > 0 && activitiesDaysSum !== workPlanDaysTotal;
+  const computedWorkPlanEnd = form.workPlanStart ? addDaysInclusive(form.workPlanStart, activitiesDaysSum) : "";
+
+  useEffect(() => {
+    if (form.workPlanEnd !== computedWorkPlanEnd) setField("workPlanEnd", computedWorkPlanEnd);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [computedWorkPlanEnd]);
 
   async function handleSubmitStep() {
     if (!editable) return;
@@ -404,15 +411,16 @@ export function ProposalDevelopmentWizard({
                   </div>
                   <div>
                     <FLabel label="End Date" required />
-                    <FInput type="date" value={form.workPlanEnd} onChange={v => setField("workPlanEnd", v)} disabled={!editable} />
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600">
+                      {computedWorkPlanEnd || "—"}
+                    </div>
                   </div>
                 </div>
-                {workPlanDaysTotal > 0 && (
-                  <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3">
-                    Project timeframe: {workPlanDaysTotal} day(s). Activities total: {activitiesDaysSum} day(s).
-                    {workPlanMismatch && <span className="text-amber-700 font-semibold"> These don't match — double-check the activity durations.</span>}
-                  </p>
-                )}
+                <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3">
+                  {activitiesDaysSum > 0
+                    ? <>End date is calculated automatically: Start Date + {activitiesDaysSum} total activity day(s).</>
+                    : <>Enter day counts for each activity below to calculate the End Date automatically.</>}
+                </p>
                 <div className="flex items-center justify-between mb-1.5">
                   <FLabel label="Activities" required />
                   {editable && form.workPlanActivities.length < MAX_WORK_PLAN_ACTIVITIES && (
