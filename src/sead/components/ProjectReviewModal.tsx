@@ -104,7 +104,27 @@ function ProposalDevFormReadout({ formKey, data }: { formKey: ProposalDevFormKey
       return (
         <>
           <Field label="Total Budget" value={data.budgetTotal ? `₱${data.budgetTotal}` : ""} />
-          <Field label="Budget Items" value={data.budgetItems?.map(b => `${b.quantity} ${b.unit} — ${b.specification} @ ₱${b.unitCost} = ₱${b.subtotal}`).join("\n")} />
+          {data.budgetItems && data.budgetItems.length > 0 && (
+            <div className="mb-2.5">
+              <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Itemized Breakdown</p>
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+                <div className="grid grid-cols-5 bg-[#062444]/5 min-w-[480px]">
+                  {["Qty", "Unit", "Specification", "Unit Cost (₱)", "Subtotal (₱)"].map((h, i) => (
+                    <div key={h} className={`px-2.5 py-2 text-[11px] font-bold text-[#062444] ${i < 4 ? "border-r border-gray-200" : ""}`}>{h}</div>
+                  ))}
+                </div>
+                {data.budgetItems.map((b, i) => (
+                  <div key={i} className="grid grid-cols-5 border-t border-gray-100 min-w-[480px]">
+                    <div className="px-2.5 py-2 text-[12.5px] text-[#062444] border-r border-gray-100">{b.quantity}</div>
+                    <div className="px-2.5 py-2 text-[12.5px] text-[#062444] border-r border-gray-100">{b.unit}</div>
+                    <div className="px-2.5 py-2 text-[12.5px] text-[#062444] border-r border-gray-100">{b.specification}</div>
+                    <div className="px-2.5 py-2 text-[12.5px] text-[#062444] border-r border-gray-100">{b.unitCost}</div>
+                    <div className="px-2.5 py-2 text-[12.5px] text-[#062444]">{b.subtotal}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       );
     case "outputs":
