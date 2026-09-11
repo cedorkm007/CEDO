@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, CheckCircle2, AlertCircle, Clock, Lock } from "lucide-react";
+import { X, CheckCircle2, AlertCircle, Clock } from "lucide-react";
 import {
   reviewStageSubmission, computeProposalDevFormStatuses, STAGE_LABELS, PROPOSAL_DEV_FORM_KEYS, PROPOSAL_DEV_FORM_LABELS,
   type ResearchProject, type StageSubmission, type ProposalDevelopmentFormData, type ProposalDevFormKey,
@@ -87,8 +87,8 @@ function ProposalDevFormReadout({ formKey, data }: { formKey: ProposalDevFormKey
 
 /** One review card for a single stage/form submission — the shared UI for both Concept's one form and each of Proposal Development's 6. */
 function SubmissionReviewCard({
-  title, submission, readout, locked, onReviewed,
-}: { title: string; submission: StageSubmission | null; readout: React.ReactNode; locked?: boolean; onReviewed: (submissionId: string, outcome: "approved" | "returned", comment: string) => Promise<{ ok: boolean; error?: string }> }) {
+  title, submission, readout, onReviewed,
+}: { title: string; submission: StageSubmission | null; readout: React.ReactNode; onReviewed: (submissionId: string, outcome: "approved" | "returned", comment: string) => Promise<{ ok: boolean; error?: string }> }) {
   const [comment, setComment] = useState(submission?.evaluatorComment ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -106,9 +106,7 @@ function SubmissionReviewCard({
   return (
     <Section title={title}>
       {!submission ? (
-        <p className="text-[12.5px] text-slate-400 italic flex items-center gap-1.5">
-          {locked ? <><Lock size={13} /> Not reached yet — an earlier form is still pending.</> : "The researcher hasn't submitted this form yet."}
-        </p>
+        <p className="text-[12.5px] text-slate-400 italic">The researcher hasn't submitted this form yet.</p>
       ) : (
         <>
           {readout}
@@ -149,6 +147,11 @@ export function ProjectReviewModal({
   const conceptSubmission = submissions.find(s => s.stage === "concept") ?? null;
   const proposalDevSubmissions = submissions.filter(s => s.stage === "proposal_development");
   const proposalDevStatuses = computeProposalDevFormStatuses(proposalDevSubmissions);
+  // Exactly one form is ever "active" at a time (editable/returned/under_review) — everything before it is
+  // already approved and everything after is locked, so that's the only section worth showing the evaluator.
+  const currentFormKey = PROPOSAL_DEV_FORM_KEYS.find(k => proposalDevStatuses[k] !== "approved" && proposalDevStatuses[k] !== "locked");
+  const approvedCount = PROPOSAL_DEV_FORM_KEYS.filter(k => proposalDevStatuses[k] === "approved").length;
+  const currentFormSubmission = currentFormKey ? proposalDevSubmissions.find(s => s.formKey === currentFormKey) ?? null : null;
 
   async function decide(submissionId: string, outcome: "approved" | "returned", comment: string) {
     const result = await reviewStageSubmission(submissionId, project.id, project.currentStage, outcome, comment);
@@ -191,20 +194,23 @@ export function ProjectReviewModal({
             )
           )}
 
-          {project.currentStage === "proposal_development" && PROPOSAL_DEV_FORM_KEYS.map(key => {
-            const submission = proposalDevSubmissions.find(s => s.formKey === key) ?? null;
-            const locked = proposalDevStatuses[key] === "locked";
-            return (
-              <SubmissionReviewCard
-                key={key}
-                title={`${PROPOSAL_DEV_FORM_LABELS[key]}${locked ? " (locked)" : ""}`}
-                submission={submission}
-                locked={locked}
-                readout={submission ? <ProposalDevFormReadout formKey={key} data={submission.formData as Partial<ProposalDevelopmentFormData>} /> : null}
-                onReviewed={(id, outcome, comment) => decide(id, outcome, comment)}
-              />
-            );
-          })}
+          {project.currentStage === "proposal_development" && (
+            currentFormKey ? (
+              <>
+                <p className="text-[11px] text-slate-400 font-semibold mb-3">
+                  Form {PROPOSAL_DEV_FORM_KEYS.indexOf(currentFormKey) + 1} of {PROPOSAL_DEV_FORM_KEYS.length} — {approvedCount}/{PROPOSAL_DEV_FORM_KEYS.length} forms approved so far
+                </p>
+                <SubmissionReviewCard
+                  title={PROPOSAL_DEV_FORM_LABELS[currentFormKey]}
+                  submission={currentFormSubmission}
+                  readout={currentFormSubmission ? <ProposalDevFormReadout formKey={currentFormKey} data={currentFormSubmission.formData as Partial<ProposalDevelopmentFormData>} /> : null}
+                  onReviewed={(id, outcome, comment) => decide(id, outcome, comment)}
+                />
+              </>
+            ) : (
+              <p className="text-[12.5px] text-slate-400 italic flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-600" /> All {PROPOSAL_DEV_FORM_KEYS.length} forms have been approved.</p>
+            )
+          )}
 
           {project.currentStage !== "concept" && project.currentStage !== "proposal_development" && (
             <p className="text-[12.5px] text-slate-400 italic flex items-center gap-1.5"><Clock size={13} /> No form is defined for {STAGE_LABELS[project.currentStage]} yet.</p>
