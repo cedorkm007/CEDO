@@ -156,9 +156,18 @@ export async function fetchCurrentStaffName(): Promise<string> {
   return [data.first_name, data.last_name].filter(Boolean).join(" ");
 }
 
-/** Every project the signed-in staff member created — powers My Proposals / My Approved Projects. */
+/**
+ * Every project the signed-in staff member created — powers My Proposals / My Approved Projects.
+ * Explicitly scoped to created_by rather than left to RLS alone: an evaluator (is_research_monitoring_staff)
+ * is also granted a blanket SELECT policy on research_projects for the Monitoring tool, so without this
+ * filter an evaluator account that has also submitted its own proposals would see every staff member's
+ * projects here too, not just their own.
+ */
 export async function fetchMyProjects(): Promise<ResearchProject[]> {
-  const { data, error } = await supabase.from("research_projects").select("*").order("created_at", { ascending: false });
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return [];
+  const { data, error } = await supabase.from("research_projects")
+    .select("*").eq("created_by", auth.user.id).order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map(rowToProject);
 }
