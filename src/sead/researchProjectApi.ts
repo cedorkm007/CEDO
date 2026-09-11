@@ -239,13 +239,19 @@ export const DATA_COLLECTION_CATEGORIES: OptionCategory[] = [
   { label: "Interactive & Continuous Methods", options: ["Daily Logs / Self-Reporting Journals", "Game-Based / Gamified Metrics", "Sensor / Wearable Data Retrieval", "Interactive Task Logs"] },
 ];
 
-export const DATA_ANALYSIS_OPTIONS: string[] = [
-  "Descriptive Statistics (Mean, SD, Frequencies)", "Correlation Analysis (Pearson, Spearman)", "Independent Samples t-Test",
-  "Paired Samples t-Test", "One-Way / Two-Way ANOVA", "Linear / Multiple Regression Analysis", "Logistic Regression Analysis",
-  "Factor Analysis (EFA / CFA)", "Structural Equation Modeling (SEM)", "Non-Parametric Tests (Mann-Whitney, Wilcoxon, Chi-Square)",
-  "Thematic Analysis", "Content Analysis", "Discourse Analysis", "Narrative Analysis", "Interpretative Phenomenological Analysis (IPA)",
-  "Constant Comparative Method (Grounded Theory)", "Sequential Exploratory / Explanatory Integration", "Joint Display Matrix Analysis",
-  "Machine Learning / Predictive Analytics", "Sentiment Analysis", "User Interaction & Analytics Mining", "Network / Graph Analysis",
+export const DATA_ANALYSIS_CATEGORIES: OptionCategory[] = [
+  { label: "Quantitative / Statistical", options: [
+    "Descriptive Statistics (Mean, SD, Frequencies)", "Correlation Analysis (Pearson, Spearman)", "Independent Samples t-Test",
+    "Paired Samples t-Test", "One-Way / Two-Way ANOVA", "Linear / Multiple Regression Analysis", "Logistic Regression Analysis",
+    "Factor Analysis (EFA / CFA)", "Structural Equation Modeling (SEM)", "Non-Parametric Tests (Mann-Whitney, Wilcoxon, Chi-Square)",
+  ] },
+  { label: "Qualitative / Textual", options: [
+    "Thematic Analysis", "Content Analysis", "Discourse Analysis", "Narrative Analysis", "Interpretative Phenomenological Analysis (IPA)",
+  ] },
+  { label: "Mixed Methods & Advanced/Computational", options: [
+    "Constant Comparative Method (Grounded Theory)", "Sequential Exploratory / Explanatory Integration", "Joint Display Matrix Analysis",
+    "Machine Learning / Predictive Analytics", "Sentiment Analysis", "User Interaction & Analytics Mining", "Network / Graph Analysis",
+  ] },
 ];
 
 export interface MethodologyFormData {

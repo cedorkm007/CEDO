@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { X, Plus, Trash2, CheckCircle2, Clock, Lock, AlertCircle } from "lucide-react";
+import { X, Plus, Trash2, CheckCircle2, Clock, Lock, AlertCircle, Check } from "lucide-react";
 import {
   saveProposalDevelopmentFormStep, computeProposalDevFormStatuses, PROPOSAL_DEV_FORM_KEYS, PROPOSAL_DEV_FORM_LABELS,
   MAX_OBJECTIVES, MAX_WORK_PLAN_ACTIVITIES, MAX_EXPECTED_OUTPUTS, MAX_EXPECTED_OUTCOMES,
   RESEARCH_APPROACHES, DESIGN_OPTIONS_BY_APPROACH, SAMPLING_CATEGORIES,
-  DATA_SOURCE_CATEGORIES, DATA_COLLECTION_CATEGORIES, DATA_ANALYSIS_OPTIONS,
+  DATA_SOURCE_CATEGORIES, DATA_COLLECTION_CATEGORIES, DATA_ANALYSIS_CATEGORIES,
   type ResearchProject, type StageSubmission, type ProposalDevelopmentFormData, type ResearchApproach, type ProposalDevFormKey, type StepGateStatus,
   type ObjectiveItem, type WorkPlanActivity, type BudgetLineItem, type OutputItem, type OutcomeItem,
 } from "../researchProjectApi";
@@ -79,17 +79,29 @@ function FTextarea({ value, onChange, placeholder, rows = 4, disabled }: { value
   return <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows} disabled={disabled}
     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F3BC00] bg-white resize-none disabled:bg-gray-50 disabled:text-gray-500" />;
 }
+// A fixed-column grid of checkbox rows reads far more easily than wrapped
+// pill buttons once a list runs past a handful of options (some of these
+// run past 20) — rows line up instead of ragged-wrapping by text length,
+// and the checkbox glyph gives a clearer at-a-glance "selected" signal
+// than a filled pill background alone.
 function FCheckbox({ options, selected, onChange, disabled }: { options: string[]; selected: string[]; onChange: (v: string[]) => void; disabled?: boolean }) {
   const toggle = (opt: string) => { if (disabled) return; onChange(selected.includes(opt) ? selected.filter(s => s !== opt) : [...selected, opt]); };
   return (
-    <div className="flex flex-wrap gap-2">
-      {options.map(opt => (
-        <button key={opt} type="button" onClick={() => toggle(opt)} disabled={disabled}
-          className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all disabled:opacity-70 disabled:cursor-not-allowed ${selected.includes(opt) ? "bg-[#062444] text-white border-[#062444]" : "bg-white text-gray-600 border-gray-300"}`}>
-          <span className={`inline-block w-2.5 h-2.5 rounded border mr-1.5 align-middle ${selected.includes(opt) ? "bg-[#F3BC00] border-[#F3BC00]" : "border-gray-400"}`} />
-          {opt}
-        </button>
-      ))}
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+      {options.map(opt => {
+        const isSelected = selected.includes(opt);
+        return (
+          <button key={opt} type="button" onClick={() => toggle(opt)} disabled={disabled}
+            className={`flex items-start gap-2 text-left px-2.5 py-1.5 rounded-lg border text-[12.5px] leading-snug transition-colors disabled:opacity-70 disabled:cursor-not-allowed ${
+              isSelected ? "bg-[#062444]/5 border-[#062444]/30 text-[#062444] font-semibold" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+            }`}>
+            <span className={`mt-0.5 shrink-0 flex items-center justify-center w-3.5 h-3.5 rounded border ${isSelected ? "bg-[#062444] border-[#062444]" : "border-gray-400"}`}>
+              {isSelected && <Check size={10} className="text-[#F3BC00]" strokeWidth={3} />}
+            </span>
+            {opt}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -317,10 +329,13 @@ export function ProposalDevelopmentWizard({
                 </div>
 
                 <div className="mt-5">
-                  <FLabel label="Data Sources" required />
-                  <div className="space-y-3 mt-1">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <FLabel label="Data Sources" required />
+                    <span className="text-[10.5px] font-bold text-[#0088cc]">{form.methodology.dataSources.length} selected</span>
+                  </div>
+                  <div className="space-y-3">
                     {DATA_SOURCE_CATEGORIES.map(cat => (
-                      <div key={cat.label}>
+                      <div key={cat.label} className="border border-gray-200 rounded-lg p-3">
                         <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">{cat.label}</p>
                         <FCheckbox options={cat.options} selected={form.methodology.dataSources}
                           onChange={v => setMethodology("dataSources", v)} disabled={!editable} />
@@ -330,10 +345,13 @@ export function ProposalDevelopmentWizard({
                 </div>
 
                 <div className="mt-5">
-                  <FLabel label="Data Collection Methods" required />
-                  <div className="space-y-3 mt-1">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <FLabel label="Data Collection Methods" required />
+                    <span className="text-[10.5px] font-bold text-[#0088cc]">{form.methodology.dataCollectionMethods.length} selected</span>
+                  </div>
+                  <div className="space-y-3">
                     {DATA_COLLECTION_CATEGORIES.map(cat => (
-                      <div key={cat.label}>
+                      <div key={cat.label} className="border border-gray-200 rounded-lg p-3">
                         <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">{cat.label}</p>
                         <FCheckbox options={cat.options} selected={form.methodology.dataCollectionMethods}
                           onChange={v => setMethodology("dataCollectionMethods", v)} disabled={!editable} />
@@ -343,10 +361,18 @@ export function ProposalDevelopmentWizard({
                 </div>
 
                 <div className="mt-5">
-                  <FLabel label="Data Analysis" required />
-                  <div className="mt-1">
-                    <FCheckbox options={DATA_ANALYSIS_OPTIONS} selected={form.methodology.dataAnalysis}
-                      onChange={v => setMethodology("dataAnalysis", v)} disabled={!editable} />
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <FLabel label="Data Analysis" required />
+                    <span className="text-[10.5px] font-bold text-[#0088cc]">{form.methodology.dataAnalysis.length} selected</span>
+                  </div>
+                  <div className="space-y-3">
+                    {DATA_ANALYSIS_CATEGORIES.map(cat => (
+                      <div key={cat.label} className="border border-gray-200 rounded-lg p-3">
+                        <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">{cat.label}</p>
+                        <FCheckbox options={cat.options} selected={form.methodology.dataAnalysis}
+                          onChange={v => setMethodology("dataAnalysis", v)} disabled={!editable} />
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
