@@ -31,6 +31,27 @@ function Pills({ items }: { items: string[] }) {
   );
 }
 
+function NumberedTable({ label, items }: { label: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="mb-2.5">
+      <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">{label}</p>
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+        <div className="grid grid-cols-[40px_1fr] bg-[#062444]/5 min-w-[280px]">
+          <div className="px-2.5 py-2 text-[11px] font-bold text-[#062444] border-r border-gray-200">No.</div>
+          <div className="px-2.5 py-2 text-[11px] font-bold text-[#062444]">Description</div>
+        </div>
+        {items.map((text, i) => (
+          <div key={i} className="grid grid-cols-[40px_1fr] border-t border-gray-100 min-w-[280px]">
+            <div className="px-2.5 py-2 text-[12.5px] text-[#062444] border-r border-gray-100">{i + 1}</div>
+            <div className="px-2.5 py-2 text-[12.5px] text-[#062444] whitespace-pre-wrap">{text}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ConceptReadout({ project }: { project: ResearchProject }) {
   return (
     <>
@@ -130,8 +151,8 @@ function ProposalDevFormReadout({ formKey, data }: { formKey: ProposalDevFormKey
     case "outputs":
       return (
         <>
-          <Field label="Expected Outputs" value={data.expectedOutputs?.map((o, i) => `${i + 1}. ${o.text}`).join("\n")} />
-          <Field label="Expected Outcomes" value={data.expectedOutcomes?.map((o, i) => `${i + 1}. ${o.text}`).join("\n")} />
+          <NumberedTable label="Expected Outputs" items={data.expectedOutputs?.map(o => o.text) ?? []} />
+          <NumberedTable label="Expected Outcomes" items={data.expectedOutcomes?.map(o => o.text) ?? []} />
         </>
       );
   }
