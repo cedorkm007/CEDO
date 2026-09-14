@@ -63,8 +63,12 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
     else setExistingUploads([]);
   }, [activity.id, activity.isUnlocked]);
 
+  // A file staff marked "needs_resubmission" doesn't occupy its slot — the
+  // scholar has to be able to upload a replacement for it, so only
+  // "uploaded"/"accepted" rows count toward the max-files limit and toward
+  // whether a required field is considered satisfied.
   function uploadedCountFor(fieldId: string): number {
-    return existingUploads.filter(u => u.fieldId === fieldId).length;
+    return existingUploads.filter(u => u.fieldId === fieldId && u.status !== "needs_resubmission").length;
   }
 
   function remainingSlotsFor(field: SubmissionUploadFieldForScholar): number {
@@ -158,7 +162,7 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
                 {field.label}
                 {field.isRequired ? <span className="text-red-500">*</span> : <span className="font-normal text-slate-400">(optional)</span>}
                 <span className="ml-auto text-[11px] font-normal text-slate-400">
-                  {uploaded.length}/{field.maxFiles} file{field.maxFiles === 1 ? "" : "s"}
+                  {uploadedCountFor(field.id)}/{field.maxFiles} file{field.maxFiles === 1 ? "" : "s"}
                 </span>
               </label>
 
@@ -190,7 +194,7 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
                 </>
               )}
               {fieldErrors[field.id] && <p className="mt-1 text-[11.5px] text-red-600">{fieldErrors[field.id]}</p>}
-              {submitAttempted && field.isRequired && uploaded.length === 0 && selected.length === 0 && !fieldErrors[field.id] && (
+              {submitAttempted && field.isRequired && uploadedCountFor(field.id) === 0 && selected.length === 0 && !fieldErrors[field.id] && (
                 <p className="mt-1 text-[11.5px] text-red-600">This file is required.</p>
               )}
 

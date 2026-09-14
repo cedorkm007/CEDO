@@ -303,6 +303,12 @@ export type SubmissionOverallStatus = "not_started" | "submitted" | "needs_resub
 
 export function overallSubmissionStatus(uploads: SubmissionUploadRecord[]): SubmissionOverallStatus {
   if (uploads.length === 0) return "not_started";
-  if (uploads.some(u => u.status === "needs_resubmission")) return "needs_resubmission";
+  // Uploads are immutable/append-only, so a rejected file's row never goes
+  // away — only that field's most recent upload reflects whether it's
+  // still waiting on a resubmission. fetchSubmissionUploadsForScholar
+  // orders by created_at ascending, so the last write per field wins here.
+  const latestPerField = new Map<string, SubmissionUploadRecord>();
+  for (const u of uploads) latestPerField.set(u.fieldId, u);
+  if ([...latestPerField.values()].some(u => u.status === "needs_resubmission")) return "needs_resubmission";
   return "submitted";
 }

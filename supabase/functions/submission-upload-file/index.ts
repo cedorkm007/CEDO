@@ -131,12 +131,16 @@ Deno.serve(async (req: Request) => {
     }
 
     // Server-side re-check of the max-files rule for THIS scholar/field —
-    // the real boundary; the UI's own count is only a convenience.
+    // the real boundary; the UI's own count is only a convenience. A file
+    // staff marked "needs_resubmission" doesn't occupy its slot — otherwise
+    // a rejected scholar could never upload a replacement once a field was
+    // already at its limit.
     const { count: existingCount, error: countError } = await admin
       .from("submission_uploads")
       .select("id", { count: "exact", head: true })
       .eq("scholar_id", scholar.id)
-      .eq("field_id", fieldId);
+      .eq("field_id", fieldId)
+      .neq("status", "needs_resubmission");
     if (countError) return jsonResponse({ error: countError.message }, 500);
     if ((existingCount ?? 0) >= (field.max_files as number)) {
       return jsonResponse(

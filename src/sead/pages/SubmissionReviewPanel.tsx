@@ -36,10 +36,18 @@ function groupByScholar(rows: SubmissionForReview[]): ScholarGroup[] {
   return [...map.values()].sort((a, b) => a.scholarName.localeCompare(b.scholarName));
 }
 
-/** A scholar's whole submission counts as needing resubmission if any one file does, and as accepted only once every file has been. Otherwise it's still pending review (mix of unreviewed and/or accepted files). */
+/** Uploads are immutable/append-only, so a rejected file's row never goes away once the scholar uploads a replacement for that same field — only each field's most recent upload reflects whether it's still waiting on a resubmission. fetchSubmissionsForActivity orders by created_at ascending, so the last write per field wins here. */
+function latestPerField(uploads: SubmissionForReview[]): SubmissionForReview[] {
+  const byField = new Map<string, SubmissionForReview>();
+  for (const u of uploads) byField.set(u.fieldId, u);
+  return [...byField.values()];
+}
+
+/** A scholar's whole submission counts as needing resubmission if any one field's latest file does, and as accepted only once every field's latest file has been. Otherwise it's still pending review (mix of unreviewed and/or accepted files). */
 function groupStatus(uploads: SubmissionForReview[]): "accepted" | "needs_resubmission" | "uploaded" {
-  if (uploads.some(u => u.status === "needs_resubmission")) return "needs_resubmission";
-  if (uploads.every(u => u.status === "accepted")) return "accepted";
+  const latest = latestPerField(uploads);
+  if (latest.some(u => u.status === "needs_resubmission")) return "needs_resubmission";
+  if (latest.every(u => u.status === "accepted")) return "accepted";
   return "uploaded";
 }
 
