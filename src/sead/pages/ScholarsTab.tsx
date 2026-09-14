@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw } from "lucide-react";
+import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, Pencil, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw } from "lucide-react";
 import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, updateScholarStatus, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, fetchAllScholarsInformationForExport, type ScholarInformationRow, type ScholarInformationFilters, type ScholarInformationEmptyableField } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
+import { EditScholarModal } from "../components/EditScholarModal";
 import { BulkScholarUploadModal } from "../components/BulkScholarUploadModal";
 import { BulkScholarUpdateModal } from "../components/BulkScholarUpdateModal";
 import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
@@ -41,6 +42,7 @@ function ScholarsAccountSubtab() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingScholar, setEditingScholar] = useState<ScholarListItem | null>(null);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [showBulkUpdate, setShowBulkUpdate] = useState(false);
   const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
@@ -173,7 +175,7 @@ function ScholarsAccountSubtab() {
                 <tr key={s.id} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
                   <td className="px-4 py-3 font-medium text-[#062444]">{s.scholarIdNumber}</td>
                   <td className="px-4 py-3">{s.lastName}, {s.firstName} {s.middleName}</td>
-                  <td className="px-4 py-3 text-slate-500">{s.school || "—"}</td>
+                  <td className="px-4 py-3 text-slate-500 text-xs">{s.school || "—"}</td>
                   <td className="px-4 py-3">
                     {/* Static for now — a separate concept from Scholarship
                         Status (which lives in the Information subtab below).
@@ -202,6 +204,10 @@ function ScholarsAccountSubtab() {
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-3">
+                        <button onClick={() => setEditingScholar(s)}
+                          className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444] hover:underline">
+                          <Pencil size={13} /> Edit
+                        </button>
                         <button onClick={() => setConfirmResetId(s.scholarIdNumber)}
                           className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
                           <KeyRound size={13} /> Reset Password
@@ -225,6 +231,9 @@ function ScholarsAccountSubtab() {
       </div>
 
       {showAdd && <AddScholarModal onClose={() => setShowAdd(false)} onCreated={() => load(page)} />}
+      {editingScholar && (
+        <EditScholarModal scholar={editingScholar} onClose={() => setEditingScholar(null)} onSaved={() => { setEditingScholar(null); load(page); }} />
+      )}
       {showBulkUpload && <BulkScholarUploadModal onClose={() => setShowBulkUpload(false)} onDone={() => load(page)} />}
       {showBulkUpdate && <BulkScholarUpdateModal onClose={() => setShowBulkUpdate(false)} onDone={() => load(page)} />}
       {showResetAll && <ResetAllPasswordsModal onClose={() => setShowResetAll(false)} onDone={handleAllPasswordsReset} />}

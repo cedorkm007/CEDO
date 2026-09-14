@@ -1132,6 +1132,13 @@ export async function fetchScholarsInformationPage(
   return { items: data.map(mapScholarInformationRow), total: count ?? data.length };
 }
 
+/** One scholar's full information row, for pre-filling the individual Edit Scholar modal (the account list's own ScholarListItem is too thin — it lacks year level, barangay, course, birthday, civil status, and contact number). */
+export async function fetchScholarInformationByIdNumber(scholarIdNumber: string): Promise<ScholarInformationRow | null> {
+  const { data, error } = await supabase.from("scholars").select(SCHOLAR_INFORMATION_SELECT).eq("scholar_id_number", scholarIdNumber).maybeSingle();
+  if (error || !data) return null;
+  return mapScholarInformationRow(data);
+}
+
 // Batch size for fetchAllScholarsInformationForExport below — deliberately
 // NOT the same as SCHOLARS_PAGE_SIZE (50). This isn't a UI page size, it's
 // how many rows one request pulls while looping to assemble a full export;
