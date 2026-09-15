@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pencil, Trash2, UploadCloud, Plus, ListChecks, SlidersHorizontal, Power, PowerOff } from "lucide-react";
+import { Pencil, Trash2, UploadCloud, Plus, ListChecks, SlidersHorizontal, MessageSquareText, Power, PowerOff } from "lucide-react";
 import { fetchSurveys, deleteSurvey, updateSurvey, fetchSurveyQuestions, deleteSurveyQuestion } from "../../seadApi";
 import { SurveyEditorModal } from "../../components/SurveyEditorModal";
 import { SurveyQuestionEditorModal } from "../../components/SurveyQuestionEditorModal";
@@ -73,6 +73,7 @@ export function SurveyToolsSubtab() {
         <SurveyQuestionEditorModal
           surveyId={selectedSurvey.id}
           existing={editingQuestion === "new" ? null : editingQuestion}
+          otherQuestions={questions}
           nextSortOrder={questions.length}
           onClose={() => setEditingQuestion(null)}
           onSaved={() => { setEditingQuestion(null); reloadQuestions(); }}
@@ -176,11 +177,15 @@ function SurveyQuestionColumn({ survey, questions, onAdd, onBulkUpload, onEdit, 
               <div className="flex items-start justify-between gap-3 mb-2">
                 <p className="text-[14.5px] leading-relaxed font-medium min-w-0 break-words text-[#062444]">{q.questionText}</p>
                 <span className="shrink-0 flex items-center gap-1 text-[11px] font-semibold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2.5 py-1">
-                  {q.questionType === "likert" ? <><SlidersHorizontal size={11} /> Likert</> : <><ListChecks size={11} /> Multiple Choice</>}
+                  {q.questionType === "likert" ? <><SlidersHorizontal size={11} /> Likert</>
+                    : q.questionType === "open_ended" ? <><MessageSquareText size={11} /> Open-Ended</>
+                    : <><ListChecks size={11} /> Multiple Choice</>}
                 </span>
               </div>
               {q.questionType === "multiple_choice" ? (
                 <p className="text-[11px] text-slate-500 mb-2.5">{q.choices.length} choices: {q.choices.map(c => c.choiceText).join(", ")}</p>
+              ) : q.questionType === "open_ended" ? (
+                <p className="text-[11px] text-slate-500 mb-2.5">{q.openEndedFormat === "long" ? "Paragraph" : "Short Answer"}</p>
               ) : (
                 <p className="text-[11px] text-slate-500 mb-2.5">Scale {q.likertScaleMin}–{q.likertScaleMax}: "{q.likertMinLabel}" to "{q.likertMaxLabel}"</p>
               )}

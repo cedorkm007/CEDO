@@ -86,13 +86,19 @@ export type SeadTab = "scholars" | "question-bank" | "quests-monitoring" | "form
 
 // ── Research Project Monitoring: Survey Tools / Survey Results ──
 
-export type SurveyQuestionType = "multiple_choice" | "likert";
+export type SurveyQuestionType = "multiple_choice" | "likert" | "open_ended";
+export type SurveyOpenEndedFormat = "short" | "long";
 
 export interface SurveyChoiceDraft {
   id?: string;
   choiceText: string;
   // Quest-sourced ("Survey Results" subject) questions only.
   isOther?: boolean;
+  // Skip logic, multiple_choice research_survey_* questions only — mutually
+  // exclusive: at most one of these is set. Neither set means "continue to
+  // the next question in sort order" (today's only behavior).
+  skipToQuestionId?: string | null;
+  endsSurvey?: boolean;
 }
 
 export interface SurveyQuestion {
@@ -101,13 +107,15 @@ export interface SurveyQuestion {
   questionType: SurveyQuestionType;
   questionText: string;
   sortOrder: number;
-  // Likert-only; null for multiple_choice questions.
+  // Likert-only; null for multiple_choice/open_ended questions.
   likertScaleMin: number | null;
   likertScaleMax: number | null;
   likertMinLabel: string | null;
   likertMaxLabel: string | null;
-  // Multiple-choice-only; [] for likert questions.
+  // Multiple-choice-only; [] for likert/open_ended questions.
   choices: SurveyChoiceDraft[];
+  // open_ended-only; null for multiple_choice/likert questions.
+  openEndedFormat: SurveyOpenEndedFormat | null;
   // Set only for a quest-sourced survey (Survey.activityType === "quest") —
   // the Question Bank topic this question belongs to, for grouping in Survey
   // Tools/Results since a Quest subject can have several topics.
@@ -144,6 +152,11 @@ export interface SurveyChoiceResult {
   // Quest-sourced ("Survey Results" subject) questions only.
   isOther?: boolean;
   otherTexts?: string[];
+}
+
+/** research_survey_* open_ended questions only — anonymous, matching how choice/likert results never show scholar identity either. */
+export interface SurveyOpenEndedResult {
+  texts: string[];
 }
 
 export interface SurveyLikertDistributionPoint {

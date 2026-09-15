@@ -176,22 +176,27 @@ export async function redeemAttendanceCode(code: string): Promise<{ ok: boolean;
 export interface SurveyResponseChoice {
   id: string;
   choiceText: string;
+  // Skip logic — at most one is set; neither means "continue to the next question."
+  skipToQuestionId: string | null;
+  endsSurvey: boolean;
 }
 export interface SurveyResponseQuestion {
   id: string;
-  questionType: "multiple_choice" | "likert";
+  questionType: "multiple_choice" | "likert" | "open_ended";
   questionText: string;
   sortOrder: number;
   likertScaleMin: number | null;
   likertScaleMax: number | null;
   likertMinLabel: string | null;
   likertMaxLabel: string | null;
+  openEndedFormat: "short" | "long" | null;
   choices: SurveyResponseChoice[];
 }
 export interface SurveyResponseAnswer {
   questionId: string;
   choiceId: string | null;
   likertValue: number | null;
+  textValue: string | null;
 }
 
 /** Starts a new survey response, or resumes an in-progress one — idempotent, safe to call both right after a gated scan and from the "resume your survey" dashboard banner. `requiresConsent`/`consentText`/`consented` describe a voluntary (client-satisfaction-style) survey's opt-in step — see submitSurveyConsent. */
@@ -218,11 +223,11 @@ export async function submitSurveyConsent(responseId: string, agree: boolean): P
 
 /** Saves one question's answer — its own round trip, so an answered question survives the scholar closing the app before finishing the survey. */
 export async function submitSurveyAnswer(input: {
-  responseId: string; questionId: string; choiceId?: string; likertValue?: number;
+  responseId: string; questionId: string; choiceId?: string; likertValue?: number; textValue?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.rpc("submit_survey_answer", {
     p_response_id: input.responseId, p_question_id: input.questionId,
-    p_choice_id: input.choiceId ?? null, p_likert_value: input.likertValue ?? null,
+    p_choice_id: input.choiceId ?? null, p_likert_value: input.likertValue ?? null, p_text_value: input.textValue ?? null,
   });
   return error ? { ok: false, error: error.message } : { ok: true };
 }

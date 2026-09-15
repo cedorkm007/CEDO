@@ -178,7 +178,19 @@ export function ProposalDevelopmentWizard({
 
   const setMethodology = <K extends keyof ProposalDevelopmentFormData["methodology"]>(key: K, value: ProposalDevelopmentFormData["methodology"][K]) =>
     setField("methodology", { ...form.methodology, [key]: value });
-  const setApproach = (approach: ResearchApproach | "") => setField("methodology", { ...form.methodology, approach, design: "" });
+  const setApproach = (approach: ResearchApproach | "") => {
+    setField("methodology", { ...form.methodology, approach, design: "" });
+    setOtherDesignSelected(false);
+  };
+
+  // "design" is already free text (see MethodologyFormData) — the fixed
+  // list is just a UI convenience, so a design that isn't one of that
+  // approach's known options (loading a project saved with a custom one)
+  // means "Others" was in effect, even though nothing marks that directly.
+  const [otherDesignSelected, setOtherDesignSelected] = useState(() =>
+    Boolean(form.methodology.design) && !(form.methodology.approach ? DESIGN_OPTIONS_BY_APPROACH[form.methodology.approach] : []).includes(form.methodology.design)
+  );
+  const OTHER_DESIGN_VALUE = "__other__";
 
   const setActivity = (i: number, col: keyof WorkPlanActivity, v: string) =>
     setField("workPlanActivities", form.workPlanActivities.map((r, idx) => idx === i ? { ...r, [col]: v } : r));
@@ -340,11 +352,28 @@ export function ProposalDevelopmentWizard({
                   </div>
                   <div>
                     <FLabel label="Design" required />
-                    <select value={form.methodology.design} onChange={e => setMethodology("design", e.target.value)} disabled={!editable || !form.methodology.approach}
+                    <select
+                      value={otherDesignSelected ? OTHER_DESIGN_VALUE : form.methodology.design}
+                      onChange={e => {
+                        if (e.target.value === OTHER_DESIGN_VALUE) {
+                          setOtherDesignSelected(true);
+                          setMethodology("design", "");
+                        } else {
+                          setOtherDesignSelected(false);
+                          setMethodology("design", e.target.value);
+                        }
+                      }}
+                      disabled={!editable || !form.methodology.approach}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F3BC00] bg-white disabled:opacity-50 disabled:cursor-not-allowed">
                       <option value="">{form.methodology.approach ? "Select a design…" : "Select an approach first…"}</option>
                       {(form.methodology.approach ? DESIGN_OPTIONS_BY_APPROACH[form.methodology.approach] : []).map(d => <option key={d} value={d}>{d}</option>)}
+                      {form.methodology.approach && <option value={OTHER_DESIGN_VALUE}>Others (please specify)</option>}
                     </select>
+                    {otherDesignSelected && (
+                      <div className="mt-2">
+                        <FInput value={form.methodology.design} onChange={v => setMethodology("design", v)} placeholder="Specify the research design…" disabled={!editable} />
+                      </div>
+                    )}
                   </div>
                 </div>
 

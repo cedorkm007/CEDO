@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { ListChecks, SlidersHorizontal, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { ListChecks, SlidersHorizontal, MessageSquareText, Clock, CheckCircle2, XCircle } from "lucide-react";
 import { fetchSurveys, fetchSurveyQuestions, fetchSurveyQuestionResults, fetchSurveyGatingRoster } from "../../seadApi";
 import { SurveyResultsChart } from "../../components/SurveyResultsChart";
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
-import type { Survey, SurveySource, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult, GatingRosterEntry, GatingRosterStatus } from "../../types";
+import type { Survey, SurveySource, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult, SurveyOpenEndedResult, GatingRosterEntry, GatingRosterStatus } from "../../types";
 
 export function SurveyResultsSubtab() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -186,6 +186,7 @@ function QuestionResultCard({ question, source }: { question: SurveyQuestion; so
   const [error, setError] = useState("");
   const [choiceResults, setChoiceResults] = useState<SurveyChoiceResult[] | null>(null);
   const [likertResult, setLikertResult] = useState<SurveyLikertResult | null>(null);
+  const [openEndedResult, setOpenEndedResult] = useState<SurveyOpenEndedResult | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -197,6 +198,7 @@ function QuestionResultCard({ question, source }: { question: SurveyQuestion; so
       } else {
         setChoiceResults(result.choiceResults ?? null);
         setLikertResult(result.likertResult ?? null);
+        setOpenEndedResult(result.openEndedResult ?? null);
       }
       setLoading(false);
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -205,6 +207,8 @@ function QuestionResultCard({ question, source }: { question: SurveyQuestion; so
 
   const n = question.questionType === "multiple_choice"
     ? (choiceResults ?? []).reduce((sum, c) => sum + c.count, 0)
+    : question.questionType === "open_ended"
+    ? (openEndedResult?.texts ?? []).length
     : likertResult?.n ?? 0;
 
   return (
@@ -212,7 +216,9 @@ function QuestionResultCard({ question, source }: { question: SurveyQuestion; so
       <div className="flex items-start justify-between gap-3 mb-3">
         <p className="text-[14.5px] font-semibold text-[#062444] leading-relaxed">{question.questionText}</p>
         <span className="shrink-0 flex items-center gap-1 text-[11px] font-semibold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2.5 py-1">
-          {question.questionType === "likert" ? <><SlidersHorizontal size={11} /> Likert</> : <><ListChecks size={11} /> Multiple Choice</>}
+          {question.questionType === "likert" ? <><SlidersHorizontal size={11} /> Likert</>
+            : question.questionType === "open_ended" ? <><MessageSquareText size={11} /> Open-Ended</>
+            : <><ListChecks size={11} /> Multiple Choice</>}
         </span>
       </div>
 
@@ -222,6 +228,12 @@ function QuestionResultCard({ question, source }: { question: SurveyQuestion; so
         <p className="text-[13px] text-red-600">{error}</p>
       ) : n === 0 ? (
         <p className="text-[13px] text-slate-400">No responses yet.</p>
+      ) : question.questionType === "open_ended" ? (
+        <ul className="space-y-1.5">
+          {(openEndedResult?.texts ?? []).map((t, i) => (
+            <li key={i} className="text-[13px] text-[#062444] bg-white border border-[#e6ecf5] rounded-lg px-3 py-1.5">{t}</li>
+          ))}
+        </ul>
       ) : question.questionType === "multiple_choice" ? (
         <div className="space-y-3">
           <SurveyResultsChart bars={(choiceResults ?? []).map(c => ({ label: c.isOther ? `${c.choiceText} (write-in)` : c.choiceText, count: c.count }))} />

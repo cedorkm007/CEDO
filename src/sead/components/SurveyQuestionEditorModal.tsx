@@ -1,11 +1,19 @@
 import { useState } from "react";
 import { X, Plus, Trash2 } from "lucide-react";
 import { saveSurveyQuestion } from "../seadApi";
-import type { SurveyQuestion, SurveyChoiceDraft, SurveyQuestionType } from "../types";
+import type { SurveyQuestion, SurveyChoiceDraft, SurveyQuestionType, SurveyOpenEndedFormat } from "../types";
+
+const SKIP_END_SURVEY = "__end_survey__";
+const SKIP_CONTINUE = "";
 
 export function SurveyQuestionEditorModal({
-  surveyId, existing, nextSortOrder, onClose, onSaved,
-}: { surveyId: string; existing: SurveyQuestion | null; nextSortOrder: number; onClose: () => void; onSaved: () => void }) {
+  surveyId, existing, otherQuestions, nextSortOrder, onClose, onSaved,
+}: {
+  surveyId: string; existing: SurveyQuestion | null;
+  /** Every other question already saved in this survey — used to populate each choice's "Then:" skip-to dropdown with valid forward targets. */
+  otherQuestions: SurveyQuestion[];
+  nextSortOrder: number; onClose: () => void; onSaved: () => void;
+}) {
   const [questionType, setQuestionType] = useState<SurveyQuestionType>(existing?.questionType ?? "multiple_choice");
   const [questionText, setQuestionText] = useState(existing?.questionText ?? "");
   const [choices, setChoices] = useState<SurveyChoiceDraft[]>(
@@ -15,8 +23,25 @@ export function SurveyQuestionEditorModal({
   const [scaleMax, setScaleMax] = useState(existing?.likertScaleMax ?? 5);
   const [minLabel, setMinLabel] = useState(existing?.likertMinLabel ?? "Strongly Disagree");
   const [maxLabel, setMaxLabel] = useState(existing?.likertMaxLabel ?? "Strongly Agree");
+  const [openEndedFormat, setOpenEndedFormat] = useState<SurveyOpenEndedFormat>(existing?.openEndedFormat ?? "short");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // Skip targets must be forward-only (enforced again server-side by a
+  // trigger) — a question being edited can point to anything after its own
+  // position. A brand-new question always gets the highest sort order
+  // (appended last), so by definition nothing existing yet is "after" it —
+  // its choices get no specific-question target until a later question
+  // exists to edit it back into.
+  const skipTargets = existing ? otherQuestions.filter(q => q.sortOrder > existing.sortOrder) : [];
+
+  function updateChoiceSkip(i: number, value: string) {
+    setChoices(cs => cs.map((c, idx) => idx === i ? {
+      ...c,
+      endsSurvey: value === SKIP_END_SURVEY,
+      skipToQuestionId: value !== SKIP_END_SURVEY && value !== SKIP_CONTINUE ? value : null,
+    } : c));
+  }
 
   function updateChoice(i: number, text: string) {
     setChoices(cs => cs.map((c, idx) => idx === i ? { ...c, choiceText: text } : c));
@@ -53,6 +78,7 @@ export function SurveyQuestionEditorModal({
       likertScaleMax: questionType === "likert" ? scaleMax : undefined,
       likertMinLabel: questionType === "likert" ? minLabel.trim() : undefined,
       likertMaxLabel: questionType === "likert" ? maxLabel.trim() : undefined,
+      openEndedFormat: questionType === "open_ended" ? openEndedFormat : undefined,
       choices,
     });
     setBusy(false);
@@ -81,6 +107,10 @@ export function SurveyQuestionEditorModal({
                   className={`flex-1 rounded-lg border px-3 py-2 text-[13px] font-bold ${questionType === "likert" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
                   Likert Scale
                 </button>
+                <button type="button" onClick={() => setQuestionType("open_ended")}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-[13px] font-bold ${questionType === "open_ended" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
+                  Open-Ended
+                </button>
               </div>
             </>
           )}
@@ -99,18 +129,47 @@ export function SurveyQuestionEditorModal({
               </div>
               <div className="space-y-2 mb-2">
                 {choices.map((c, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <input value={c.choiceText} onChange={e => updateChoice(i, e.target.value)} placeholder={`Choice ${i + 1}`}
-                      className="flex-1 border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
-                    {choices.length > 2 && (
-                      <button type="button" onClick={() => removeChoice(i)} className="shrink-0 text-slate-300 hover:text-red-500 cursor-pointer hover:opacity-80 transition-opacity">
-                        <Trash2 size={16} />
-                      </button>
-                    )}
+                  <div key={i} className="rounded-lg border border-[#062444]/15 p-2">
+                    <div className="flex items-center gap-2">
+                      <input value={c.choiceText} onChange={e => updateChoice(i, e.target.value)} placeholder={`Choice ${i + 1}`}
+                        className="flex-1 border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
+                      {choices.length > 2 && (
+                        <button type="button" onClick={() => removeChoice(i)} className="shrink-0 text-slate-300 hover:text-red-500 cursor-pointer hover:opacity-80 transition-opacity">
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <span className="text-[11px] font-semibold text-slate-400 shrink-0">Then:</span>
+                      <select
+                        value={c.endsSurvey ? SKIP_END_SURVEY : (c.skipToQuestionId || SKIP_CONTINUE)}
+                        onChange={e => updateChoiceSkip(i, e.target.value)}
+                        className="flex-1 border border-[#062444]/15 rounded-lg px-2 py-1 text-[12px] outline-none focus:border-[#0088cc] bg-white">
+                        <option value={SKIP_CONTINUE}>Continue to next question</option>
+                        <option value={SKIP_END_SURVEY}>End the survey</option>
+                        {skipTargets.map(q => (
+                          <option key={q.id} value={q.id}>Skip to: {q.questionText.slice(0, 50) || "(untitled question)"}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 ))}
               </div>
-              <p className="text-[12px] text-slate-400 mb-5">No limit on the number of choices — there's no correct answer to mark.</p>
+              <p className="text-[12px] text-slate-400 mb-5">No limit on the number of choices — there's no correct answer to mark. "Then" controls what happens after this choice is picked, for skipping questions that don't apply.</p>
+            </>
+          ) : questionType === "open_ended" ? (
+            <>
+              <p className="text-[12.5px] font-semibold text-slate-500 mb-2">Answer length</p>
+              <div className="flex items-center gap-2 mb-5">
+                <button type="button" onClick={() => setOpenEndedFormat("short")}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-[13px] font-bold ${openEndedFormat === "short" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
+                  Short Answer
+                </button>
+                <button type="button" onClick={() => setOpenEndedFormat("long")}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-[13px] font-bold ${openEndedFormat === "long" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
+                  Paragraph
+                </button>
+              </div>
             </>
           ) : (
             <>

@@ -2,8 +2,8 @@ import { supabase } from "@/lib/supabase";
 import { isValidHttpsUrl } from "@/lib/urlValidation";
 import type {
   QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, ScholarListItem, ScholarAccountLogEntry, ScoreRow, ScholarshipStatus,
-  Survey, SurveyActivityType, SurveySource, SurveyQuestion, SurveyQuestionType, SurveyChoiceDraft, SurveyChoiceResult, SurveyLikertResult,
-  GatingRosterEntry,
+  Survey, SurveyActivityType, SurveySource, SurveyQuestion, SurveyQuestionType, SurveyOpenEndedFormat, SurveyChoiceDraft, SurveyChoiceResult, SurveyLikertResult,
+  SurveyOpenEndedResult, GatingRosterEntry,
 } from "./types";
 
 /**
@@ -725,6 +725,7 @@ async function fetchQuestSurveyQuestions(subjectId: string): Promise<SurveyQuest
       questionText: q.question_text,
       sortOrder: i,
       likertScaleMin: null, likertScaleMax: null, likertMinLabel: null, likertMaxLabel: null,
+      openEndedFormat: null,
       topicName: topicNameById.get(q.topic_id) ?? "",
       choices: (choices ?? [])
         .filter((c: Record<string, unknown>) => c.question_id === q.id)
@@ -754,9 +755,14 @@ export async function fetchSurveyQuestions(survey: Survey): Promise<SurveyQuesti
     likertScaleMax: q.likert_scale_max,
     likertMinLabel: q.likert_min_label,
     likertMaxLabel: q.likert_max_label,
+    openEndedFormat: q.open_ended_format,
     choices: (choices ?? [])
       .filter((c: Record<string, unknown>) => c.question_id === q.id)
-      .map((c: Record<string, unknown>) => ({ id: String(c.id), choiceText: String(c.choice_text) })),
+      .map((c: Record<string, unknown>) => ({
+        id: String(c.id), choiceText: String(c.choice_text),
+        skipToQuestionId: (c.skip_to_question_id as string | null) ?? null,
+        endsSurvey: Boolean(c.ends_survey),
+      })),
   }));
 }
 
@@ -771,6 +777,7 @@ export async function saveSurveyQuestion(input: {
   likertScaleMax?: number;
   likertMinLabel?: string;
   likertMaxLabel?: string;
+  openEndedFormat?: SurveyOpenEndedFormat;
   choices: SurveyChoiceDraft[];
 }): Promise<{ ok: boolean; error?: string }> {
   if (input.questionType === "multiple_choice" && input.choices.filter(c => c.choiceText.trim()).length < 2) {
@@ -784,6 +791,9 @@ export async function saveSurveyQuestion(input: {
       return { ok: false, error: "Label both ends of the scale." };
     }
   }
+  if (input.questionType === "open_ended" && !input.openEndedFormat) {
+    return { ok: false, error: "Choose Short Answer or Paragraph." };
+  }
 
   const row = {
     survey_id: input.surveyId,
@@ -794,6 +804,7 @@ export async function saveSurveyQuestion(input: {
     likert_scale_max: input.questionType === "likert" ? input.likertScaleMax : null,
     likert_min_label: input.questionType === "likert" ? input.likertMinLabel : null,
     likert_max_label: input.questionType === "likert" ? input.likertMaxLabel : null,
+    open_ended_format: input.questionType === "open_ended" ? input.openEndedFormat : null,
   };
 
   let questionId = input.id;
@@ -810,7 +821,11 @@ export async function saveSurveyQuestion(input: {
   if (input.questionType === "multiple_choice") {
     const validChoices = input.choices.filter(c => c.choiceText.trim());
     const { error: choicesError } = await supabase.from("research_survey_choices").insert(
-      validChoices.map((c, i) => ({ question_id: questionId, choice_text: c.choiceText.trim(), sort_order: i }))
+      validChoices.map((c, i) => ({
+        question_id: questionId, choice_text: c.choiceText.trim(), sort_order: i,
+        skip_to_question_id: c.endsSurvey ? null : (c.skipToQuestionId || null),
+        ends_survey: Boolean(c.endsSurvey),
+      }))
     );
     if (choicesError) return { ok: false, error: choicesError.message };
   }
@@ -884,13 +899,16 @@ export async function deleteSurveyQuestion(id: string): Promise<{ ok: boolean; e
 // ── Research Project Monitoring: Survey Results ──────────────
 
 export async function fetchSurveyQuestionResults(questionId: string, questionType: SurveyQuestionType, source: SurveySource = "sdp"): Promise<{
-  ok: boolean; error?: string; choiceResults?: SurveyChoiceResult[]; likertResult?: SurveyLikertResult;
+  ok: boolean; error?: string; choiceResults?: SurveyChoiceResult[]; likertResult?: SurveyLikertResult; openEndedResult?: SurveyOpenEndedResult;
 }> {
   const rpcName = source === "quest" ? "quest_survey_question_results" : "research_survey_question_results";
   const { data, error } = await supabase.rpc(rpcName, { p_question_id: questionId });
   if (error) return { ok: false, error: error.message };
   if (questionType === "multiple_choice") {
     return { ok: true, choiceResults: (data ?? []) as SurveyChoiceResult[] };
+  }
+  if (questionType === "open_ended") {
+    return { ok: true, openEndedResult: data as SurveyOpenEndedResult };
   }
   return { ok: true, likertResult: data as SurveyLikertResult };
 }
