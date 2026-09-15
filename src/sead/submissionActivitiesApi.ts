@@ -252,7 +252,9 @@ export interface SubmissionForReview {
   fieldLabel: string;
   originalFileName: string;
   mimeType: string;
-  /** https://drive.google.com/file/d/{id}/view — empty if the row somehow has no Drive file id. */
+  /** Path in the private "submission-uploads" Storage bucket — "" for a row not yet backfilled off Drive (see submissionCompression.ts / the Storage migration). */
+  storagePath: string;
+  /** https://drive.google.com/file/d/{id}/view — fallback for a row not yet backfilled (storagePath is ""); "" once migrated. */
   driveViewUrl: string;
   status: string;
   staffComment: string;
@@ -263,7 +265,7 @@ export async function fetchSubmissionsForActivity(activityId: string): Promise<S
   const { data, error } = await supabase
     .from("submission_uploads")
     .select(
-      "id, scholar_id, field_id, field_label_snapshot, original_file_name, mime_type, drive_file_id, status, staff_comment, created_at, " +
+      "id, scholar_id, field_id, field_label_snapshot, original_file_name, mime_type, drive_file_id, storage_path, status, staff_comment, created_at, " +
       "scholars (scholar_id_number, first_name, last_name, year_level)"
     )
     .eq("activity_id", activityId)
@@ -272,6 +274,7 @@ export async function fetchSubmissionsForActivity(activityId: string): Promise<S
   return (data as unknown as Record<string, unknown>[]).map(row => {
     const scholar = (row.scholars as Record<string, unknown> | null) ?? {};
     const driveFileId = String(row.drive_file_id ?? "");
+    const storagePath = String(row.storage_path ?? "");
     return {
       id: String(row.id),
       scholarId: String(row.scholar_id ?? ""),
@@ -282,7 +285,8 @@ export async function fetchSubmissionsForActivity(activityId: string): Promise<S
       fieldLabel: String(row.field_label_snapshot ?? ""),
       originalFileName: String(row.original_file_name ?? ""),
       mimeType: String(row.mime_type ?? ""),
-      driveViewUrl: driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : "",
+      storagePath,
+      driveViewUrl: !storagePath && driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : "",
       status: String(row.status ?? "uploaded"),
       staffComment: String(row.staff_comment ?? ""),
       createdAt: String(row.created_at ?? ""),
@@ -344,43 +348,120 @@ async function invokeEdgeFunction<T = Record<string, unknown>>(
   return { ok: true, data: data as T };
 }
 
-export interface ReorganizeFileResult {
+export interface BackfillFailure {
   uploadId: string;
   fileName: string;
-  scholarName: string;
-  ok: boolean;
-  error?: string;
+  error: string;
 }
 
-export interface ReorganizeActivityResult {
-  activityName: string;
-  totalFiles: number;
-  movedCount: number;
-  results: ReorganizeFileResult[];
+interface BackfillBatchResult {
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  done: boolean;
+  failures: BackfillFailure[];
 }
 
 /**
- * Retroactively moves one activity's already-uploaded files from the old
- * two-level Drive structure into the new three-level (+ School) one —
- * Milestone 2's actual deliverable. Scoped to one activity per call by
- * design (see the Edge Function's own header comment for why); calling
- * this again for the same activity is safe (moveFile()'s underlying
- * removeParents is a no-op for a file already moved).
+ * One-time migration off Google Drive: loops calling
+ * submission-backfill-drive-files until it reports done, since each call
+ * only processes a small batch (compression + Drive download + Storage
+ * upload per row is too slow to do unbounded in one request). Safe to
+ * re-run/interrupt at any point — every call re-queries for rows still
+ * missing storage_path, so nothing is double-counted or skipped.
  */
-export async function reorganizeActivityDriveFiles(activityId: string): Promise<{ ok: boolean; error?: string; result?: ReorganizeActivityResult }> {
-  const result = await invokeEdgeFunction<{ activityName: string; totalFiles: number; movedCount: number; results: ReorganizeFileResult[] }>(
-    "submission-reorganize-activity-files", { activityId }
-  );
-  if (!result.ok || !result.data) return { ok: false, error: result.error || "Failed to reorganize files." };
-  return {
-    ok: true,
-    result: {
-      activityName: result.data.activityName,
-      totalFiles: result.data.totalFiles,
-      movedCount: result.data.movedCount,
-      results: result.data.results,
-    },
-  };
+export async function backfillDriveFilesToStorage(
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ ok: boolean; error?: string; succeeded?: number; failed?: number; failures?: BackfillFailure[] }> {
+  let succeeded = 0;
+  let failed = 0;
+  const failures: BackfillFailure[] = [];
+  for (;;) {
+    const result = await invokeEdgeFunction<BackfillBatchResult>("submission-backfill-drive-files", {});
+    if (!result.ok || !result.data) return { ok: false, error: result.error || "Failed to migrate files.", succeeded, failed, failures };
+    succeeded += result.data.succeeded;
+    failed += result.data.failed;
+    failures.push(...result.data.failures);
+    onProgress?.(succeeded + failed, result.data.total);
+    if (result.data.done || result.data.processed === 0) break;
+  }
+  return { ok: true, succeeded, failed, failures };
+}
+
+// ── Submission file browser (Activity -> Year Level -> School) ────────
+
+export interface SubmissionUploadActivityCount { activityId: string; activityName: string; uploadCount: number }
+export interface SubmissionUploadGroupCount { label: string; count: number }
+
+export async function fetchSubmissionUploadCountsByActivity(): Promise<SubmissionUploadActivityCount[]> {
+  const { data, error } = await supabase.rpc("submission_uploads_by_activity");
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({
+    activityId: String(r.activity_id), activityName: String(r.activity_name), uploadCount: Number(r.upload_count),
+  }));
+}
+
+export async function fetchSubmissionUploadCountsByYearLevel(activityId: string): Promise<SubmissionUploadGroupCount[]> {
+  const { data, error } = await supabase.rpc("submission_uploads_by_year_level", { p_activity_id: activityId });
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({ label: String(r.year_level), count: Number(r.upload_count) }));
+}
+
+export async function fetchSubmissionUploadCountsBySchool(activityId: string, yearLevel: string): Promise<SubmissionUploadGroupCount[]> {
+  const { data, error } = await supabase.rpc("submission_uploads_by_school", { p_activity_id: activityId, p_year_level: yearLevel });
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({ label: String(r.school), count: Number(r.upload_count) }));
+}
+
+export interface SubmissionFileRow {
+  id: string;
+  originalFileName: string;
+  mimeType: string;
+  storagePath: string;
+  driveViewUrl: string;
+  status: string;
+  scholarName: string;
+  createdAt: string;
+}
+
+/**
+ * Leaf level of the file browser — a plain filtered read, not an RPC, same
+ * as the Scholarship Program Information drill-down's own leaf level.
+ * Fetches the whole activity's uploads and filters year level/school
+ * client-side (rather than a fragile OR-across-embedded-table PostgREST
+ * filter) so the "No Year Level Set"/"No School Set" sentinels from the
+ * count RPCs — meaning null OR blank — are trivial to match exactly the
+ * same way those RPCs themselves do.
+ */
+export async function fetchSubmissionFiles(activityId: string, yearLevel: string, school: string): Promise<SubmissionFileRow[]> {
+  const { data, error } = await supabase
+    .from("submission_uploads")
+    .select("id, original_file_name, mime_type, drive_file_id, storage_path, status, created_at, scholars!inner(first_name, last_name, year_level, school)")
+    .eq("activity_id", activityId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  const rows = (data as unknown as Record<string, unknown>[]).filter(row => {
+    const scholar = (row.scholars as Record<string, unknown> | null) ?? {};
+    const rowYearLevel = String(scholar.year_level ?? "").trim() || "No Year Level Set";
+    const rowSchool = String(scholar.school ?? "").trim() || "No School Set";
+    return rowYearLevel === yearLevel && rowSchool === school;
+  });
+  return rows.map(row => {
+    const scholar = (row.scholars as Record<string, unknown> | null) ?? {};
+    const driveFileId = String(row.drive_file_id ?? "");
+    const storagePath = String(row.storage_path ?? "");
+    return {
+      id: String(row.id),
+      originalFileName: String(row.original_file_name ?? ""),
+      mimeType: String(row.mime_type ?? ""),
+      storagePath,
+      driveViewUrl: !storagePath && driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : "",
+      status: String(row.status ?? "uploaded"),
+      scholarName: `${scholar.first_name ?? ""} ${scholar.last_name ?? ""}`.trim(),
+      createdAt: String(row.created_at ?? ""),
+    };
+  });
 }
 
 // ── Submission monitoring roster (Milestone 4) ────────────────

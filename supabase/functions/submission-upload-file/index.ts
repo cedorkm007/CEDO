@@ -7,34 +7,23 @@
 //      server-side — the UI already checks both, but this is the
 //      boundary that actually matters (spec: "Enforce file type and
 //      file-count rules again on the server, not only in the UI").
-//   3. Ensures the Parent Folder / Activity Name / Scholar Year Level /
-//      School / structure exists, lazily, on this first upload (see
-//      ../_shared/ensureSubmissionDriveFolders.ts — this is the ONLY
-//      caller of that shared helper as of Milestone 2 of the OAuth2
-//      migration task, which removed the separate
-//      submission-ensure-drive-folder Edge Function since nothing in the
-//      frontend ever called it). The School level was added in
-//      Milestone 1 of the "Drive folder reorganization + submission
-//      monitoring" task — see that migration's own header comment for
-//      why the underlying cache table's `school` column is nullable.
-//   4. Renames the file to ActivityName_ScholarLastName_ScholarFirstName
-//      (+ extension), appending _2/_3/... if that name is already taken
-//      in the destination folder (checked live against Drive — see
-//      findAvailableFileName's own comment for why that, not just this
-//      app's own rows, is the actual duplicate-prevention mechanism).
-//   5. Uploads the bytes to Drive, then records the row in
+//   3. Stores the (already client-compressed, where applicable — see
+//      src/scholar/submissionCompression.ts) file bytes in the private
+//      "submission-uploads" Supabase Storage bucket at
+//      "{scholar_id}/{upload_id}{ext}", then records the row in
 //      submission_uploads via the service-role client — a scholar can
 //      only ever insert a row with their own scholar_id (it's taken from
 //      their verified JWT, never from the request body), and there is no
 //      update/delete path here or anywhere else, so a scholar can never
 //      overwrite or delete another scholar's file or their own past one.
 //
-// Google Drive credentials are never sent to or readable from the
-// browser — this function only ever runs server-side, same as Part 3.
+// Formerly uploaded to Google Drive (Parent Folder / Activity Name /
+// Scholar Year Level / School, with live collision-avoided renaming) —
+// see supabase_migration_submission_supabase_storage.sql for the
+// migration off Drive and supabase/functions/submission-backfill-drive-
+// files for the one-time backfill of files uploaded before this change.
 import { corsHeaders } from "../_shared/cors.ts";
 import { requireScholar } from "../_shared/verifyScholar.ts";
-import { getGoogleAccessToken, sanitizeFileNameComponent, findAvailableFileName, uploadFile } from "../_shared/googleDrive.ts";
-import { ensureSubmissionDriveFolders } from "../_shared/ensureSubmissionDriveFolders.ts";
 import { isAllowedSubmissionUpload, SUBMISSION_ALLOWED_FILE_TYPES_LABEL } from "../_shared/allowedFileTypes.ts";
 
 // Not part of the spec's explicit rules (file type + file count) but a
@@ -87,7 +76,6 @@ Deno.serve(async (req: Request) => {
 
     const yearLevel = scholar.yearLevel.trim();
     if (!yearLevel) return jsonResponse({ error: "Your account has no year level set — contact SEAD staff." }, 400);
-    const school = scholar.school.trim();
 
     const targetYearLevels = (activity.target_year_levels as string[] | null) ?? [];
     const isApplicable = Boolean(activity.all_year_levels) || targetYearLevels.includes(yearLevel);
@@ -149,56 +137,44 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const parentFolderId = Deno.env.get("GOOGLE_DRIVE_PARENT_FOLDER_ID");
-    if (!parentFolderId) return jsonResponse({ error: "Google Drive is not configured yet." }, 500);
-
-    // Needed regardless of whether the folder structure is a cache hit or
-    // miss (the upload call itself always needs one), so it's fetched
-    // once up front and handed to ensureSubmissionDriveFolders as an
-    // already-resolved thunk instead of letting it fetch a second one on
-    // a miss.
-    const accessToken = await getGoogleAccessToken();
-    const { schoolFolderId } = await ensureSubmissionDriveFolders(
-      admin, parentFolderId, activityId, activity.name as string, yearLevel, school, () => Promise.resolve(accessToken),
-    );
-
+    const uploadId = crypto.randomUUID();
     const extension = fileExtension(file.name);
-    const baseName = [
-      sanitizeFileNameComponent(activity.name as string),
-      sanitizeFileNameComponent(scholar.lastName),
-      sanitizeFileNameComponent(scholar.firstName),
-    ].filter(Boolean).join("_") || "Submission";
-
-    const renamedFileName = await findAvailableFileName(accessToken, schoolFolderId, baseName, extension);
-
+    const storagePath = `${scholar.id}/${uploadId}${extension}`;
     const bytes = new Uint8Array(await file.arrayBuffer());
     const mimeType = file.type || "application/octet-stream";
-    const driveFileId = await uploadFile(accessToken, schoolFolderId, renamedFileName, mimeType, bytes);
+
+    const { error: storageError } = await admin.storage
+      .from("submission-uploads")
+      .upload(storagePath, bytes, { contentType: mimeType, upsert: false });
+    if (storageError) return jsonResponse({ error: `Failed to store the file: ${storageError.message}` }, 500);
 
     const { data: inserted, error: insertError } = await admin
       .from("submission_uploads")
       .insert({
+        id: uploadId,
         scholar_id: scholar.id,
         activity_id: activityId,
         field_id: fieldId,
         field_label_snapshot: field.label,
         original_file_name: file.name,
-        renamed_file_name: renamedFileName,
+        renamed_file_name: file.name,
         mime_type: mimeType,
-        drive_file_id: driveFileId,
+        drive_file_id: "",
+        storage_path: storagePath,
+        file_size_bytes: file.size,
         status: "uploaded",
       })
-      .select("id, original_file_name, renamed_file_name, mime_type, drive_file_id, status, created_at")
+      .select("id, original_file_name, renamed_file_name, mime_type, storage_path, status, created_at")
       .single();
 
     if (insertError || !inserted) {
-      // The file DID make it to Drive even though the DB write failed —
-      // flagged clearly (not swallowed) rather than silently losing track
-      // of an orphaned Drive file. Telling the scholar to retry is safe:
-      // findAvailableFileName's live Drive search means the retry gets
-      // its own distinct name rather than colliding with the orphan, so
-      // the worst case is one extra untracked Drive file, not data loss.
-      console.error(`Uploaded to Drive (file id ${driveFileId}) but failed to record it in Supabase:`, insertError?.message);
+      // Unlike the old Drive path, this is our own bucket — clean up the
+      // just-uploaded object so a failed insert never leaves an untracked
+      // file with no DB row, rather than leaving an orphan and hoping a
+      // retry doesn't collide (there's no OAuth-quota reason to tolerate
+      // an orphan here the way there was with Drive).
+      await admin.storage.from("submission-uploads").remove([storagePath]);
+      console.error(`Stored file at ${storagePath} but failed to record it in Supabase:`, insertError?.message);
       return jsonResponse({ error: "File was uploaded but couldn't be recorded — please retry." }, 500);
     }
 
@@ -210,7 +186,7 @@ Deno.serve(async (req: Request) => {
           originalFileName: inserted.original_file_name,
           renamedFileName: inserted.renamed_file_name,
           mimeType: inserted.mime_type,
-          driveFileId: inserted.drive_file_id,
+          storagePath: inserted.storage_path,
           status: inserted.status,
           createdAt: inserted.created_at,
         },

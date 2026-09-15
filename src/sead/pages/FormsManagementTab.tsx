@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileText, Link2, Plus, Pencil, Trash2, X, Check, UploadCloud, Eye, ShieldCheck, ShieldAlert, SlidersHorizontal, FolderOpen, ClipboardList } from "lucide-react";
+import { FileText, Link2, Plus, Pencil, Trash2, X, Check, UploadCloud, Eye, ShieldCheck, ShieldAlert, SlidersHorizontal, FolderOpen, ClipboardList, FolderTree } from "lucide-react";
 import {
   fetchFormMaterials, createFormMaterial, updateFormMaterial, deleteFormMaterial,
   uploadFormMaterialFile, removeFormMaterialFile, fetchFormMaterialPreviewUrl, setFormMaterialConditions,
@@ -12,6 +12,7 @@ import { fetchFormationActivities } from "../formationActivitiesApi";
 import { FORMATION_YEAR_LEVELS, type FormationActivity } from "@/scholar/formationActivitiesApi";
 import { fetchAllSDPActivities, type SDPActivity } from "../sdpMonitorApi";
 import { SubmissionActivitiesSection } from "./SubmissionActivitiesSection";
+import { SubmissionFileBrowserTab } from "./SubmissionFileBrowserTab";
 
 /**
  * Staff-side list + create/edit UI for the materials scholars see under
@@ -330,7 +331,7 @@ export function FormsManagementTab() {
   // ToolsPage.tsx / SDPMonitoringTab.tsx / FormationToolsTab.tsx); adding
   // it now would be scope creep beyond this task. Flagged as a possible
   // small follow-up if refresh persistence should extend here too.
-  const [section, setSection] = useState<"materials" | "submission-activities">("materials");
+  const [section, setSection] = useState<"materials" | "submission-activities" | "submission-files">("materials");
   const [materials, setMaterials] = useState<FormMaterial[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
@@ -371,9 +372,15 @@ export function FormsManagementTab() {
           }`}>
           <ClipboardList size={14} /> Submission Activities
         </button>
+        <button onClick={() => setSection("submission-files")}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
+            section === "submission-files" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}>
+          <FolderTree size={14} /> Submission Files
+        </button>
       </div>
 
-      {section === "submission-activities" ? <SubmissionActivitiesSection /> : (
+      {section === "submission-activities" ? <SubmissionActivitiesSection /> : section === "submission-files" ? <SubmissionFileBrowserTab /> : (
     <div>
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, Check, GripVertical, ClipboardList, ClipboardCheck, SlidersHorizontal, FolderSync, Users, ImagePlus } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, GripVertical, ClipboardList, ClipboardCheck, SlidersHorizontal, HardDriveDownload, Users, ImagePlus } from "lucide-react";
 import {
   fetchSubmissionActivities, createSubmissionActivity, updateSubmissionActivity, deleteSubmissionActivity,
   fetchSubmissionActivityConditions, setSubmissionActivityConditions, SUBMISSION_ALLOWED_FILE_TYPES,
-  reorganizeActivityDriveFiles,
   type SubmissionActivity, type SubmissionActivityInput, type SubmissionActivityCondition, type SubmissionFileCategory,
 } from "../submissionActivitiesApi";
+import { BackfillDriveFilesModal } from "./BackfillDriveFilesModal";
 import { uploadPubmat, pubmatUrl } from "../pubmatApi";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { SubmissionReviewPanel } from "./SubmissionReviewPanel";
@@ -260,12 +260,7 @@ export function SubmissionActivitiesSection() {
   const [reviewing, setReviewing] = useState<SubmissionActivity | null>(null);
   const [monitoring, setMonitoring] = useState<SubmissionActivity | null>(null);
   const [managingConditions, setManagingConditions] = useState<SubmissionActivity | null>(null);
-  // Tracks which single activity's Drive reorganization is in flight —
-  // scoped per-activity (not one global busy flag) since Milestone 2's
-  // Edge Function is itself scoped to one activity per call, and staff
-  // may reasonably want to trigger it for one activity while a previous
-  // one is still running for another.
-  const [reorganizingId, setReorganizingId] = useState<string | null>(null);
+  const [showBackfill, setShowBackfill] = useState(false);
 
   async function load() { setLoading(true); setActivities(await fetchSubmissionActivities()); setLoading(false); }
   useEffect(() => { void load(); }, []);
@@ -277,41 +272,6 @@ export function SubmissionActivitiesSection() {
     else void load();
   }
 
-  /**
-   * Milestone 2's frontend trigger. Confirms first since this moves real
-   * files in Drive (even though it's safely re-runnable — see the Edge
-   * Function's own header comment) — staff should still know what
-   * they're kicking off, not have it fire silently. Reports the outcome
-   * via window.alert, matching this component's own existing convention
-   * for reporting delete's outcome above, rather than introducing a new
-   * result-modal pattern just for this one action.
-   */
-  async function handleReorganize(activity: SubmissionActivity) {
-    if (!window.confirm(
-      `Move "${activity.name}"'s already-uploaded files into the new School subfolder structure? This reorganizes files already in Google Drive.`
-    )) return;
-    setReorganizingId(activity.id);
-    const result = await reorganizeActivityDriveFiles(activity.id);
-    setReorganizingId(null);
-    if (!result.ok || !result.result) {
-      window.alert(result.error || "Couldn't reorganize this activity's files.");
-      return;
-    }
-    const { totalFiles, movedCount, results } = result.result;
-    const failures = results.filter(r => !r.ok);
-    if (totalFiles === 0) {
-      window.alert(`"${activity.name}" has no uploaded files to reorganize.`);
-    } else if (failures.length === 0) {
-      window.alert(`Moved ${movedCount} of ${totalFiles} file(s) for "${activity.name}" into their School subfolder.`);
-    } else {
-      const failureList = failures.map(f => `• ${f.scholarName} — ${f.fileName}: ${f.error ?? "Unknown error"}`).join("\n");
-      window.alert(
-        `Moved ${movedCount} of ${totalFiles} file(s) for "${activity.name}".\n${failures.length} failed — you can re-run this ` +
-        `action safely to retry just the failed ones:\n${failureList}`
-      );
-    }
-  }
-
   return (
     <div>
       <div className="mb-5 flex items-start justify-between gap-4">
@@ -319,7 +279,14 @@ export function SubmissionActivitiesSection() {
           <h2 className="text-[15px] font-extrabold text-[#062444]">Submission Activities</h2>
           <p className="mt-1 text-[12.5px] text-slate-500">Define activities that ask scholars to upload files, shown under Calendar and Activities → Activities. Use the review icon on an activity to see and act on what scholars have submitted.</p>
         </div>
-        <button onClick={() => setShowNew(true)} className="shrink-0 flex items-center gap-1.5 rounded-lg bg-[#062444] px-3 py-2 text-[12.5px] font-bold text-[#F3BC00]"><Plus size={15} /> New Activity</button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button onClick={() => setShowBackfill(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-[#e6ecf5] bg-white px-3 py-2 text-[12.5px] font-bold text-[#062444] hover:bg-[#f8fafd]"
+            title="Move files uploaded before the Supabase Storage migration off Google Drive">
+            <HardDriveDownload size={15} /> Migrate Drive Files
+          </button>
+          <button onClick={() => setShowNew(true)} className="flex items-center gap-1.5 rounded-lg bg-[#062444] px-3 py-2 text-[12.5px] font-bold text-[#F3BC00]"><Plus size={15} /> New Activity</button>
+        </div>
       </div>
 
       {loading ? (
@@ -341,15 +308,6 @@ export function SubmissionActivitiesSection() {
                   <button onClick={() => setManagingConditions(activity)} className="text-slate-400 hover:text-[#0088cc]" aria-label="Manage unlock conditions"><SlidersHorizontal size={15} /></button>
                   <button onClick={() => setReviewing(activity)} className="text-slate-400 hover:text-[#0088cc]" aria-label={`Review submissions for ${activity.name}`}><ClipboardCheck size={15} /></button>
                   <button onClick={() => setMonitoring(activity)} className="text-slate-400 hover:text-[#0088cc]" aria-label={`View submission monitoring for ${activity.name}`} title="View who has and hasn't submitted"><Users size={15} /></button>
-                  <button
-                    onClick={() => void handleReorganize(activity)}
-                    disabled={reorganizingId === activity.id}
-                    className="text-slate-400 hover:text-[#0088cc] disabled:opacity-40 disabled:hover:text-slate-400"
-                    aria-label={`Reorganize Drive files for ${activity.name} into School subfolders`}
-                    title="Move already-uploaded files into the new School subfolder structure"
-                  >
-                    <FolderSync size={15} className={reorganizingId === activity.id ? "animate-spin" : ""} />
-                  </button>
                   <button onClick={() => setEditing(activity)} className="text-slate-400 hover:text-[#0088cc]" aria-label={`Edit ${activity.name}`}><Pencil size={15} /></button>
                   <button onClick={() => void handleDelete(activity)} className="text-slate-400 hover:text-red-600" aria-label={`Delete ${activity.name}`}><Trash2 size={15} /></button>
                 </div>
@@ -370,6 +328,7 @@ export function SubmissionActivitiesSection() {
       {reviewing && <SubmissionReviewPanel activity={reviewing} activities={activities} onClose={() => setReviewing(null)} />}
       {monitoring && <SubmissionRosterPanel activity={monitoring} activities={activities} onClose={() => setMonitoring(null)} />}
       {managingConditions && <SubmissionActivityConditionsModal activity={managingConditions} onClose={() => setManagingConditions(null)} onSaved={() => void load()} />}
+      {showBackfill && <BackfillDriveFilesModal onClose={() => setShowBackfill(false)} />}
     </div>
   );
 }

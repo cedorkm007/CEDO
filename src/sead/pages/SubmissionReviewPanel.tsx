@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Search, CheckCircle2, AlertCircle, Clock, ExternalLink, ClipboardCheck } from "lucide-react";
+import { X, Search, CheckCircle2, AlertCircle, Clock, Eye, ClipboardCheck } from "lucide-react";
 import {
   fetchSubmissionsForActivity, reviewSubmissionUploads,
   type SubmissionActivity, type SubmissionForReview,
 } from "../submissionActivitiesApi";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
+import { SubmissionFilePreviewModal } from "../components/SubmissionFilePreviewModal";
 
 type StatusFilter = "all" | "uploaded" | "accepted" | "needs_resubmission";
 type ReviewOutcome = "accepted" | "needs_resubmission";
@@ -53,8 +54,9 @@ function groupStatus(uploads: SubmissionForReview[]): "accepted" | "needs_resubm
 
 /**
  * One scholar's whole submission for the open activity — every uploaded
- * file (with a link to view it in Drive), and one review control that
- * applies to all of that scholar's files for this activity at once (see
+ * file (with an in-app Preview, or the old Drive link as a fallback for a
+ * row not yet backfilled off Drive), and one review control that applies
+ * to all of that scholar's files for this activity at once (see
  * reviewSubmissionUploads in submissionActivitiesApi.ts for why one
  * status/comment pair is written across every row instead of reviewing
  * file-by-file).
@@ -63,6 +65,7 @@ function ScholarSubmissionCard({ group, onReviewed }: { group: ScholarGroup; onR
   const [comment, setComment] = useState(() => group.uploads.find(u => u.staffComment)?.staffComment ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [previewing, setPreviewing] = useState<SubmissionForReview | null>(null);
   const status = groupStatus(group.uploads);
   const meta = statusMeta(status);
 
@@ -95,9 +98,13 @@ function ScholarSubmissionCard({ group, onReviewed }: { group: ScholarGroup; onR
         {group.uploads.map(u => (
           <li key={u.id} className="flex flex-wrap items-baseline gap-x-1.5 text-[12px]">
             <span className="font-semibold text-slate-600">{u.fieldLabel}:</span>
-            {u.driveViewUrl ? (
+            {u.storagePath ? (
+              <button type="button" onClick={() => setPreviewing(u)} className="flex items-center gap-1 text-[#0088cc] hover:underline">
+                {u.originalFileName} <Eye size={11} />
+              </button>
+            ) : u.driveViewUrl ? (
               <a href={u.driveViewUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[#0088cc] hover:underline">
-                {u.originalFileName} <ExternalLink size={11} />
+                {u.originalFileName} <Eye size={11} />
               </a>
             ) : (
               <span className="text-slate-500">{u.originalFileName}</span>
@@ -125,6 +132,13 @@ function ScholarSubmissionCard({ group, onReviewed }: { group: ScholarGroup; onR
           <AlertCircle size={13} /> Needs Resubmission
         </button>
       </div>
+
+      {previewing && (
+        <SubmissionFilePreviewModal
+          upload={{ storagePath: previewing.storagePath, mimeType: previewing.mimeType, originalFileName: previewing.originalFileName }}
+          onClose={() => setPreviewing(null)}
+        />
+      )}
     </div>
   );
 }

@@ -7,8 +7,9 @@ import {
   type SubmissionUploadRecord,
 } from "../../submissionsApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
+import { compressSubmissionFile } from "../../submissionCompression";
 
-type FileUploadStatus = "uploading" | "uploaded" | "error";
+type FileUploadStatus = "compressing" | "uploading" | "uploaded" | "error";
 
 /** Identifies one in-flight/just-picked file within a field for status tracking. Not a stored id — just a stable-enough key for one picker session. */
 function fileKey(fieldId: string, file: File): string {
@@ -93,8 +94,10 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
 
   async function uploadOneFile(fieldId: string, file: File) {
     const key = fileKey(fieldId, file);
+    setFileStatuses(prev => ({ ...prev, [key]: { status: "compressing" } }));
+    const { file: toUpload } = await compressSubmissionFile(file);
     setFileStatuses(prev => ({ ...prev, [key]: { status: "uploading", progress: 0 } }));
-    const result = await uploadSubmissionFile(activity.id, fieldId, file, fraction => {
+    const result = await uploadSubmissionFile(activity.id, fieldId, toUpload, fraction => {
       setFileStatuses(prev => (prev[key]?.status === "uploading" ? { ...prev, [key]: { ...prev[key], progress: fraction } } : prev));
     });
     if (result.ok && result.upload) {
@@ -204,6 +207,7 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
                     const status = fileStatuses[fileKey(field.id, f)];
                     return (
                       <li key={f.name + f.size} className="text-[11.5px]">
+                        {status?.status === "compressing" && <span className="text-slate-400">Compressing “{f.name}”…</span>}
                         {status?.status === "uploading" && (
                           <div>
                             <span className="text-slate-400">
