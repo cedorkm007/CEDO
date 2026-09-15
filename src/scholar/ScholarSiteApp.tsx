@@ -5,9 +5,10 @@ import { CEDOHomePage } from "./pages/CEDOHomePage";
 import { UnderDevelopmentPage } from "./pages/UnderDevelopmentPage";
 import { ScholarLoginPage } from "./pages/ScholarLoginPage";
 import { ScholarPortalPage } from "./pages/ScholarPortalPage";
+import { FinancialAssistanceStatusPage } from "./pages/FinancialAssistanceStatusPage";
 import type { PublicPage } from "./types";
 
-type SiteView = PublicPage | "scholar-login" | "new-college" | "new-law-medical" | "portal";
+type SiteView = PublicPage | "scholar-login" | "new-college" | "new-law-medical" | "portal" | "financial-assistance-status";
 
 // Every view gets its own URL under /CEDO so a scholar can bookmark/share a
 // direct link (e.g. a QR code to the login page) and so refreshing the page
@@ -17,6 +18,7 @@ const VIEW_PATHS: Record<SiteView, string> = {
   home: "", articles: "articles", programs: "programs", statistics: "statistics",
   "new-college": "new-college", "new-law-medical": "new-law-medical",
   "scholar-login": "login", portal: "portal",
+  "financial-assistance-status": "financial-assistance-status",
 };
 const PATH_TO_VIEW = Object.fromEntries(
   Object.entries(VIEW_PATHS).map(([view, path]) => [path, view])
@@ -89,14 +91,16 @@ export function ScholarSiteApp() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className={view === "portal" ? "hidden md:block" : ""}>
-        <PublicNav
-          page={navPage}
-          onNavigate={(p) => setView(p)}
-          onExistingScholar={() => setView("scholar-login")}
-          onNewApplicant={(kind) => setView(kind === "college" ? "new-college" : "new-law-medical")}
-        />
-      </div>
+      {view !== "financial-assistance-status" && (
+        <div className={view === "portal" ? "hidden md:block" : ""}>
+          <PublicNav
+            page={navPage}
+            onNavigate={(p) => setView(p)}
+            onExistingScholar={() => setView("scholar-login")}
+            onNewApplicant={(kind) => setView(kind === "college" ? "new-college" : "new-law-medical")}
+          />
+        </div>
+      )}
 
       {view === "home" && <CEDOHomePage />}
       {view === "articles" && <UnderDevelopmentPage title="Articles" />}
@@ -106,6 +110,7 @@ export function ScholarSiteApp() {
       {view === "new-law-medical" && <UnderDevelopmentPage title="New Applicant — Law and Medical Scholarship" />}
       {view === "scholar-login" && <ScholarLoginPage onLoginSuccess={() => setView("portal")} />}
       {view === "portal" && <ScholarPortalPage onSignOut={() => setView("home")} />}
+      {view === "financial-assistance-status" && <FinancialAssistanceStatusPage />}
     </div>
   );
 }

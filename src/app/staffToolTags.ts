@@ -58,4 +58,9 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     label: "Research Project Monitoring",
     description: "Monitor research projects, build surveys for SDP/Formation activities, and review survey results.",
   },
+  {
+    key: "financial_assistance",
+    label: "Financial Assistance",
+    description: "Monitor Financial Assistance applicants — separate from Mainstream Scholars, no portal account, tracked per academic period.",
+  },
 ];

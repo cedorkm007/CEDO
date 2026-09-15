@@ -158,6 +158,7 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
     || user.tags.includes("forms_management")
     || user.tags.includes("kauban_content")
     || user.tags.includes("scholarship_program_info")
+    || user.tags.includes("financial_assistance")
     || user.tags.includes("research_project_monitoring")
     || user.username.toLowerCase() === IT_ADMIN_USERNAME;
 
@@ -345,7 +346,7 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
-                  {user.tags.includes("scholarship_program_info") && (
+                  {(user.tags.includes("scholarship_program_info") || user.tags.includes("financial_assistance")) && (
                     <SidebarMenuItem className="min-w-0">
                       <SidebarMenuButton isActive={page === "scholarshipProgramInfo"} onClick={() => setPage("scholarshipProgramInfo")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
                         <BarChart3 /> <span className="truncate">Scholarship Program Information</span>

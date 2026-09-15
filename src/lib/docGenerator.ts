@@ -562,6 +562,88 @@ export async function generateScholarsInformationReport(opts: ScholarsInformatio
   saveAs(blob, `Scholars_Information_${new Date().toISOString().slice(0, 10)}.docx`)
 }
 
+// ── 5b. Financial Assistance Applicants Report ───────────────
+// Same dynamic-width table structure as Scholars Information Report
+// above — deliberately a separate function per this project's own
+// "one function per document type" convention (see the comment on the
+// Submission Monitoring Roster Report below), not a generalization of
+// that one, since Financial Assistance applicants are a distinct
+// document type even though the table shape happens to overlap.
+
+export interface FinancialAssistanceReportOptions {
+  columns: string[]
+  columnWeights?: number[]
+  rows: string[][]
+  generatedAt: string
+  filtersSummary: string
+}
+
+export async function generateFinancialAssistanceReport(opts: FinancialAssistanceReportOptions): Promise<void> {
+  const TABLE_WIDTH = 15398
+  const weights = opts.columnWeights && opts.columnWeights.length === opts.columns.length
+    ? opts.columnWeights
+    : opts.columns.map(() => 1)
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0)
+  const rawWidths = weights.map(w => (w / totalWeight) * TABLE_WIDTH)
+  const colWidths = rawWidths.map((w, i) =>
+    i === rawWidths.length - 1
+      ? TABLE_WIDTH - rawWidths.slice(0, -1).reduce((sum, x) => sum + Math.round(x), 0)
+      : Math.round(w)
+  )
+
+  const tableRows: TableRow[] = [
+    new TableRow({
+      tableHeader: true,
+      children: opts.columns.map((label, i) => headerCell(label, colWidths[i])),
+    }),
+    ...opts.rows.map(row => new TableRow({
+      children: row.map((value, i) => cell(
+        [new Paragraph({ children: [normal(value, 20)] })],
+        { width: colWidths[i] },
+      )),
+    })),
+  ]
+
+  const header = await buildLetterheadHeader()
+
+  const doc = new Document({
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 16838, height: 11906 },
+          margin: { top: 1440, right: 720, bottom: 431, left: 720, header: 720, footer: 720 },
+        },
+      },
+      headers: { default: header },
+      children: [
+        new Paragraph({
+          children: [bold('FINANCIAL ASSISTANCE APPLICANTS REPORT', 36)],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 120 },
+        }),
+        new Paragraph({
+          children: [normal(`Generated ${opts.generatedAt} • ${opts.rows.length} applicant${opts.rows.length === 1 ? '' : 's'}`, 20)],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 60 },
+        }),
+        new Paragraph({
+          children: [normal(opts.filtersSummary, 20)],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
+        }),
+        new Table({
+          width: { size: TABLE_WIDTH, type: WidthType.DXA },
+          columnWidths: colWidths,
+          rows: tableRows,
+        }),
+      ],
+    }],
+  })
+
+  const blob = await Packer.toBlob(doc)
+  saveAs(blob, `Financial_Assistance_Applicants_${new Date().toISOString().slice(0, 10)}.docx`)
+}
+
 // ── 6. Submission Monitoring Roster Report ───────────────────
 // Same dynamic-width table structure as Scholars Information Report
 // above (reused deliberately rather than generalizing that function's
