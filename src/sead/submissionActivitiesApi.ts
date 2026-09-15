@@ -280,16 +280,34 @@ export interface SubmissionForReview {
 }
 
 export async function fetchSubmissionsForActivity(activityId: string): Promise<SubmissionForReview[]> {
-  const { data, error } = await supabase
-    .from("submission_uploads")
-    .select(
-      "id, scholar_id, field_id, field_label_snapshot, original_file_name, mime_type, drive_file_id, storage_path, status, staff_comment, created_at, " +
-      "scholars (scholar_id_number, first_name, last_name, year_level)"
-    )
-    .eq("activity_id", activityId)
-    .order("created_at", { ascending: true });
-  if (error || !data) return [];
-  return (data as unknown as Record<string, unknown>[]).map(row => {
+  // PostgREST caps an unpaginated response at 1,000 rows — an activity like
+  // "Signed Contract Upload" already has ~1,487 uploads, so a plain select
+  // here was silently dropping its oldest ~487 rows (whichever scholars
+  // happened to sort past the cutoff) from both this review panel and the
+  // Submission Files browser tab below. Pages through with .range() until a
+  // page comes back short, same fix as fetchSubmissionRosterStatus's own
+  // earlier run-in with this exact cap.
+  const pageSize = 1000;
+  const allRows: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("submission_uploads")
+      .select(
+        "id, scholar_id, field_id, field_label_snapshot, original_file_name, mime_type, drive_file_id, storage_path, status, staff_comment, created_at, " +
+        "scholars (scholar_id_number, first_name, last_name, year_level)"
+      )
+      .eq("activity_id", activityId)
+      .order("created_at", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error || !data) return allRows.length ? mapSubmissionForReview(allRows) : [];
+    allRows.push(...(data as unknown as Record<string, unknown>[]));
+    if (data.length < pageSize) break;
+  }
+  return mapSubmissionForReview(allRows);
+}
+
+function mapSubmissionForReview(rows: Record<string, unknown>[]): SubmissionForReview[] {
+  return rows.map(row => {
     const scholar = (row.scholars as Record<string, unknown> | null) ?? {};
     const driveFileId = String(row.drive_file_id ?? "");
     const storagePath = String(row.storage_path ?? "");
@@ -458,13 +476,25 @@ export interface SubmissionFileRow {
  * same way those RPCs themselves do.
  */
 export async function fetchSubmissionFiles(activityId: string, yearLevel: string, school: string): Promise<SubmissionFileRow[]> {
-  const { data, error } = await supabase
-    .from("submission_uploads")
-    .select("id, original_file_name, field_label_snapshot, mime_type, drive_file_id, storage_path, status, created_at, scholars!inner(first_name, last_name, year_level, school)")
-    .eq("activity_id", activityId)
-    .order("created_at", { ascending: false });
-  if (error || !data) return [];
-  const rows = (data as unknown as Record<string, unknown>[]).filter(row => {
+  // Same 1,000-row PostgREST response cap as fetchSubmissionsForActivity
+  // above — without paging, an activity past that many total uploads
+  // silently hides its oldest rows from every year-level/school group here,
+  // even though the count RPCs above (which run their GROUP BY in the
+  // database, not on a capped response) still report them.
+  const pageSize = 1000;
+  const allRows: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("submission_uploads")
+      .select("id, original_file_name, field_label_snapshot, mime_type, drive_file_id, storage_path, status, created_at, scholars!inner(first_name, last_name, year_level, school)")
+      .eq("activity_id", activityId)
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error || !data) break;
+    allRows.push(...(data as unknown as Record<string, unknown>[]));
+    if (data.length < pageSize) break;
+  }
+  const rows = allRows.filter(row => {
     const scholar = (row.scholars as Record<string, unknown> | null) ?? {};
     const rowYearLevel = String(scholar.year_level ?? "").trim() || "No Year Level Set";
     const rowSchool = String(scholar.school ?? "").trim() || "No School Set";
