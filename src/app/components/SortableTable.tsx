@@ -83,7 +83,7 @@ export function SortableTh({
       <button type="button" onClick={() => onSort(sortKey)} className="inline-flex items-center gap-1 hover:text-current">
         <span>{label}</span>
         {active ? (
-          sortState.direction === "asc" ? <ChevronUp size={11} /> : <ChevronDown size={11} />
+          sortState.direction === "asc" ? <ChevronUp size={13} className="text-accent" strokeWidth={3} /> : <ChevronDown size={13} className="text-accent" strokeWidth={3} />
         ) : (
           <ChevronsUpDown size={11} className="opacity-30" />
         )}
