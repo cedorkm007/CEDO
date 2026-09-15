@@ -30,6 +30,7 @@ import { FormsManagementTab } from "@/sead/pages/FormsManagementTab";
 import { KaubanContentManagementPage } from "@/kauban/admin/KaubanContentManagementPage";
 import { ScholarshipProgramInfoPage } from "@/sead/pages/ScholarshipProgramInfoPage";
 import { ResearchProjectMonitoringTab } from "@/sead/pages/ResearchProjectMonitoringTab";
+import { FinancialAssistanceToolsPage } from "@/sead/FinancialAssistanceToolsPage";
 import { MyResearchPage } from "@/sead/pages/MyResearchPage";
 import { StaffAccountsPage } from "@/itadmin/StaffAccountsPage";
 import { TopNav } from "@/app/components/TopNav";
@@ -58,7 +59,7 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
-export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "questManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "researchProjectMonitoring" | "myResearch" | "staffAccounts";
+export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "questManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "researchProjectMonitoring" | "myResearch" | "staffAccounts" | "financialAssistanceTools";
 
 /** "Scholar Management Tools" (question bank + scholar accounts) is now gated by
  *  the "scholar_management" tag (see src/app/staffToolTags.ts) instead of a fixed
@@ -79,7 +80,7 @@ export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitorin
 // hand-copied a third time into a different file.
 export const IT_ADMIN_USERNAME = "it.admin1";
 
-const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "questManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "researchProjectMonitoring", "myResearch", "staffAccounts"];
+const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "questManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "researchProjectMonitoring", "myResearch", "staffAccounts", "financialAssistanceTools"];
 
 /**
  * Mirrors the exact gating conditions in the render switch at the bottom
@@ -101,9 +102,10 @@ function isPageAuthorizedFor(page: Page, user: UserProfile): boolean {
     case "formationTools": return user.tags.includes("scholars_formation");
     case "formsManagement": return user.tags.includes("forms_management");
     case "kaubanContent": return user.tags.includes("kauban_content");
-    case "scholarshipProgramInfo": return user.tags.includes("scholarship_program_info") || user.tags.includes("financial_assistance");
+    case "scholarshipProgramInfo": return user.tags.includes("scholarship_program_info");
     case "researchProjectMonitoring": return user.tags.includes("research_project_monitoring");
     case "staffAccounts": return user.username.toLowerCase() === IT_ADMIN_USERNAME;
+    case "financialAssistanceTools": return user.tags.includes("financial_assistance");
     default: return true; // home, profile, tasks, accomplishments, notifications, forms, myResearch — open to any signed-in user
   }
 }
@@ -3471,11 +3473,14 @@ export default function App() {
           {page==="kaubanContent" && currentUser.tags.includes("kauban_content") && (
             <KaubanContentManagementPage/>
           )}
-          {page==="scholarshipProgramInfo" && (currentUser.tags.includes("scholarship_program_info") || currentUser.tags.includes("financial_assistance")) && (
-            <ScholarshipProgramInfoPage currentUserTags={currentUser.tags}/>
+          {page==="scholarshipProgramInfo" && currentUser.tags.includes("scholarship_program_info") && (
+            <ScholarshipProgramInfoPage/>
           )}
           {page==="researchProjectMonitoring" && currentUser.tags.includes("research_project_monitoring") && (
             <ResearchProjectMonitoringTab/>
+          )}
+          {page==="financialAssistanceTools" && currentUser.tags.includes("financial_assistance") && (
+            <FinancialAssistanceToolsPage/>
           )}
           {page==="myResearch" && (
             <MyResearchPage/>

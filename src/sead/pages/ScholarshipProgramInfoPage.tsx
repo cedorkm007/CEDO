@@ -12,8 +12,7 @@ import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { ScholarListPanel } from "../components/ScholarListPanel";
 import { GroupCountBreakdown, type GroupCountRow } from "../components/GroupCountBreakdown";
 import { Modal } from "../components/Modal";
-import { FinancialAssistanceTab } from "./FinancialAssistanceTab";
-import { useUrlState } from "@/app/useUrlState";
+import { FinancialAssistanceSummaryTab } from "./FinancialAssistanceSummaryTab";
 
 type InfoSubtab = "barangay" | "school";
 type StatusDimension = "yearLevel" | "school" | "barangay" | "course";
@@ -38,11 +37,11 @@ function slugify(text: string): string {
  * Level -> Course drill-down). Per-scholar comprehensive profile export
  * lands in Phase 4.
  */
-export function ScholarshipProgramInfoPage({ currentUserTags }: { currentUserTags: string[] }) {
-  const hasMainstream = currentUserTags.includes("scholarship_program_info");
-  const hasFinancialAssistance = currentUserTags.includes("financial_assistance");
-  const [topTab, setTopTab] = useUrlState<TopTab>("spiTab", hasMainstream ? "mainstream" : "financial-assistance", ["mainstream", "financial-assistance"]);
-  const activeTopTab: TopTab = topTab === "mainstream" && !hasMainstream ? "financial-assistance" : topTab === "financial-assistance" && !hasFinancialAssistance ? "mainstream" : topTab;
+export function ScholarshipProgramInfoPage() {
+  // Plain local state, not useUrlState — both tabs are always visible to
+  // anyone on this page (entry is already gated by the scholarship_program_info
+  // tag alone), same as the Barangay/School sub-tabs one level down.
+  const [topTab, setTopTab] = useState<TopTab>("mainstream");
 
   return (
     <div>
@@ -52,20 +51,18 @@ export function ScholarshipProgramInfoPage({ currentUserTags }: { currentUserTag
       </div>
       <p className="text-[12.5px] text-slate-500 mb-5">A birds-eye view of the scholarship program.</p>
 
-      {hasMainstream && hasFinancialAssistance && (
-        <div className="flex items-center gap-2 mb-5 border-b border-[#e6ecf5]">
-          <button onClick={() => setTopTab("mainstream")}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-bold border-b-2 transition-colors ${activeTopTab === "mainstream" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-[#062444]"}`}>
-            <GraduationCap size={14} /> Mainstream Scholars
-          </button>
-          <button onClick={() => setTopTab("financial-assistance")}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-bold border-b-2 transition-colors ${activeTopTab === "financial-assistance" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-[#062444]"}`}>
-            <HandCoins size={14} /> Financial Assistance
-          </button>
-        </div>
-      )}
+      <div className="flex items-center gap-2 mb-5 border-b border-[#e6ecf5]">
+        <button onClick={() => setTopTab("mainstream")}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-bold border-b-2 transition-colors ${topTab === "mainstream" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-[#062444]"}`}>
+          <GraduationCap size={14} /> Mainstream Scholars
+        </button>
+        <button onClick={() => setTopTab("financial-assistance")}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-bold border-b-2 transition-colors ${topTab === "financial-assistance" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-[#062444]"}`}>
+          <HandCoins size={14} /> Financial Assistance
+        </button>
+      </div>
 
-      {activeTopTab === "mainstream" ? <MainstreamScholarsTab /> : <FinancialAssistanceTab />}
+      {topTab === "mainstream" ? <MainstreamScholarsTab /> : <FinancialAssistanceSummaryTab />}
     </div>
   );
 }

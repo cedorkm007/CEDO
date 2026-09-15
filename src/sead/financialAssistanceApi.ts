@@ -154,3 +154,35 @@ export async function setFinancialAssistanceApprovedInstructions(text: string): 
   const { error } = await supabase.rpc("set_financial_assistance_approved_instructions", { p_text: text });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+
+// ── Scholarship Program Information summary (read-only) ─────
+// Gated by is_scholarship_program_staff() server-side, not
+// is_financial_assistance_staff() — this powers the read-only summary
+// tab inside Scholarship Program Information, not the management tool.
+
+export interface FinancialAssistanceStatusCounts {
+  processing: number;
+  approved: number;
+  total: number;
+}
+
+export async function fetchFinancialAssistanceStatusCounts(periodId: string): Promise<FinancialAssistanceStatusCounts | null> {
+  const { data, error } = await supabase.rpc("financial_assistance_status_counts", { p_period_id: periodId }).maybeSingle();
+  if (error || !data) return null;
+  const row = data as { processing_count: number; approved_count: number; total_count: number };
+  return { processing: Number(row.processing_count), approved: Number(row.approved_count), total: Number(row.total_count) };
+}
+
+export interface FinancialAssistanceGroupCount { label: string; count: number }
+
+export async function fetchFinancialAssistanceByBarangay(periodId: string): Promise<FinancialAssistanceGroupCount[]> {
+  const { data, error } = await supabase.rpc("financial_assistance_by_barangay", { p_period_id: periodId });
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({ label: String(r.barangay), count: Number(r.applicant_count) }));
+}
+
+export async function fetchFinancialAssistanceBySchool(periodId: string): Promise<FinancialAssistanceGroupCount[]> {
+  const { data, error } = await supabase.rpc("financial_assistance_by_school", { p_period_id: periodId });
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({ label: String(r.school), count: Number(r.applicant_count) }));
+}

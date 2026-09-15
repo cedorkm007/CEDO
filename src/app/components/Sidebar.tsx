@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3, FlaskConical, Trophy } from "lucide-react";
+import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3, FlaskConical, Trophy, HandCoins } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarSeparator,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
@@ -346,10 +346,17 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
-                  {(user.tags.includes("scholarship_program_info") || user.tags.includes("financial_assistance")) && (
+                  {user.tags.includes("scholarship_program_info") && (
                     <SidebarMenuItem className="min-w-0">
                       <SidebarMenuButton isActive={page === "scholarshipProgramInfo"} onClick={() => setPage("scholarshipProgramInfo")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
                         <BarChart3 /> <span className="truncate">Scholarship Program Information</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {user.tags.includes("financial_assistance") && (
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "financialAssistanceTools"} onClick={() => setPage("financialAssistanceTools")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <HandCoins /> <span className="truncate">Financial Assistance Tools</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
