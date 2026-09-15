@@ -231,6 +231,23 @@ export async function setSubmissionActivityConditions(activityId: string, condit
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+/**
+ * A scholar's own device/app often names an upload something meaningless to
+ * staff for scanning purposes — "inbound7115836571898347721.pdf" (shared via
+ * Messenger), "file.pdf_20260914_234254_0000.pdf" (a scanner app), or even a
+ * literal "%20"-encoded name. Every staff-facing file list shows this
+ * generated label instead; the scholar's own original_file_name is kept only
+ * for the actual downloaded file (SubmissionFilePreviewModal's `download`
+ * attribute), never discarded from the database.
+ */
+export function formatSubmissionDisplayName(scholarName: string, fieldLabel: string, originalFileName: string): string {
+  const dotIndex = originalFileName.lastIndexOf(".");
+  const extension = dotIndex >= 0 ? originalFileName.slice(dotIndex).toLowerCase() : "";
+  const scholar = scholarName.trim() || "Unknown Scholar";
+  const field = fieldLabel.trim();
+  return field ? `${scholar} — ${field}${extension}` : `${scholar}${extension}`;
+}
+
 // ── Part 5: staff review ─────────────────────────────────────
 
 /**
@@ -251,6 +268,7 @@ export interface SubmissionForReview {
   fieldId: string;
   fieldLabel: string;
   originalFileName: string;
+  displayFileName: string;
   mimeType: string;
   /** Path in the private "submission-uploads" Storage bucket — "" for a row not yet backfilled off Drive (see submissionCompression.ts / the Storage migration). */
   storagePath: string;
@@ -275,15 +293,19 @@ export async function fetchSubmissionsForActivity(activityId: string): Promise<S
     const scholar = (row.scholars as Record<string, unknown> | null) ?? {};
     const driveFileId = String(row.drive_file_id ?? "");
     const storagePath = String(row.storage_path ?? "");
+    const scholarName = `${scholar.first_name ?? ""} ${scholar.last_name ?? ""}`.trim();
+    const fieldLabel = String(row.field_label_snapshot ?? "");
+    const originalFileName = String(row.original_file_name ?? "");
     return {
       id: String(row.id),
       scholarId: String(row.scholar_id ?? ""),
       scholarIdNumber: String(scholar.scholar_id_number ?? ""),
-      scholarName: `${scholar.first_name ?? ""} ${scholar.last_name ?? ""}`.trim(),
+      scholarName,
       yearLevel: String(scholar.year_level ?? ""),
       fieldId: String(row.field_id ?? ""),
-      fieldLabel: String(row.field_label_snapshot ?? ""),
-      originalFileName: String(row.original_file_name ?? ""),
+      fieldLabel,
+      originalFileName,
+      displayFileName: formatSubmissionDisplayName(scholarName, fieldLabel, originalFileName),
       mimeType: String(row.mime_type ?? ""),
       storagePath,
       driveViewUrl: !storagePath && driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : "",
@@ -417,6 +439,7 @@ export async function fetchSubmissionUploadCountsBySchool(activityId: string, ye
 export interface SubmissionFileRow {
   id: string;
   originalFileName: string;
+  displayFileName: string;
   mimeType: string;
   storagePath: string;
   driveViewUrl: string;
@@ -437,7 +460,7 @@ export interface SubmissionFileRow {
 export async function fetchSubmissionFiles(activityId: string, yearLevel: string, school: string): Promise<SubmissionFileRow[]> {
   const { data, error } = await supabase
     .from("submission_uploads")
-    .select("id, original_file_name, mime_type, drive_file_id, storage_path, status, created_at, scholars!inner(first_name, last_name, year_level, school)")
+    .select("id, original_file_name, field_label_snapshot, mime_type, drive_file_id, storage_path, status, created_at, scholars!inner(first_name, last_name, year_level, school)")
     .eq("activity_id", activityId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
@@ -451,14 +474,17 @@ export async function fetchSubmissionFiles(activityId: string, yearLevel: string
     const scholar = (row.scholars as Record<string, unknown> | null) ?? {};
     const driveFileId = String(row.drive_file_id ?? "");
     const storagePath = String(row.storage_path ?? "");
+    const scholarName = `${scholar.first_name ?? ""} ${scholar.last_name ?? ""}`.trim();
+    const originalFileName = String(row.original_file_name ?? "");
     return {
       id: String(row.id),
-      originalFileName: String(row.original_file_name ?? ""),
+      originalFileName,
+      displayFileName: formatSubmissionDisplayName(scholarName, String(row.field_label_snapshot ?? ""), originalFileName),
       mimeType: String(row.mime_type ?? ""),
       storagePath,
       driveViewUrl: !storagePath && driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : "",
       status: String(row.status ?? "uploaded"),
-      scholarName: `${scholar.first_name ?? ""} ${scholar.last_name ?? ""}`.trim(),
+      scholarName,
       createdAt: String(row.created_at ?? ""),
     };
   });

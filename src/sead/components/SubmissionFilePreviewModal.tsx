@@ -5,6 +5,9 @@ import { supabase } from "@/lib/supabase";
 export interface PreviewableUpload {
   storagePath: string;
   mimeType: string;
+  /** Shown everywhere in this modal (title, alt text, download button label) — a scholar's own device name is often meaningless to staff (see formatSubmissionDisplayName). */
+  displayFileName: string;
+  /** Used ONLY as the `download` attribute's file name, so the file the staff member actually saves keeps its real original name. */
   originalFileName: string;
 }
 
@@ -33,7 +36,7 @@ export function SubmissionFilePreviewModal({ upload, onClose }: { upload: Previe
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 px-4 py-8" onClick={onClose}>
       <div className="flex w-full max-w-4xl h-[85vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex shrink-0 items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4">
-          <p className="truncate text-[14px] font-bold text-white pr-4">{upload.originalFileName}</p>
+          <p className="truncate text-[14px] font-bold text-white pr-4">{upload.displayFileName}</p>
           <button onClick={onClose} className="shrink-0 text-white/70 hover:text-white" aria-label="Close"><X size={18} /></button>
         </div>
 
@@ -48,9 +51,9 @@ export function SubmissionFilePreviewModal({ upload, onClose }: { upload: Previe
               <p className="text-[13px] text-slate-400">Loading preview…</p>
             </div>
           ) : isImage ? (
-            <img src={signedUrl} alt={upload.originalFileName} className="h-full w-full object-contain" />
+            <img src={signedUrl} alt={upload.displayFileName} className="h-full w-full object-contain" />
           ) : isPdf ? (
-            <iframe src={signedUrl} title={upload.originalFileName} className="h-full w-full border-0" />
+            <iframe src={signedUrl} title={upload.displayFileName} className="h-full w-full border-0" />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center px-6">
               <FileWarning size={24} className="text-slate-300" />
@@ -62,7 +65,7 @@ export function SubmissionFilePreviewModal({ upload, onClose }: { upload: Previe
                 download={upload.originalFileName}
                 className="flex items-center gap-1.5 rounded-lg bg-[#062444] px-4 py-2 text-[12.5px] font-bold text-white"
               >
-                <Download size={14} /> Download {upload.originalFileName}
+                <Download size={14} /> Download {upload.displayFileName}
               </a>
             </div>
           )}

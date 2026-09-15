@@ -100,14 +100,14 @@ function ScholarSubmissionCard({ group, onReviewed }: { group: ScholarGroup; onR
             <span className="font-semibold text-slate-600">{u.fieldLabel}:</span>
             {u.storagePath ? (
               <button type="button" onClick={() => setPreviewing(u)} className="flex items-center gap-1 text-[#0088cc] hover:underline">
-                {u.originalFileName} <Eye size={11} />
+                {u.displayFileName} <Eye size={11} />
               </button>
             ) : u.driveViewUrl ? (
               <a href={u.driveViewUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[#0088cc] hover:underline">
-                {u.originalFileName} <Eye size={11} />
+                {u.displayFileName} <Eye size={11} />
               </a>
             ) : (
-              <span className="text-slate-500">{u.originalFileName}</span>
+              <span className="text-slate-500">{u.displayFileName}</span>
             )}
             <span className="text-[11px] text-slate-400">{new Date(u.createdAt).toLocaleString()}</span>
           </li>
@@ -135,7 +135,7 @@ function ScholarSubmissionCard({ group, onReviewed }: { group: ScholarGroup; onR
 
       {previewing && (
         <SubmissionFilePreviewModal
-          upload={{ storagePath: previewing.storagePath, mimeType: previewing.mimeType, originalFileName: previewing.originalFileName }}
+          upload={{ storagePath: previewing.storagePath, mimeType: previewing.mimeType, displayFileName: previewing.displayFileName, originalFileName: previewing.originalFileName }}
           onClose={() => setPreviewing(null)}
         />
       )}

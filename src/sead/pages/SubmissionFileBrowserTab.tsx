@@ -157,7 +157,7 @@ export function SubmissionFileBrowserTab() {
                   <div className="min-w-0 flex items-center gap-2">
                     <FileText size={16} className="shrink-0 text-[#0088cc]" />
                     <div className="min-w-0">
-                      <p className="truncate text-[12.5px] font-semibold text-[#062444]">{f.originalFileName}</p>
+                      <p className="truncate text-[12.5px] font-semibold text-[#062444]">{f.displayFileName}</p>
                       <p className="text-[11px] text-slate-400">{f.scholarName} • {new Date(f.createdAt).toLocaleDateString()}</p>
                     </div>
                   </div>
@@ -184,7 +184,7 @@ export function SubmissionFileBrowserTab() {
 
       {previewing && (
         <SubmissionFilePreviewModal
-          upload={{ storagePath: previewing.storagePath, mimeType: previewing.mimeType, originalFileName: previewing.originalFileName }}
+          upload={{ storagePath: previewing.storagePath, mimeType: previewing.mimeType, displayFileName: previewing.displayFileName, originalFileName: previewing.originalFileName }}
           onClose={() => setPreviewing(null)}
         />
       )}
