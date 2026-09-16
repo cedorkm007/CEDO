@@ -257,6 +257,12 @@ const INFO_COLUMNS: { key: keyof ScholarInformationRow; label: string }[] = [
   { key: "birthday", label: "Age" }, // displayed as a computed age, stored/fetched as birthday
   { key: "civilStatus", label: "Civil Status" },
   { key: "contactNo", label: "Contact Number" },
+  { key: "fatherFirstName", label: "Father's First Name" },
+  { key: "fatherMiddleInitial", label: "Father's Middle Initial" },
+  { key: "fatherLastName", label: "Father's Last Name" },
+  { key: "motherFirstName", label: "Mother's First Name" },
+  { key: "motherMiddleInitial", label: "Mother's Middle Initial" },
+  { key: "motherLastName", label: "Mother's Last Name" },
 ];
 const INFO_COLUMNS_STORAGE_KEY = "cedo_scholars_information_columns";
 
@@ -325,6 +331,8 @@ function describeAppliedFilters(filters: ScholarInformationFilters): string {
   if (filters.school) parts.push(`School contains "${filters.school}"`);
   if (filters.yearLevel) parts.push(`Year Level = ${filters.yearLevel}`);
   if (filters.status) parts.push(`Scholarship Status = ${filters.status}`);
+  if (filters.fatherName) parts.push(`Father's Name contains "${filters.fatherName}"`);
+  if (filters.motherName) parts.push(`Mother's Name contains "${filters.motherName}"`);
   if (filters.ageMin !== undefined && filters.ageMax !== undefined) parts.push(`Age ${filters.ageMin}–${filters.ageMax}`);
   else if (filters.ageMin !== undefined) parts.push(`Age ≥ ${filters.ageMin}`);
   else if (filters.ageMax !== undefined) parts.push(`Age ≤ ${filters.ageMax}`);
@@ -389,6 +397,8 @@ function ScholarsInformationSubtab() {
   const [schoolFilter, setSchoolFilter] = useState("");
   const [yearLevelFilter, setYearLevelFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<ScholarshipStatus | "">("");
+  const [fatherNameFilter, setFatherNameFilter] = useState("");
+  const [motherNameFilter, setMotherNameFilter] = useState("");
   const [ageMinFilter, setAgeMinFilter] = useState("");
   const [ageMaxFilter, setAgeMaxFilter] = useState("");
   // Milestone 3 — a Set (not an array) so toggling one checkbox doesn't
@@ -456,6 +466,8 @@ function ScholarsInformationSubtab() {
       if (schoolFilter.trim()) next.school = schoolFilter.trim();
       if (yearLevelFilter) next.yearLevel = yearLevelFilter;
       if (statusFilter) next.status = statusFilter;
+      if (fatherNameFilter.trim()) next.fatherName = fatherNameFilter.trim();
+      if (motherNameFilter.trim()) next.motherName = motherNameFilter.trim();
       if (ageMin !== undefined && !Number.isNaN(ageMin)) next.ageMin = ageMin;
       if (ageMax !== undefined && !Number.isNaN(ageMax)) next.ageMax = ageMax;
       if (emptyFieldsFilter.size > 0) next.emptyFields = [...emptyFieldsFilter];
@@ -466,7 +478,7 @@ function ScholarsInformationSubtab() {
     }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nameFilter, barangayFilter, courseFilter, schoolFilter, yearLevelFilter, statusFilter, ageMinFilter, ageMaxFilter, emptyFieldsFilter]);
+  }, [nameFilter, barangayFilter, courseFilter, schoolFilter, yearLevelFilter, statusFilter, fatherNameFilter, motherNameFilter, ageMinFilter, ageMaxFilter, emptyFieldsFilter]);
 
   function toggleEmptyField(key: ScholarInformationEmptyableField) {
     setEmptyFieldsFilter(prev => {
@@ -478,7 +490,8 @@ function ScholarsInformationSubtab() {
 
   function clearFilters() {
     setNameFilter(""); setBarangayFilter(""); setCourseFilter(""); setSchoolFilter("");
-    setYearLevelFilter(""); setStatusFilter(""); setAgeMinFilter(""); setAgeMaxFilter(""); setEmptyFieldsFilter(new Set());
+    setYearLevelFilter(""); setStatusFilter(""); setFatherNameFilter(""); setMotherNameFilter("");
+    setAgeMinFilter(""); setAgeMaxFilter(""); setEmptyFieldsFilter(new Set());
     // The debounce effect above will pick this up and reload with empty
     // filters — no need to duplicate that call here.
   }
@@ -772,6 +785,16 @@ function ScholarsInformationSubtab() {
               <option value="">Any</option>
               {SCHOLARSHIP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Father's Name</label>
+            <input value={fatherNameFilter} onChange={e => setFatherNameFilter(e.target.value)} placeholder="Search father's name…"
+              className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Mother's Name</label>
+            <input value={motherNameFilter} onChange={e => setMotherNameFilter(e.target.value)} placeholder="Search mother's name…"
+              className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc]" />
           </div>
           <div>
             <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Age (min)</label>

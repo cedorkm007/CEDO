@@ -982,6 +982,8 @@ export interface ScholarInformationFilters {
   courseExact?: string;
   ageMin?: number;
   ageMax?: number;
+  fatherName?: string; // partial match against father's first/middle/last name
+  motherName?: string; // partial match against mother's first/middle/last name
   /**
    * Thread C Milestone 2 — generic "field is empty" filter. Rows where
    * ANY ONE of the listed fields is blank (null or empty string) match —
@@ -1068,6 +1070,14 @@ function applyScholarInformationFilters(query: any, filters: ScholarInformationF
   if (filters.status) query = query.eq("status", filters.status);
   if (filters.schoolExact) query = query.eq("school", filters.schoolExact);
   if (filters.courseExact) query = query.eq("course", filters.courseExact);
+  if (filters.fatherName?.trim()) {
+    const pattern = `%${filters.fatherName.trim().replace(/[,.()]/g, " ")}%`;
+    query = query.or(`father_first_name.ilike.${pattern},father_middle_initial.ilike.${pattern},father_last_name.ilike.${pattern}`);
+  }
+  if (filters.motherName?.trim()) {
+    const pattern = `%${filters.motherName.trim().replace(/[,.()]/g, " ")}%`;
+    query = query.or(`mother_first_name.ilike.${pattern},mother_middle_initial.ilike.${pattern},mother_last_name.ilike.${pattern}`);
+  }
   // Age is a value COMPUTED from birthday (see computeAge() in
   // ScholarsTab.tsx), not a stored column, so a WHERE clause can't filter
   // on it directly — translate the requested age range into a birthday
