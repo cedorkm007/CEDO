@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Search, CheckCircle2, AlertCircle, Clock, Eye, ClipboardCheck } from "lucide-react";
+import { X, Search, CheckCircle2, AlertCircle, Clock, Eye, ClipboardCheck, Trash2 } from "lucide-react";
 import {
-  fetchSubmissionsForActivity, reviewSubmissionUploads,
+  fetchSubmissionsForActivity, reviewSubmissionUploads, deleteSubmissionUploadFile,
   type SubmissionActivity, type SubmissionForReview,
 } from "../submissionActivitiesApi";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
@@ -66,19 +66,44 @@ function ScholarSubmissionCard({ group, onReviewed }: { group: ScholarGroup; onR
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [previewing, setPreviewing] = useState<SubmissionForReview | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const status = groupStatus(group.uploads);
   const meta = statusMeta(status);
+
+  function hasAttachedFile(u: SubmissionForReview): boolean {
+    return !u.fileRemoved && Boolean(u.storagePath || u.driveViewUrl);
+  }
+
+  async function handleDeleteFile(u: SubmissionForReview) {
+    if (!window.confirm(`Delete the attached file for "${u.fieldLabel}"? This cannot be undone.`)) return;
+    setDeletingId(u.id);
+    setError("");
+    const result = await deleteSubmissionUploadFile(u.id);
+    setDeletingId(null);
+    if (!result.ok) { setError(result.error || "Failed to delete the file."); return; }
+    onReviewed();
+  }
 
   async function review(outcome: ReviewOutcome) {
     if (outcome === "needs_resubmission" && !comment.trim()) {
       setError("Add a comment explaining what needs to be resubmitted.");
       return;
     }
+    const filesToClear = group.uploads.filter(hasAttachedFile);
+    if (outcome === "needs_resubmission" && filesToClear.length > 0) {
+      const confirmed = window.confirm(
+        "Marking this as Needs Resubmission will also delete the attached file(s) so the scholar uploads fresh ones. This cannot be undone. Continue?",
+      );
+      if (!confirmed) return;
+    }
     setBusy(true);
     setError("");
     const result = await reviewSubmissionUploads(group.uploads.map(u => u.id), outcome, comment.trim());
+    if (!result.ok) { setBusy(false); setError(result.error || "Couldn't save the review."); return; }
+    if (outcome === "needs_resubmission") {
+      for (const u of filesToClear) await deleteSubmissionUploadFile(u.id);
+    }
     setBusy(false);
-    if (!result.ok) { setError(result.error || "Couldn't save the review."); return; }
     onReviewed();
   }
 
@@ -106,10 +131,19 @@ function ScholarSubmissionCard({ group, onReviewed }: { group: ScholarGroup; onR
               <a href={u.driveViewUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[#0088cc] hover:underline">
                 {u.displayFileName} <Eye size={11} />
               </a>
+            ) : u.fileRemoved ? (
+              <span className="italic text-slate-400">File deleted</span>
             ) : (
               <span className="text-slate-500">{u.displayFileName}</span>
             )}
             <span className="text-[11px] text-slate-400">{new Date(u.createdAt).toLocaleString()}</span>
+            {hasAttachedFile(u) && (
+              <button type="button" onClick={() => void handleDeleteFile(u)} disabled={deletingId === u.id}
+                title="Delete attached file" aria-label="Delete attached file"
+                className="text-red-500 hover:text-red-700 disabled:opacity-50">
+                <Trash2 size={12} />
+              </button>
+            )}
           </li>
         ))}
       </ul>

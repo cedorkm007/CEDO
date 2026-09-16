@@ -274,6 +274,8 @@ export interface SubmissionForReview {
   storagePath: string;
   /** https://drive.google.com/file/d/{id}/view — fallback for a row not yet backfilled (storagePath is ""); "" once migrated. */
   driveViewUrl: string;
+  /** True once staff deletes the attached file (submission-delete-file) — storagePath/driveViewUrl are both "" at that point too, but this makes the reason explicit rather than leaving the UI to infer it. */
+  fileRemoved: boolean;
   status: string;
   staffComment: string;
   createdAt: string;
@@ -293,7 +295,7 @@ export async function fetchSubmissionsForActivity(activityId: string): Promise<S
     const { data, error } = await supabase
       .from("submission_uploads")
       .select(
-        "id, scholar_id, field_id, field_label_snapshot, original_file_name, mime_type, drive_file_id, storage_path, status, staff_comment, created_at, " +
+        "id, scholar_id, field_id, field_label_snapshot, original_file_name, mime_type, drive_file_id, storage_path, file_removed_at, status, staff_comment, created_at, " +
         "scholars (scholar_id_number, first_name, last_name, year_level)"
       )
       .eq("activity_id", activityId)
@@ -327,6 +329,7 @@ function mapSubmissionForReview(rows: Record<string, unknown>[]): SubmissionForR
       mimeType: String(row.mime_type ?? ""),
       storagePath,
       driveViewUrl: !storagePath && driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : "",
+      fileRemoved: Boolean(row.file_removed_at),
       status: String(row.status ?? "uploaded"),
       staffComment: String(row.staff_comment ?? ""),
       createdAt: String(row.created_at ?? ""),
@@ -358,6 +361,19 @@ export async function reviewSubmissionUploads(
     })
     .in("id", uploadIds);
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/**
+ * Deletes the attached file for one upload row (clears storage_path/
+ * drive_file_id, stamps file_removed_at, removes the object from the
+ * "submission-uploads" bucket) — the row itself and its review history
+ * (status/staff_comment/reviewed_by/reviewed_at) are left untouched.
+ * Routed through an Edge Function (service role) since staff have no
+ * client-side delete permission on this Storage bucket — see
+ * submission-delete-file/index.ts.
+ */
+export async function deleteSubmissionUploadFile(uploadId: string): Promise<{ ok: boolean; error?: string }> {
+  return invokeEdgeFunction("submission-delete-file", { uploadId });
 }
 
 // ── Drive folder reorganization (Milestone 2) ────────────────
