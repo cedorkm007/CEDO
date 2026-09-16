@@ -108,8 +108,7 @@ function rowToApplicant(r: Record<string, unknown>): FinancialAssistanceApplican
   };
 }
 
-const APPLICANT_COLUMNS = "id, period_id, reference_number, name, barangay, school, program, year_level, vulnerable_sector, mode_of_application, " +
-  "father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name, status, applied_at, approved_at";
+const APPLICANT_COLUMNS = "id, period_id, reference_number, name, barangay, school, program, year_level, vulnerable_sector, mode_of_application, father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name, status, applied_at, approved_at";
 
 export async function fetchFinancialAssistanceApplicants(periodId: string): Promise<FinancialAssistanceApplicant[]> {
   const { data, error } = await supabase

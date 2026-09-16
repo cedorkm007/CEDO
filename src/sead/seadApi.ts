@@ -1023,8 +1023,7 @@ function isoDateYearsAgo(years: number): string {
 }
 
 const SCHOLAR_INFORMATION_SELECT =
-  "scholar_id_number, first_name, last_name, middle_name, year_level, school, status, barangay, course, birthday, civil_status, contact_no, " +
-  "father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name";
+  "scholar_id_number, first_name, last_name, middle_name, year_level, school, status, barangay, course, birthday, civil_status, contact_no, father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name";
 
 /**
  * Applies every ScholarInformationFilters field to a query builder — the
@@ -1135,6 +1134,12 @@ const SCHOLAR_INFORMATION_SORT_COLUMNS: Record<ScholarInformationSortColumn, str
   birthday: ["birthday"],
   civilStatus: ["civil_status"],
   contactNo: ["contact_no"],
+  fatherFirstName: ["father_first_name"],
+  fatherMiddleInitial: ["father_middle_initial"],
+  fatherLastName: ["father_last_name"],
+  motherFirstName: ["mother_first_name"],
+  motherMiddleInitial: ["mother_middle_initial"],
+  motherLastName: ["mother_last_name"],
 };
 /** "Age" is displayed for the birthday column, so ascending Age (youngest first) is descending birthday (most recent date first) — the one column whose natural UI direction is inverted from its raw date direction. */
 const INVERTED_SORT_COLUMNS = new Set<ScholarInformationSortColumn>(["birthday"]);
