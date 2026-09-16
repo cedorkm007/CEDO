@@ -10,10 +10,12 @@ const TEMPLATE_HEADERS = [
   "Scholar ID Number", "First Name", "Last Name", "Middle Name", "Birthday (YYYY-MM-DD)",
   "School", "Program", "Year Level", "Civil Status", "Contact No.", "Scholarship Status",
   "House/Unit No.", "Street", "Barangay", "City/Municipality", "Province/Region", "Country", "Zip Code",
+  "Father's First Name", "Father's Middle Initial", "Father's Last Name",
+  "Mother's First Name", "Mother's Middle Initial", "Mother's Last Name",
 ];
 
 const TEMPLATE_SAMPLE_ROWS = [
-  ["20250001", "", "", "", "", "", "", "2nd Year", "", "09171234567", "Regular", "Blk 3 Lot 12", "Rizal St.", "Poblacion", "Butuan City", "Agusan del Norte", "Philippines", "8600"],
+  ["20250001", "", "", "", "", "", "", "2nd Year", "", "09171234567", "Regular", "Blk 3 Lot 12", "Rizal St.", "Poblacion", "Butuan City", "Agusan del Norte", "Philippines", "8600", "Pedro", "D", "Dela Cruz", "Maria", "S", "Dela Cruz"],
 ];
 
 interface ParsedRow {
@@ -59,6 +61,12 @@ const FIELD_DEFS: { key: keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">; 
   { key: "provinceRegion", label: "Province/Region", aliases: ["province/region", "province region", "province"] },
   { key: "country", label: "Country", aliases: ["country"] },
   { key: "zipCode", label: "Zip Code", aliases: ["zip code", "zipcode", "postal code"] },
+  { key: "fatherFirstName", label: "Father's First Name", aliases: ["father's first name", "father first name", "father firstname"] },
+  { key: "fatherMiddleInitial", label: "Father's Middle Initial", aliases: ["father's middle initial", "father middle initial"] },
+  { key: "fatherLastName", label: "Father's Last Name", aliases: ["father's last name", "father last name", "father lastname"] },
+  { key: "motherFirstName", label: "Mother's First Name", aliases: ["mother's first name", "mother first name", "mother firstname"] },
+  { key: "motherMiddleInitial", label: "Mother's Middle Initial", aliases: ["mother's middle initial", "mother middle initial"] },
+  { key: "motherLastName", label: "Mother's Last Name", aliases: ["mother's last name", "mother last name", "mother lastname"] },
 ];
 
 function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: string } {

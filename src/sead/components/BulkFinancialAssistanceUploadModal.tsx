@@ -6,10 +6,12 @@ import { ExportButton } from "@/app/components/ExportButtons";
 
 const TEMPLATE_HEADERS = [
   "Name", "Barangay", "School", "Program", "Year Level", "Vulnerable Sector",
-  "Mode of Application (Walk-in or People's Day)", "Father's Complete Name", "Mother's Complete Name",
+  "Mode of Application (Walk-in or People's Day)",
+  "Father's First Name", "Father's Middle Initial", "Father's Last Name",
+  "Mother's First Name", "Mother's Middle Initial", "Mother's Last Name",
 ];
 const TEMPLATE_SAMPLE_ROWS = [
-  ["Juan Dela Cruz", "Carmen", "Cagayan de Oro College PHINMA", "BS Criminology", "1st Year", "Solo Parent", "Walk-in", "Pedro Dela Cruz", "Maria Dela Cruz"],
+  ["Juan Dela Cruz", "Carmen", "Cagayan de Oro College PHINMA", "BS Criminology", "1st Year", "Solo Parent", "Walk-in", "Pedro", "D", "Dela Cruz", "Maria", "S", "Dela Cruz"],
 ];
 
 interface ParsedRow {
@@ -44,8 +46,12 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
     yearLevel: findColumn(headers, ["year level", "yearlevel"]),
     vulnerableSector: findColumn(headers, ["vulnerable sector", "vulnerablesector"]),
     mode: findColumn(headers, ["mode of application (walk-in or people's day)", "mode of application", "mode"]),
-    father: findColumn(headers, ["father's complete name", "father's name", "father"]),
-    mother: findColumn(headers, ["mother's complete name", "mother's name", "mother"]),
+    fatherFirstName: findColumn(headers, ["father's first name", "father first name", "father firstname"]),
+    fatherMiddleInitial: findColumn(headers, ["father's middle initial", "father middle initial"]),
+    fatherLastName: findColumn(headers, ["father's last name", "father last name", "father lastname"]),
+    motherFirstName: findColumn(headers, ["mother's first name", "mother first name", "mother firstname"]),
+    motherMiddleInitial: findColumn(headers, ["mother's middle initial", "mother middle initial"]),
+    motherLastName: findColumn(headers, ["mother's last name", "mother last name", "mother lastname"]),
   };
 
   if (idx.name === -1) return { rows: [], headerError: 'Missing a "Name" column.' };
@@ -67,7 +73,8 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
       applicant: {
         name, barangay: cell(r, idx.barangay), school: cell(r, idx.school), program: cell(r, idx.program),
         yearLevel: cell(r, idx.yearLevel), vulnerableSector: cell(r, idx.vulnerableSector), modeOfApplication: mode,
-        fatherName: cell(r, idx.father), motherName: cell(r, idx.mother),
+        fatherFirstName: cell(r, idx.fatherFirstName), fatherMiddleInitial: cell(r, idx.fatherMiddleInitial), fatherLastName: cell(r, idx.fatherLastName),
+        motherFirstName: cell(r, idx.motherFirstName), motherMiddleInitial: cell(r, idx.motherMiddleInitial), motherLastName: cell(r, idx.motherLastName),
       },
     };
   });

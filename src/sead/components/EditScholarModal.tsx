@@ -30,6 +30,12 @@ export function EditScholarModal({ scholar, onClose, onSaved }: { scholar: Schol
         contactNo: info?.contactNo ?? "",
         barangay: info?.barangay ?? "",
         scholarshipStatus: info?.status ?? scholar.status,
+        fatherFirstName: info?.fatherFirstName ?? "",
+        fatherMiddleInitial: info?.fatherMiddleInitial ?? "",
+        fatherLastName: info?.fatherLastName ?? "",
+        motherFirstName: info?.motherFirstName ?? "",
+        motherMiddleInitial: info?.motherMiddleInitial ?? "",
+        motherLastName: info?.motherLastName ?? "",
       });
       setLoading(false);
     })();
@@ -120,6 +126,23 @@ export function EditScholarModal({ scholar, onClose, onSaved }: { scholar: Schol
                     className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none bg-white">
                     {SCHOLARSHIP_STATUSES.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
+                </div>
+              </div>
+
+              <div className="mb-3">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Father's Complete Name</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <F label="First Name" value={form.fatherFirstName ?? ""} onChange={v => set("fatherFirstName", v)} />
+                  <F label="Middle Initial" value={form.fatherMiddleInitial ?? ""} onChange={v => set("fatherMiddleInitial", v)} />
+                  <F label="Last Name" value={form.fatherLastName ?? ""} onChange={v => set("fatherLastName", v)} />
+                </div>
+              </div>
+              <div className="mb-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Mother's Complete Name</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <F label="First Name" value={form.motherFirstName ?? ""} onChange={v => set("motherFirstName", v)} />
+                  <F label="Middle Initial" value={form.motherMiddleInitial ?? ""} onChange={v => set("motherMiddleInitial", v)} />
+                  <F label="Last Name" value={form.motherLastName ?? ""} onChange={v => set("motherLastName", v)} />
                 </div>
               </div>
 

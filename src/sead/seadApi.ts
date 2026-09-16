@@ -952,6 +952,12 @@ export interface ScholarInformationRow {
   birthday: string; // ISO date, or "" — the UI computes age from this rather than storing age separately
   civilStatus: string;
   contactNo: string;
+  fatherFirstName: string;
+  fatherMiddleInitial: string;
+  fatherLastName: string;
+  motherFirstName: string;
+  motherMiddleInitial: string;
+  motherLastName: string;
 }
 
 /** Combinable filters for the Scholars Information subtab (Milestone 3) —
@@ -1017,7 +1023,8 @@ function isoDateYearsAgo(years: number): string {
 }
 
 const SCHOLAR_INFORMATION_SELECT =
-  "scholar_id_number, first_name, last_name, middle_name, year_level, school, status, barangay, course, birthday, civil_status, contact_no";
+  "scholar_id_number, first_name, last_name, middle_name, year_level, school, status, barangay, course, birthday, civil_status, contact_no, " +
+  "father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name";
 
 /**
  * Applies every ScholarInformationFilters field to a query builder — the
@@ -1103,6 +1110,8 @@ function mapScholarInformationRow(r: Record<string, unknown>): ScholarInformatio
     status: r.status as ScholarshipStatus,
     barangay: String(r.barangay ?? ""), course: String(r.course ?? ""), birthday: String(r.birthday ?? ""),
     civilStatus: String(r.civil_status ?? ""), contactNo: String(r.contact_no ?? ""),
+    fatherFirstName: String(r.father_first_name ?? ""), fatherMiddleInitial: String(r.father_middle_initial ?? ""), fatherLastName: String(r.father_last_name ?? ""),
+    motherFirstName: String(r.mother_first_name ?? ""), motherMiddleInitial: String(r.mother_middle_initial ?? ""), motherLastName: String(r.mother_last_name ?? ""),
   };
 }
 
@@ -1485,6 +1494,8 @@ export interface BulkScholarUpdateInput {
   school?: string; course?: string; yearLevel?: string; civilStatus?: string; contactNo?: string;
   houseUnitNo?: string; street?: string; barangay?: string; cityMunicipality?: string;
   provinceRegion?: string; country?: string; zipCode?: string; scholarshipStatus?: ScholarshipStatus;
+  fatherFirstName?: string; fatherMiddleInitial?: string; fatherLastName?: string;
+  motherFirstName?: string; motherMiddleInitial?: string; motherLastName?: string;
 }
 
 export interface BulkScholarUpdateRowResult {
@@ -1500,6 +1511,8 @@ const BULK_UPDATE_FIELD_MAP: Record<keyof Omit<BulkScholarUpdateInput, "scholarI
   school: "school", course: "course", yearLevel: "year_level", civilStatus: "civil_status", contactNo: "contact_no",
   houseUnitNo: "house_unit_no", street: "street", barangay: "barangay", cityMunicipality: "city_municipality",
   provinceRegion: "province_region", country: "country", zipCode: "zip_code", scholarshipStatus: "status",
+  fatherFirstName: "father_first_name", fatherMiddleInitial: "father_middle_initial", fatherLastName: "father_last_name",
+  motherFirstName: "mother_first_name", motherMiddleInitial: "mother_middle_initial", motherLastName: "mother_last_name",
 };
 
 /**

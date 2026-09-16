@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { X, UserPlus } from "lucide-react";
+import { X, UserPlus, ShieldAlert, ShieldCheck } from "lucide-react";
 import {
-  createFinancialAssistanceApplicant, updateFinancialAssistanceApplicant, FA_MODES_OF_APPLICATION,
-  type FinancialAssistanceApplicant, type NewFinancialAssistanceApplicantInput, type FaModeOfApplication,
+  createFinancialAssistanceApplicant, updateFinancialAssistanceApplicant, checkFinancialAssistanceSiblingMatch, FA_MODES_OF_APPLICATION,
+  type FinancialAssistanceApplicant, type NewFinancialAssistanceApplicantInput, type FaModeOfApplication, type FinancialAssistanceSiblingMatch,
 } from "../financialAssistanceApi";
 
 type FormState = Omit<NewFinancialAssistanceApplicantInput, "periodId">;
 
 const EMPTY_FORM: FormState = {
-  name: "", barangay: "", school: "", program: "", yearLevel: "",
-  vulnerableSector: "", modeOfApplication: "", fatherName: "", motherName: "",
+  name: "", barangay: "", school: "", program: "", yearLevel: "", vulnerableSector: "", modeOfApplication: "",
+  fatherFirstName: "", fatherMiddleInitial: "", fatherLastName: "",
+  motherFirstName: "", motherMiddleInitial: "", motherLastName: "",
 };
 
 /** Add-or-edit dual-purpose modal — mirrors SurveyQuestionEditorModal.tsx's existing/create split. Only "Add" generates a reference number + QR (via the parent's onSaved callback); editing never touches the reference number. */
@@ -24,13 +25,24 @@ export function AddEditFinancialAssistanceApplicantModal({
   const [form, setForm] = useState<FormState>(existing ? {
     name: existing.name, barangay: existing.barangay, school: existing.school, program: existing.program,
     yearLevel: existing.yearLevel, vulnerableSector: existing.vulnerableSector, modeOfApplication: existing.modeOfApplication,
-    fatherName: existing.fatherName, motherName: existing.motherName,
+    fatherFirstName: existing.fatherFirstName, fatherMiddleInitial: existing.fatherMiddleInitial, fatherLastName: existing.fatherLastName,
+    motherFirstName: existing.motherFirstName, motherMiddleInitial: existing.motherMiddleInitial, motherLastName: existing.motherLastName,
   } : EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [checkingSibling, setCheckingSibling] = useState(false);
+  const [siblingMatches, setSiblingMatches] = useState<FinancialAssistanceSiblingMatch[] | null>(null);
 
   function set<K extends keyof FormState>(key: K, value: string) {
     setForm(f => ({ ...f, [key]: value }));
+    if (key.startsWith("father") || key.startsWith("mother")) setSiblingMatches(null);
+  }
+
+  async function handleCheckSibling() {
+    setCheckingSibling(true);
+    const matches = await checkFinancialAssistanceSiblingMatch(form);
+    setCheckingSibling(false);
+    setSiblingMatches(matches);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -86,9 +98,48 @@ export function AddEditFinancialAssistanceApplicantModal({
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <F label="Father's Complete Name" value={form.fatherName} onChange={v => set("fatherName", v)} />
-            <F label="Mother's Complete Name" value={form.motherName} onChange={v => set("motherName", v)} />
+          <div className="mb-3">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Father's Complete Name</p>
+            <div className="grid grid-cols-3 gap-3">
+              <F label="First Name" value={form.fatherFirstName} onChange={v => set("fatherFirstName", v)} />
+              <F label="Middle Initial" value={form.fatherMiddleInitial} onChange={v => set("fatherMiddleInitial", v)} />
+              <F label="Last Name" value={form.fatherLastName} onChange={v => set("fatherLastName", v)} />
+            </div>
+          </div>
+          <div className="mb-3">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Mother's Complete Name</p>
+            <div className="grid grid-cols-3 gap-3">
+              <F label="First Name" value={form.motherFirstName} onChange={v => set("motherFirstName", v)} />
+              <F label="Middle Initial" value={form.motherMiddleInitial} onChange={v => set("motherMiddleInitial", v)} />
+              <F label="Last Name" value={form.motherLastName} onChange={v => set("motherLastName", v)} />
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <button type="button" onClick={handleCheckSibling} disabled={checkingSibling}
+              className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#0088cc] hover:opacity-80 disabled:opacity-60">
+              <ShieldAlert size={14} /> {checkingSibling ? "Checking…" : "Check for Sibling Match"}
+            </button>
+            {siblingMatches !== null && (
+              siblingMatches.length === 0 ? (
+                <p className="flex items-center gap-1.5 text-[12.5px] text-emerald-700 mt-2">
+                  <ShieldCheck size={14} /> No sibling match found among Mainstream Scholars.
+                </p>
+              ) : (
+                <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-amber-800 mb-1.5">
+                    <ShieldAlert size={14} /> Possible sibling of an existing Mainstream Scholar — siblings are not eligible for Financial Assistance:
+                  </p>
+                  <ul className="text-[12px] text-amber-800 space-y-0.5">
+                    {siblingMatches.map(m => (
+                      <li key={`${m.scholarId}-${m.matchedParent}`}>
+                        <strong>{m.scholarName}</strong> ({m.scholarIdNumber}) — matched via {m.matchedParent}'s name
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            )}
           </div>
 
           {error && <p className="text-[13px] text-red-600 mb-3">{error}</p>}

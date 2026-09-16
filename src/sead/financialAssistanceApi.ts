@@ -29,8 +29,12 @@ export interface FinancialAssistanceApplicant {
   yearLevel: string;
   vulnerableSector: string;
   modeOfApplication: FaModeOfApplication | "";
-  fatherName: string;
-  motherName: string;
+  fatherFirstName: string;
+  fatherMiddleInitial: string;
+  fatherLastName: string;
+  motherFirstName: string;
+  motherMiddleInitial: string;
+  motherLastName: string;
   status: FaStatus;
   appliedAt: string;
   approvedAt: string | null;
@@ -45,8 +49,12 @@ export interface NewFinancialAssistanceApplicantInput {
   yearLevel: string;
   vulnerableSector: string;
   modeOfApplication: string;
-  fatherName: string;
-  motherName: string;
+  fatherFirstName: string;
+  fatherMiddleInitial: string;
+  fatherLastName: string;
+  motherFirstName: string;
+  motherMiddleInitial: string;
+  motherLastName: string;
 }
 
 function periodLabel(p: { academicYear: string; semester: string }): string {
@@ -88,15 +96,20 @@ function rowToApplicant(r: Record<string, unknown>): FinancialAssistanceApplican
     yearLevel: String(r.year_level ?? ""),
     vulnerableSector: String(r.vulnerable_sector ?? ""),
     modeOfApplication: (r.mode_of_application as FaModeOfApplication | null) ?? "",
-    fatherName: String(r.father_name ?? ""),
-    motherName: String(r.mother_name ?? ""),
+    fatherFirstName: String(r.father_first_name ?? ""),
+    fatherMiddleInitial: String(r.father_middle_initial ?? ""),
+    fatherLastName: String(r.father_last_name ?? ""),
+    motherFirstName: String(r.mother_first_name ?? ""),
+    motherMiddleInitial: String(r.mother_middle_initial ?? ""),
+    motherLastName: String(r.mother_last_name ?? ""),
     status: (r.status as FaStatus) ?? "processing",
     appliedAt: String(r.applied_at ?? ""),
     approvedAt: (r.approved_at as string | null) ?? null,
   };
 }
 
-const APPLICANT_COLUMNS = "id, period_id, reference_number, name, barangay, school, program, year_level, vulnerable_sector, mode_of_application, father_name, mother_name, status, applied_at, approved_at";
+const APPLICANT_COLUMNS = "id, period_id, reference_number, name, barangay, school, program, year_level, vulnerable_sector, mode_of_application, " +
+  "father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name, status, applied_at, approved_at";
 
 export async function fetchFinancialAssistanceApplicants(periodId: string): Promise<FinancialAssistanceApplicant[]> {
   const { data, error } = await supabase
@@ -113,7 +126,8 @@ export async function createFinancialAssistanceApplicant(input: NewFinancialAssi
     p_period_id: input.periodId, p_name: input.name, p_barangay: input.barangay || null,
     p_school: input.school || null, p_program: input.program || null, p_year_level: input.yearLevel || null,
     p_vulnerable_sector: input.vulnerableSector || null, p_mode_of_application: input.modeOfApplication,
-    p_father_name: input.fatherName || null, p_mother_name: input.motherName || null,
+    p_father_first_name: input.fatherFirstName || null, p_father_middle_initial: input.fatherMiddleInitial || null, p_father_last_name: input.fatherLastName || null,
+    p_mother_first_name: input.motherFirstName || null, p_mother_middle_initial: input.motherMiddleInitial || null, p_mother_last_name: input.motherLastName || null,
   });
   if (error) return { ok: false, error: error.message };
   const row = (data as { id: string; reference_number: string }[] | null)?.[0];
@@ -126,7 +140,8 @@ export async function updateFinancialAssistanceApplicant(id: string, input: Omit
     name: input.name, barangay: input.barangay || null, school: input.school || null,
     program: input.program || null, year_level: input.yearLevel || null,
     vulnerable_sector: input.vulnerableSector || null, mode_of_application: input.modeOfApplication,
-    father_name: input.fatherName || null, mother_name: input.motherName || null,
+    father_first_name: input.fatherFirstName || null, father_middle_initial: input.fatherMiddleInitial || null, father_last_name: input.fatherLastName || null,
+    mother_first_name: input.motherFirstName || null, mother_middle_initial: input.motherMiddleInitial || null, mother_last_name: input.motherLastName || null,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
@@ -185,4 +200,34 @@ export async function fetchFinancialAssistanceBySchool(periodId: string): Promis
   const { data, error } = await supabase.rpc("financial_assistance_by_school", { p_period_id: periodId });
   if (error || !data) return [];
   return (data as Record<string, unknown>[]).map(r => ({ label: String(r.school), count: Number(r.applicant_count) }));
+}
+
+// ── Sibling check ─────────────────────────────────────────────
+// Siblings of Mainstream Scholars aren't eligible for Financial
+// Assistance — this checks a typed-in father's/mother's name against
+// every Mainstream Scholar's own parent names. A match on either
+// parent (not necessarily both) is reported as a possible sibling.
+
+export interface FinancialAssistanceSiblingMatch {
+  scholarId: string;
+  scholarIdNumber: string;
+  scholarName: string;
+  matchedParent: "father" | "mother";
+}
+
+export interface ParentNameCheckInput {
+  fatherFirstName: string; fatherMiddleInitial: string; fatherLastName: string;
+  motherFirstName: string; motherMiddleInitial: string; motherLastName: string;
+}
+
+export async function checkFinancialAssistanceSiblingMatch(input: ParentNameCheckInput): Promise<FinancialAssistanceSiblingMatch[]> {
+  const { data, error } = await supabase.rpc("check_financial_assistance_sibling_match", {
+    p_father_first_name: input.fatherFirstName || null, p_father_middle_initial: input.fatherMiddleInitial || null, p_father_last_name: input.fatherLastName || null,
+    p_mother_first_name: input.motherFirstName || null, p_mother_middle_initial: input.motherMiddleInitial || null, p_mother_last_name: input.motherLastName || null,
+  });
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({
+    scholarId: String(r.scholar_id), scholarIdNumber: String(r.scholar_id_number), scholarName: String(r.scholar_name),
+    matchedParent: r.matched_parent as "father" | "mother",
+  }));
 }
