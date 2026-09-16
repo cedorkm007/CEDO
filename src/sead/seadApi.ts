@@ -952,6 +952,8 @@ export interface ScholarInformationRow {
   birthday: string; // ISO date, or "" — the UI computes age from this rather than storing age separately
   civilStatus: string;
   contactNo: string;
+  /** A real, reachable email address — distinct from `scholars.email`, which is a synthetic "{id}@scholars.cedo.local" login placeholder, not a mailbox. */
+  contactEmail: string;
   fatherFirstName: string;
   fatherMiddleInitial: string;
   fatherLastName: string;
@@ -984,6 +986,7 @@ export interface ScholarInformationFilters {
   ageMax?: number;
   fatherName?: string; // partial match against father's first/middle/last name
   motherName?: string; // partial match against mother's first/middle/last name
+  contactEmail?: string; // partial match
   /**
    * Thread C Milestone 2 — generic "field is empty" filter. Rows where
    * ANY ONE of the listed fields is blank (null or empty string) match —
@@ -1025,7 +1028,7 @@ function isoDateYearsAgo(years: number): string {
 }
 
 const SCHOLAR_INFORMATION_SELECT =
-  "scholar_id_number, first_name, last_name, middle_name, year_level, school, status, barangay, course, birthday, civil_status, contact_no, father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name";
+  "scholar_id_number, first_name, last_name, middle_name, year_level, school, status, barangay, course, birthday, civil_status, contact_no, contact_email, father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name";
 
 /**
  * Applies every ScholarInformationFilters field to a query builder — the
@@ -1078,6 +1081,7 @@ function applyScholarInformationFilters(query: any, filters: ScholarInformationF
     const pattern = `%${filters.motherName.trim().replace(/[,.()]/g, " ")}%`;
     query = query.or(`mother_first_name.ilike.${pattern},mother_middle_initial.ilike.${pattern},mother_last_name.ilike.${pattern}`);
   }
+  if (filters.contactEmail?.trim()) query = query.ilike("contact_email", `%${filters.contactEmail.trim()}%`);
   // Age is a value COMPUTED from birthday (see computeAge() in
   // ScholarsTab.tsx), not a stored column, so a WHERE clause can't filter
   // on it directly — translate the requested age range into a birthday
@@ -1118,7 +1122,7 @@ function mapScholarInformationRow(r: Record<string, unknown>): ScholarInformatio
     middleName: String(r.middle_name ?? ""), yearLevel: String(r.year_level ?? ""), school: String(r.school ?? ""),
     status: r.status as ScholarshipStatus,
     barangay: String(r.barangay ?? ""), course: String(r.course ?? ""), birthday: String(r.birthday ?? ""),
-    civilStatus: String(r.civil_status ?? ""), contactNo: String(r.contact_no ?? ""),
+    civilStatus: String(r.civil_status ?? ""), contactNo: String(r.contact_no ?? ""), contactEmail: String(r.contact_email ?? ""),
     fatherFirstName: String(r.father_first_name ?? ""), fatherMiddleInitial: String(r.father_middle_initial ?? ""), fatherLastName: String(r.father_last_name ?? ""),
     motherFirstName: String(r.mother_first_name ?? ""), motherMiddleInitial: String(r.mother_middle_initial ?? ""), motherLastName: String(r.mother_last_name ?? ""),
   };
@@ -1144,6 +1148,7 @@ const SCHOLAR_INFORMATION_SORT_COLUMNS: Record<ScholarInformationSortColumn, str
   birthday: ["birthday"],
   civilStatus: ["civil_status"],
   contactNo: ["contact_no"],
+  contactEmail: ["contact_email"],
   fatherFirstName: ["father_first_name"],
   fatherMiddleInitial: ["father_middle_initial"],
   fatherLastName: ["father_last_name", "father_first_name"],
@@ -1511,6 +1516,7 @@ export interface BulkScholarUpdateInput {
   provinceRegion?: string; country?: string; zipCode?: string; scholarshipStatus?: ScholarshipStatus;
   fatherFirstName?: string; fatherMiddleInitial?: string; fatherLastName?: string;
   motherFirstName?: string; motherMiddleInitial?: string; motherLastName?: string;
+  contactEmail?: string;
 }
 
 export interface BulkScholarUpdateRowResult {
@@ -1528,6 +1534,7 @@ const BULK_UPDATE_FIELD_MAP: Record<keyof Omit<BulkScholarUpdateInput, "scholarI
   provinceRegion: "province_region", country: "country", zipCode: "zip_code", scholarshipStatus: "status",
   fatherFirstName: "father_first_name", fatherMiddleInitial: "father_middle_initial", fatherLastName: "father_last_name",
   motherFirstName: "mother_first_name", motherMiddleInitial: "mother_middle_initial", motherLastName: "mother_last_name",
+  contactEmail: "contact_email",
 };
 
 /**

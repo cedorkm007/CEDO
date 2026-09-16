@@ -11,6 +11,7 @@ const EMPTY_FORM: FormState = {
   name: "", barangay: "", school: "", program: "", yearLevel: "", vulnerableSector: "", modeOfApplication: "",
   fatherFirstName: "", fatherMiddleInitial: "", fatherLastName: "",
   motherFirstName: "", motherMiddleInitial: "", motherLastName: "",
+  contactEmail: "",
 };
 
 /** Add-or-edit dual-purpose modal — mirrors SurveyQuestionEditorModal.tsx's existing/create split. Only "Add" generates a reference number + QR (via the parent's onSaved callback); editing never touches the reference number. */
@@ -27,6 +28,7 @@ export function AddEditFinancialAssistanceApplicantModal({
     yearLevel: existing.yearLevel, vulnerableSector: existing.vulnerableSector, modeOfApplication: existing.modeOfApplication,
     fatherFirstName: existing.fatherFirstName, fatherMiddleInitial: existing.fatherMiddleInitial, fatherLastName: existing.fatherLastName,
     motherFirstName: existing.motherFirstName, motherMiddleInitial: existing.motherMiddleInitial, motherLastName: existing.motherLastName,
+    contactEmail: existing.contactEmail,
   } : EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -98,6 +100,7 @@ export function AddEditFinancialAssistanceApplicantModal({
               </select>
             </div>
           </div>
+          <F label="Email" type="email" value={form.contactEmail} onChange={v => set("contactEmail", v)} className="mb-3" />
           <div className="mb-3">
             <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Father's Complete Name</p>
             <div className="grid grid-cols-3 gap-3">
@@ -156,13 +159,13 @@ export function AddEditFinancialAssistanceApplicantModal({
   );
 }
 
-function F({ label, value, onChange, required, className = "" }: {
-  label: string; value: string; onChange: (v: string) => void; required?: boolean; className?: string;
+function F({ label, value, onChange, required, className = "", type = "text" }: {
+  label: string; value: string; onChange: (v: string) => void; required?: boolean; className?: string; type?: string;
 }) {
   return (
     <div className={className}>
       <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">{label}</label>
-      <input value={value} onChange={e => onChange(e.target.value)} required={required}
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} required={required}
         className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
     </div>
   );

@@ -8,14 +8,14 @@ import { ExportButton } from "@/app/components/ExportButtons";
 
 const TEMPLATE_HEADERS = [
   "Scholar ID Number", "First Name", "Last Name", "Middle Name", "Birthday (YYYY-MM-DD)",
-  "School", "Program", "Year Level", "Civil Status", "Contact No.", "Scholarship Status",
+  "School", "Program", "Year Level", "Civil Status", "Contact No.", "Email", "Scholarship Status",
   "House/Unit No.", "Street", "Barangay", "City/Municipality", "Province/Region", "Country", "Zip Code",
   "Father's First Name", "Father's Middle Initial", "Father's Last Name",
   "Mother's First Name", "Mother's Middle Initial", "Mother's Last Name",
 ];
 
 const TEMPLATE_SAMPLE_ROWS = [
-  ["20250001", "", "", "", "", "", "", "2nd Year", "", "09171234567", "Regular", "Blk 3 Lot 12", "Rizal St.", "Poblacion", "Butuan City", "Agusan del Norte", "Philippines", "8600", "Pedro", "D", "Dela Cruz", "Maria", "S", "Dela Cruz"],
+  ["20250001", "", "", "", "", "", "", "2nd Year", "", "09171234567", "juan.delacruz@example.com", "Regular", "Blk 3 Lot 12", "Rizal St.", "Poblacion", "Butuan City", "Agusan del Norte", "Philippines", "8600", "Pedro", "D", "Dela Cruz", "Maria", "S", "Dela Cruz"],
 ];
 
 interface ParsedRow {
@@ -53,6 +53,7 @@ const FIELD_DEFS: { key: keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">; 
   { key: "yearLevel", label: "Year Level", aliases: ["year level", "yearlevel", "year"] },
   { key: "civilStatus", label: "Civil Status", aliases: ["civil status", "civilstatus"] },
   { key: "contactNo", label: "Contact No.", aliases: ["contact no.", "contact no", "contact number", "contact"] },
+  { key: "contactEmail", label: "Email", aliases: ["email", "email address"] },
   { key: "scholarshipStatus", label: "Scholarship Status", aliases: ["scholarship status", "scholarshipstatus", "status"], isScholarshipStatus: true },
   { key: "houseUnitNo", label: "House/Unit No.", aliases: ["house/unit no.", "house/unit no", "house unit no", "house no"] },
   { key: "street", label: "Street", aliases: ["street"] },

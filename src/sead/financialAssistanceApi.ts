@@ -35,6 +35,7 @@ export interface FinancialAssistanceApplicant {
   motherFirstName: string;
   motherMiddleInitial: string;
   motherLastName: string;
+  contactEmail: string;
   status: FaStatus;
   appliedAt: string;
   approvedAt: string | null;
@@ -55,6 +56,7 @@ export interface NewFinancialAssistanceApplicantInput {
   motherFirstName: string;
   motherMiddleInitial: string;
   motherLastName: string;
+  contactEmail: string;
 }
 
 function periodLabel(p: { academicYear: string; semester: string }): string {
@@ -102,13 +104,14 @@ function rowToApplicant(r: Record<string, unknown>): FinancialAssistanceApplican
     motherFirstName: String(r.mother_first_name ?? ""),
     motherMiddleInitial: String(r.mother_middle_initial ?? ""),
     motherLastName: String(r.mother_last_name ?? ""),
+    contactEmail: String(r.contact_email ?? ""),
     status: (r.status as FaStatus) ?? "processing",
     appliedAt: String(r.applied_at ?? ""),
     approvedAt: (r.approved_at as string | null) ?? null,
   };
 }
 
-const APPLICANT_COLUMNS = "id, period_id, reference_number, name, barangay, school, program, year_level, vulnerable_sector, mode_of_application, father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name, status, applied_at, approved_at";
+const APPLICANT_COLUMNS = "id, period_id, reference_number, name, barangay, school, program, year_level, vulnerable_sector, mode_of_application, father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name, contact_email, status, applied_at, approved_at";
 
 export async function fetchFinancialAssistanceApplicants(periodId: string): Promise<FinancialAssistanceApplicant[]> {
   const { data, error } = await supabase
@@ -127,6 +130,7 @@ export async function createFinancialAssistanceApplicant(input: NewFinancialAssi
     p_vulnerable_sector: input.vulnerableSector || null, p_mode_of_application: input.modeOfApplication,
     p_father_first_name: input.fatherFirstName || null, p_father_middle_initial: input.fatherMiddleInitial || null, p_father_last_name: input.fatherLastName || null,
     p_mother_first_name: input.motherFirstName || null, p_mother_middle_initial: input.motherMiddleInitial || null, p_mother_last_name: input.motherLastName || null,
+    p_contact_email: input.contactEmail || null,
   });
   if (error) return { ok: false, error: error.message };
   const row = (data as { id: string; reference_number: string }[] | null)?.[0];
@@ -141,6 +145,7 @@ export async function updateFinancialAssistanceApplicant(id: string, input: Omit
     vulnerable_sector: input.vulnerableSector || null, mode_of_application: input.modeOfApplication,
     father_first_name: input.fatherFirstName || null, father_middle_initial: input.fatherMiddleInitial || null, father_last_name: input.fatherLastName || null,
     mother_first_name: input.motherFirstName || null, mother_middle_initial: input.motherMiddleInitial || null, mother_last_name: input.motherLastName || null,
+    contact_email: input.contactEmail || null,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };

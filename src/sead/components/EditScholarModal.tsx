@@ -28,6 +28,7 @@ export function EditScholarModal({ scholar, onClose, onSaved }: { scholar: Schol
         yearLevel: info?.yearLevel ?? "",
         civilStatus: info?.civilStatus ?? "",
         contactNo: info?.contactNo ?? "",
+        contactEmail: info?.contactEmail ?? "",
         barangay: info?.barangay ?? "",
         scholarshipStatus: info?.status ?? scholar.status,
         fatherFirstName: info?.fatherFirstName ?? "",
@@ -85,9 +86,10 @@ export function EditScholarModal({ scholar, onClose, onSaved }: { scholar: Schol
                 <F label="Middle Name" value={form.middleName ?? ""} onChange={v => set("middleName", v)} />
                 <F label="Last Name" value={form.lastName ?? ""} onChange={v => set("lastName", v)} required />
               </div>
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="grid grid-cols-3 gap-3 mb-3">
                 <F label="Birthday" type="date" value={form.birthday ?? ""} onChange={v => set("birthday", v)} />
                 <F label="Contact No." value={form.contactNo ?? ""} onChange={v => set("contactNo", v)} />
+                <F label="Email" type="email" value={form.contactEmail ?? ""} onChange={v => set("contactEmail", v)} />
               </div>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <F label="School" value={form.school ?? ""} onChange={v => set("school", v)} />

@@ -6,12 +6,12 @@ import { ExportButton } from "@/app/components/ExportButtons";
 
 const TEMPLATE_HEADERS = [
   "Name", "Barangay", "School", "Program", "Year Level", "Vulnerable Sector",
-  "Mode of Application (Walk-in or People's Day)",
+  "Mode of Application (Walk-in or People's Day)", "Email",
   "Father's First Name", "Father's Middle Initial", "Father's Last Name",
   "Mother's First Name", "Mother's Middle Initial", "Mother's Last Name",
 ];
 const TEMPLATE_SAMPLE_ROWS = [
-  ["Juan Dela Cruz", "Carmen", "Cagayan de Oro College PHINMA", "BS Criminology", "1st Year", "Solo Parent", "Walk-in", "Pedro", "D", "Dela Cruz", "Maria", "S", "Dela Cruz"],
+  ["Juan Dela Cruz", "Carmen", "Cagayan de Oro College PHINMA", "BS Criminology", "1st Year", "Solo Parent", "Walk-in", "juan.delacruz@example.com", "Pedro", "D", "Dela Cruz", "Maria", "S", "Dela Cruz"],
 ];
 
 interface ParsedRow {
@@ -46,6 +46,7 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
     yearLevel: findColumn(headers, ["year level", "yearlevel"]),
     vulnerableSector: findColumn(headers, ["vulnerable sector", "vulnerablesector"]),
     mode: findColumn(headers, ["mode of application (walk-in or people's day)", "mode of application", "mode"]),
+    contactEmail: findColumn(headers, ["email", "email address"]),
     fatherFirstName: findColumn(headers, ["father's first name", "father first name", "father firstname"]),
     fatherMiddleInitial: findColumn(headers, ["father's middle initial", "father middle initial"]),
     fatherLastName: findColumn(headers, ["father's last name", "father last name", "father lastname"]),
@@ -75,6 +76,7 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
         yearLevel: cell(r, idx.yearLevel), vulnerableSector: cell(r, idx.vulnerableSector), modeOfApplication: mode,
         fatherFirstName: cell(r, idx.fatherFirstName), fatherMiddleInitial: cell(r, idx.fatherMiddleInitial), fatherLastName: cell(r, idx.fatherLastName),
         motherFirstName: cell(r, idx.motherFirstName), motherMiddleInitial: cell(r, idx.motherMiddleInitial), motherLastName: cell(r, idx.motherLastName),
+        contactEmail: cell(r, idx.contactEmail),
       },
     };
   });

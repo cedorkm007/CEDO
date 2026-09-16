@@ -258,6 +258,7 @@ const INFO_COLUMNS: { key: keyof ScholarInformationRow; label: string }[] = [
   { key: "birthday", label: "Age" }, // displayed as a computed age, stored/fetched as birthday
   { key: "civilStatus", label: "Civil Status" },
   { key: "contactNo", label: "Contact Number" },
+  { key: "contactEmail", label: "Email" },
   { key: "fatherLastName", label: "Father's Name" }, // displayed as "FirstName MI LastName" — see formatInfoColumnValue
   { key: "motherLastName", label: "Mother's Name" }, // same
 ];
@@ -336,6 +337,7 @@ function describeAppliedFilters(filters: ScholarInformationFilters): string {
   if (filters.status) parts.push(`Scholarship Status = ${filters.status}`);
   if (filters.fatherName) parts.push(`Father's Name contains "${filters.fatherName}"`);
   if (filters.motherName) parts.push(`Mother's Name contains "${filters.motherName}"`);
+  if (filters.contactEmail) parts.push(`Email contains "${filters.contactEmail}"`);
   if (filters.ageMin !== undefined && filters.ageMax !== undefined) parts.push(`Age ${filters.ageMin}–${filters.ageMax}`);
   else if (filters.ageMin !== undefined) parts.push(`Age ≥ ${filters.ageMin}`);
   else if (filters.ageMax !== undefined) parts.push(`Age ≤ ${filters.ageMax}`);
@@ -402,6 +404,7 @@ function ScholarsInformationSubtab() {
   const [statusFilter, setStatusFilter] = useState<ScholarshipStatus | "">("");
   const [fatherNameFilter, setFatherNameFilter] = useState("");
   const [motherNameFilter, setMotherNameFilter] = useState("");
+  const [contactEmailFilter, setContactEmailFilter] = useState("");
   const [ageMinFilter, setAgeMinFilter] = useState("");
   const [ageMaxFilter, setAgeMaxFilter] = useState("");
   // Milestone 3 — a Set (not an array) so toggling one checkbox doesn't
@@ -471,6 +474,7 @@ function ScholarsInformationSubtab() {
       if (statusFilter) next.status = statusFilter;
       if (fatherNameFilter.trim()) next.fatherName = fatherNameFilter.trim();
       if (motherNameFilter.trim()) next.motherName = motherNameFilter.trim();
+      if (contactEmailFilter.trim()) next.contactEmail = contactEmailFilter.trim();
       if (ageMin !== undefined && !Number.isNaN(ageMin)) next.ageMin = ageMin;
       if (ageMax !== undefined && !Number.isNaN(ageMax)) next.ageMax = ageMax;
       if (emptyFieldsFilter.size > 0) next.emptyFields = [...emptyFieldsFilter];
@@ -481,7 +485,7 @@ function ScholarsInformationSubtab() {
     }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nameFilter, barangayFilter, courseFilter, schoolFilter, yearLevelFilter, statusFilter, fatherNameFilter, motherNameFilter, ageMinFilter, ageMaxFilter, emptyFieldsFilter]);
+  }, [nameFilter, barangayFilter, courseFilter, schoolFilter, yearLevelFilter, statusFilter, fatherNameFilter, motherNameFilter, contactEmailFilter, ageMinFilter, ageMaxFilter, emptyFieldsFilter]);
 
   function toggleEmptyField(key: ScholarInformationEmptyableField) {
     setEmptyFieldsFilter(prev => {
@@ -494,7 +498,7 @@ function ScholarsInformationSubtab() {
   function clearFilters() {
     setNameFilter(""); setBarangayFilter(""); setCourseFilter(""); setSchoolFilter("");
     setYearLevelFilter(""); setStatusFilter(""); setFatherNameFilter(""); setMotherNameFilter("");
-    setAgeMinFilter(""); setAgeMaxFilter(""); setEmptyFieldsFilter(new Set());
+    setContactEmailFilter(""); setAgeMinFilter(""); setAgeMaxFilter(""); setEmptyFieldsFilter(new Set());
     // The debounce effect above will pick this up and reload with empty
     // filters — no need to duplicate that call here.
   }
@@ -797,6 +801,11 @@ function ScholarsInformationSubtab() {
           <div>
             <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Mother's Name</label>
             <input value={motherNameFilter} onChange={e => setMotherNameFilter(e.target.value)} placeholder="Search mother's name…"
+              className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Email</label>
+            <input value={contactEmailFilter} onChange={e => setContactEmailFilter(e.target.value)} placeholder="Search email…"
               className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc]" />
           </div>
           <div>
