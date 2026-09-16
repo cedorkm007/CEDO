@@ -1146,10 +1146,10 @@ const SCHOLAR_INFORMATION_SORT_COLUMNS: Record<ScholarInformationSortColumn, str
   contactNo: ["contact_no"],
   fatherFirstName: ["father_first_name"],
   fatherMiddleInitial: ["father_middle_initial"],
-  fatherLastName: ["father_last_name"],
+  fatherLastName: ["father_last_name", "father_first_name"],
   motherFirstName: ["mother_first_name"],
   motherMiddleInitial: ["mother_middle_initial"],
-  motherLastName: ["mother_last_name"],
+  motherLastName: ["mother_last_name", "mother_first_name"],
 };
 /** "Age" is displayed for the birthday column, so ascending Age (youngest first) is descending birthday (most recent date first) — the one column whose natural UI direction is inverted from its raw date direction. */
 const INVERTED_SORT_COLUMNS = new Set<ScholarInformationSortColumn>(["birthday"]);

@@ -13,6 +13,7 @@ import { generateScholarsInformationReport } from "@/lib/docGenerator";
 import { SCHOLARSHIP_STATUSES, type ScholarListItem, type ScholarshipStatus } from "../types";
 import { useSortState, SortableTh } from "@/app/components/SortableTable";
 import { ExportButtonGroup, type ExportFormat } from "@/app/components/ExportButtons";
+import { formatPersonName } from "@/lib/personName";
 
 type ScholarsSubtab = "account" | "information";
 
@@ -257,12 +258,8 @@ const INFO_COLUMNS: { key: keyof ScholarInformationRow; label: string }[] = [
   { key: "birthday", label: "Age" }, // displayed as a computed age, stored/fetched as birthday
   { key: "civilStatus", label: "Civil Status" },
   { key: "contactNo", label: "Contact Number" },
-  { key: "fatherFirstName", label: "Father's First Name" },
-  { key: "fatherMiddleInitial", label: "Father's Middle Initial" },
-  { key: "fatherLastName", label: "Father's Last Name" },
-  { key: "motherFirstName", label: "Mother's First Name" },
-  { key: "motherMiddleInitial", label: "Mother's Middle Initial" },
-  { key: "motherLastName", label: "Mother's Last Name" },
+  { key: "fatherLastName", label: "Father's Name" }, // displayed as "FirstName MI LastName" — see formatInfoColumnValue
+  { key: "motherLastName", label: "Mother's Name" }, // same
 ];
 const INFO_COLUMNS_STORAGE_KEY = "cedo_scholars_information_columns";
 
@@ -314,6 +311,12 @@ function formatInfoColumnValue(row: ScholarInformationRow, key: keyof ScholarInf
   if (key === "birthday") {
     const age = computeAge(row.birthday);
     return age === "—" ? blank : age;
+  }
+  if (key === "fatherLastName") {
+    return formatPersonName({ firstName: row.fatherFirstName, middleInitial: row.fatherMiddleInitial, lastName: row.fatherLastName }) || blank;
+  }
+  if (key === "motherLastName") {
+    return formatPersonName({ firstName: row.motherFirstName, middleInitial: row.motherMiddleInitial, lastName: row.motherLastName }) || blank;
   }
   return row[key] || blank;
 }
