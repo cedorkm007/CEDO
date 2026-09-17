@@ -215,7 +215,7 @@ export function SubmissionReviewPanel({ activity, activities, onClose }: {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 py-8" onClick={onClose}>
-      <div className="flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
+      <div className="flex w-full max-w-[63rem] max-h-[95vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
         <div className="flex shrink-0 items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4">
           <h3 className="flex items-center gap-1.5 text-[15px] font-bold text-white"><ClipboardCheck size={16} /> Review Submissions</h3>
           <button onClick={onClose} className="text-white/70 hover:text-white" aria-label="Close"><X size={18} /></button>
