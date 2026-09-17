@@ -164,11 +164,13 @@ export async function updateOwnContactInfo(fields: OwnProfileEditableFields): Pr
  *  `surveyPending`/`surveyId` are set when this was a time_out or voucher scan on an activity
  *  with a survey attached that this scholar hasn't completed yet — the attendance/voucher is
  *  recorded but held at status='pending_survey' until the survey is finished (see
- *  SurveyResponseModal). time_in is never gated. */
-export async function redeemAttendanceCode(code: string): Promise<{ ok: boolean; error?: string; kind?: string; activityName?: string; surveyPending?: boolean; surveyId?: string }> {
+ *  SurveyResponseModal). time_in is never gated. `categoryCompleted` is true when the
+ *  scholar's SDP category already had 3+ credits before this scan — the scan/attendance is
+ *  still recorded, but no additional sdp_attendance credit was granted for it. */
+export async function redeemAttendanceCode(code: string): Promise<{ ok: boolean; error?: string; kind?: string; activityName?: string; surveyPending?: boolean; surveyId?: string; categoryCompleted?: boolean }> {
   const { data, error } = await supabase.rpc("redeem_attendance_code", { p_code: code.trim() });
   if (error) return { ok: false, error: error.message };
-  return { ok: true, kind: data?.kind, activityName: data?.activityName, surveyPending: data?.surveyPending, surveyId: data?.surveyId };
+  return { ok: true, kind: data?.kind, activityName: data?.activityName, surveyPending: data?.surveyPending, surveyId: data?.surveyId, categoryCompleted: data?.categoryCompleted };
 }
 
 // ── Survey response (attendance-gating) ──────────────────────

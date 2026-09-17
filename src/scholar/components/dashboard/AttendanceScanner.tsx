@@ -44,7 +44,14 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
         return;
       }
       const label = res.kind === "time_in" ? "Timed in" : res.kind === "time_out" ? "Timed out" : "Hour credited";
-      setResult({ ok: true, tone: "success", message: `${label} for "${res.activityName ?? "the activity"}".` });
+      if (res.categoryCompleted) {
+        setResult({
+          ok: true, tone: "warning",
+          message: `${label} for "${res.activityName ?? "the activity"}" — you've already completed this SDP requirement, so this scan is for attendance monitoring only.`,
+        });
+      } else {
+        setResult({ ok: true, tone: "success", message: `${label} for "${res.activityName ?? "the activity"}".` });
+      }
       setNewlyUnlocked(await syncAndFetchUnreadFormUnlockNotifications());
     } else {
       const message = res.error || "Invalid QR code.";
