@@ -22,7 +22,8 @@ export interface SDPActivity {
   category: SDPCategory | null;
   nature: string[];
   organization: string;
-  dateTime: string; // "" if unset
+  dateTime: string; // "" if unset — the start of the activity
+  endTime: string; // "" if unset
   venue: string;
   projectHead: string;
   headCluster: string;
@@ -54,6 +55,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     nature: (r.nature as string[]) ?? [],
     organization: String(r.organization ?? ""),
     dateTime: (r.date_time as string | null) ?? "",
+    endTime: (r.end_time as string | null) ?? "",
     venue: String(r.venue ?? ""),
     projectHead: String(r.project_head ?? ""),
     headCluster: String(r.head_cluster ?? ""),

@@ -51,7 +51,9 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [name, setName] = useState("");
   const [category, setCategory] = useState<SDPCategory | null>(null);
   const [organization, setOrganization] = useState("");
-  const [dateTime, setDateTime] = useState("");
+  const [date, setDate] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [venue, setVenue] = useState("");
   const [activityType, setActivityType] = useState<SDPActivityType>("one_time");
   const [credits, setCredits] = useState("1");
@@ -74,8 +76,18 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
       setError("Enter the expected number of participants.");
       return;
     }
+    if ((date || startTime || endTime) && (!date || !startTime || !endTime)) {
+      setError("Enter the date, From time, and To time together, or leave all three blank.");
+      return;
+    }
+    const dateTime = date && startTime ? `${date}T${startTime}` : "";
+    const activityEndTime = date && endTime ? `${date}T${endTime}` : "";
+    if (dateTime && activityEndTime && new Date(activityEndTime).getTime() <= new Date(dateTime).getTime()) {
+      setError("The To time must be later than the From time.");
+      return;
+    }
     setBusy(true);
-    const result = await createApprovedActivity({ name: name.trim(), category, organization: organization.trim(), dateTime, venue: venue.trim(), nature: [], activityType, credits: creditsValue });
+    const result = await createApprovedActivity({ name: name.trim(), category, organization: organization.trim(), dateTime, endTime: activityEndTime, venue: venue.trim(), nature: [], activityType, credits: creditsValue });
     if (!result.ok || !result.id) { setBusy(false); setError(result.error || "Failed to create."); return; }
 
     if (attendanceEnabled) {
@@ -130,8 +142,18 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
           </div>
           <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder="Organization"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
-          <input type="datetime-local" value={dateTime} onChange={e => setDateTime(e.target.value)}
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} aria-label="Activity date"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-[12px] font-semibold text-[#062444]">From
+              <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label="From time"
+                className="mt-1 w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm font-normal outline-none focus:border-[#0088cc]" />
+            </label>
+            <label className="text-[12px] font-semibold text-[#062444]">To
+              <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label="To time"
+                className="mt-1 w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm font-normal outline-none focus:border-[#0088cc]" />
+            </label>
+          </div>
           <input value={venue} onChange={e => setVenue(e.target.value)} placeholder="Venue"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
 
@@ -511,7 +533,9 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   const [tab, setTab] = useState<"details" | "attendance">("details");
   const [name, setName] = useState(activity.name);
   const [organization, setOrganization] = useState(activity.organization);
-  const [dateTime, setDateTime] = useState(activity.dateTime ? `${localDatePart(activity.dateTime)}T${localTimePart(activity.dateTime)}` : "");
+  const [date, setDate] = useState(activity.dateTime ? localDatePart(activity.dateTime) : "");
+  const [startTime, setStartTime] = useState(activity.dateTime ? localTimePart(activity.dateTime) : "");
+  const [endTime, setEndTime] = useState(activity.endTime ? localTimePart(activity.endTime) : "");
   const [venue, setVenue] = useState(activity.venue);
   const [projectHead, setProjectHead] = useState(activity.projectHead);
   const [headCluster, setHeadCluster] = useState(activity.headCluster);
@@ -554,11 +578,22 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
     if (!category) { setError("Choose which SDP category this activity counts toward."); return; }
     const creditsValue = Number(credits);
     if (!credits.trim() || creditsValue < 1) { setError("Enter how many credits scholars earn per attendance."); return; }
+    if ((date || startTime || endTime) && (!date || !startTime || !endTime)) {
+      setError("Enter the date, From time, and To time together, or leave all three blank.");
+      return;
+    }
+    const dateTime = date && startTime ? `${date}T${startTime}` : "";
+    const activityEndTime = date && endTime ? `${date}T${endTime}` : "";
+    if (dateTime && activityEndTime && new Date(activityEndTime).getTime() <= new Date(dateTime).getTime()) {
+      setError("The To time must be later than the From time.");
+      return;
+    }
     setBusy(true);
     const result = await updateSDPActivity(activity.id, {
       projectHead, headCluster, category, recurringDates, credits: creditsValue,
       name: name.trim(), organization: organization.trim(), venue: venue.trim(),
       dateTime: dateTime ? new Date(dateTime).toISOString() : null,
+      endTime: activityEndTime ? new Date(activityEndTime).toISOString() : null,
     });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save."); return; }
@@ -613,8 +648,18 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
                   className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Date / Time</label>
-                <input type="datetime-local" value={dateTime} onChange={e => setDateTime(e.target.value)}
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Date</label>
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} aria-label="Activity date"
+                  className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">From</label>
+                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label="From time"
+                  className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">To</label>
+                <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label="To time"
                   className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
               </div>
               <div className="col-span-2">

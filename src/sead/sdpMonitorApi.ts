@@ -16,6 +16,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     nature: (r.nature as string[]) ?? [],
     organization: String(r.organization ?? ""),
     dateTime: (r.date_time as string | null) ?? "",
+    endTime: (r.end_time as string | null) ?? "",
     venue: String(r.venue ?? ""),
     projectHead: String(r.project_head ?? ""),
     headCluster: String(r.head_cluster ?? ""),
@@ -50,7 +51,7 @@ export async function fetchAllSDPActivities(): Promise<SDPActivity[]> {
 export async function updateSDPActivity(
   id: string, fields: {
     projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: RecurringOccurrence[]; credits?: number;
-    name?: string; organization?: string; venue?: string; dateTime?: string | null;
+    name?: string; organization?: string; venue?: string; dateTime?: string | null; endTime?: string | null;
   }
 ): Promise<{ ok: boolean; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
@@ -64,6 +65,7 @@ export async function updateSDPActivity(
     ...(fields.organization !== undefined ? { organization: fields.organization } : {}),
     ...(fields.venue !== undefined ? { venue: fields.venue } : {}),
     ...(fields.dateTime !== undefined ? { date_time: fields.dateTime } : {}),
+    ...(fields.endTime !== undefined ? { end_time: fields.endTime } : {}),
     reviewed_by: auth.user?.id ?? null,
     reviewed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -84,6 +86,7 @@ export interface NewApprovedActivityInput {
   category: SDPCategory;
   organization: string;
   dateTime: string;
+  endTime: string;
   venue: string;
   nature: string[];
   activityType: SDPActivityType;
@@ -104,6 +107,7 @@ export async function createApprovedActivity(input: NewApprovedActivityInput): P
     category: input.category,
     organization: input.organization,
     date_time: localDateTimeToIso(input.dateTime),
+    end_time: localDateTimeToIso(input.endTime),
     venue: input.venue,
     nature: input.nature,
     activity_type: input.activityType,
