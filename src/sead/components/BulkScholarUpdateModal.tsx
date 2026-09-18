@@ -130,6 +130,7 @@ export function BulkScholarUpdateModal({
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [headerError, setHeaderError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<BulkScholarUpdateRowResult[] | null>(null);
   const [rowLookup, setRowLookup] = useState<ParsedRow[]>([]);
 
@@ -152,8 +153,9 @@ export function BulkScholarUpdateModal({
   async function handleUpload() {
     if (validRows.length === 0) return;
     setUploading(true);
+    setProgress(0);
     const inputs = validRows.map(r => r.update!);
-    const { results: res } = await bulkUpdateScholars(inputs);
+    const { results: res } = await bulkUpdateScholars(inputs, (done) => setProgress(done));
     setUploading(false);
     setResults(res);
     setRowLookup(validRows);
@@ -247,6 +249,21 @@ export function BulkScholarUpdateModal({
                         )}
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {uploading && (
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[12px] font-semibold text-slate-500">Updating…</span>
+                    <span className="text-[12px] font-semibold text-slate-500">{progress} / {validRows.length}</span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-[#e6ecf5] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#062444] to-[#0a3a6b] transition-[width] duration-150"
+                      style={{ width: `${validRows.length > 0 ? Math.round((progress / validRows.length) * 100) : 0}%` }}
+                    />
                   </div>
                 </div>
               )}

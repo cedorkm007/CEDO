@@ -1557,7 +1557,9 @@ async function currentStaffDisplayName(): Promise<string> {
   }
 }
 
-export async function bulkUpdateScholars(rows: BulkScholarUpdateInput[]): Promise<{ updated: number; results: BulkScholarUpdateRowResult[] }> {
+export async function bulkUpdateScholars(
+  rows: BulkScholarUpdateInput[], onProgress?: (done: number, total: number) => void
+): Promise<{ updated: number; results: BulkScholarUpdateRowResult[] }> {
   const results: BulkScholarUpdateRowResult[] = [];
   let updated = 0;
   // One shared batch id for every log entry this call produces — lets
@@ -1568,57 +1570,64 @@ export async function bulkUpdateScholars(rows: BulkScholarUpdateInput[]): Promis
   let staffId: string | null = null;
 
   for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    const patch: Record<string, string> = {};
-    for (const [key, column] of Object.entries(BULK_UPDATE_FIELD_MAP) as [keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">, string][]) {
-      const value = r[key];
-      if (value !== undefined) patch[column] = value;
-    }
+    try {
+      const r = rows[i];
+      const patch: Record<string, string> = {};
+      for (const [key, column] of Object.entries(BULK_UPDATE_FIELD_MAP) as [keyof Omit<BulkScholarUpdateInput, "scholarIdNumber">, string][]) {
+        const value = r[key];
+        if (value !== undefined) patch[column] = value;
+      }
 
-    if (Object.keys(patch).length === 0) {
-      results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: true, fieldsChanged: 0 });
-      continue;
-    }
+      if (Object.keys(patch).length === 0) {
+        results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: true, fieldsChanged: 0 });
+        continue;
+      }
 
-    patch.updated_at = new Date().toISOString();
-    const { data, error } = await supabase.from("scholars").update(patch).eq("scholar_id_number", r.scholarIdNumber).select("id, first_name, last_name");
-    if (error) {
-      results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: false, fieldsChanged: 0, error: error.message });
-      continue;
-    }
-    if (!data || data.length === 0) {
-      results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: false, fieldsChanged: 0, error: `Scholar ID ${r.scholarIdNumber} not found.` });
-      continue;
-    }
+      patch.updated_at = new Date().toISOString();
+      const { data, error } = await supabase.from("scholars").update(patch).eq("scholar_id_number", r.scholarIdNumber).select("id, first_name, last_name");
+      if (error) {
+        results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: false, fieldsChanged: 0, error: error.message });
+        continue;
+      }
+      if (!data || data.length === 0) {
+        results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: false, fieldsChanged: 0, error: `Scholar ID ${r.scholarIdNumber} not found.` });
+        continue;
+      }
 
-    updated++;
-    const fieldsChanged = Object.keys(patch).length - 1;
-    results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: true, fieldsChanged });
+      updated++;
+      const fieldsChanged = Object.keys(patch).length - 1;
+      results.push({ index: i, scholarIdNumber: r.scholarIdNumber, ok: true, fieldsChanged });
 
-    // Resolved once, reused for every row — avoids a redundant auth/name
-    // lookup per scholar in what can be a large batch.
-    if (staffName === null) {
-      const { data: auth } = await supabase.auth.getUser();
-      staffId = auth.user?.id ?? null;
-      staffName = await currentStaffDisplayName();
-    }
-    if (staffId) {
-      const changedFieldLabels = Object.keys(patch).filter(k => k !== "updated_at").join(", ");
-      const { error: logError } = await supabase.from("sead_scholar_account_log").insert({
-        action: "updated",
-        scholar_id: data[0].id,
-        scholar_id_number: r.scholarIdNumber,
-        scholar_name: `${data[0].first_name} ${data[0].last_name}`,
-        performed_by: staffId,
-        performed_by_name: staffName,
-        batch_id: batchId,
-        source: rows.length > 1 ? "bulk" : "single",
-        description: `Updated ${fieldsChanged} field${fieldsChanged === 1 ? "" : "s"} (${changedFieldLabels}).`,
-      });
-      // Never blocks/fails the actual update on a logging error — the
-      // scholar record change already succeeded and shouldn't be masked
-      // by an audit-trail write failing.
-      if (logError) console.error("Failed to write scholar account log entry:", logError.message);
+      // Resolved once, reused for every row — avoids a redundant auth/name
+      // lookup per scholar in what can be a large batch.
+      if (staffName === null) {
+        const { data: auth } = await supabase.auth.getUser();
+        staffId = auth.user?.id ?? null;
+        staffName = await currentStaffDisplayName();
+      }
+      if (staffId) {
+        const changedFieldLabels = Object.keys(patch).filter(k => k !== "updated_at").join(", ");
+        const { error: logError } = await supabase.from("sead_scholar_account_log").insert({
+          action: "updated",
+          scholar_id: data[0].id,
+          scholar_id_number: r.scholarIdNumber,
+          scholar_name: `${data[0].first_name} ${data[0].last_name}`,
+          performed_by: staffId,
+          performed_by_name: staffName,
+          batch_id: batchId,
+          source: rows.length > 1 ? "bulk" : "single",
+          description: `Updated ${fieldsChanged} field${fieldsChanged === 1 ? "" : "s"} (${changedFieldLabels}).`,
+        });
+        // Never blocks/fails the actual update on a logging error — the
+        // scholar record change already succeeded and shouldn't be masked
+        // by an audit-trail write failing.
+        if (logError) console.error("Failed to write scholar account log entry:", logError.message);
+      }
+    } finally {
+      // Always reported, even for a row that hit an early `continue`
+      // above (blank patch, DB error, not found) — otherwise a batch
+      // with any failures would leave the progress bar stuck short of 100%.
+      onProgress?.(i + 1, rows.length);
     }
   }
 

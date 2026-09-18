@@ -215,8 +215,22 @@ export function BulkFinancialAssistanceUploadModal({
                 </div>
               )}
 
+              {uploading && (
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[12px] font-semibold text-slate-500">Creating…</span>
+                    <span className="text-[12px] font-semibold text-slate-500">{progress} / {validRows.length}</span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-[#e6ecf5] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#062444] to-[#0a3a6b] transition-[width] duration-150"
+                      style={{ width: `${validRows.length > 0 ? Math.round((progress / validRows.length) * 100) : 0}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-3">
-                {uploading && <span className="text-[12px] text-slate-400">{progress} / {validRows.length}</span>}
                 <button onClick={handleUpload} disabled={validRows.length === 0 || uploading}
                   className="bg-gradient-to-br from-[#062444] to-[#0a3a6b] disabled:opacity-50 text-white text-[13px] font-semibold rounded-lg px-5 py-2.5">
                   {uploading ? "Creating…" : `Create ${validRows.length || ""} Applicant${validRows.length === 1 ? "" : "s"}`}
