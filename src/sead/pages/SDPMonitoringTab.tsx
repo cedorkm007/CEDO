@@ -250,8 +250,8 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
   }
 
   return (
-    <div className="border-t border-[#f0f3f8] pt-4">
-      <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2 flex items-center gap-1.5"><UserCheck size={13} /> Attendance</p>
+    <div>
+      <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2 flex items-center gap-1.5"><UserCheck size={13} /> Credited Scholars</p>
       <p className="text-[11px] text-slate-400 mb-3">Crediting a scholar here marks "{categoryLabel(activity.category)}" complete for them.</p>
 
       {loading ? (
@@ -417,11 +417,11 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
     }
   }
 
-  if (loading) return <div className="border-t border-[#f0f3f8] pt-4"><p className="text-[12.5px] text-slate-400">Loading attendance…</p></div>;
+  if (loading) return <div><p className="text-[12.5px] text-slate-400">Loading attendance…</p></div>;
 
   if (!session) {
     return (
-      <div className="border-t border-[#f0f3f8] pt-4">
+      <div>
         <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2 flex items-center gap-1.5"><QrCode size={13} /> QR / Code Attendance</p>
         {!enabling ? (
           <button onClick={() => setEnabling(true)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">
@@ -468,7 +468,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
   const batches = Array.from(new Set(codes.map(code => code.batchNumber))).sort((a, b) => a - b).map(number => ({ number, codes: codes.filter(code => code.batchNumber === number) }));
 
   return (
-    <div className="border-t border-[#f0f3f8] pt-4">
+    <div>
       <div className="flex items-center justify-between mb-2">
         <p className="text-[11px] font-semibold text-slate-500 uppercase flex items-center gap-1.5"><QrCode size={13} /> QR / Code Attendance</p>
         <span className="text-[11px] text-slate-400">
@@ -530,7 +530,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
 }
 
 function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; onClose: () => void; onChanged: () => void }) {
-  const [tab, setTab] = useState<"details" | "attendance">("details");
+  const [tab, setTab] = useState<"details" | "credited" | "qr">("details");
   const [name, setName] = useState(activity.name);
   const [organization, setOrganization] = useState(activity.organization);
   const [date, setDate] = useState(activity.dateTime ? localDatePart(activity.dateTime) : "");
@@ -614,7 +614,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-[64rem] bg-white rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-5 rounded-t-2xl">
           <div>
             <p className="text-[#F3BC00] text-[11px] font-bold uppercase tracking-wide mb-1">SDP Activity</p>
@@ -629,7 +629,8 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
         <div className="px-6 pt-4">
           <div className="flex gap-1 border-b border-[#e6ecf5]">
             <button type="button" onClick={() => setTab("details")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "details" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Activity Details</button>
-            <button type="button" onClick={() => setTab("attendance")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "attendance" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Attendance</button>
+            <button type="button" onClick={() => setTab("credited")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "credited" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Credited Scholars</button>
+            <button type="button" onClick={() => setTab("qr")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "qr" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>QR Attendance</button>
           </div>
         </div>
 
@@ -758,11 +759,8 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
 
           {error && <p className="text-[13px] text-red-600">{error}</p>}
           </>}
-          {tab === "attendance" && <>
-            <p className="text-[12.5px] text-slate-500">Review the staff-credited and QR/code attendance lists for this activity.</p>
-            <AttendanceSection activity={activity} />
-            <QRAttendanceSection activity={activity} />
-          </>}
+          {tab === "credited" && <AttendanceSection activity={activity} />}
+          {tab === "qr" && <QRAttendanceSection activity={activity} />}
         </div>
 
         <div className="flex items-center justify-between gap-3 px-6 pb-5">
