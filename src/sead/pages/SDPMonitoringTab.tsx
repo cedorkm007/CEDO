@@ -634,7 +634,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
           </div>
         </div>
 
-        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        <div className="p-6 space-y-4 h-[70vh] overflow-y-auto">
           {tab === "details" && <>
           <div className="space-y-3">
             <div>
