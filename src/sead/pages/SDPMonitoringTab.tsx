@@ -952,12 +952,12 @@ function ChecklistSection() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
-              <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
-              <SortableTh label="Scholar Name" sortKey="name" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
-              <SortableTh label="Institutional Volunteerism" sortKey="communityService" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
-              <SortableTh label="Community Volunteerism" sortKey="communityVolunteerism" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
-              <SortableTh label="Formation Program" sortKey="formationProgram" sortState={sortState} onSort={toggleSort} className="px-5 py-3" />
-              <th className="px-5 py-3 text-right">SDP History</th>
+              <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
+              <SortableTh label="Scholar Name" sortKey="name" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
+              <SortableTh label="Institutional Volunteerism" sortKey="communityService" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
+              <SortableTh label="Community Volunteerism" sortKey="communityVolunteerism" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
+              <SortableTh label="Formation Program" sortKey="formationProgram" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
+              <th className="px-5 py-3 text-right whitespace-nowrap">SDP History</th>
             </tr>
           </thead>
           <tbody>
