@@ -2,7 +2,8 @@ import { supabase } from "@/lib/supabase";
 
 export type SDPCategory = "community_service" | "community_volunteerism" | "formation_program";
 export type SDPActivityType = "one_time" | "recurring";
-export interface RecurringOccurrence { date: string; venue: string; }
+/** endTime is optional — occurrences added before this field existed only have a start `date`. */
+export interface RecurringOccurrence { date: string; endTime?: string; venue: string; }
 
 export const SDP_CATEGORIES: { key: SDPCategory; label: string }[] = [
   { key: "community_service", label: "Institutional Volunteerism" },

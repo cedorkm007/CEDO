@@ -529,10 +529,14 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
   );
 }
 
+interface OccurrenceRow { date: string; startTime: string; endTime: string; venue: string; }
+
 function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; onClose: () => void; onChanged: () => void }) {
+  const isRecurring = activity.activityType === "recurring";
   const [tab, setTab] = useState<"details" | "credited" | "qr">("details");
   const [name, setName] = useState(activity.name);
   const [organization, setOrganization] = useState(activity.organization);
+  // One-time activities only — recurring activities use `occurrences` below instead.
   const [date, setDate] = useState(activity.dateTime ? localDatePart(activity.dateTime) : "");
   const [startTime, setStartTime] = useState(activity.dateTime ? localTimePart(activity.dateTime) : "");
   const [endTime, setEndTime] = useState(activity.endTime ? localTimePart(activity.endTime) : "");
@@ -544,9 +548,25 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   const [error, setError] = useState("");
   const [pubmatPath, setPubmatPath] = useState(activity.pubmatPath);
   const [pubmatBusy, setPubmatBusy] = useState(false);
-  const [recurringDates, setRecurringDates] = useState(activity.recurringDates);
-  const [newRecurringDate, setNewRecurringDate] = useState("");
-  const [newRecurringVenue, setNewRecurringVenue] = useState(activity.venue);
+  // Recurring activities only — the first row IS the activity's own dateTime/endTime/venue
+  // (there's no separate "base occurrence"), every later row is one of activity.recurringDates.
+  // Splitting/merging happens only at load (here) and save (handleSave) time.
+  const [occurrences, setOccurrences] = useState<OccurrenceRow[]>(() => {
+    if (!isRecurring) return [];
+    const base: OccurrenceRow = {
+      date: activity.dateTime ? localDatePart(activity.dateTime) : "",
+      startTime: activity.dateTime ? localTimePart(activity.dateTime) : "",
+      endTime: activity.endTime ? localTimePart(activity.endTime) : "",
+      venue: activity.venue,
+    };
+    const extra: OccurrenceRow[] = activity.recurringDates.map(occ => ({
+      date: localDatePart(occ.date),
+      startTime: localTimePart(occ.date),
+      endTime: occ.endTime ? localTimePart(occ.endTime) : "",
+      venue: occ.venue,
+    }));
+    return [base, ...extra];
+  });
   const [credits, setCredits] = useState(String(activity.credits));
 
   async function handlePubmatFile(file: File) {
@@ -558,18 +578,14 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
     onChanged();
   }
 
-  function addRecurringDate() {
-    if (!newRecurringDate) return;
-    const iso = new Date(newRecurringDate).toISOString();
-    if (recurringDates.some(d => d.date === iso)) { setNewRecurringDate(""); return; }
-    setRecurringDates(dates => [...dates, { date: iso, venue: newRecurringVenue.trim() }].sort((a, b) => a.date.localeCompare(b.date)));
-    setNewRecurringDate("");
+  function addOccurrenceRow() {
+    setOccurrences(rows => [...rows, { date: "", startTime: "", endTime: "", venue: rows[rows.length - 1]?.venue ?? "" }]);
   }
-  function removeRecurringDate(iso: string) {
-    setRecurringDates(dates => dates.filter(d => d.date !== iso));
+  function removeOccurrenceRow(index: number) {
+    setOccurrences(rows => rows.filter((_, i) => i !== index));
   }
-  function updateRecurringVenue(iso: string, venue: string) {
-    setRecurringDates(dates => dates.map(d => d.date === iso ? { ...d, venue } : d));
+  function updateOccurrenceRow(index: number, patch: Partial<OccurrenceRow>) {
+    setOccurrences(rows => rows.map((r, i) => i === index ? { ...r, ...patch } : r));
   }
 
   async function handleSave() {
@@ -578,22 +594,54 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
     if (!category) { setError("Choose which SDP category this activity counts toward."); return; }
     const creditsValue = Number(credits);
     if (!credits.trim() || creditsValue < 1) { setError("Enter how many credits scholars earn per attendance."); return; }
-    if ((date || startTime || endTime) && (!date || !startTime || !endTime)) {
-      setError("Enter the date, From time, and To time together, or leave all three blank.");
-      return;
+
+    let dateTimeIso = "";
+    let endTimeIso = "";
+    let venueToSave = venue.trim();
+    let recurringDatesToSave = activity.recurringDates;
+
+    if (isRecurring) {
+      const rows = occurrences.filter(o => o.date || o.startTime || o.endTime || o.venue.trim());
+      if (rows.length === 0) { setError("Add at least one date, time, and venue."); return; }
+      for (const row of rows) {
+        if (!row.date || !row.startTime || !row.endTime || !row.venue.trim()) {
+          setError("Every row needs a date, From time, To time, and venue.");
+          return;
+        }
+        if (new Date(`${row.date}T${row.endTime}`).getTime() <= new Date(`${row.date}T${row.startTime}`).getTime()) {
+          setError("Each row's To time must be later than its From time.");
+          return;
+        }
+      }
+      const [first, ...rest] = rows;
+      dateTimeIso = new Date(`${first.date}T${first.startTime}`).toISOString();
+      endTimeIso = new Date(`${first.date}T${first.endTime}`).toISOString();
+      venueToSave = first.venue.trim();
+      recurringDatesToSave = rest.map(r => ({
+        date: new Date(`${r.date}T${r.startTime}`).toISOString(),
+        endTime: new Date(`${r.date}T${r.endTime}`).toISOString(),
+        venue: r.venue.trim(),
+      }));
+    } else {
+      if ((date || startTime || endTime) && (!date || !startTime || !endTime)) {
+        setError("Enter the date, From time, and To time together, or leave all three blank.");
+        return;
+      }
+      dateTimeIso = date && startTime ? new Date(`${date}T${startTime}`).toISOString() : "";
+      endTimeIso = date && endTime ? new Date(`${date}T${endTime}`).toISOString() : "";
+      if (dateTimeIso && endTimeIso && new Date(endTimeIso).getTime() <= new Date(dateTimeIso).getTime()) {
+        setError("The To time must be later than the From time.");
+        return;
+      }
+      recurringDatesToSave = [];
     }
-    const dateTime = date && startTime ? `${date}T${startTime}` : "";
-    const activityEndTime = date && endTime ? `${date}T${endTime}` : "";
-    if (dateTime && activityEndTime && new Date(activityEndTime).getTime() <= new Date(dateTime).getTime()) {
-      setError("The To time must be later than the From time.");
-      return;
-    }
+
     setBusy(true);
     const result = await updateSDPActivity(activity.id, {
-      projectHead, headCluster, category, recurringDates, credits: creditsValue,
-      name: name.trim(), organization: organization.trim(), venue: venue.trim(),
-      dateTime: dateTime ? new Date(dateTime).toISOString() : null,
-      endTime: activityEndTime ? new Date(activityEndTime).toISOString() : null,
+      projectHead, headCluster, category, recurringDates: recurringDatesToSave, credits: creditsValue,
+      name: name.trim(), organization: organization.trim(), venue: venueToSave,
+      dateTime: dateTimeIso || null,
+      endTime: endTimeIso || null,
     });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save."); return; }
@@ -642,70 +690,74 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
               <input value={name} onChange={e => setName(e.target.value)}
                 className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Organization</label>
-                <input value={organization} onChange={e => setOrganization(e.target.value)}
-                  className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+
+            {isRecurring ? (
+              <>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Organization</label>
+                  <input value={organization} onChange={e => setOrganization(e.target.value)}
+                    className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Dates and Venues</label>
+                  <div className="grid grid-cols-[1fr_100px_100px_1.4fr_24px] gap-x-3 gap-y-2 items-center">
+                    <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Date</span>
+                    <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">From</span>
+                    <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">To</span>
+                    <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Venue</span>
+                    <span />
+                    {occurrences.map((occ, i) => (
+                      <div key={i} className="contents">
+                        <input type="date" value={occ.date} onChange={e => updateOccurrenceRow(i, { date: e.target.value })} aria-label="Occurrence date"
+                          className="w-full border-0 border-b border-[#e6ecf5] bg-transparent px-1 py-1.5 text-[13px] outline-none focus:border-[#0088cc]" />
+                        <input type="time" value={occ.startTime} onChange={e => updateOccurrenceRow(i, { startTime: e.target.value })} aria-label="From time"
+                          className="w-full border-0 border-b border-[#e6ecf5] bg-transparent px-1 py-1.5 text-[13px] outline-none focus:border-[#0088cc]" />
+                        <input type="time" value={occ.endTime} onChange={e => updateOccurrenceRow(i, { endTime: e.target.value })} aria-label="To time"
+                          className="w-full border-0 border-b border-[#e6ecf5] bg-transparent px-1 py-1.5 text-[13px] outline-none focus:border-[#0088cc]" />
+                        <input value={occ.venue} onChange={e => updateOccurrenceRow(i, { venue: e.target.value })} placeholder="Venue"
+                          className="w-full border-0 border-b border-[#e6ecf5] bg-transparent px-1 py-1.5 text-[13px] outline-none focus:border-[#0088cc]" />
+                        <button type="button" onClick={() => removeOccurrenceRow(i)} className="shrink-0 text-slate-400 hover:text-red-600"><Trash2 size={13} /></button>
+                      </div>
+                    ))}
+                  </div>
+                  {occurrences.length === 0 && <p className="mt-2 text-[12px] text-slate-400 italic">No dates added yet.</p>}
+                  <button type="button" onClick={addOccurrenceRow} className="mt-2 rounded-lg bg-[#eef7fc] px-3 py-2 text-[12px] font-bold text-[#0088cc] hover:bg-[#e0f0fa]">
+                    <Plus size={13} className="mr-1 inline" />Add Date
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Organization</label>
+                  <input value={organization} onChange={e => setOrganization(e.target.value)}
+                    className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Date</label>
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)} aria-label="Activity date"
+                    className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">From</label>
+                  <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label="From time"
+                    className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">To</label>
+                  <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label="To time"
+                    className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Venue</label>
+                  <input value={venue} onChange={e => setVenue(e.target.value)}
+                    className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Date</label>
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} aria-label="Activity date"
-                  className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">From</label>
-                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label="From time"
-                  className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">To</label>
-                <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label="To time"
-                  className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Venue</label>
-                <input value={venue} onChange={e => setVenue(e.target.value)}
-                  className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
-              </div>
-            </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 text-[13px]">
-            <Field label="Nature" value={activity.nature.join(", ")} />
-            <Field label="Type of Activity" value={activity.activityType === "recurring" ? "Recurring" : "One-time"} />
-            <Field label="Budget" value={activity.budgetaryRequirement ? `₱${activity.budgetaryRequirement}` : "—"} />
-            <Field label="Source of Fund" value={activity.sourceOfFund.join(", ") || "—"} />
-          </div>
-
-          {activity.activityType === "recurring" && (
-            <div className="border-t border-[#f0f3f8] pt-4">
-              <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Occurrence Dates</label>
-              {recurringDates.length > 0 ? (
-                <ul className="mb-2 space-y-1.5">
-                  {recurringDates.map(occ => (
-                    <li key={occ.date} className="flex items-center gap-2 rounded-lg bg-[#f8fafd] px-3 py-1.5">
-                      <span className="text-[12.5px] text-[#062444] shrink-0">{new Date(occ.date).toLocaleString()}</span>
-                      <input value={occ.venue} onChange={e => updateRecurringVenue(occ.date, e.target.value)} placeholder="Venue"
-                        className="flex-1 min-w-0 rounded-md border border-[#062444]/15 bg-white px-2 py-1 text-[12px] outline-none focus:border-[#0088cc]" />
-                      <button type="button" onClick={() => removeRecurringDate(occ.date)} className="shrink-0 text-slate-400 hover:text-red-600"><Trash2 size={13} /></button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mb-2 text-[12px] text-slate-400 italic">No occurrence dates recorded yet.</p>
-              )}
-              <div className="flex gap-2">
-                <input type="datetime-local" value={newRecurringDate} onChange={e => setNewRecurringDate(e.target.value)}
-                  className="flex-1 rounded-lg border border-[#062444]/15 px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
-                <input value={newRecurringVenue} onChange={e => setNewRecurringVenue(e.target.value)} placeholder="Venue"
-                  className="flex-1 rounded-lg border border-[#062444]/15 px-3 py-2 text-[13px] outline-none focus:border-[#0088cc]" />
-                <button type="button" onClick={addRecurringDate} className="shrink-0 rounded-lg bg-[#eef7fc] px-3 py-2 text-[12px] font-bold text-[#0088cc] hover:bg-[#e0f0fa]">
-                  <Plus size={13} className="mr-1 inline" />Add Date
-                </button>
-              </div>
-            </div>
-          )}
+          <Field label="Type of Activity" value={isRecurring ? "Recurring" : "One-time"} />
 
           {activity.rationale && (
             <div>
