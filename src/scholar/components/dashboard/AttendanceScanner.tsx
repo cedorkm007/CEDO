@@ -23,6 +23,8 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
   const lastAttemptedCode = useRef<string>("");
+  const pendingCode = useRef<string>("");
+  const pendingCodeStreak = useRef(0);
 
   async function submitCode(code: string) {
     if (busy || !code.trim()) return;
@@ -117,7 +119,22 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const qr = jsQR(imageData.data, imageData.width, imageData.height);
-        if (qr?.data) submitCode(qr.data);
+        if (qr?.data) {
+          // Require the same decode on 2 consecutive frames before acting on
+          // it — a single blurry/partial frame can make jsQR misread a code,
+          // which the backend then correctly rejects as invalid. Waiting one
+          // extra ~16ms frame for confirmation filters that out.
+          if (qr.data === pendingCode.current) {
+            pendingCodeStreak.current += 1;
+          } else {
+            pendingCode.current = qr.data;
+            pendingCodeStreak.current = 1;
+          }
+          if (pendingCodeStreak.current >= 2) submitCode(qr.data);
+        } else {
+          pendingCode.current = "";
+          pendingCodeStreak.current = 0;
+        }
       }
     }
     rafRef.current = requestAnimationFrame(tick);
