@@ -940,6 +940,7 @@ const SCHOLARS_PAGE_SIZE = 50;
  * column picker can toggle. No search/filter param yet (Milestone 2 scope
  * is the shell + column picker only; combinable filters are Milestone 3). */
 export interface ScholarInformationRow {
+  id: string; // scholars.id — the Supabase Auth user id, needed for account-level actions (Remove/Restore/Delete)
   scholarIdNumber: string;
   firstName: string;
   lastName: string;
@@ -960,6 +961,8 @@ export interface ScholarInformationRow {
   motherFirstName: string;
   motherMiddleInitial: string;
   motherLastName: string;
+  /** What status to restore to if this scholar is Removed — null for a scholar who was never anything but Removed (added directly as a historical record). Irrelevant for any other status. */
+  statusBeforeRemoval: ScholarshipStatus | null;
 }
 
 /** Combinable filters for the Scholars Information subtab (Milestone 3) —
@@ -1028,7 +1031,7 @@ function isoDateYearsAgo(years: number): string {
 }
 
 const SCHOLAR_INFORMATION_SELECT =
-  "scholar_id_number, first_name, last_name, middle_name, year_level, school, status, barangay, course, birthday, civil_status, contact_no, contact_email, father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name";
+  "id, scholar_id_number, first_name, last_name, middle_name, year_level, school, status, status_before_removal, barangay, course, birthday, civil_status, contact_no, contact_email, father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name";
 
 /**
  * Applies every ScholarInformationFilters field to a query builder — the
@@ -1070,7 +1073,10 @@ function applyScholarInformationFilters(query: any, filters: ScholarInformationF
   if (filters.course?.trim()) query = query.ilike("course", `%${filters.course.trim()}%`);
   if (filters.school?.trim()) query = query.ilike("school", `%${filters.school.trim()}%`);
   if (filters.yearLevel) query = query.eq("year_level", filters.yearLevel);
+  // No explicit status filter means "the active roster" — Removed scholars
+  // are siloed into their own tab, which passes status: "Removed" explicitly.
   if (filters.status) query = query.eq("status", filters.status);
+  else query = query.neq("status", "Removed");
   if (filters.schoolExact) query = query.eq("school", filters.schoolExact);
   if (filters.courseExact) query = query.eq("course", filters.courseExact);
   if (filters.fatherName?.trim()) {
@@ -1118,6 +1124,7 @@ function applyScholarInformationFilters(query: any, filters: ScholarInformationF
 
 function mapScholarInformationRow(r: Record<string, unknown>): ScholarInformationRow {
   return {
+    id: String(r.id),
     scholarIdNumber: String(r.scholar_id_number), firstName: String(r.first_name), lastName: String(r.last_name),
     middleName: String(r.middle_name ?? ""), yearLevel: String(r.year_level ?? ""), school: String(r.school ?? ""),
     status: r.status as ScholarshipStatus,
@@ -1125,6 +1132,7 @@ function mapScholarInformationRow(r: Record<string, unknown>): ScholarInformatio
     civilStatus: String(r.civil_status ?? ""), contactNo: String(r.contact_no ?? ""), contactEmail: String(r.contact_email ?? ""),
     fatherFirstName: String(r.father_first_name ?? ""), fatherMiddleInitial: String(r.father_middle_initial ?? ""), fatherLastName: String(r.father_last_name ?? ""),
     motherFirstName: String(r.mother_first_name ?? ""), motherMiddleInitial: String(r.mother_middle_initial ?? ""), motherLastName: String(r.mother_last_name ?? ""),
+    statusBeforeRemoval: (r.status_before_removal as ScholarshipStatus | null) ?? null,
   };
 }
 
@@ -1136,6 +1144,7 @@ export interface TableSort<TColumn extends string> {
 
 /** Frontend column key -> underlying scholars table column(s), in order (a multi-column sort like Name breaks ties on the second column). */
 const SCHOLAR_INFORMATION_SORT_COLUMNS: Record<ScholarInformationSortColumn, string[]> = {
+  id: ["id"],
   scholarIdNumber: ["scholar_id_number"],
   firstName: ["first_name", "last_name"],
   lastName: ["last_name", "first_name"],
@@ -1155,6 +1164,7 @@ const SCHOLAR_INFORMATION_SORT_COLUMNS: Record<ScholarInformationSortColumn, str
   motherFirstName: ["mother_first_name"],
   motherMiddleInitial: ["mother_middle_initial"],
   motherLastName: ["mother_last_name", "mother_first_name"],
+  statusBeforeRemoval: ["status_before_removal"],
 };
 /** "Age" is displayed for the birthday column, so ascending Age (youngest first) is descending birthday (most recent date first) — the one column whose natural UI direction is inverted from its raw date direction. */
 const INVERTED_SORT_COLUMNS = new Set<ScholarInformationSortColumn>(["birthday"]);
@@ -1249,7 +1259,8 @@ export async function fetchScholars(search: string, page: number = 1, sort?: Tab
   if (error || !data) {
     const term = search.trim().replace(/[,.()]/g, " ");
     let query = supabase.from("scholars")
-      .select("id, scholar_id_number, first_name, last_name, middle_name, school, status", { count: "exact" });
+      .select("id, scholar_id_number, first_name, last_name, middle_name, school, status", { count: "exact" })
+      .neq("status", "Removed");
     const sortColumns = (sort && SCHOLAR_ACCOUNT_SORT_FALLBACK_COLUMNS[sort.column]) || ["last_name", "first_name"];
     for (const col of sortColumns) query = query.order(col, { ascending: sort ? sort.direction === "asc" : true });
     if (term) {
@@ -1287,6 +1298,7 @@ export interface ScholarshipStatusCounts {
   probationary: number;
   onLeave: number;
   reconsidered: number;
+  removed: number;
 }
 
 export interface BarangayCount {
@@ -1421,6 +1433,7 @@ export async function fetchScholarshipStatusCounts(): Promise<{ ok: boolean; err
       probationary: Number(row.probationary_count ?? 0),
       onLeave: Number(row.on_leave_count ?? 0),
       reconsidered: Number(row.reconsidered_count ?? 0),
+      removed: Number(row.removed_count ?? 0),
     },
   };
 }
@@ -1434,6 +1447,32 @@ export async function createScholarAccount(input: NewScholarInput): Promise<{ ok
   const result = await invokeEdgeFunction<{ defaultPassword?: string }>("sead-create-scholar-account", input);
   if (!result.ok) return { ok: false, error: result.error };
   return { ok: true, defaultPassword: result.data?.defaultPassword };
+}
+
+/**
+ * Adds a scholar directly with status "Removed" — for historical records
+ * (a scholar who already left the program) that need a record for
+ * monitoring but should never have a working login. Reuses the same
+ * account-creation Edge Function as createScholarAccount (still needs a
+ * real Supabase Auth user under the hood, since scholars.id is a NOT NULL
+ * FK to auth.users), it just also bans that account immediately.
+ */
+export async function addRemovedScholar(input: NewScholarInput): Promise<{ ok: boolean; error?: string }> {
+  const result = await invokeEdgeFunction<Record<string, never>>("sead-create-scholar-account", { ...input, asRemoved: true });
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true };
+}
+
+export async function removeScholarAccount(id: string): Promise<{ ok: boolean; error?: string; name?: string }> {
+  const result = await invokeEdgeFunction<{ name?: string }>("sead-remove-scholar-account", { id });
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, name: result.data?.name };
+}
+
+export async function restoreScholarAccount(id: string): Promise<{ ok: boolean; error?: string; status?: string }> {
+  const result = await invokeEdgeFunction<{ status?: string }>("sead-restore-scholar-account", { id });
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, status: result.data?.status };
 }
 
 export interface BulkScholarRowResult {
@@ -1463,7 +1502,8 @@ const BULK_CHUNK_SIZE = 15;
 
 export async function bulkCreateScholars(
   rows: NewScholarInput[],
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  asRemoved: boolean = false,
 ): Promise<{ ok: boolean; error?: string; results?: BulkScholarRowResult[]; batchId?: string }> {
   if (rows.length === 0) return { ok: false, error: "No scholar rows provided." };
 
@@ -1473,7 +1513,7 @@ export async function bulkCreateScholars(
   for (let start = 0; start < rows.length; start += BULK_CHUNK_SIZE) {
     const chunk = rows.slice(start, start + BULK_CHUNK_SIZE);
     const result = await invokeEdgeFunction<{ batchId?: string; results?: BulkScholarRowResult[] }>(
-      "sead-bulk-create-scholars", { scholars: chunk, batchId }
+      "sead-bulk-create-scholars", { scholars: chunk, batchId, asRemoved }
     );
     if (!result.ok) {
       // Report what succeeded before the failing chunk, plus the error, rather
@@ -1486,6 +1526,14 @@ export async function bulkCreateScholars(
   }
 
   return { ok: true, results: allResults, batchId };
+}
+
+/** Bulk version of addRemovedScholar — same chunked upload as bulkCreateScholars, just flagged so every row lands as status "Removed" and banned. */
+export async function bulkAddRemovedScholars(
+  rows: NewScholarInput[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ ok: boolean; error?: string; results?: BulkScholarRowResult[]; batchId?: string }> {
+  return bulkCreateScholars(rows, onProgress, true);
 }
 
 export async function deleteScholarAccount(id: string): Promise<{ ok: boolean; error?: string; name?: string }> {

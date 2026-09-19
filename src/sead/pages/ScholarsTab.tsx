@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, Pencil, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw } from "lucide-react";
-import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, updateScholarStatus, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, fetchAllScholarsInformationForExport, type ScholarInformationRow, type ScholarInformationFilters, type ScholarInformationEmptyableField } from "../seadApi";
+import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, Pencil, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw, UserX } from "lucide-react";
+import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, removeScholarAccount, updateScholarStatus, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, fetchAllScholarsInformationForExport, type ScholarInformationRow, type ScholarInformationFilters, type ScholarInformationEmptyableField } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
 import { EditScholarModal } from "../components/EditScholarModal";
 import { BulkScholarUploadModal } from "../components/BulkScholarUploadModal";
@@ -50,6 +50,8 @@ function ScholarsAccountSubtab() {
   const [resetBusyId, setResetBusyId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [removeBusyId, setRemoveBusyId] = useState<string | null>(null);
   const [showResetAll, setShowResetAll] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const { sortState, toggleSort } = useSortState();
@@ -104,7 +106,17 @@ function ScholarsAccountSubtab() {
     const result = await deleteScholarAccount(id);
     setDeleteBusyId(null);
     setConfirmDeleteId(null);
-    setToast(result.ok ? `Removed ${result.name}'s account.` : (result.error || "Failed to remove account."));
+    setToast(result.ok ? `Deleted ${result.name}'s account.` : (result.error || "Failed to delete account."));
+    setTimeout(() => setToast(null), 4000);
+    if (result.ok) load(page);
+  }
+
+  async function handleRemoveScholar(id: string) {
+    setRemoveBusyId(id);
+    const result = await removeScholarAccount(id);
+    setRemoveBusyId(null);
+    setConfirmRemoveId(null);
+    setToast(result.ok ? `${result.name} marked as Removed — login deactivated.` : (result.error || "Failed to remove scholar."));
     setTimeout(() => setToast(null), 4000);
     if (result.ok) load(page);
   }
@@ -187,12 +199,21 @@ function ScholarsAccountSubtab() {
                   <td className="px-4 py-3 text-right">
                     {confirmDeleteId === s.id ? (
                       <span className="inline-flex items-center gap-2">
-                        <span className="text-[12px] text-slate-500">Remove this account?</span>
+                        <span className="text-[12px] text-slate-500">Delete this account permanently?</span>
                         <button onClick={() => handleDeleteScholar(s.id)} disabled={deleteBusyId === s.id}
                           className="text-[12px] font-bold text-red-600 hover:underline">
                           {deleteBusyId === s.id ? "…" : "Confirm"}
                         </button>
                         <button onClick={() => setConfirmDeleteId(null)} className="text-[12px] text-slate-400 hover:underline">Cancel</button>
+                      </span>
+                    ) : confirmRemoveId === s.id ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="text-[12px] text-slate-500">Deactivate login &amp; move to Removed Scholars?</span>
+                        <button onClick={() => handleRemoveScholar(s.id)} disabled={removeBusyId === s.id}
+                          className="text-[12px] font-bold text-red-600 hover:underline">
+                          {removeBusyId === s.id ? "…" : "Confirm"}
+                        </button>
+                        <button onClick={() => setConfirmRemoveId(null)} className="text-[12px] text-slate-400 hover:underline">Cancel</button>
                       </span>
                     ) : confirmResetId === s.scholarIdNumber ? (
                       <span className="inline-flex items-center gap-2">
@@ -213,9 +234,13 @@ function ScholarsAccountSubtab() {
                           className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
                           <KeyRound size={13} /> Reset Password
                         </button>
+                        <button onClick={() => setConfirmRemoveId(s.id)}
+                          className="flex items-center gap-1.5 text-[12.5px] font-semibold text-amber-600 hover:underline">
+                          <UserX size={13} /> Remove Scholar
+                        </button>
                         <button onClick={() => setConfirmDeleteId(s.id)}
                           className="flex items-center gap-1.5 text-[12.5px] font-semibold text-red-500 hover:underline">
-                          <Trash2 size={13} /> Remove
+                          <Trash2 size={13} /> Delete Account
                         </button>
                       </span>
                     )}
@@ -247,7 +272,14 @@ const STATUS_BADGE_CLASSES: Record<ScholarshipStatus, string> = {
   "Probationary": "bg-red-100 text-red-600",
   "On leave": "bg-amber-100 text-amber-700",
   "Reconsidered": "bg-blue-100 text-blue-700",
+  "Removed": "bg-slate-200 text-slate-600",
 };
+
+// "Removed" isn't a routine, freely-settable status — it's only reachable
+// through the dedicated "Remove Scholar" action (see ScholarsAccountSubtab),
+// so it's deliberately excluded from the filter dropdown and the inline
+// per-row status editor below.
+const EDITABLE_SCHOLARSHIP_STATUSES = SCHOLARSHIP_STATUSES.filter(s => s !== "Removed");
 
 const INFO_COLUMNS: { key: keyof ScholarInformationRow; label: string }[] = [
   { key: "yearLevel", label: "Year Level" },
@@ -308,7 +340,7 @@ function computeAge(birthdayIso: string): string {
  * function. No functional change, just the comment now matching what
  * the code has actually done since Milestone 4a.)
  */
-function formatInfoColumnValue(row: ScholarInformationRow, key: keyof ScholarInformationRow, blank: string): string {
+export function formatInfoColumnValue(row: ScholarInformationRow, key: keyof ScholarInformationRow, blank: string): string {
   if (key === "birthday") {
     const age = computeAge(row.birthday);
     return age === "—" ? blank : age;
@@ -322,7 +354,7 @@ function formatInfoColumnValue(row: ScholarInformationRow, key: keyof ScholarInf
   return row[key] || blank;
 }
 
-function formatScholarName(row: ScholarInformationRow): string {
+export function formatScholarName(row: ScholarInformationRow): string {
   return `${row.lastName}, ${row.firstName} ${row.middleName}`.trim();
 }
 
@@ -790,7 +822,7 @@ function ScholarsInformationSubtab() {
             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as ScholarshipStatus | "")}
               className="w-full text-[12.5px] border border-[#e6ecf5] rounded-lg px-2.5 py-1.5 outline-none focus:border-[#0088cc] bg-white">
               <option value="">Any</option>
-              {SCHOLARSHIP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              {EDITABLE_SCHOLARSHIP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
@@ -894,7 +926,7 @@ function ScholarsInformationSubtab() {
                           onChange={e => handleStatusChange(r, e.target.value as ScholarshipStatus)}
                           className={`text-[11px] font-bold uppercase tracking-wide pl-2.5 pr-1.5 py-1 rounded-full border-0 outline-none cursor-pointer disabled:opacity-50 disabled:cursor-wait ${STATUS_BADGE_CLASSES[r.status]}`}
                         >
-                          {SCHOLARSHIP_STATUSES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                          {EDITABLE_SCHOLARSHIP_STATUSES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                         </select>
                       ) : (
                         formatInfoColumnValue(r, c.key, "—")
@@ -1002,7 +1034,7 @@ function ResetAllPasswordsModal({ onClose, onDone }: { onClose: () => void; onDo
   );
 }
 
-function PaginationControls({ page, totalPages, onGoTo, disabled }: {
+export function PaginationControls({ page, totalPages, onGoTo, disabled }: {
   page: number; totalPages: number; onGoTo: (p: number) => void; disabled: boolean;
 }) {
   return (

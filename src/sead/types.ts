@@ -45,7 +45,7 @@ export interface QuestQuestion {
   choices: QuestChoiceDraft[];
 }
 
-export const SCHOLARSHIP_STATUSES = ["Regular", "Probationary", "On leave", "Reconsidered"] as const;
+export const SCHOLARSHIP_STATUSES = ["Regular", "Probationary", "On leave", "Reconsidered", "Removed"] as const;
 export type ScholarshipStatus = (typeof SCHOLARSHIP_STATUSES)[number];
 
 export interface ScholarListItem {
@@ -82,7 +82,7 @@ export interface ScholarAccountLogEntry {
   description: string;
 }
 
-export type SeadTab = "scholars" | "question-bank" | "quests-monitoring" | "formation-activities" | "history" | "forms-management";
+export type SeadTab = "scholars" | "removed-scholars" | "question-bank" | "quests-monitoring" | "formation-activities" | "history" | "forms-management";
 
 // ── Research Project Monitoring: Survey Tools / Survey Results ──
 

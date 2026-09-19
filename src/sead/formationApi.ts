@@ -91,6 +91,7 @@ export async function searchScholars(query: string, filter?: ScholarSearchFilter
   let request = supabase.from("scholars")
     .select("scholar_id_number, first_name, last_name, school")
     .or(`scholar_id_number.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`)
+    .neq("status", "Removed")
     .limit(8);
   if (filter?.school) request = request.eq("school", filter.school);
   if (filter?.barangay) request = request.eq("barangay", filter.barangay);

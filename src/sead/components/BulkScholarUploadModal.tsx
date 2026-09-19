@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { X, Upload, AlertTriangle, CheckCircle2, UploadCloud, Undo2 } from "lucide-react";
-import { bulkCreateScholars, undoBulkScholarUpload, type NewScholarInput, type BulkScholarRowResult } from "../seadApi";
+import { bulkCreateScholars, bulkAddRemovedScholars, undoBulkScholarUpload, type NewScholarInput, type BulkScholarRowResult } from "../seadApi";
 import { parseCsv, toCsv, downloadCsv, normalizeHeader, findColumn, cell } from "../csvUtils";
 import { ExportButton } from "@/app/components/ExportButtons";
 
@@ -91,9 +91,10 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
   return { rows: parsed };
 }
 
+/** asRemoved: every row is added directly with status "Removed" (banned on creation) — used by the Removed Scholars tab's bulk import for historical records that never had a working login. */
 export function BulkScholarUploadModal({
-  onClose, onDone,
-}: { onClose: () => void; onDone: () => void }) {
+  onClose, onDone, asRemoved = false,
+}: { onClose: () => void; onDone: () => void; asRemoved?: boolean }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
@@ -132,7 +133,7 @@ export function BulkScholarUploadModal({
     setUploading(true);
     setSubmitError(null);
     const inputs = validRows.map(r => r.scholar!);
-    const result = await bulkCreateScholars(inputs);
+    const result = asRemoved ? await bulkAddRemovedScholars(inputs) : await bulkCreateScholars(inputs);
     setUploading(false);
     if (!result.ok) { setSubmitError(result.error || "Failed to upload."); return; }
     setResults(result.results ?? []);
@@ -181,7 +182,7 @@ export function BulkScholarUploadModal({
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
       <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4 rounded-t-2xl">
-          <h3 className="flex items-center gap-2 text-white font-bold text-[15px]"><UploadCloud size={16} className="text-[#F3BC00]" /> Bulk Upload Scholars</h3>
+          <h3 className="flex items-center gap-2 text-white font-bold text-[15px]"><UploadCloud size={16} className="text-[#F3BC00]" /> {asRemoved ? "Bulk Import Removed Scholars" : "Bulk Upload Scholars"}</h3>
           <button onClick={onClose} className="text-white/70 hover:text-white"><X size={18} /></button>
         </div>
 
@@ -190,14 +191,14 @@ export function BulkScholarUploadModal({
             <div className="text-center py-4">
               <CheckCircle2 size={36} className="mx-auto text-green-600 mb-2" />
               <p className="text-sm font-semibold text-[#062444] mb-1">
-                {successCount} scholar account{successCount === 1 ? "" : "s"} created.
+                {successCount} {asRemoved ? "removed scholar" : "scholar account"}{successCount === 1 ? "" : "s"} {asRemoved ? "added" : "created"}.
               </p>
-              {successCount > 0 && (
+              {successCount > 0 && !asRemoved && (
                 <div className="mx-auto w-fit mt-2">
                   <ExportButton format="csv" onClick={downloadCredentials} label="Download Credentials CSV" />
                 </div>
               )}
-              {successCount > 0 && (
+              {successCount > 0 && !asRemoved && (
                 <p className="text-[12px] text-slate-400 mt-2 max-w-md mx-auto">
                   This file is the only copy of these passwords. Distribute it to scholars securely, then delete it.
                 </p>
@@ -248,7 +249,9 @@ export function BulkScholarUploadModal({
           ) : (
             <>
               <p className="text-[13px] text-slate-500 mb-3">
-                Download the template, fill in one row per scholar, then upload it below. Each new account gets its own randomly generated password, delivered in a downloadable credentials file after upload.
+                {asRemoved
+                  ? "Download the template, fill in one row per scholar, then upload it below. Each row is added as a historical record with status \"Removed\" — no working login is ever issued."
+                  : "Download the template, fill in one row per scholar, then upload it below. Each new account gets its own randomly generated password, delivered in a downloadable credentials file after upload."}
               </p>
 
               <div className="mb-4">
@@ -303,7 +306,9 @@ export function BulkScholarUploadModal({
               <div className="flex justify-end">
                 <button onClick={handleUpload} disabled={validRows.length === 0 || uploading}
                   className="bg-gradient-to-br from-[#062444] to-[#0a3a6b] disabled:opacity-50 text-white text-[13px] font-semibold rounded-lg px-5 py-2.5">
-                  {uploading ? "Creating accounts…" : `Create ${validRows.length || ""} Account${validRows.length === 1 ? "" : "s"}`}
+                  {uploading
+                    ? (asRemoved ? "Adding…" : "Creating accounts…")
+                    : asRemoved ? `Add ${validRows.length || ""} Removed Scholar${validRows.length === 1 ? "" : "s"}` : `Create ${validRows.length || ""} Account${validRows.length === 1 ? "" : "s"}`}
                 </button>
               </div>
             </>

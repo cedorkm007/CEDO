@@ -27,6 +27,7 @@ Deno.serve(async (req: Request) => {
     const course = String(body.course ?? "").trim();
     const civilStatus = String(body.civilStatus ?? "").trim();
     const contactNo = String(body.contactNo ?? "").trim();
+    const asRemoved = body.asRemoved === true;
 
     if (!scholarIdNumber || !firstName || !lastName || !birthday) {
       return new Response(JSON.stringify({ error: "Scholar ID, first name, last name, and birthday are required." }), {
@@ -66,6 +67,7 @@ Deno.serve(async (req: Request) => {
       course,
       civil_status: civilStatus,
       contact_no: contactNo,
+      status: asRemoved ? "Removed" : "Regular",
     });
     if (insertError) {
       // Roll back the auth user so we don't leave an orphaned login with no profile.
@@ -73,6 +75,17 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: insertError.message }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    if (asRemoved) {
+      // Historical record only — ban immediately so this account never has a working login.
+      const { error: banError } = await admin.auth.admin.updateUserById(authUser.user.id, { ban_duration: "876000h" });
+      if (banError) {
+        await admin.auth.admin.deleteUser(authUser.user.id);
+        return new Response(JSON.stringify({ error: banError.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const staffName = await getStaffName(admin, callerId);
@@ -84,6 +97,7 @@ Deno.serve(async (req: Request) => {
       performedBy: callerId,
       performedByName: staffName,
       source: "single",
+      description: asRemoved ? "Added directly as Removed — no working login was ever issued." : undefined,
     });
 
     return new Response(JSON.stringify({ ok: true, scholarIdNumber, defaultPassword: DEFAULT_PASSWORD }), {

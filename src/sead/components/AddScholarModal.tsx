@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { X, UserPlus } from "lucide-react";
-import { createScholarAccount, type NewScholarInput } from "../seadApi";
+import { createScholarAccount, addRemovedScholar, type NewScholarInput } from "../seadApi";
 
 const CIVIL_STATUS_OPTIONS = ["Single", "Single Parent", "Married", "Widow", "Separated"];
 
-export function AddScholarModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+/** asRemoved: adds the scholar directly with status "Removed" (banned on creation) — used by the Removed Scholars tab's "Add Removed Scholar" button for historical, never-logged-in records. */
+export function AddScholarModal({ onClose, onCreated, asRemoved = false }: { onClose: () => void; onCreated: () => void; asRemoved?: boolean }) {
   const [form, setForm] = useState<NewScholarInput>({
     scholarIdNumber: "", firstName: "", lastName: "", middleName: "", birthday: "",
     address: "", school: "", course: "", civilStatus: "", contactNo: "",
@@ -25,10 +26,10 @@ export function AddScholarModal({ onClose, onCreated }: { onClose: () => void; o
       return;
     }
     setBusy(true);
-    const result = await createScholarAccount(form);
+    const result = asRemoved ? await addRemovedScholar(form) : await createScholarAccount(form);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to create account."); return; }
-    setSuccess(`Account created. Default password: ${result.defaultPassword}`);
+    setSuccess(asRemoved ? "Added to Removed Scholars." : `Account created. Default password: ${"defaultPassword" in result ? result.defaultPassword : ""}`);
     onCreated();
   }
 
@@ -36,14 +37,17 @@ export function AddScholarModal({ onClose, onCreated }: { onClose: () => void; o
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
       <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4 rounded-t-2xl">
-          <h3 className="flex items-center gap-2 text-white font-bold text-[15px]"><UserPlus size={16} className="text-[#F3BC00]" /> Add Scholar</h3>
+          <h3 className="flex items-center gap-2 text-white font-bold text-[15px]"><UserPlus size={16} className="text-[#F3BC00]" /> {asRemoved ? "Add Removed Scholar" : "Add Scholar"}</h3>
           <button onClick={onClose} className="text-white/70 hover:text-white"><X size={18} /></button>
         </div>
 
         <div className="p-6">
+          {asRemoved && !success && (
+            <p className="text-[12.5px] text-slate-500 mb-3">For a historical record only — this scholar is added with status "Removed" and never gets a working login.</p>
+          )}
           {success ? (
             <div className="text-center py-4">
-              <p className="text-sm font-semibold text-[#062444] mb-1">Scholar account created.</p>
+              <p className="text-sm font-semibold text-[#062444] mb-1">{asRemoved ? "Removed scholar added." : "Scholar account created."}</p>
               <p className="text-sm text-slate-500 mb-5">{success}</p>
               <button onClick={onClose} className="bg-[#062444] text-white text-sm font-semibold rounded-lg px-5 py-2.5">Done</button>
             </div>

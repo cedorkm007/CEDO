@@ -58,6 +58,7 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json();
     const rows: ScholarRow[] = Array.isArray(body.scholars) ? body.scholars : [];
+    const asRemoved = body.asRemoved === true;
 
     if (rows.length === 0) {
       return new Response(JSON.stringify({ error: "No scholar rows provided." }), {
@@ -126,12 +127,23 @@ Deno.serve(async (req: Request) => {
           course,
           civil_status: civilStatus,
           contact_no: contactNo,
+          status: asRemoved ? "Removed" : "Regular",
         });
         if (insertError) {
           // Roll back the auth user so we don't leave an orphaned login with no profile.
           await admin.auth.admin.deleteUser(authUser.user.id);
           results.push({ index: i, scholarIdNumber, ok: false, error: insertError.message });
           continue;
+        }
+
+        if (asRemoved) {
+          // Historical record only — ban immediately so this account never has a working login.
+          const { error: banError } = await admin.auth.admin.updateUserById(authUser.user.id, { ban_duration: "876000h" });
+          if (banError) {
+            await admin.auth.admin.deleteUser(authUser.user.id);
+            results.push({ index: i, scholarIdNumber, ok: false, error: banError.message });
+            continue;
+          }
         }
 
         await logScholarChange(admin, {
@@ -143,6 +155,7 @@ Deno.serve(async (req: Request) => {
           performedByName: staffName,
           batchId,
           source: "bulk",
+          description: asRemoved ? "Added directly as Removed — no working login was ever issued." : undefined,
         });
 
         results.push({ index: i, scholarIdNumber, ok: true, password });

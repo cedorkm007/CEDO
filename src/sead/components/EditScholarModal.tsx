@@ -126,7 +126,9 @@ export function EditScholarModal({ scholar, onClose, onSaved }: { scholar: Schol
                   <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Scholarship Status</label>
                   <select value={form.scholarshipStatus ?? ""} onChange={e => set("scholarshipStatus", e.target.value as ScholarshipStatus)}
                     className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none bg-white">
-                    {SCHOLARSHIP_STATUSES.map(o => <option key={o} value={o}>{o}</option>)}
+                    {/* "Removed" isn't editable here — it's only reachable through
+                        the dedicated "Remove Scholar" action in Scholars Account. */}
+                    {SCHOLARSHIP_STATUSES.filter(o => o !== "Removed").map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
               </div>

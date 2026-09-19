@@ -103,8 +103,12 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
         if (!match) return { rowNumber, ok: false, error: `"${raw}" isn't a recognized Barangay — check spelling against the official list, or leave blank.`, preview: scholarIdNumber, changedFieldLabels: [] };
         update.barangay = match;
       } else if (f.isScholarshipStatus) {
-        const match = SCHOLARSHIP_STATUSES.find(s => s.toLowerCase() === raw.toLowerCase());
-        if (!match) return { rowNumber, ok: false, error: `"${raw}" isn't a valid Scholarship Status — use one of: ${SCHOLARSHIP_STATUSES.join(", ")}.`, preview: scholarIdNumber, changedFieldLabels: [] };
+        if (raw.trim().toLowerCase() === "removed") {
+          return { rowNumber, ok: false, error: `Scholarship Status "Removed" can't be set via bulk update — use the Remove Scholar action in Scholars Account instead.`, preview: scholarIdNumber, changedFieldLabels: [] };
+        }
+        const editableStatuses = SCHOLARSHIP_STATUSES.filter(s => s !== "Removed");
+        const match = editableStatuses.find(s => s.toLowerCase() === raw.toLowerCase());
+        if (!match) return { rowNumber, ok: false, error: `"${raw}" isn't a valid Scholarship Status — use one of: ${editableStatuses.join(", ")}.`, preview: scholarIdNumber, changedFieldLabels: [] };
         update.scholarshipStatus = match;
       } else {
         (update[f.key] as string) = raw;

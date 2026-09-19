@@ -1,5 +1,6 @@
-import { Users, History, CalendarDays } from "lucide-react";
+import { Users, History, CalendarDays, UserX } from "lucide-react";
 import { ScholarsTab } from "./pages/ScholarsTab";
+import { RemovedScholarsTab } from "./pages/RemovedScholarsTab";
 import { ScholarAccountHistoryTab } from "./pages/ScholarAccountHistoryTab";
 import { FormationActivitiesTab } from "./pages/FormationActivitiesTab";
 import { useUrlState } from "@/app/useUrlState";
@@ -22,6 +23,7 @@ import type { SeadTab } from "./types";
 export function ScholarManagementToolsPage() {
   const TABS: { key: SeadTab; label: string; icon: React.ReactNode }[] = [
     { key: "scholars", label: "Scholars", icon: <Users size={14} /> },
+    { key: "removed-scholars", label: "Removed Scholars", icon: <UserX size={14} /> },
     { key: "formation-activities", label: "Formation Activities", icon: <CalendarDays size={14} /> },
     { key: "history", label: "Account History", icon: <History size={14} /> },
   ];
@@ -50,6 +52,7 @@ export function ScholarManagementToolsPage() {
       </div>
 
       {tab === "scholars" && <ScholarsTab />}
+      {tab === "removed-scholars" && <RemovedScholarsTab />}
       {tab === "formation-activities" && <FormationActivitiesTab />}
       {tab === "history" && <ScholarAccountHistoryTab />}
     </div>

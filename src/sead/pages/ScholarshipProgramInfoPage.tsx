@@ -24,6 +24,7 @@ const STATUS_BAR_COLORS: Record<ScholarshipStatus, string> = {
   "Probationary": "#dc2626",
   "On leave": "#b45309",
   "Reconsidered": "#1d4ed8",
+  "Removed": "#475569",
 };
 
 function slugify(text: string): string {
@@ -92,11 +93,12 @@ function MainstreamScholarsTab() {
     <div>
       {error && <div className="mb-4"><ErrorRetry message={error} onRetry={loadCounts} /></div>}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         <StatCard label="Regular" value={counts?.regular} loading={loading} colorClasses="bg-green-100 text-green-700" onClick={() => setActiveStatus("Regular")} />
         <StatCard label="Probationary" value={counts?.probationary} loading={loading} colorClasses="bg-red-100 text-red-600" onClick={() => setActiveStatus("Probationary")} />
         <StatCard label="On leave" value={counts?.onLeave} loading={loading} colorClasses="bg-amber-100 text-amber-700" onClick={() => setActiveStatus("On leave")} />
         <StatCard label="Reconsidered" value={counts?.reconsidered} loading={loading} colorClasses="bg-blue-100 text-blue-700" onClick={() => setActiveStatus("Reconsidered")} />
+        <StatCard label="Removed" value={counts?.removed} loading={loading} colorClasses="bg-slate-200 text-slate-600" onClick={() => setActiveStatus("Removed")} />
       </div>
 
       {activeStatus && <StatusDrilldown status={activeStatus} onClose={() => setActiveStatus(null)} />}
