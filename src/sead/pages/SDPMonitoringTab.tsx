@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, ClipboardList, Plus, Search, CheckCircle2, UserCheck, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
@@ -12,6 +12,7 @@ import {
 } from "../sdpMonitorApi";
 import { SDP_CATEGORIES } from "@/scholar/sdpApi";
 import { uploadPubmat, pubmatUrl } from "../pubmatApi";
+import { searchScholars, type ScholarSearchResult } from "../formationApi";
 import { SDPHistoryModal } from "../components/SDPHistoryModal";
 import { ListPagination } from "@/app/components/PaginatedList";
 import { useUrlState } from "@/app/useUrlState";
@@ -218,10 +219,79 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
+/** Type-a-name-or-ID search box for the manual-credit form below — shows matching scholars as you type. Once one is picked it collapses into a chip (name + ID) with an X to clear and search again; typing a raw ID and never picking a suggestion still works, since the parent falls back to whatever text was typed. */
+function ScholarSearchField({
+  query, setQuery, selected, onSelect, onClear,
+}: {
+  query: string; setQuery: (v: string) => void;
+  selected: ScholarSearchResult | null;
+  onSelect: (r: ScholarSearchResult) => void;
+  onClear: () => void;
+}) {
+  const [results, setResults] = useState<ScholarSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onOutside(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, []);
+
+  useEffect(() => {
+    if (selected || !query.trim()) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      setResults(await searchScholars(query));
+      setSearching(false);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [query, selected]);
+
+  if (selected) {
+    return (
+      <div className="flex items-center gap-1.5 border border-[#062444]/15 rounded-lg px-2.5 py-1.5 bg-[#f8fafd] w-56">
+        <span className="text-[12.5px] font-semibold text-[#062444] truncate">{selected.name}</span>
+        <span className="text-[11px] text-slate-400 shrink-0">({selected.scholarIdNumber})</span>
+        <button type="button" onClick={onClear} className="ml-auto shrink-0 text-slate-400 hover:text-red-600"><X size={13} /></button>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <input value={query} onChange={e => { setQuery(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
+        placeholder="Name or Scholar ID…"
+        className="w-56 border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" />
+      {open && query.trim() && (
+        <div className="absolute z-20 top-full left-0 mt-1 w-64 bg-white border border-[#e6ecf5] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {searching ? (
+            <p className="text-[12px] text-slate-400 px-3 py-2">Searching…</p>
+          ) : results.length === 0 ? (
+            <p className="text-[12px] text-slate-400 px-3 py-2">No matches — will be used as a Scholar ID.</p>
+          ) : (
+            results.map(r => (
+              <button key={r.scholarIdNumber} type="button" onClick={() => { onSelect(r); setOpen(false); }}
+                className="w-full text-left px-3 py-2 hover:bg-[#f8fafd] border-b border-[#f0f3f8] last:border-0">
+                <p className="text-[12.5px] font-semibold text-[#062444]">{r.name}</p>
+                <p className="text-[11px] text-slate-400">{r.scholarIdNumber}{r.school ? ` · ${r.school}` : ""}</p>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AttendanceSection({ activity }: { activity: SDPActivity }) {
   const [attendees, setAttendees] = useState<AttendanceEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newScholarId, setNewScholarId] = useState("");
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<ScholarSearchResult | null>(null);
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -235,12 +305,14 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
 
   async function handleAdd() {
     setError("");
-    if (!newScholarId.trim()) { setError("Enter a Scholar ID."); return; }
+    const scholarIdNumber = selected?.scholarIdNumber ?? query.trim();
+    if (!scholarIdNumber) { setError("Enter or pick a scholar."); return; }
     setBusy(true);
-    const result = await creditAttendance(activity.id, newScholarId.trim(), newDate);
+    const result = await creditAttendance(activity.id, scholarIdNumber, newDate);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to credit — check the Scholar ID exists."); return; }
-    setNewScholarId("");
+    setQuery("");
+    setSelected(null);
     load();
   }
 
@@ -254,29 +326,11 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
       <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2 flex items-center gap-1.5"><UserCheck size={13} /> Credited Scholars</p>
       <p className="text-[11px] text-slate-400 mb-3">Crediting a scholar here marks "{categoryLabel(activity.category)}" complete for them.</p>
 
-      {loading ? (
-        <p className="text-[12.5px] text-slate-400">Loading…</p>
-      ) : attendees.length === 0 ? (
-        <p className="text-[12.5px] text-slate-400 italic mb-3">No scholars credited yet.</p>
-      ) : (
-        <div className="space-y-1.5 mb-3">
-          {attendees.map(a => (
-            <div key={a.id} className="flex items-center justify-between bg-[#f8fafd] rounded-lg px-3 py-2 text-[12.5px]">
-              <span className="text-[#062444] font-medium">{a.scholarName} <span className="text-slate-400">({a.scholarIdNumber})</span></span>
-              <span className="flex items-center gap-3">
-                <span className="text-slate-400">{a.attendedDate ? new Date(a.attendedDate).toLocaleDateString() : "—"}</span>
-                <button onClick={() => handleRemove(a.id)} className="text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="flex items-end gap-2 flex-wrap">
+      <div className="flex items-end gap-2 flex-wrap mb-4">
         <div>
-          <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Scholar ID</label>
-          <input value={newScholarId} onChange={e => setNewScholarId(e.target.value)} placeholder="20180000"
-            className="w-28 border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" />
+          <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Scholar</label>
+          <ScholarSearchField query={query} setQuery={setQuery} selected={selected}
+            onSelect={setSelected} onClear={() => setSelected(null)} />
         </div>
         <div>
           <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Date</label>
@@ -288,7 +342,25 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
           {busy ? "…" : "Credit"}
         </button>
       </div>
-      {error && <p className="text-[12px] text-red-600 mt-2">{error}</p>}
+      {error && <p className="text-[12px] text-red-600 mb-3">{error}</p>}
+
+      {loading ? (
+        <p className="text-[12.5px] text-slate-400">Loading…</p>
+      ) : attendees.length === 0 ? (
+        <p className="text-[12.5px] text-slate-400 italic">No scholars credited yet.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {attendees.map(a => (
+            <div key={a.id} className="flex items-center justify-between bg-[#f8fafd] rounded-lg px-3 py-2 text-[12.5px]">
+              <span className="text-[#062444] font-medium">{a.scholarName} <span className="text-slate-400">({a.scholarIdNumber})</span></span>
+              <span className="flex items-center gap-3">
+                <span className="text-slate-400">{a.attendedDate ? new Date(a.attendedDate).toLocaleDateString() : "—"}</span>
+                <button onClick={() => handleRemove(a.id)} className="text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
