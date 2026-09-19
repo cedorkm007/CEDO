@@ -71,7 +71,7 @@ export function useSort<T>(
 export function SortableTh({
   label, sortKey, sortState, onSort, className,
 }: {
-  label: string;
+  label: React.ReactNode;
   sortKey: string;
   sortState: SortState;
   onSort: (key: string) => void;

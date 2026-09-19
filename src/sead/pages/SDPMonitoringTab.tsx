@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon } from "lucide-react";
+import { X, ClipboardList, Plus, Search, CheckCircle2, UserCheck, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
@@ -896,11 +896,16 @@ function ActivitiesSection() {
   );
 }
 
-function ChecklistBadge({ complete }: { complete: boolean }) {
-  return complete ? (
-    <span className="inline-flex items-center gap-1 text-[11.5px] font-bold text-green-700"><CheckCircle2 size={13} /> Complete</span>
-  ) : (
-    <span className="inline-flex items-center gap-1 text-[11.5px] text-slate-400"><XCircle size={13} /> Incomplete</span>
+/** SDP category completion requires 3 credits (see redeem_attendance_code's category-cap check and recompute_sdp_category_status()) — shown alongside the actual count so staff see both the number and whether it's met. */
+const SDP_CATEGORY_CREDIT_GOAL = 3;
+
+function CreditCell({ credits }: { credits: number }) {
+  const complete = credits >= SDP_CATEGORY_CREDIT_GOAL;
+  return (
+    <span className={`inline-flex items-center gap-1 text-[11.5px] font-bold ${complete ? "text-green-700" : "text-slate-500"}`}>
+      {complete ? <CheckCircle2 size={13} /> : null}
+      {credits} / {SDP_CATEGORY_CREDIT_GOAL}
+    </span>
   );
 }
 
@@ -926,9 +931,9 @@ function ChecklistSection() {
   const { sorted: sortedScholars, sortState, toggleSort } = useSort<ScholarSDPChecklist>(filtered, {
     scholarIdNumber: s => s.scholarIdNumber,
     name: s => s.name,
-    communityService: s => (s.communityService ? 1 : 0),
-    communityVolunteerism: s => (s.communityVolunteerism ? 1 : 0),
-    formationProgram: s => (s.formationProgram ? 1 : 0),
+    communityService: s => s.communityService,
+    communityVolunteerism: s => s.communityVolunteerism,
+    formationProgram: s => s.formationProgram,
   });
 
   const [page, setPage] = useState(1);
@@ -954,8 +959,8 @@ function ChecklistSection() {
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
               <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
               <SortableTh label="Scholar Name" sortKey="name" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
-              <SortableTh label="Institutional Volunteerism" sortKey="communityService" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
-              <SortableTh label="Community Volunteerism" sortKey="communityVolunteerism" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
+              <SortableTh label={<>Institutional<br />Volunteerism</>} sortKey="communityService" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
+              <SortableTh label={<>Community<br />Volunteerism</>} sortKey="communityVolunteerism" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
               <SortableTh label="Formation Program" sortKey="formationProgram" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
               <th className="px-5 py-3 text-right whitespace-nowrap">SDP History</th>
             </tr>
@@ -970,9 +975,9 @@ function ChecklistSection() {
                 <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
                   <td className="px-5 py-3 text-slate-500 whitespace-nowrap">{s.scholarIdNumber}</td>
                   <td className="px-5 py-3 font-medium text-[#062444] whitespace-nowrap">{s.name}</td>
-                  <td className="px-5 py-3"><ChecklistBadge complete={s.communityService} /></td>
-                  <td className="px-5 py-3"><ChecklistBadge complete={s.communityVolunteerism} /></td>
-                  <td className="px-5 py-3"><ChecklistBadge complete={s.formationProgram} /></td>
+                  <td className="px-5 py-3"><CreditCell credits={s.communityService} /></td>
+                  <td className="px-5 py-3"><CreditCell credits={s.communityVolunteerism} /></td>
+                  <td className="px-5 py-3"><CreditCell credits={s.formationProgram} /></td>
                   <td className="px-5 py-3 text-right">
                     <button onClick={() => setViewingScholar(s)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">View</button>
                   </td>

@@ -164,9 +164,9 @@ export async function removeAttendance(attendanceId: string): Promise<{ ok: bool
 export interface ScholarSDPChecklist {
   scholarIdNumber: string;
   name: string;
-  communityService: boolean;
-  communityVolunteerism: boolean;
-  formationProgram: boolean;
+  communityService: number;
+  communityVolunteerism: number;
+  formationProgram: number;
 }
 
 /**
@@ -186,12 +186,12 @@ export async function fetchAllScholarsSDPChecklist(): Promise<ScholarSDPChecklis
   for (let from = 0; ; from += SDP_CHECKLIST_PAGE_SIZE) {
     const { data, error } = await supabase.rpc("scholars_sdp_checklist").range(from, from + SDP_CHECKLIST_PAGE_SIZE - 1);
     if (error || !data) break;
-    out.push(...(data as { scholar_id_number: string; name: string; community_service: boolean; community_volunteerism: boolean; formation_program: boolean }[]).map(r => ({
+    out.push(...(data as { scholar_id_number: string; name: string; community_service: number; community_volunteerism: number; formation_program: number }[]).map(r => ({
       scholarIdNumber: r.scholar_id_number,
       name: r.name,
-      communityService: r.community_service,
-      communityVolunteerism: r.community_volunteerism,
-      formationProgram: r.formation_program,
+      communityService: Number(r.community_service),
+      communityVolunteerism: Number(r.community_volunteerism),
+      formationProgram: Number(r.formation_program),
     })));
     if (data.length < SDP_CHECKLIST_PAGE_SIZE) break;
   }
