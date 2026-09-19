@@ -959,10 +959,10 @@ function ChecklistSection() {
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
               <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
               <SortableTh label="Scholar Name" sortKey="name" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
-              <SortableTh label={<>Institutional<br />Volunteerism</>} sortKey="communityService" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
-              <SortableTh label={<>Community<br />Volunteerism</>} sortKey="communityVolunteerism" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
-              <SortableTh label="Formation Program" sortKey="formationProgram" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
-              <th className="px-5 py-3 text-right whitespace-nowrap">SDP History</th>
+              <SortableTh label={<>Institutional<br />Volunteerism</>} sortKey="communityService" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap text-center" />
+              <SortableTh label={<>Community<br />Volunteerism</>} sortKey="communityVolunteerism" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap text-center" />
+              <SortableTh label={<>Formation<br />Program</>} sortKey="formationProgram" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap text-center" />
+              <th className="px-5 py-3 text-center whitespace-nowrap">SDP History</th>
             </tr>
           </thead>
           <tbody>
@@ -975,10 +975,10 @@ function ChecklistSection() {
                 <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
                   <td className="px-5 py-3 text-slate-500 whitespace-nowrap">{s.scholarIdNumber}</td>
                   <td className="px-5 py-3 font-medium text-[#062444] whitespace-nowrap">{s.name}</td>
-                  <td className="px-5 py-3"><CreditCell credits={s.communityService} /></td>
-                  <td className="px-5 py-3"><CreditCell credits={s.communityVolunteerism} /></td>
-                  <td className="px-5 py-3"><CreditCell credits={s.formationProgram} /></td>
-                  <td className="px-5 py-3 text-right">
+                  <td className="px-5 py-3 text-center"><CreditCell credits={s.communityService} /></td>
+                  <td className="px-5 py-3 text-center"><CreditCell credits={s.communityVolunteerism} /></td>
+                  <td className="px-5 py-3 text-center"><CreditCell credits={s.formationProgram} /></td>
+                  <td className="px-5 py-3 text-center">
                     <button onClick={() => setViewingScholar(s)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">View</button>
                   </td>
                 </tr>
