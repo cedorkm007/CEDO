@@ -10,7 +10,7 @@ import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { toCsv, downloadCsv } from "../csvUtils";
 import { jsPDF } from "jspdf";
 import { generateScholarsInformationReport } from "@/lib/docGenerator";
-import { SCHOLARSHIP_STATUSES, type ScholarListItem, type ScholarshipStatus } from "../types";
+import { SCHOLARSHIP_STATUSES, EDITABLE_SCHOLARSHIP_STATUSES, type ScholarListItem, type ScholarshipStatus } from "../types";
 import { useSortState, SortableTh } from "@/app/components/SortableTable";
 import { ExportButtonGroup, type ExportFormat } from "@/app/components/ExportButtons";
 import { formatPersonName } from "@/lib/personName";
@@ -274,12 +274,6 @@ const STATUS_BADGE_CLASSES: Record<ScholarshipStatus, string> = {
   "Reconsidered": "bg-blue-100 text-blue-700",
   "Removed": "bg-slate-200 text-slate-600",
 };
-
-// "Removed" isn't a routine, freely-settable status — it's only reachable
-// through the dedicated "Remove Scholar" action (see ScholarsAccountSubtab),
-// so it's deliberately excluded from the filter dropdown and the inline
-// per-row status editor below.
-const EDITABLE_SCHOLARSHIP_STATUSES = SCHOLARSHIP_STATUSES.filter(s => s !== "Removed");
 
 const INFO_COLUMNS: { key: keyof ScholarInformationRow; label: string }[] = [
   { key: "yearLevel", label: "Year Level" },

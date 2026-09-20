@@ -63,4 +63,9 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     label: "Financial Assistance",
     description: "Monitor Financial Assistance applicants — separate from Mainstream Scholars, no portal account, tracked per academic period.",
   },
+  {
+    key: "scholar_counseling",
+    label: "Scholar Counseling Tool",
+    description: "Monitor scholars' scholarship status and log counseling visits (Daily Records).",
+  },
 ];

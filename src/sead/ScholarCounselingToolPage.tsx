@@ -1,0 +1,44 @@
+import { useState } from "react";
+import { ClipboardList } from "lucide-react";
+import { ScholarCounselingTab } from "./pages/ScholarCounselingTab";
+
+type ScholarCounselingSubtab = "daily-records";
+
+/**
+ * Gated by the "scholar_counseling" tag (src/app/staffToolTags.ts),
+ * granted from it.admin1's Staff Accounts page. Monitors scholars'
+ * scholarship status via a counseling-visit log; changing a scholar's
+ * status is a separate, later addition — this page only has the "Daily
+ * Records" subtab for now, but keeps the same tab-bar shell as
+ * ScholarManagementToolsPage.tsx so more subtabs can be added later
+ * without restructuring.
+ */
+export function ScholarCounselingToolPage() {
+  const TABS: { key: ScholarCounselingSubtab; label: string; icon: React.ReactNode }[] = [
+    { key: "daily-records", label: "Daily Records", icon: <ClipboardList size={14} /> },
+  ];
+  const [tab, setTab] = useState<ScholarCounselingSubtab>("daily-records");
+
+  return (
+    <div>
+      <h1 className="text-xl font-bold text-foreground mb-1">Scholar Counseling Tool</h1>
+      <p className="text-sm text-muted-foreground mb-5">Monitor scholars' scholarship status and log counseling visits.</p>
+
+      <div className="flex w-full gap-1 border-b border-border mb-5">
+        {TABS.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
+              tab === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "daily-records" && <ScholarCounselingTab />}
+    </div>
+  );
+}

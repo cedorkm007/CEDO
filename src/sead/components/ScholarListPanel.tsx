@@ -1,51 +1,13 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Eye } from "lucide-react";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
-import { ExportButton, ExportButtonGroup, ExportMenuItem, type ExportFormat } from "@/app/components/ExportButtons";
+import { ExportButtonGroup, ExportMenuItem, type ExportFormat } from "@/app/components/ExportButtons";
 import type { ScholarInformationRow } from "../seadApi";
-import { fetchScholarQuestProgress } from "../seadApi";
-import { fetchScholarSDPHistory } from "../sdpMonitorApi";
-import { fetchScholarFormationAttendance } from "../formationActivitiesApi";
 import { toCsv, downloadCsv } from "../csvUtils";
-import { exportTableAsPdf, exportComprehensiveScholarProfilePdf } from "../pdfTableExport";
-import { generateScholarsInformationReport, generateComprehensiveScholarProfile } from "@/lib/docGenerator";
-import { Modal } from "./Modal";
-import letterheadUrl from "@/imports/CEDO_Letterhead.png";
-import cdeoRisLogoUrl from "@/imports/CdeO_RIS_Logo.png";
-import sdgLogoUrl from "@/imports/SDG_Logo.png";
-
-interface ProfileSections {
-  basicInfo: { label: string; value: string }[];
-  sdpCompleted: { activityName: string; category: string; date: string }[];
-  formationAttended: { activityName: string; dateTime: string; venue: string }[];
-  questSubjects: { subjectName: string; topicCount: number; percentage: number; isCompleted: boolean }[];
-}
-
-/** Fetches every subsystem section needed for one scholar's comprehensive profile, in parallel. */
-async function loadProfileSections(r: ScholarInformationRow): Promise<ProfileSections> {
-  const [sdp, quest, formation] = await Promise.all([
-    fetchScholarSDPHistory(r.scholarIdNumber),
-    fetchScholarQuestProgress(r.scholarIdNumber),
-    fetchScholarFormationAttendance(r.scholarIdNumber),
-  ]);
-  return {
-    basicInfo: [
-      { label: "Scholar ID", value: r.scholarIdNumber },
-      { label: "Name", value: `${r.lastName}, ${r.firstName} ${r.middleName}`.trim() },
-      { label: "School", value: r.school || "" },
-      { label: "Program", value: r.course || "" },
-      { label: "Year Level", value: r.yearLevel || "" },
-      { label: "Status", value: r.status || "" },
-      { label: "Barangay", value: r.barangay || "" },
-      { label: "Birthday", value: r.birthday || "" },
-      { label: "Civil Status", value: r.civilStatus || "" },
-      { label: "Contact No.", value: r.contactNo || "" },
-    ],
-    sdpCompleted: sdp.attended.map(a => ({ activityName: a.activityName, category: a.category || "", date: a.date })),
-    formationAttended: formation.map(f => ({ activityName: f.activityName, dateTime: f.dateTime, venue: f.venue })),
-    questSubjects: quest.map(q => ({ subjectName: q.subjectName, topicCount: q.topicCount, percentage: q.percentage, isCompleted: q.isCompleted })),
-  };
-}
+import { exportTableAsPdf } from "../pdfTableExport";
+import { generateScholarsInformationReport } from "@/lib/docGenerator";
+import { loadProfileSections, downloadScholarProfile, type ProfileSections } from "../scholarProfileExport";
+import { ScholarProfilePreviewModal } from "./ScholarProfilePreviewModal";
 
 const EXPORT_COLUMNS: { label: string; value: (r: ScholarInformationRow) => string; weight?: number }[] = [
   { label: "Scholar ID", value: r => r.scholarIdNumber },
@@ -81,9 +43,8 @@ export function ScholarListPanel({
   const [profileDownloading, setProfileDownloading] = useState<{ id: string; format: "csv" | "pdf" | "word" } | null>(null);
   // Which scholar's name was clicked to open the CSV/PDF/Word download menu — only one open at a time.
   const [openProfileMenuFor, setOpenProfileMenuFor] = useState<string | null>(null);
-  // The scholar currently shown in the "Preview" popup, and its loaded sections (null while fetching).
+  // The scholar currently shown in the "Preview" popup (ScholarProfilePreviewModal loads its own sections).
   const [previewScholar, setPreviewScholar] = useState<ScholarInformationRow | null>(null);
-  const [previewSections, setPreviewSections] = useState<ProfileSections | null>(null);
 
   const { sorted: sortedRows, sortState, toggleSort } = useSort<ScholarInformationRow>(rows, {
     scholarIdNumber: r => r.scholarIdNumber,
@@ -93,62 +54,19 @@ export function ScholarListPanel({
     yearLevel: r => r.yearLevel,
   });
 
-  async function handlePreviewProfile(r: ScholarInformationRow) {
+  function handlePreviewProfile(r: ScholarInformationRow) {
     setOpenProfileMenuFor(null);
     setPreviewScholar(r);
-    setPreviewSections(null);
-    setPreviewSections(await loadProfileSections(r));
   }
 
-  /** `preloadedSections` skips the re-fetch when downloading straight out of an already-open Preview popup. */
-  async function handleDownloadProfile(r: ScholarInformationRow, format: "csv" | "pdf" | "word", preloadedSections?: ProfileSections) {
+  /** Direct download from the dropdown menu, without opening the Preview popup. */
+  async function handleDownloadProfile(r: ScholarInformationRow, format: "csv" | "pdf" | "word") {
     if (profileDownloading) return;
     setOpenProfileMenuFor(null);
     setProfileDownloading({ id: r.scholarIdNumber, format });
     try {
-      const sections = preloadedSections ?? await loadProfileSections(r);
-      if (format === "word") {
-        await generateComprehensiveScholarProfile({
-          scholar: r,
-          sdpCompleted: sections.sdpCompleted,
-          formationAttended: sections.formationAttended,
-          questSubjects: sections.questSubjects,
-          generatedAt: new Date().toLocaleString(),
-        });
-      } else if (format === "pdf") {
-        await exportComprehensiveScholarProfilePdf({
-          scholarIdNumber: r.scholarIdNumber,
-          basicInfo: sections.basicInfo,
-          sections: [
-            {
-              heading: `SDP — Completed Activities (${sections.sdpCompleted.length})`,
-              columns: ["Activity", "Category", "Date"],
-              rows: sections.sdpCompleted.map(a => [a.activityName, a.category || "—", a.date || "—"]),
-              emptyMessage: "No completed SDP activities.",
-            },
-            {
-              heading: `Formation Activities — Attended (${sections.formationAttended.length})`,
-              columns: ["Activity", "Date", "Venue"],
-              rows: sections.formationAttended.map(a => [a.activityName, a.dateTime || "—", a.venue || "—"]),
-              emptyMessage: "No formation activity attendance recorded.",
-            },
-            {
-              heading: `Quest — Subjects (${sections.questSubjects.length})`,
-              columns: ["Subject", "Topics Completed", "Score", "Status"],
-              rows: sections.questSubjects.map(q => [q.subjectName, String(q.topicCount), `${q.percentage.toFixed(1)}%`, q.isCompleted ? "Completed" : "In Progress"]),
-              emptyMessage: "No Quest activity recorded.",
-            },
-          ],
-        });
-      } else {
-        const blocks = [
-          toCsv(["Field", "Value"], sections.basicInfo.map(b => [b.label, b.value])),
-          `SDP — Completed Activities (${sections.sdpCompleted.length})\r\n` + toCsv(["Activity", "Category", "Date"], sections.sdpCompleted.map(a => [a.activityName, a.category, a.date])),
-          `Formation Activities — Attended (${sections.formationAttended.length})\r\n` + toCsv(["Activity", "Date", "Venue"], sections.formationAttended.map(a => [a.activityName, a.dateTime, a.venue])),
-          `Quest — Subjects (${sections.questSubjects.length})\r\n` + toCsv(["Subject", "Topics Completed", "Score", "Status"], sections.questSubjects.map(q => [q.subjectName, q.topicCount, `${q.percentage.toFixed(1)}%`, q.isCompleted ? "Completed" : "In Progress"])),
-        ];
-        downloadCsv(`Scholar_Profile_${r.scholarIdNumber}_${new Date().toISOString().slice(0, 10)}.csv`, blocks.join("\r\n\r\n"));
-      }
+      const sections: ProfileSections = await loadProfileSections(r);
+      await downloadScholarProfile(r, format, sections);
     } finally {
       setProfileDownloading(null);
     }
@@ -265,124 +183,8 @@ export function ScholarListPanel({
       )}
 
       {previewScholar && (
-        <Modal level={modalLevel + 1} title={`Preview — ${previewScholar.lastName}, ${previewScholar.firstName} ${previewScholar.middleName}`.trim()}
-          onClose={() => { setPreviewScholar(null); setPreviewSections(null); }}>
-          {!previewSections ? (
-            <p className="text-[13px] text-slate-400 text-center py-8">Loading…</p>
-          ) : (
-            <div className="space-y-4">
-              {/* The "page" — sized and margined like a printed letter (same
-                  CEDO letterhead header / address-and-logos footer as the
-                  office's other documents), sitting on the modal's own
-                  light background so it reads as a sheet of paper rather
-                  than another web panel. Width is fixed to a page-like
-                  proportion; height is natural/scrolling rather than a
-                  literal fixed A4 height, since the amount of SDP/Formation/
-                  Quest data varies per scholar. */}
-              <div className="mx-auto w-full max-w-[800px] bg-white shadow-[0_2px_10px_rgba(15,23,42,0.10),0_10px_30px_rgba(15,23,42,0.12)] ring-1 ring-black/5">
-                <div className="px-10 pt-8 pb-5 border-b border-slate-200">
-                  <img src={letterheadUrl} alt="City Education and Development Office" className="h-[52px] w-auto" />
-                </div>
-
-                <div className="px-10 py-7 text-[#1a2432]">
-                  <div className="text-center mb-6">
-                    <h2 className="text-[16px] font-bold tracking-wide text-[#062444]">COMPREHENSIVE SCHOLAR PROFILE</h2>
-                    <p className="text-[10.5px] text-slate-500 mt-1">Generated {new Date().toLocaleString()}</p>
-                  </div>
-
-                  <DocSection title="Basic Information">
-                    <table className="w-full text-[12px] border-collapse">
-                      <tbody>
-                        {previewSections.basicInfo.map(b => (
-                          <tr key={b.label}>
-                            <td className="border border-slate-300 bg-slate-50 font-semibold px-3 py-1.5 w-[38%]">{b.label}</td>
-                            <td className="border border-slate-300 px-3 py-1.5">{b.value || "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </DocSection>
-
-                  <DocSection title={`SDP — Completed Activities (${previewSections.sdpCompleted.length})`}>
-                    <DocTable
-                      columns={["Activity", "Category", "Date"]}
-                      rows={previewSections.sdpCompleted.map(a => [a.activityName, a.category || "—", a.date || "—"])}
-                      emptyMessage="No completed SDP activities."
-                    />
-                  </DocSection>
-
-                  <DocSection title={`Formation Activities — Attended (${previewSections.formationAttended.length})`}>
-                    <DocTable
-                      columns={["Activity", "Date", "Venue"]}
-                      rows={previewSections.formationAttended.map(f => [f.activityName, f.dateTime || "—", f.venue || "—"])}
-                      emptyMessage="No formation activity attendance recorded."
-                    />
-                  </DocSection>
-
-                  <DocSection title={`Quest — Subjects (${previewSections.questSubjects.length})`} last>
-                    <DocTable
-                      columns={["Subject", "Topics Completed", "Score", "Status"]}
-                      rows={previewSections.questSubjects.map(q => [q.subjectName, String(q.topicCount), `${q.percentage.toFixed(1)}%`, q.isCompleted ? "Completed" : "In Progress"])}
-                      emptyMessage="No Quest activity recorded."
-                    />
-                  </DocSection>
-                </div>
-
-                <div className="px-10 py-4 border-t border-slate-200 flex items-center justify-between gap-4">
-                  <img src={cdeoRisLogoUrl} alt="" className="h-9 w-auto shrink-0" />
-                  <div className="text-center text-[8.5px] leading-snug text-slate-600">
-                    <p>2/F POLICE STATION 1, CITY HALL COMPOUND, CAGAYAN DE ORO 9000 PH</p>
-                    <p>Email: cedo@cagayandeoro.gov.ph | Mobile: +63 929 819 0819 | Facebook: CDO City Scholarships Office</p>
-                  </div>
-                  <img src={sdgLogoUrl} alt="" className="h-9 w-auto shrink-0" />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-center gap-2">
-                <ExportButton format="csv" onClick={() => handleDownloadProfile(previewScholar, "csv", previewSections)}
-                  disabled={!!profileDownloading} label="Download CSV" />
-                <ExportButton format="pdf" onClick={() => handleDownloadProfile(previewScholar, "pdf", previewSections)}
-                  disabled={!!profileDownloading} label="Download PDF" />
-                <ExportButton format="word" onClick={() => handleDownloadProfile(previewScholar, "word", previewSections)}
-                  disabled={!!profileDownloading} label="Download Word" />
-              </div>
-            </div>
-          )}
-        </Modal>
+        <ScholarProfilePreviewModal scholar={previewScholar} onClose={() => setPreviewScholar(null)} modalLevel={modalLevel} />
       )}
     </div>
-  );
-}
-
-/** One labeled block of the printed page — a bold section title followed by its table, spaced like the sections of the actual generated document. */
-function DocSection({ title, children, last = false }: { title: string; children: React.ReactNode; last?: boolean }) {
-  return (
-    <div className={last ? "" : "mb-6"}>
-      <p className="text-[11.5px] font-bold uppercase tracking-wide text-[#062444] mb-2 pb-1 border-b-2 border-[#062444]/15">{title}</p>
-      {children}
-    </div>
-  );
-}
-
-/** Bordered, print-style table (visible grid lines, shaded header row) rather than the app's usual rounded card + soft border — this is meant to read as part of a printed page. */
-function DocTable({ columns, rows, emptyMessage }: { columns: string[]; rows: string[][]; emptyMessage: string }) {
-  if (rows.length === 0) {
-    return <p className="text-[11.5px] text-slate-400 italic border border-slate-200 px-3 py-2.5">{emptyMessage}</p>;
-  }
-  return (
-    <table className="w-full text-[12px] border-collapse">
-      <thead>
-        <tr>
-          {columns.map(c => <th key={c} className="border border-slate-300 bg-slate-50 text-left font-semibold px-3 py-1.5">{c}</th>)}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, i) => (
-          <tr key={i}>
-            {row.map((value, j) => <td key={j} className="border border-slate-300 px-3 py-1.5">{value}</td>)}
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }

@@ -48,6 +48,9 @@ export interface QuestQuestion {
 export const SCHOLARSHIP_STATUSES = ["Regular", "Probationary", "On leave", "Reconsidered", "Removed"] as const;
 export type ScholarshipStatus = (typeof SCHOLARSHIP_STATUSES)[number];
 
+/** "Removed" is never a routine, freely-settable status — it's only reachable through the dedicated "Remove Scholar" action (see ScholarsTab.tsx). Every ordinary status dropdown/select uses this list instead of SCHOLARSHIP_STATUSES directly. */
+export const EDITABLE_SCHOLARSHIP_STATUSES = SCHOLARSHIP_STATUSES.filter(s => s !== "Removed");
+
 export interface ScholarListItem {
   id: string;
   scholarIdNumber: string;

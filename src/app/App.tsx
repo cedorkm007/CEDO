@@ -31,6 +31,7 @@ import { KaubanContentManagementPage } from "@/kauban/admin/KaubanContentManagem
 import { ScholarshipProgramInfoPage } from "@/sead/pages/ScholarshipProgramInfoPage";
 import { ResearchProjectMonitoringTab } from "@/sead/pages/ResearchProjectMonitoringTab";
 import { FinancialAssistanceToolsPage } from "@/sead/FinancialAssistanceToolsPage";
+import { ScholarCounselingToolPage } from "@/sead/ScholarCounselingToolPage";
 import { MyResearchPage } from "@/sead/pages/MyResearchPage";
 import { StaffAccountsPage } from "@/itadmin/StaffAccountsPage";
 import { TopNav } from "@/app/components/TopNav";
@@ -59,7 +60,7 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
-export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "questManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "researchProjectMonitoring" | "myResearch" | "staffAccounts" | "financialAssistanceTools";
+export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "questManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "researchProjectMonitoring" | "myResearch" | "staffAccounts" | "financialAssistanceTools" | "scholarCounseling";
 
 /** "Scholar Management Tools" (question bank + scholar accounts) is now gated by
  *  the "scholar_management" tag (see src/app/staffToolTags.ts) instead of a fixed
@@ -80,7 +81,7 @@ export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitorin
 // hand-copied a third time into a different file.
 export const IT_ADMIN_USERNAME = "it.admin1";
 
-const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "questManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "researchProjectMonitoring", "myResearch", "staffAccounts", "financialAssistanceTools"];
+const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "questManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "researchProjectMonitoring", "myResearch", "staffAccounts", "financialAssistanceTools", "scholarCounseling"];
 
 /**
  * Mirrors the exact gating conditions in the render switch at the bottom
@@ -106,6 +107,7 @@ function isPageAuthorizedFor(page: Page, user: UserProfile): boolean {
     case "researchProjectMonitoring": return user.tags.includes("research_project_monitoring");
     case "staffAccounts": return user.username.toLowerCase() === IT_ADMIN_USERNAME;
     case "financialAssistanceTools": return user.tags.includes("financial_assistance");
+    case "scholarCounseling": return user.tags.includes("scholar_counseling");
     default: return true; // home, profile, tasks, accomplishments, notifications, forms, myResearch — open to any signed-in user
   }
 }
@@ -3481,6 +3483,9 @@ export default function App() {
           )}
           {page==="financialAssistanceTools" && currentUser.tags.includes("financial_assistance") && (
             <FinancialAssistanceToolsPage/>
+          )}
+          {page==="scholarCounseling" && currentUser.tags.includes("scholar_counseling") && (
+            <ScholarCounselingToolPage/>
           )}
           {page==="myResearch" && (
             <MyResearchPage/>
