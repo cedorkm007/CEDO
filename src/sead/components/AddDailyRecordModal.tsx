@@ -2,7 +2,7 @@ import { useState } from "react";
 import { X, ClipboardPlus } from "lucide-react";
 import { createDailyRecord } from "../scholarCounselingApi";
 import { fetchScholarInformationByIdNumber } from "../seadApi";
-import { EDITABLE_SCHOLARSHIP_STATUSES, type ScholarshipStatus } from "../types";
+import { SCHOLARSHIP_STATUSES, type ScholarshipStatus } from "../types";
 import { ScholarSearchField, type ScholarSearchResult } from "./ScholarSearchField";
 
 export function AddDailyRecordModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
@@ -18,11 +18,12 @@ export function AddDailyRecordModal({ onClose, onCreated }: { onClose: () => voi
 
   async function handleSelectScholar(r: ScholarSearchResult) {
     setSelected(r);
-    // Prefill Status from the scholar's current scholarship status — staff can still adjust it.
+    // Prefill Status from the scholar's current scholarship status — this
+    // field is a monitoring snapshot, not an action, so every status
+    // (including Removed) is a valid value here, unlike other status
+    // dropdowns in the app. Staff can still adjust it.
     const info = await fetchScholarInformationByIdNumber(r.scholarIdNumber);
-    if (info && (EDITABLE_SCHOLARSHIP_STATUSES as readonly string[]).includes(info.status)) {
-      setStatus(info.status);
-    }
+    if (info) setStatus(info.status);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -67,7 +68,7 @@ export function AddDailyRecordModal({ onClose, onCreated }: { onClose: () => voi
               <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Status</label>
               <select value={status} onChange={e => setStatus(e.target.value as ScholarshipStatus)}
                 className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none bg-white">
-                {EDITABLE_SCHOLARSHIP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                {SCHOLARSHIP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
           </div>
