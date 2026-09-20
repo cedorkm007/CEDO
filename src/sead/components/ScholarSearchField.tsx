@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { searchScholars, type ScholarSearchResult } from "../formationApi";
+import { searchScholars, type ScholarSearchResult, type ScholarSearchFilter } from "../formationApi";
 
 export type { ScholarSearchResult };
 
@@ -16,12 +16,13 @@ export type { ScholarSearchResult };
  * so both use one implementation instead of duplicating it.
  */
 export function ScholarSearchField({
-  query, setQuery, selected, onSelect, onClear,
+  query, setQuery, selected, onSelect, onClear, filter,
 }: {
   query: string; setQuery: (v: string) => void;
   selected: ScholarSearchResult | null;
   onSelect: (r: ScholarSearchResult) => void;
   onClear: () => void;
+  filter?: ScholarSearchFilter;
 }) {
   const [results, setResults] = useState<ScholarSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -40,10 +41,11 @@ export function ScholarSearchField({
     if (selected || !query.trim()) { setResults([]); return; }
     const t = setTimeout(async () => {
       setSearching(true);
-      setResults(await searchScholars(query));
+      setResults(await searchScholars(query, filter));
       setSearching(false);
     }, 250);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, selected]);
 
   if (selected) {

@@ -80,6 +80,10 @@ export interface ScholarSearchFilter {
   school?: string;
   barangay?: string;
   barangayIn?: string[]; // used for cluster-level filtering (every barangay in that cluster)
+  /** Removed scholars are excluded by default (they shouldn't be assignable to positions or
+   *  creditable for new SDP attendance) — pass true where a Removed scholar is a legitimate
+   *  pick, e.g. the Scholar Counseling Tool's Daily Records, which exists to monitor them. */
+  includeRemoved?: boolean;
 }
 
 /** Lightweight search-as-you-type lookup for assigning a scholar to a position. Scoped to the
@@ -91,8 +95,8 @@ export async function searchScholars(query: string, filter?: ScholarSearchFilter
   let request = supabase.from("scholars")
     .select("scholar_id_number, first_name, last_name, school")
     .or(`scholar_id_number.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`)
-    .neq("status", "Removed")
     .limit(8);
+  if (!filter?.includeRemoved) request = request.neq("status", "Removed");
   if (filter?.school) request = request.eq("school", filter.school);
   if (filter?.barangay) request = request.eq("barangay", filter.barangay);
   if (filter?.barangayIn) request = request.in("barangay", filter.barangayIn);

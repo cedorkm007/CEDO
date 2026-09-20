@@ -55,7 +55,7 @@ export function AddDailyRecordModal({ onClose, onCreated }: { onClose: () => voi
           <div className="mb-3">
             <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Scholar</label>
             <ScholarSearchField query={query} setQuery={v => { setQuery(v); setSelected(null); }} selected={selected}
-              onSelect={handleSelectScholar} onClear={() => setSelected(null)} />
+              onSelect={handleSelectScholar} onClear={() => setSelected(null)} filter={{ includeRemoved: true }} />
           </div>
 
           <div className="grid grid-cols-2 gap-3 mb-3">
