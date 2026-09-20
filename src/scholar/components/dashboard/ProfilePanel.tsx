@@ -1,11 +1,19 @@
 import { useState } from "react";
-import { CheckCircle2, AlertTriangle, IdCard, User, Building2, BookOpen, Heart, Phone, MapPin, Save } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Ban, IdCard, User, Building2, BookOpen, Heart, Phone, MapPin, Save } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { updateOwnContactInfo } from "../../scholarApi";
 import { ALL_BARANGAYS, clusterForBarangay, clusterLabel } from "@/lib/cdoBarangays";
 import type { ScholarProfile } from "../../types";
 
 const CIVIL_STATUS_OPTIONS = ["Single", "Single Parent", "Married", "Widow", "Separated"];
+
+const STATUS_BADGE: Record<ScholarProfile["status"], { label: string; className: string; Icon: typeof CheckCircle2 }> = {
+  "Regular": { label: "Active", className: "bg-green-600/10 border-green-600/25 text-green-700", Icon: CheckCircle2 },
+  "Probationary": { label: "Probation", className: "bg-red-500/10 border-red-500/20 text-red-600", Icon: AlertTriangle },
+  "On leave": { label: "On Leave", className: "bg-amber-500/10 border-amber-500/25 text-amber-700", Icon: AlertTriangle },
+  "Reconsidered": { label: "Reconsidered", className: "bg-blue-500/10 border-blue-500/25 text-blue-700", Icon: CheckCircle2 },
+  "Removed": { label: "Removed", className: "bg-slate-500/10 border-slate-500/25 text-slate-600", Icon: Ban },
+};
 
 function formatAddress(p: ScholarProfile): string {
   const parts = [p.houseUnitNo, p.street, p.barangay, p.cityMunicipality, p.provinceRegion, p.country, p.zipCode].filter(s => s.trim());
@@ -40,9 +48,11 @@ export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarPr
     }
   }
 
+  const statusBadge = STATUS_BADGE[profile.status];
+
   return (
     <SectionCard icon={<User size={14} />} title="Profile">
-      {profile.status === "probation" && (
+      {profile.status === "Probationary" && (
         <div className="flex items-start gap-3.5 bg-gradient-to-br from-red-500/[0.08] to-red-500/[0.04] border border-red-500/25 border-l-4 border-l-red-500 rounded-[10px] px-4.5 py-4 mb-5">
           <div className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center text-white shrink-0">
             <AlertTriangle size={18} />
@@ -55,15 +65,9 @@ export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarPr
       )}
 
       <div className="flex items-center gap-3 flex-wrap mb-5">
-        {profile.status === "probation" ? (
-          <span className="inline-flex items-center gap-1.5 bg-red-500/10 border border-red-500/20 text-red-600 text-[11px] font-bold uppercase tracking-wider rounded-full px-3.5 py-1.5">
-            <AlertTriangle size={12} /> Probation
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 bg-green-600/10 border border-green-600/25 text-green-700 text-[11px] font-bold uppercase tracking-wider rounded-full px-3.5 py-1.5">
-            <CheckCircle2 size={12} /> {profile.status === "graduated" ? "Graduated" : profile.status === "inactive" ? "Inactive" : "Active"}
-          </span>
-        )}
+        <span className={`inline-flex items-center gap-1.5 border text-[11px] font-bold uppercase tracking-wider rounded-full px-3.5 py-1.5 ${statusBadge.className}`}>
+          <statusBadge.Icon size={12} /> {statusBadge.label}
+        </span>
         <span className="inline-flex items-center gap-1.5 bg-[#0088cc]/8 border border-[#0088cc]/20 text-[#0088cc] text-[12px] font-semibold tracking-wide rounded-full px-3.5 py-1.5">
           <IdCard size={13} /> {profile.scholarIdNumber}
         </span>

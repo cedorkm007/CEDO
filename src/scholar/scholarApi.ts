@@ -71,7 +71,7 @@ function rowToProfile(r: Record<string, unknown>): ScholarProfile {
     provinceRegion: String(r.province_region ?? ""),
     country: String(r.country ?? ""),
     zipCode: String(r.zip_code ?? ""),
-    status: (r.status as ScholarProfile["status"]) ?? "active",
+    status: (r.status as ScholarProfile["status"]) ?? "Regular",
     hasSecurityQuestion: !!r.security_question,
   };
 }
