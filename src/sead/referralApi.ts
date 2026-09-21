@@ -43,6 +43,11 @@ export async function createReferral(input: NewReferralInput): Promise<{ ok: boo
     p_failed_subjects: input.failedSubjects,
     p_lacking_grades: input.lackingGrades,
     p_endorsed_for: input.endorsedFor,
+    // Computed client-side in Asia/Manila time rather than left to the
+    // RPC's own `current_date` default, which runs in the DB session's
+    // (UTC) timezone — before 8am Philippine time that's still
+    // "yesterday" in UTC, one day behind what the referring staff sees.
+    p_referral_date: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }),
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
