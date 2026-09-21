@@ -88,6 +88,9 @@ export interface QueuedReferral {
   referralDate: string;
   reconsiderationReason: string | null;
   createdAt: string;
+  signaturePath: string | null;
+  approvedByName: string | null;
+  approvedAt: string | null;
 }
 
 function rowToQueuedReferral(r: Record<string, unknown>): QueuedReferral {
@@ -110,12 +113,22 @@ function rowToQueuedReferral(r: Record<string, unknown>): QueuedReferral {
     referralDate: String(r.referral_date ?? ""),
     reconsiderationReason: (r.reconsideration_reason as string | null) ?? null,
     createdAt: String(r.created_at ?? ""),
+    signaturePath: (r.signature_path as string | null) ?? null,
+    approvedByName: (r.approved_by_name as string | null) || null,
+    approvedAt: (r.approved_at as string | null) ?? null,
   };
 }
 
 /** The signed-in counseling staff's own queue — oldest first (FIFO); only the first entry should be actionable in the UI. */
 export async function fetchReferralQueue(): Promise<QueuedReferral[]> {
   const { data, error } = await supabase.rpc("scholar_counseling_queue");
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(rowToQueuedReferral);
+}
+
+/** Referrals this counseling staff member handled that have since been approved — for the "Approved Referrals" print list. */
+export async function fetchApprovedReferrals(): Promise<QueuedReferral[]> {
+  const { data, error } = await supabase.rpc("scholar_counseling_approved_referrals");
   if (error || !data) return [];
   return (data as Record<string, unknown>[]).map(rowToQueuedReferral);
 }

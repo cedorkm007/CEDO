@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Check, RotateCcw } from "lucide-react";
+import { AlertTriangle, Check, RotateCcw, Printer } from "lucide-react";
+import { printApprovedReferral } from "../referralPrint";
 import type { ScholarInformationRow } from "../seadApi";
 import { SubjectMatrix } from "./SubjectMatrix";
 import { SignatureUploadPanel } from "./SignatureUploadPanel";
@@ -7,7 +8,7 @@ import {
   PREVIOUS_SEMESTER_STATUSES, ENDORSED_FOR_OPTIONS, type PreviousSemesterStatus, type EndorsedFor,
   type SubjectMatrixRow, type StaffOption, type QueuedReferral,
   fetchCounselingStaffOptions, fetchMyStaffName, createReferral, fetchReferralById,
-  forwardReferralToDivisionHead, approveReferral, requestReferralReconsideration,
+  forwardReferralToDivisionHead, approveReferral, requestReferralReconsideration, fetchSignatureUrl,
 } from "../referralApi";
 
 export type ReferralFormMode = "create" | "counsel" | "approve" | "view";
@@ -62,6 +63,19 @@ export function ReferralFormPanel({
   const [showReconsiderInput, setShowReconsiderInput] = useState(false);
   const [reconsiderReason, setReconsiderReason] = useState("");
 
+  // The APPROVED signature, shown read-only once a referral has been
+  // decided (mode "view" reached after approval) — distinct from the
+  // "approve" mode's own SignatureUploadPanel, which is for attaching a
+  // NEW signature before a decision is made.
+  const [approvedSignatureUrl, setApprovedSignatureUrl] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+
+  async function handlePrint() {
+    if (!referral || printing) return;
+    setPrinting(true);
+    try { await printApprovedReferral(referral); } finally { setPrinting(false); }
+  }
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -74,7 +88,11 @@ export function ReferralFormPanel({
       setLoading(true);
       fetchReferralById(referralId).then(r => {
         setReferral(r);
-        if (r) { setRemarks(r.remarks); setEndorsedFor(r.endorsedFor); }
+        if (r) {
+          setRemarks(r.remarks);
+          setEndorsedFor(r.endorsedFor);
+          if (r.status === "approved" && r.signaturePath) fetchSignatureUrl(r.signaturePath).then(setApprovedSignatureUrl);
+        }
         setLoading(false);
       });
     }
@@ -217,6 +235,36 @@ export function ReferralFormPanel({
           <p className="text-sm text-[#062444] whitespace-pre-wrap">{referral?.remarks || "—"}</p>
         )}
       </div>
+
+      {referral?.status === "approved" && (
+        <div>
+          {fieldLabel("Noted By")}
+          <div className="flex items-center gap-4 bg-white border border-[#e6ecf5] rounded-lg p-3">
+            <div className="w-40 h-20 shrink-0 border border-dashed border-[#e6ecf5] rounded-lg flex items-center justify-center bg-[#f8fafd]">
+              {approvedSignatureUrl ? (
+                <img src={approvedSignatureUrl} alt="Approver's signature" className="max-w-full max-h-full object-contain" />
+              ) : (
+                <p className="text-[11px] text-slate-400">No signature on file</p>
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[#062444]">{referral.approvedByName || "—"}</p>
+              <p className="text-[11.5px] text-slate-500">SEAD Division Head</p>
+              {referral.approvedAt && (
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Approved {new Date(referral.approvedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                </p>
+              )}
+            </div>
+          </div>
+          {mode === "view" && (
+            <button type="button" onClick={handlePrint} disabled={printing}
+              className="mt-3 flex items-center gap-1.5 rounded-lg border border-[#062444]/15 text-[#062444] text-[12.5px] font-semibold px-3.5 py-2 hover:bg-[#f8fafd] disabled:opacity-60">
+              <Printer size={13} className="text-[#0088cc]" /> {printing ? "Preparing…" : "Print Signed Referral"}
+            </button>
+          )}
+        </div>
+      )}
 
       {mode === "approve" && <SignatureUploadPanel onReady={setSignaturePath} />}
 

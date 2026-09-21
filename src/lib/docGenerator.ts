@@ -851,3 +851,123 @@ export async function generateComprehensiveScholarProfile(opts: ComprehensiveSch
   const blob = await Packer.toBlob(doc)
   saveAs(blob, `Scholar_Profile_${s.scholarIdNumber}_${new Date().toISOString().slice(0, 10)}.docx`)
 }
+
+// ── 7. Scholar Counseling Referral Form (Form R5) ────────────
+// Only ever printed once a referral has been Approved — the Division
+// Head's actual signature image is embedded on the "Noted by" line
+// (via ImageRun) rather than left as a blank line, since a signature
+// already exists by the time this is called. Provisional layout, same
+// as CTO/Pass Slip above — the labeled-field/table structure is
+// reproduced from the office's paper form, not yet the exact
+// letterhead/box styling of the physical template.
+
+export interface ReferralSubjectRow { subjectCode: string; semesterAcademicYear: string; yearLevel: string }
+
+function subjectMatrixTable(rows: ReferralSubjectRow[]): Table {
+  const COL: [number, number, number] = [3200, 4200, 2088]
+  const headerRow = new TableRow({
+    children: [headerCell('Subject Code', COL[0]), headerCell('Semester and Academic Year', COL[1]), headerCell('Yr. Lvl', COL[2])],
+  })
+  const bodyRows = rows.length
+    ? rows.map(r => new TableRow({
+        children: [
+          cell([new Paragraph({ children: [normal(r.subjectCode || '—', 22)] })], { width: COL[0] }),
+          cell([new Paragraph({ children: [normal(r.semesterAcademicYear || '—', 22)] })], { width: COL[1] }),
+          cell([new Paragraph({ children: [normal(r.yearLevel || '—', 22)] })], { width: COL[2] }),
+        ],
+      }))
+    : [new TableRow({
+        children: [
+          cell([new Paragraph({ children: [normal('None.', 22)], alignment: AlignmentType.CENTER })], { width: COL[0] }),
+          cell([new Paragraph({ children: [normal('', 22)] })], { width: COL[1] }),
+          cell([new Paragraph({ children: [normal('', 22)] })], { width: COL[2] }),
+        ],
+      })]
+  return new Table({ width: { size: COL[0] + COL[1] + COL[2], type: WidthType.DXA }, columnWidths: COL, rows: [headerRow, ...bodyRows] })
+}
+
+export interface ReferralFormOptions {
+  scholarIdNumber: string
+  name: string
+  courseYear: string
+  school: string
+  barangay: string
+  contactNo: string
+  previousSemesterStatus: string
+  failedSubjects: ReferralSubjectRow[]
+  lackingGrades: ReferralSubjectRow[]
+  referredByName: string
+  referredToName: string
+  referralDate: string   // display-formatted
+  endorsedFor: string
+  remarks: string
+  approvedByName: string
+  approvedAt: string      // display-formatted
+  /** The Division Head's actual approved signature image — null only if it genuinely couldn't be fetched. */
+  signature: { buffer: ArrayBuffer; width: number; height: number } | null
+}
+
+export async function generateReferralForm(opts: ReferralFormOptions): Promise<void> {
+  const header = await buildLetterheadHeader()
+  const COL_LABEL = 3200
+  const COL_VALUE = 9488 - COL_LABEL
+
+  const signatureParagraphs: Paragraph[] = opts.signature
+    ? [new Paragraph({ children: [new ImageRun({ data: opts.signature.buffer, transformation: { width: opts.signature.width, height: opts.signature.height } })] })]
+    : [new Paragraph({ children: [normal('(Signature unavailable)', 20)] })]
+
+  const doc = new Document({
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 11906, height: 16838 },
+          margin: { top: 720, right: 720, bottom: 720, left: 720, header: 720, footer: 720 },
+        },
+      },
+      headers: { default: header },
+      children: [
+        new Paragraph({ children: [bold('REFERRAL FORM', 32)], alignment: AlignmentType.CENTER, spacing: { after: 60 } }),
+        new Paragraph({ children: [normal(`Scholar ID: ${opts.scholarIdNumber}`, 20)], alignment: AlignmentType.CENTER, spacing: { after: 300 } }),
+        new Table({
+          width: { size: 9488, type: WidthType.DXA },
+          columnWidths: [COL_LABEL, COL_VALUE],
+          rows: [
+            labeledRow('Name', opts.name),
+            labeledRow('Course & Yr. Level', opts.courseYear),
+            labeledRow('School', opts.school),
+            labeledRow('Barangay', opts.barangay),
+            labeledRow('Contact Number', opts.contactNo),
+            labeledRow('Previous Semester Status', opts.previousSemesterStatus),
+          ],
+        }),
+        emptyParagraph(),
+        new Paragraph({ children: [bold('Failed Subjects (since admission)', 22)], spacing: { after: 100 } }),
+        subjectMatrixTable(opts.failedSubjects),
+        emptyParagraph(),
+        new Paragraph({ children: [bold('Lacking Grades', 22)], spacing: { after: 100 } }),
+        subjectMatrixTable(opts.lackingGrades),
+        emptyParagraph(),
+        new Table({
+          width: { size: 9488, type: WidthType.DXA },
+          columnWidths: [COL_LABEL, COL_VALUE],
+          rows: [
+            labeledRow('Refer By', opts.referredByName),
+            labeledRow('Refer To', opts.referredToName),
+            labeledRow('Date', opts.referralDate),
+            labeledRow('Endorsed For', opts.endorsedFor),
+          ],
+        }),
+        emptyParagraph(),
+        new Paragraph({ children: [bold('Remarks', 22)], spacing: { after: 100 } }),
+        new Paragraph({ children: [normal(opts.remarks || '—', 22)], spacing: { after: 400 } }),
+        new Paragraph({ children: [bold('Noted by:', 22)], spacing: { after: 200 } }),
+        ...signatureParagraphs,
+        new Paragraph({ children: [normal(opts.approvedByName, 22)] }),
+        new Paragraph({ children: [normal(`SEAD Division Head — Approved ${opts.approvedAt}`, 18)] }),
+      ],
+    }],
+  })
+
+  const blob = await Packer.toBlob(doc)
+  saveAs(blob, `Referral_Form_${opts.name.replace(/\s+/g, '_')}.docx`)
+}
