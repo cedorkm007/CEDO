@@ -968,6 +968,10 @@ export interface ScholarInformationRow {
 /** Combinable filters for the Scholars Information subtab (Milestone 3) —
  * every field ANDs together, all optional/omittable. */
 export interface ScholarInformationFilters {
+  /** Quick search bar (beside the Filters button) — partial match against
+   *  Scholar ID or first/last/middle name. Distinct from `name` below,
+   *  which is the Filters panel's own name-only field. */
+  search?: string;
   name?: string; // partial match against first/last/middle name
   barangay?: string; // exact match — sourced from ALL_BARANGAYS (src/lib/cdoBarangays.ts), the same canonical list used elsewhere in this app
   course?: string; // partial match — course is free text everywhere else in this codebase (no fixed enum exists), so this stays consistent with that
@@ -1058,6 +1062,11 @@ const SCHOLAR_INFORMATION_SELECT =
  * builder type from `supabase.from(...)`, not against `any`.
  */
 function applyScholarInformationFilters(query: any, filters: ScholarInformationFilters): any {
+  const search = filters.search?.trim();
+  if (search) {
+    const pattern = `%${search.replace(/[,.()]/g, " ")}%`;
+    query = query.or(`scholar_id_number.ilike.${pattern},first_name.ilike.${pattern},last_name.ilike.${pattern},middle_name.ilike.${pattern}`);
+  }
   const name = filters.name?.trim();
   if (name) {
     // One OR-group (matches ANY of the three name columns) that still ANDs

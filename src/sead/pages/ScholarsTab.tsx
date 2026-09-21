@@ -355,6 +355,7 @@ export function formatScholarName(row: ScholarInformationRow): string {
 /** One human-readable line summarizing the currently applied filters, for the PDF export's header block — so a downloaded report is self-describing about what it does and doesn't include. */
 function describeAppliedFilters(filters: ScholarInformationFilters): string {
   const parts: string[] = [];
+  if (filters.search) parts.push(`Search "${filters.search}"`);
   if (filters.name) parts.push(`Name contains "${filters.name}"`);
   if (filters.barangay) parts.push(`Barangay = ${filters.barangay}`);
   if (filters.course) parts.push(`Program contains "${filters.course}"`);
@@ -409,6 +410,10 @@ function ScholarsInformationSubtab() {
   const [loading, setLoading] = useState(true);
   const [showPicker, setShowPicker] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  // Quick search bar beside the Filters button — separate from the Filters
+  // panel's own "Name" field so it doesn't count toward activeFilterCount
+  // or get reset by "Clear filters".
+  const [searchQuery, setSearchQuery] = useState("");
   const [visibleColumns, setVisibleColumns] = useState<Set<keyof ScholarInformationRow>>(() => {
     try {
       const saved = window.localStorage.getItem(INFO_COLUMNS_STORAGE_KEY);
@@ -455,7 +460,7 @@ function ScholarsInformationSubtab() {
   const isSyncingScroll = useRef(false);
   const [scrollWidth, setScrollWidth] = useState(0);
 
-  const activeFilterCount = Object.keys(appliedFilters).length;
+  const activeFilterCount = Object.keys(appliedFilters).filter(k => k !== "search").length;
   const { sortState, toggleSort } = useSortState();
 
   const totalPages = Math.max(1, Math.ceil(total / SCHOLARS_PAGE_SIZE));
@@ -492,6 +497,7 @@ function ScholarsInformationSubtab() {
       const ageMin = ageMinFilter.trim() === "" ? undefined : Number(ageMinFilter);
       const ageMax = ageMaxFilter.trim() === "" ? undefined : Number(ageMaxFilter);
       const next: ScholarInformationFilters = {};
+      if (searchQuery.trim()) next.search = searchQuery.trim();
       if (nameFilter.trim()) next.name = nameFilter.trim();
       if (barangayFilter) next.barangay = barangayFilter;
       if (courseFilter.trim()) next.course = courseFilter.trim();
@@ -511,7 +517,7 @@ function ScholarsInformationSubtab() {
     }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nameFilter, barangayFilter, courseFilter, schoolFilter, yearLevelFilter, statusFilter, fatherNameFilter, motherNameFilter, contactEmailFilter, ageMinFilter, ageMaxFilter, emptyFieldsFilter]);
+  }, [searchQuery, nameFilter, barangayFilter, courseFilter, schoolFilter, yearLevelFilter, statusFilter, fatherNameFilter, motherNameFilter, contactEmailFilter, ageMinFilter, ageMaxFilter, emptyFieldsFilter]);
 
   function toggleEmptyField(key: ScholarInformationEmptyableField) {
     setEmptyFieldsFilter(prev => {
@@ -754,6 +760,11 @@ function ScholarsInformationSubtab() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <div className="flex items-center gap-2 bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 flex-1 max-w-sm">
+          <Search size={15} className="text-slate-400" />
+          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search by name or Scholar ID…"
+            className="w-full text-sm outline-none" />
+        </div>
         <button onClick={() => setShowFilters(v => !v)}
           className={`flex items-center gap-1.5 text-[12.5px] font-semibold border rounded-lg px-3.5 py-2 ${
             activeFilterCount > 0 ? "bg-[#0088cc]/10 border-[#0088cc] text-[#0088cc]" : "bg-white border-[#e6ecf5] text-[#062444] hover:bg-[#f8fafd]"
