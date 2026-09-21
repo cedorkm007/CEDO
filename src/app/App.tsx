@@ -12,8 +12,9 @@ import {
   Plus, Edit2, Check, Eye, Camera, Upload, FileText, ChevronDown, ChevronUp,
   X, Trash2, Clock, CheckCircle2, Circle, AlertCircle,
   Printer, Calendar as CalendarIcon, Sparkles, Bell, RotateCcw,
-  ClipboardCheck, Plane, MessageCircle, Send, Lock,
+  ClipboardCheck, Plane, MessageCircle, Send, Lock, ClipboardList,
 } from "lucide-react";
+import { ReferralFormPanel } from "@/sead/components/ReferralFormPanel";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import { ExportButton } from "@/app/components/ExportButtons";
 import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
@@ -172,7 +173,7 @@ interface LeaveRequest {
   submittedAt: string; status: "pending" | "approved" | "returned"; adminNote?: string;
 }
 
-type NotifType = "submission" | "leave_request";
+type NotifType = "submission" | "leave_request" | "referral_approval";
 interface AppNotification {
   id: string; type: NotifType; userId: string; userName: string;
   title: string; message: string; timestamp: string; read: boolean;
@@ -1752,6 +1753,7 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
 
   function getStatusForNotif(n: AppNotification): string {
     if(n.type==="submission"){const s=getSubmission(n);return s?.status??"pending";}
+    if(n.type==="referral_approval") return "pending"; // its own panel manages/displays real status
     const r=getLeaveRequest(n);return r?.status??"pending";
   }
   /** Same as getStatusForNotif, but leave requests read as "Under Review" instead of "Pending". */
@@ -1769,11 +1771,12 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
       <div className="space-y-2">
         {sorted.map(n => {
           const status = getBadgeStatusForNotif(n);
-          const typeIcon = n.type==="submission" ? <ClipboardCheck size={16} className="text-accent"/> : <Plane size={16} className="text-purple-500"/>;
+          const typeIcon = n.type==="submission" ? <ClipboardCheck size={16} className="text-accent"/> : n.type==="referral_approval" ? <ClipboardList size={16} className="text-[#0088cc]"/> : <Plane size={16} className="text-purple-500"/>;
+          const typeBg = n.type==="submission" ? "bg-accent/15" : n.type==="referral_approval" ? "bg-[#0088cc]/15" : "bg-purple-100";
           return (
             <button key={n.id} onClick={()=>openNotif(n)}
               className={`w-full flex items-start gap-4 p-4 rounded-2xl border text-left transition-all hover:shadow-md ${!n.read?"bg-secondary border-accent/30 shadow-sm":"bg-card border-border hover:bg-muted/20"}`}>
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${n.type==="submission"?"bg-accent/15":"bg-purple-100"}`}>{typeIcon}</div>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${typeBg}`}>{typeIcon}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
                   <p className="text-sm font-semibold text-foreground truncate">{n.title}</p>
@@ -1799,11 +1802,11 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
         <Modal title={selected.title} onClose={()=>setSelected(null)} wide>
           <div className="space-y-4">
             <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border border-border">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${selected.type==="submission"?"bg-accent/15":"bg-purple-100"}`}>
-                {selected.type==="submission"?<ClipboardCheck size={18} className="text-accent"/>:<Plane size={18} className="text-purple-500"/>}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${selected.type==="submission"?"bg-accent/15":selected.type==="referral_approval"?"bg-[#0088cc]/15":"bg-purple-100"}`}>
+                {selected.type==="submission"?<ClipboardCheck size={18} className="text-accent"/>:selected.type==="referral_approval"?<ClipboardList size={18} className="text-[#0088cc]"/>:<Plane size={18} className="text-purple-500"/>}
               </div>
               <div><p className="text-sm font-bold text-foreground">{selected.userName}</p><p className="text-xs text-muted-foreground">{formatTimestamp(selected.timestamp)}</p></div>
-              <div className="ml-auto"><StatusBadge status={getBadgeStatusForNotif(selected)}/></div>
+              {selected.type!=="referral_approval"&&<div className="ml-auto"><StatusBadge status={getBadgeStatusForNotif(selected)}/></div>}
             </div>
 
             {selected.type==="submission"&&(()=>{
@@ -1844,7 +1847,12 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
               );
             })()}
 
-            {getStatusForNotif(selected)==="pending"&&(
+            {selected.type==="referral_approval"&&(
+              <ReferralFormPanel mode="approve" referralId={selected.referenceId}
+                onDone={()=>{ onDelete(selected.id); setSelected(null); }} />
+            )}
+
+            {selected.type!=="referral_approval"&&getStatusForNotif(selected)==="pending"&&(
               <div className="space-y-3 border-t border-border pt-3">
                 {showReturnInput?(
                   <div className="space-y-2">
@@ -1859,7 +1867,7 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
                 )}
               </div>
             )}
-            {getStatusForNotif(selected)!=="pending"&&<div className={`p-3 rounded-xl border text-sm font-medium text-center ${getStatusForNotif(selected)==="approved"?"border-green-200 bg-green-50 text-green-700":"border-red-200 bg-red-50 text-red-700"}`}>{getStatusForNotif(selected)==="approved"?"✓ Approved":"✗ Returned"}</div>}
+            {selected.type!=="referral_approval"&&getStatusForNotif(selected)!=="pending"&&<div className={`p-3 rounded-xl border text-sm font-medium text-center ${getStatusForNotif(selected)==="approved"?"border-green-200 bg-green-50 text-green-700":"border-red-200 bg-red-50 text-red-700"}`}>{getStatusForNotif(selected)==="approved"?"✓ Approved":"✗ Returned"}</div>}
           </div>
         </Modal>
       )}
@@ -2859,9 +2867,11 @@ export default function App() {
 
   const unreadCount = notifications.filter(n =>
     !n.read && (
-      currentUser?.isAdmin
-        ? true
-        : n.type === "submission" && n.userId === currentUser?.id
+      n.type === "referral_approval"
+        ? n.userId === currentUser?.id
+        : currentUser?.isAdmin
+          ? true
+          : n.type === "submission" && n.userId === currentUser?.id
     )
   ).length;
 
@@ -3372,7 +3382,11 @@ export default function App() {
   const scopedUsers = users.filter(u => scopedUserIds.has(u.id));
   const scopedSubmissions = submissions.filter(s => scopedUserIds.has(s.userId));
   const scopedLeaveRequests = leaveRequests.filter(r => scopedUserIds.has(r.userId));
-  const scopedNotifications = notifications.filter(n => scopedUserIds.has(n.userId));
+  // Referral approvals are targeted at one specific person (the SEAD
+  // Division Head) — never blanket-visible to every admin in the division
+  // the way submission/leave notifications are, even though this
+  // notification also lives in the shared `notifications` table.
+  const scopedNotifications = notifications.filter(n => scopedUserIds.has(n.userId) && (n.type !== "referral_approval" || n.userId === currentUser.id));
   const scopedAllTasks: TasksData = Object.fromEntries(Object.entries(allTasks).filter(([uid]) => scopedUserIds.has(uid)));
 
   return (

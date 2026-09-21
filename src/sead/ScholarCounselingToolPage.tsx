@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ClipboardList, AlertTriangle } from "lucide-react";
+import { ClipboardList, AlertTriangle, LayoutDashboard } from "lucide-react";
 import { ScholarCounselingTab } from "./pages/ScholarCounselingTab";
 import { ProbationMonitoringTab } from "./pages/ProbationMonitoringTab";
+import { ScholarCounselingDashboardTab } from "./pages/ScholarCounselingDashboardTab";
 
-type ScholarCounselingSubtab = "daily-records" | "probation-monitoring";
+type ScholarCounselingSubtab = "main-dashboard" | "daily-records" | "probation-monitoring";
 
 /**
  * Gated by the "scholar_counseling" tag (src/app/staffToolTags.ts),
@@ -15,10 +16,11 @@ type ScholarCounselingSubtab = "daily-records" | "probation-monitoring";
  */
 export function ScholarCounselingToolPage() {
   const TABS: { key: ScholarCounselingSubtab; label: string; icon: React.ReactNode }[] = [
+    { key: "main-dashboard", label: "Main Dashboard", icon: <LayoutDashboard size={14} /> },
     { key: "daily-records", label: "Daily Records", icon: <ClipboardList size={14} /> },
     { key: "probation-monitoring", label: "Probationary Monitoring", icon: <AlertTriangle size={14} /> },
   ];
-  const [tab, setTab] = useState<ScholarCounselingSubtab>("daily-records");
+  const [tab, setTab] = useState<ScholarCounselingSubtab>("main-dashboard");
 
   return (
     <div>
@@ -39,6 +41,7 @@ export function ScholarCounselingToolPage() {
         ))}
       </div>
 
+      {tab === "main-dashboard" && <ScholarCounselingDashboardTab />}
       {tab === "daily-records" && <ScholarCounselingTab />}
       {tab === "probation-monitoring" && <ProbationMonitoringTab />}
     </div>

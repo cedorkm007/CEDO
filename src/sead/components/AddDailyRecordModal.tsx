@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { X, ClipboardPlus } from "lucide-react";
-import { createDailyRecord } from "../scholarCounselingApi";
+import { createDailyRecord, VISIT_TYPES, type VisitType } from "../scholarCounselingApi";
 import { fetchScholarInformationByIdNumber } from "../seadApi";
 import { SCHOLARSHIP_STATUSES, type ScholarshipStatus } from "../types";
 import { ScholarSearchField, type ScholarSearchResult } from "./ScholarSearchField";
@@ -10,6 +10,7 @@ export function AddDailyRecordModal({ onClose, onCreated }: { onClose: () => voi
   const [selected, setSelected] = useState<ScholarSearchResult | null>(null);
   const [dateVisited, setDateVisited] = useState(new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState<ScholarshipStatus>("Regular");
+  const [visitType, setVisitType] = useState<VisitType>("Office");
   const [failedSubjects, setFailedSubjects] = useState("");
   const [findings, setFindings] = useState("");
   const [staffRecommendations, setStaffRecommendations] = useState("");
@@ -34,7 +35,7 @@ export function AddDailyRecordModal({ onClose, onCreated }: { onClose: () => voi
     if (!dateVisited) { setError("Enter the date visited."); return; }
     setBusy(true);
     const result = await createDailyRecord({
-      scholarIdNumber, status, dateVisited,
+      scholarIdNumber, status, dateVisited, visitType,
       failedSubjects: failedSubjects.trim(), findings: findings.trim(), staffRecommendations: staffRecommendations.trim(),
     });
     setBusy(false);
@@ -71,6 +72,14 @@ export function AddDailyRecordModal({ onClose, onCreated }: { onClose: () => voi
                 {SCHOLARSHIP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
+          </div>
+
+          <div className="mb-3">
+            <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Visit Type</label>
+            <select value={visitType} onChange={e => setVisitType(e.target.value as VisitType)}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none bg-white">
+              {VISIT_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
           </div>
 
           <div className="mb-3">

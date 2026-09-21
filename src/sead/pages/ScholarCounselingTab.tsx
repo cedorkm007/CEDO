@@ -77,6 +77,7 @@ export function ScholarCounselingTab() {
               <th className="px-4 py-3 whitespace-nowrap">School</th>
               <th className="px-4 py-3 text-center whitespace-nowrap">Information</th>
               <th className="px-4 py-3 whitespace-nowrap">Date Visited</th>
+              <th className="px-4 py-3 whitespace-nowrap">Visit Type</th>
               <th className="px-4 py-3 text-center whitespace-nowrap">Status</th>
               <th className="px-4 py-3 whitespace-nowrap">Consulted By</th>
               <th className="px-4 py-3 whitespace-nowrap">Failed Subject(s)</th>
@@ -86,9 +87,9 @@ export function ScholarCounselingTab() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400">Loading…</td></tr>
+              <tr><td colSpan={12} className="px-4 py-10 text-center text-slate-400">Loading…</td></tr>
             ) : records.length === 0 ? (
-              <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400">No daily records yet.</td></tr>
+              <tr><td colSpan={12} className="px-4 py-10 text-center text-slate-400">No daily records yet.</td></tr>
             ) : (
               records.map(r => (
                 <tr key={r.id} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
@@ -103,6 +104,7 @@ export function ScholarCounselingTab() {
                     </button>
                   </td>
                   <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatDateVisited(r.dateVisited)}</td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{r.visitType}</td>
                   <td className="px-4 py-3 text-center whitespace-nowrap">
                     <span className={`text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full ${STATUS_BADGE_CLASSES[r.status]}`}>{r.status}</span>
                   </td>

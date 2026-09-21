@@ -68,4 +68,9 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     label: "Scholar Counseling Tool",
     description: "Monitor scholars' scholarship status and log counseling visits (Daily Records).",
   },
+  {
+    key: "sead_division_head",
+    label: "SEAD Division Head (Referral Approvals)",
+    description: "Receives notifications to approve or reconsider Scholar Counseling referrals forwarded by counseling staff.",
+  },
 ];

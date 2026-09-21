@@ -1,6 +1,9 @@
 import { supabase } from "@/lib/supabase";
 import type { ScholarshipStatus } from "./types";
 
+export type VisitType = "Office" | "KSB Client" | "Home Visit";
+export const VISIT_TYPES: VisitType[] = ["Office", "KSB Client", "Home Visit"];
+
 export interface DailyRecord {
   id: string;
   scholarIdNumber: string;
@@ -14,6 +17,7 @@ export interface DailyRecord {
   failedSubjects: string;
   findings: string;
   staffRecommendations: string;
+  visitType: VisitType;
   createdAt: string;
 }
 
@@ -31,6 +35,7 @@ function rowToDailyRecord(r: Record<string, unknown>): DailyRecord {
     failedSubjects: String(r.failed_subjects ?? ""),
     findings: String(r.findings ?? ""),
     staffRecommendations: String(r.staff_recommendations ?? ""),
+    visitType: (r.visit_type as VisitType) ?? "Office",
     createdAt: String(r.created_at ?? ""),
   };
 }
@@ -49,6 +54,7 @@ export interface NewDailyRecordInput {
   failedSubjects: string;
   findings: string;
   staffRecommendations: string;
+  visitType: VisitType;
 }
 
 /** consultedBy is deliberately not a parameter here — create_scholar_counseling_record() always sets it from auth.uid() server-side. */
@@ -60,6 +66,7 @@ export async function createDailyRecord(input: NewDailyRecordInput): Promise<{ o
     p_failed_subjects: input.failedSubjects,
     p_findings: input.findings,
     p_staff_recommendations: input.staffRecommendations,
+    p_visit_type: input.visitType,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };

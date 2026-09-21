@@ -14,6 +14,8 @@ import { SCHOLARSHIP_STATUSES, EDITABLE_SCHOLARSHIP_STATUSES, type ScholarListIt
 import { useSortState, SortableTh } from "@/app/components/SortableTable";
 import { ExportButtonGroup, type ExportFormat } from "@/app/components/ExportButtons";
 import { formatPersonName } from "@/lib/personName";
+import { fetchOpenReferralStatuses, type OpenReferralInfo } from "../referralApi";
+import { ReferralFormModal } from "../components/ReferralFormModal";
 
 type ScholarsSubtab = "account" | "information";
 
@@ -414,6 +416,8 @@ function ScholarsInformationSubtab() {
   // panel's own "Name" field so it doesn't count toward activeFilterCount
   // or get reset by "Clear filters".
   const [searchQuery, setSearchQuery] = useState("");
+  const [openReferrals, setOpenReferrals] = useState<Map<string, OpenReferralInfo>>(new Map());
+  const [referralModal, setReferralModal] = useState<{ mode: "create" | "view"; scholar?: ScholarInformationRow; referralId?: string } | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<keyof ScholarInformationRow>>(() => {
     try {
       const saved = window.localStorage.getItem(INFO_COLUMNS_STORAGE_KEY);
@@ -476,6 +480,7 @@ function ScholarsInformationSubtab() {
     setRows(result.items);
     setTotal(result.total);
     setLoading(false);
+    setOpenReferrals(await fetchOpenReferralStatuses(result.items.map(r => r.scholarIdNumber)));
   }
 
   useEffect(() => { load(1, EMPTY_FILTERS); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
@@ -905,6 +910,7 @@ function ScholarsInformationSubtab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
+              <th className="px-4 py-3 whitespace-nowrap">For Counseling</th>
               <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-4 py-3 whitespace-nowrap" />
               <SortableTh label="Name" sortKey="lastName" sortState={sortState} onSort={toggleSort} className="px-4 py-3 whitespace-nowrap" />
               {activeColumns.map(c => (
@@ -914,12 +920,23 @@ function ScholarsInformationSubtab() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={2 + activeColumns.length} className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>
+              <tr><td colSpan={3 + activeColumns.length} className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={2 + activeColumns.length} className="px-4 py-8 text-center text-slate-400">No scholars found.</td></tr>
+              <tr><td colSpan={3 + activeColumns.length} className="px-4 py-8 text-center text-slate-400">No scholars found.</td></tr>
             ) : (
-              rows.map(r => (
+              rows.map(r => {
+                const openReferral = openReferrals.get(r.scholarIdNumber);
+                return (
                 <tr key={r.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {openReferral ? (
+                      <button onClick={() => setReferralModal({ mode: "view", referralId: openReferral.id })}
+                        className="text-[12px] font-semibold text-slate-400 hover:text-[#0088cc] hover:underline">Referred</button>
+                    ) : (
+                      <button onClick={() => setReferralModal({ mode: "create", scholar: r })}
+                        className="text-[12px] font-semibold text-[#0088cc] hover:underline">Refer</button>
+                    )}
+                  </td>
                   <td className="px-4 py-3 font-medium text-[#062444] whitespace-nowrap">{r.scholarIdNumber}</td>
                   <td className="px-4 py-3 whitespace-nowrap">{formatScholarName(r)}</td>
                   {activeColumns.map(c => (
@@ -939,7 +956,8 @@ function ScholarsInformationSubtab() {
                     </td>
                   ))}
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -948,6 +966,12 @@ function ScholarsInformationSubtab() {
       <div className="flex justify-end mt-3">
         <PaginationControls page={page} totalPages={totalPages} onGoTo={goToPage} disabled={loading} />
       </div>
+
+      {referralModal && (
+        <ReferralFormModal mode={referralModal.mode} scholar={referralModal.scholar} referralId={referralModal.referralId}
+          onClose={() => setReferralModal(null)}
+          onDone={() => { setReferralModal(null); load(page, appliedFilters); }} />
+      )}
     </div>
   );
 }
