@@ -64,3 +64,52 @@ export async function createDailyRecord(input: NewDailyRecordInput): Promise<{ o
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
+
+/** Every Daily Record ever logged for one scholar — the "Counseling History" summary — reuses the same RPC as the Daily Records list, since scholar_id_number is an exact match against p_search. */
+export async function fetchCounselingHistoryForScholar(scholarIdNumber: string): Promise<DailyRecord[]> {
+  return fetchDailyRecords(scholarIdNumber);
+}
+
+// ── Probationary Monitoring ──────────────────────────────────
+
+export interface ProbationRow {
+  scholarIdNumber: string;
+  name: string;
+  course: string;
+  yearLevel: string;
+  school: string;
+  studyPlan: string;
+  academicContractUpdate: string;
+}
+
+function rowToProbationRow(r: Record<string, unknown>): ProbationRow {
+  return {
+    scholarIdNumber: String(r.scholar_id_number),
+    name: String(r.name ?? ""),
+    course: String(r.course ?? ""),
+    yearLevel: String(r.year_level ?? ""),
+    school: String(r.school ?? ""),
+    studyPlan: String(r.study_plan ?? ""),
+    academicContractUpdate: String(r.academic_contract_update ?? ""),
+  };
+}
+
+/** Every currently-Probationary scholar, with their current Study Plan / Academic Contract Update note if one exists — see scholar_probation_monitoring_list() (supabase_migration_scholar_probation_monitoring.sql). */
+export async function fetchProbationMonitoringList(search: string = ""): Promise<ProbationRow[]> {
+  const { data, error } = await supabase.rpc("scholar_probation_monitoring_list", { p_search: search.trim() });
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(rowToProbationRow);
+}
+
+/** Upserts one scholar's Study Plan / Academic Contract Update — current value only, no history (see the migration's header comment). */
+export async function saveProbationNotes(
+  scholarIdNumber: string, studyPlan: string, academicContractUpdate: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("upsert_scholar_probation_notes", {
+    p_scholar_id_number: scholarIdNumber,
+    p_study_plan: studyPlan,
+    p_academic_contract_update: academicContractUpdate,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}

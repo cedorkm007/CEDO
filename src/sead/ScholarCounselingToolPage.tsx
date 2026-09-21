@@ -1,21 +1,22 @@
 import { useState } from "react";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, AlertTriangle } from "lucide-react";
 import { ScholarCounselingTab } from "./pages/ScholarCounselingTab";
+import { ProbationMonitoringTab } from "./pages/ProbationMonitoringTab";
 
-type ScholarCounselingSubtab = "daily-records";
+type ScholarCounselingSubtab = "daily-records" | "probation-monitoring";
 
 /**
  * Gated by the "scholar_counseling" tag (src/app/staffToolTags.ts),
  * granted from it.admin1's Staff Accounts page. Monitors scholars'
  * scholarship status via a counseling-visit log; changing a scholar's
- * status is a separate, later addition — this page only has the "Daily
- * Records" subtab for now, but keeps the same tab-bar shell as
+ * status is a separate, later addition. Keeps the same tab-bar shell as
  * ScholarManagementToolsPage.tsx so more subtabs can be added later
  * without restructuring.
  */
 export function ScholarCounselingToolPage() {
   const TABS: { key: ScholarCounselingSubtab; label: string; icon: React.ReactNode }[] = [
     { key: "daily-records", label: "Daily Records", icon: <ClipboardList size={14} /> },
+    { key: "probation-monitoring", label: "Probationary Monitoring", icon: <AlertTriangle size={14} /> },
   ];
   const [tab, setTab] = useState<ScholarCounselingSubtab>("daily-records");
 
@@ -39,6 +40,7 @@ export function ScholarCounselingToolPage() {
       </div>
 
       {tab === "daily-records" && <ScholarCounselingTab />}
+      {tab === "probation-monitoring" && <ProbationMonitoringTab />}
     </div>
   );
 }
