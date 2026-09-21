@@ -151,7 +151,7 @@ export async function creditAttendance(
   const { error } = await supabase.from("sdp_attendance")
     .upsert(
       { activity_id: activityId, scholar_id_number: scholarIdNumber, attended_date: attendedDate, created_by: auth.user?.id ?? null },
-      { onConflict: "activity_id,scholar_id_number" }
+      { onConflict: "activity_id,scholar_id_number,occurrence_number" }
     );
   return error ? { ok: false, error: error.message } : { ok: true };
 }
