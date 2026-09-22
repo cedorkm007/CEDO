@@ -874,10 +874,11 @@ function borderlessCell(children: (Paragraph | Table)[], width: number, vAlign: 
   return new TableCell({ children, width: { size: width, type: WidthType.DXA }, verticalAlign: vAlign, borders: ALL_NO_BORDERS, margins: { top: 20, bottom: 20, left: 0, right: 60 } })
 }
 
-/** Bold label followed by the filled-in, underlined value — mirrors a hand-filled "LABEL: ____" line on the paper form. */
+/** Bold label followed by the filled-in, underlined value, padded with trailing underlined spaces so the rule keeps running toward the margin like the paper form's blank fill-in line. */
 function labeledLine(label: string, value: string, size = 20): Paragraph {
+  const padded = `${value || ''}${' '.repeat(22)}`
   return new Paragraph({
-    children: [bold(`${label}: `, size), new TextRun({ text: value || ' ', size, font: FONT, underline: {} })],
+    children: [bold(`${label}: `, size), new TextRun({ text: padded, size, font: FONT, underline: {} })],
     spacing: { after: 100 },
   })
 }
@@ -904,7 +905,7 @@ function ruledCell(text: string, width: number, isHeader: boolean): TableCell {
 
 /** Failed Subjects / Lacking Grades — ruled fill-in lines (bottom border only per cell), matching the paper form's look, not a bordered data grid. */
 function ruledMatrixTable(rows: ReferralSubjectRow[]): Table {
-  const COL: [number, number, number] = [1600, 2800, 900]
+  const COL: [number, number, number] = [1300, 2200, 700]
   const displayRows = rows.length ? rows : [{ subjectCode: '', semesterAcademicYear: '', yearLevel: '' }]
   return new Table({
     width: { size: COL[0] + COL[1] + COL[2], type: WidthType.DXA },
@@ -940,7 +941,7 @@ export interface ReferralFormOptions {
 export async function generateReferralForm(opts: ReferralFormOptions): Promise<void> {
   const header = await buildLetterheadHeader()
   const USABLE_WIDTH = 10466 // 11906 page width − 720 left/right margins
-  const LEFT_COL = 6300
+  const LEFT_COL = 4966 // ~47/53 split, matching the paper form's proportions
   const RIGHT_COL = USABLE_WIDTH - LEFT_COL
 
   const signatureParagraph = opts.signature
@@ -973,7 +974,7 @@ export async function generateReferralForm(opts: ReferralFormOptions): Promise<v
 
   const leftColumn: (Paragraph | Table)[] = [
     labeledLine('NAME', opts.name),
-    labeledLine('COURSE & YR. LEVEL', opts.courseYear),
+    labeledLine('COURSE & YR. LEVEL.', opts.courseYear),
     labeledLine('SCHOOL', opts.school),
     labeledLine('BARANGAY', opts.barangay),
     labeledLine('CONTACT NUMBER', opts.contactNo),
@@ -1004,11 +1005,13 @@ export async function generateReferralForm(opts: ReferralFormOptions): Promise<v
     rows: [new TableRow({ children: [borderlessCell(leftColumn, LEFT_COL), remarksCell] })],
   })
 
+  // Title shares the same row as the badge (both vertically centered),
+  // matching the paper form's header band — not a separate line below it.
   const titleBadgeRow = new Table({
     width: { size: USABLE_WIDTH, type: WidthType.DXA },
     columnWidths: [USABLE_WIDTH - 2200, 2200],
     rows: [new TableRow({ children: [
-      borderlessCell([new Paragraph({ children: [] })], USABLE_WIDTH - 2200),
+      borderlessCell([new Paragraph({ children: [bold('REFERRAL FORM', 30)], alignment: AlignmentType.CENTER })], USABLE_WIDTH - 2200, VerticalAlign.CENTER),
       new TableCell({
         width: { size: 2200, type: WidthType.DXA },
         shading: { type: ShadingType.CLEAR, fill: NAVY },
@@ -1038,7 +1041,7 @@ export async function generateReferralForm(opts: ReferralFormOptions): Promise<v
       headers: { default: header },
       children: [
         titleBadgeRow,
-        new Paragraph({ children: [bold('REFERRAL FORM', 30)], alignment: AlignmentType.CENTER, spacing: { before: 80, after: 200 } }),
+        new Paragraph({ children: [], spacing: { after: 160 } }),
         bodyTable,
       ],
     }],
