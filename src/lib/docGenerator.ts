@@ -945,31 +945,44 @@ export async function generateReferralForm(opts: ReferralFormOptions): Promise<v
   const RIGHT_COL = USABLE_WIDTH - LEFT_COL
 
   const signatureParagraph = opts.signature
-    ? new Paragraph({ children: [new ImageRun({ data: opts.signature.buffer, transformation: { width: opts.signature.width, height: opts.signature.height } })], spacing: { before: 80, after: 40 } })
-    : new Paragraph({ children: [normal('(Signature unavailable)', 18)], spacing: { before: 80, after: 40 } })
+    ? new Paragraph({ children: [new ImageRun({ data: opts.signature.buffer, transformation: { width: opts.signature.width, height: opts.signature.height } })], spacing: { before: 40, after: 0 } })
+    : new Paragraph({ children: [normal('(Signature unavailable)', 18)], spacing: { before: 40, after: 0 } })
 
-  // Refer by / Refer to / Date on the left of this bottom strip; Endorsed
-  // for's checkboxes + Noted by (with the real signature) on the right —
-  // matches the paper form's bottom-of-page layout exactly.
+  // A precise 3-row × 2-column grid — Refer by/Endorsed for, Refer to/On
+  // Probation Status, Date/Removal+Renewal+Noted by — matching the paper
+  // form's exact row alignment, not two independently-stacked columns.
+  const bottomLeftWidth = Math.round(LEFT_COL * 0.4)
+  const bottomRightWidth = LEFT_COL - bottomLeftWidth
   const bottomStrip = new Table({
     width: { size: LEFT_COL, type: WidthType.DXA },
-    columnWidths: [Math.round(LEFT_COL * 0.42), Math.round(LEFT_COL * 0.58)],
-    rows: [new TableRow({ children: [
-      borderlessCell([
-        labeledLine('Refer by', opts.referredByName),
-        labeledLine('Refer to', opts.referredToName),
-        labeledLine('Date', opts.referralDate),
-      ], Math.round(LEFT_COL * 0.42)),
-      borderlessCell([
-        new Paragraph({ children: [bold('Endorsed for:', 20)], spacing: { after: 60 } }),
-        checkboxLine(['On Probation Status'], opts.endorsedFor),
-        checkboxLine(['Removal', 'Renewal'], opts.endorsedFor),
-        new Paragraph({ children: [bold('Noted by:', 20)], spacing: { before: 100 } }),
-        signatureParagraph,
-        new Paragraph({ children: [normal(opts.approvedByName, 19)] }),
-        new Paragraph({ children: [normal('SEAD Division Head', 16)] }),
-      ], Math.round(LEFT_COL * 0.58)),
-    ] })],
+    columnWidths: [bottomLeftWidth, bottomRightWidth],
+    rows: [
+      new TableRow({ children: [
+        borderlessCell([labeledLine('Refer by', opts.referredByName)], bottomLeftWidth),
+        borderlessCell([new Paragraph({ children: [bold('Endorsed for:', 20)] })], bottomRightWidth),
+      ] }),
+      new TableRow({ children: [
+        borderlessCell([labeledLine('Refer to', opts.referredToName)], bottomLeftWidth),
+        borderlessCell([checkboxLine(['On Probation Status'], opts.endorsedFor)], bottomRightWidth),
+      ] }),
+      new TableRow({ children: [
+        borderlessCell([labeledLine('Date', opts.referralDate)], bottomLeftWidth),
+        borderlessCell([
+          new Paragraph({ children: (() => {
+            const children: TextRun[] = []
+            ;['Removal', 'Renewal'].forEach((opt, i) => {
+              if (i > 0) children.push(normal('   ', 19))
+              children.push(normal(opt === opts.endorsedFor ? '☑ ' : '☐ ', 21))
+              children.push(normal(opt, 19))
+            })
+            children.push(normal('   ', 19), bold('Noted by:', 19))
+            return children
+          })() }),
+          signatureParagraph,
+          new Paragraph({ children: [normal(opts.approvedByName, 18)], alignment: AlignmentType.RIGHT }),
+        ], bottomRightWidth),
+      ] }),
+    ],
   })
 
   const leftColumn: (Paragraph | Table)[] = [
@@ -988,13 +1001,31 @@ export async function generateReferralForm(opts: ReferralFormOptions): Promise<v
     bottomStrip,
   ]
 
+  // A small badge (not a full-width bar) so it matches the "FORM R5" badge's
+  // own cell-shading look exactly, rather than a stretched paragraph fill.
+  const remarksBadgeWidth = 1800
+  const remarksBadge = new Table({
+    width: { size: remarksBadgeWidth, type: WidthType.DXA },
+    columnWidths: [remarksBadgeWidth],
+    rows: [new TableRow({ children: [
+      new TableCell({
+        width: { size: remarksBadgeWidth, type: WidthType.DXA },
+        shading: { type: ShadingType.CLEAR, fill: NAVY },
+        borders: ALL_NO_BORDERS,
+        margins: { top: 60, bottom: 60, left: 100, right: 100 },
+        children: [new Paragraph({ children: [new TextRun({ text: 'REMARKS:', bold: true, color: 'FFFFFF', size: 20, font: FONT })] })],
+      }),
+    ] })],
+  })
+
   const remarksCell = new TableCell({
     width: { size: RIGHT_COL, type: WidthType.DXA },
     verticalAlign: VerticalAlign.TOP,
     borders: { top: RULE_BORDER, bottom: RULE_BORDER, left: RULE_BORDER, right: RULE_BORDER },
-    margins: { top: 0, bottom: 100, left: 100, right: 100 },
+    margins: { top: 100, bottom: 100, left: 100, right: 100 },
     children: [
-      new Paragraph({ shading: { type: ShadingType.CLEAR, fill: NAVY }, children: [new TextRun({ text: 'REMARKS:', bold: true, color: 'FFFFFF', size: 20, font: FONT })], spacing: { after: 160 } }),
+      remarksBadge,
+      new Paragraph({ children: [normal('', 20)], spacing: { after: 100 } }),
       new Paragraph({ children: [normal(opts.remarks || '', 20)] }),
     ],
   })
