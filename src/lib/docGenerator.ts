@@ -14,6 +14,7 @@ import {
   Document, Packer, Paragraph, Table, TableRow, TableCell,
   TextRun, AlignmentType, WidthType, BorderStyle,
   ShadingType, VerticalAlign, Header, ImageRun,
+  PageBorderDisplay, PageBorderOffsetFrom,
 } from 'docx'
 import { saveAs } from 'file-saver'
 import letterheadUrl from '@/imports/CEDO_Letterhead.png'
@@ -853,37 +854,66 @@ export async function generateComprehensiveScholarProfile(opts: ComprehensiveSch
 }
 
 // ── 7. Scholar Counseling Referral Form (Form R5) ────────────
-// Only ever printed once a referral has been Approved — the Division
-// Head's actual signature image is embedded on the "Noted by" line
-// (via ImageRun) rather than left as a blank line, since a signature
-// already exists by the time this is called. Provisional layout, same
-// as CTO/Pass Slip above — the labeled-field/table structure is
-// reproduced from the office's paper form, not yet the exact
-// letterhead/box styling of the physical template.
+// Reproduces the office's actual paper Referral Form layout (photo
+// supplied directly, not a generic label/value form like CTO/Pass Slip
+// above): a "FORM R5" badge top-right, a two-column body — labeled
+// fill-in fields + checkboxes + the two subject matrices on the left,
+// a bordered REMARKS box on the right — and a bottom strip for
+// Refer by/to, Date, Endorsed for, and Noted by. Only ever printed once
+// a referral has been Approved, so the Division Head's actual signature
+// image is embedded on the "Noted by" line instead of a blank line.
 
 export interface ReferralSubjectRow { subjectCode: string; semesterAcademicYear: string; yearLevel: string }
 
-function subjectMatrixTable(rows: ReferralSubjectRow[]): Table {
-  const COL: [number, number, number] = [3200, 4200, 2088]
-  const headerRow = new TableRow({
-    children: [headerCell('Subject Code', COL[0]), headerCell('Semester and Academic Year', COL[1]), headerCell('Yr. Lvl', COL[2])],
+const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }
+const ALL_NO_BORDERS = { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER }
+const RULE_BORDER = { style: BorderStyle.SINGLE, size: 4, color: '000000' }
+const NAVY = '062444'
+
+function borderlessCell(children: (Paragraph | Table)[], width: number, vAlign: (typeof VerticalAlign)[keyof typeof VerticalAlign] = VerticalAlign.TOP): TableCell {
+  return new TableCell({ children, width: { size: width, type: WidthType.DXA }, verticalAlign: vAlign, borders: ALL_NO_BORDERS, margins: { top: 20, bottom: 20, left: 0, right: 60 } })
+}
+
+/** Bold label followed by the filled-in, underlined value — mirrors a hand-filled "LABEL: ____" line on the paper form. */
+function labeledLine(label: string, value: string, size = 20): Paragraph {
+  return new Paragraph({
+    children: [bold(`${label}: `, size), new TextRun({ text: value || ' ', size, font: FONT, underline: {} })],
+    spacing: { after: 100 },
   })
-  const bodyRows = rows.length
-    ? rows.map(r => new TableRow({
-        children: [
-          cell([new Paragraph({ children: [normal(r.subjectCode || '—', 22)] })], { width: COL[0] }),
-          cell([new Paragraph({ children: [normal(r.semesterAcademicYear || '—', 22)] })], { width: COL[1] }),
-          cell([new Paragraph({ children: [normal(r.yearLevel || '—', 22)] })], { width: COL[2] }),
-        ],
-      }))
-    : [new TableRow({
-        children: [
-          cell([new Paragraph({ children: [normal('None.', 22)], alignment: AlignmentType.CENTER })], { width: COL[0] }),
-          cell([new Paragraph({ children: [normal('', 22)] })], { width: COL[1] }),
-          cell([new Paragraph({ children: [normal('', 22)] })], { width: COL[2] }),
-        ],
-      })]
-  return new Table({ width: { size: COL[0] + COL[1] + COL[2], type: WidthType.DXA }, columnWidths: COL, rows: [headerRow, ...bodyRows] })
+}
+
+/** One line of ☑/☐ options — the selected value (matched by exact string) shows checked. */
+function checkboxLine(options: string[], selected: string, size = 19): Paragraph {
+  const children: TextRun[] = []
+  options.forEach((opt, i) => {
+    if (i > 0) children.push(normal('     ', size))
+    children.push(normal(opt === selected ? '☑ ' : '☐ ', size + 2))
+    children.push(normal(opt, size))
+  })
+  return new Paragraph({ children, spacing: { after: 100 } })
+}
+
+function ruledCell(text: string, width: number, isHeader: boolean): TableCell {
+  return new TableCell({
+    width: { size: width, type: WidthType.DXA },
+    children: [new Paragraph({ children: [isHeader ? new TextRun({ text, italics: true, size: 16, font: FONT }) : normal(text || ' ', 19)] })],
+    borders: { top: NO_BORDER, left: NO_BORDER, right: NO_BORDER, bottom: RULE_BORDER },
+    margins: { top: 20, bottom: 60, left: 40, right: 40 },
+  })
+}
+
+/** Failed Subjects / Lacking Grades — ruled fill-in lines (bottom border only per cell), matching the paper form's look, not a bordered data grid. */
+function ruledMatrixTable(rows: ReferralSubjectRow[]): Table {
+  const COL: [number, number, number] = [1600, 2800, 900]
+  const displayRows = rows.length ? rows : [{ subjectCode: '', semesterAcademicYear: '', yearLevel: '' }]
+  return new Table({
+    width: { size: COL[0] + COL[1] + COL[2], type: WidthType.DXA },
+    columnWidths: COL,
+    rows: [
+      new TableRow({ children: [ruledCell('(Subject Code)', COL[0], true), ruledCell('(Semester and Academic Year)', COL[1], true), ruledCell('(Yr. Lvl)', COL[2], true)] }),
+      ...displayRows.map(r => new TableRow({ children: [ruledCell(r.subjectCode, COL[0], false), ruledCell(r.semesterAcademicYear, COL[1], false), ruledCell(r.yearLevel, COL[2], false)] })),
+    ],
+  })
 }
 
 export interface ReferralFormOptions {
@@ -909,61 +939,107 @@ export interface ReferralFormOptions {
 
 export async function generateReferralForm(opts: ReferralFormOptions): Promise<void> {
   const header = await buildLetterheadHeader()
-  const COL_LABEL = 3200
-  const COL_VALUE = 9488 - COL_LABEL
+  const USABLE_WIDTH = 10466 // 11906 page width − 720 left/right margins
+  const LEFT_COL = 6300
+  const RIGHT_COL = USABLE_WIDTH - LEFT_COL
 
-  const signatureParagraphs: Paragraph[] = opts.signature
-    ? [new Paragraph({ children: [new ImageRun({ data: opts.signature.buffer, transformation: { width: opts.signature.width, height: opts.signature.height } })] })]
-    : [new Paragraph({ children: [normal('(Signature unavailable)', 20)] })]
+  const signatureParagraph = opts.signature
+    ? new Paragraph({ children: [new ImageRun({ data: opts.signature.buffer, transformation: { width: opts.signature.width, height: opts.signature.height } })], spacing: { before: 80, after: 40 } })
+    : new Paragraph({ children: [normal('(Signature unavailable)', 18)], spacing: { before: 80, after: 40 } })
+
+  // Refer by / Refer to / Date on the left of this bottom strip; Endorsed
+  // for's checkboxes + Noted by (with the real signature) on the right —
+  // matches the paper form's bottom-of-page layout exactly.
+  const bottomStrip = new Table({
+    width: { size: LEFT_COL, type: WidthType.DXA },
+    columnWidths: [Math.round(LEFT_COL * 0.42), Math.round(LEFT_COL * 0.58)],
+    rows: [new TableRow({ children: [
+      borderlessCell([
+        labeledLine('Refer by', opts.referredByName),
+        labeledLine('Refer to', opts.referredToName),
+        labeledLine('Date', opts.referralDate),
+      ], Math.round(LEFT_COL * 0.42)),
+      borderlessCell([
+        new Paragraph({ children: [bold('Endorsed for:', 20)], spacing: { after: 60 } }),
+        checkboxLine(['On Probation Status'], opts.endorsedFor),
+        checkboxLine(['Removal', 'Renewal'], opts.endorsedFor),
+        new Paragraph({ children: [bold('Noted by:', 20)], spacing: { before: 100 } }),
+        signatureParagraph,
+        new Paragraph({ children: [normal(opts.approvedByName, 19)] }),
+        new Paragraph({ children: [normal('SEAD Division Head', 16)] }),
+      ], Math.round(LEFT_COL * 0.58)),
+    ] })],
+  })
+
+  const leftColumn: (Paragraph | Table)[] = [
+    labeledLine('NAME', opts.name),
+    labeledLine('COURSE & YR. LEVEL', opts.courseYear),
+    labeledLine('SCHOOL', opts.school),
+    labeledLine('BARANGAY', opts.barangay),
+    labeledLine('CONTACT NUMBER', opts.contactNo),
+    new Paragraph({ children: [bold('Previous Semester Status:', 20)], spacing: { before: 120, after: 60 } }),
+    checkboxLine(['Retained', 'On Probation', 'Special Recon'], opts.previousSemesterStatus),
+    new Paragraph({ children: [bold('Failed Subject/s (since admission):', 20)], spacing: { before: 160, after: 60 } }),
+    ruledMatrixTable(opts.failedSubjects),
+    new Paragraph({ children: [bold('Lacking Grade/s:', 20)], spacing: { before: 160, after: 60 } }),
+    ruledMatrixTable(opts.lackingGrades),
+    new Paragraph({ children: [normal('', 20)], spacing: { before: 160 } }),
+    bottomStrip,
+  ]
+
+  const remarksCell = new TableCell({
+    width: { size: RIGHT_COL, type: WidthType.DXA },
+    verticalAlign: VerticalAlign.TOP,
+    borders: { top: RULE_BORDER, bottom: RULE_BORDER, left: RULE_BORDER, right: RULE_BORDER },
+    margins: { top: 0, bottom: 100, left: 100, right: 100 },
+    children: [
+      new Paragraph({ shading: { type: ShadingType.CLEAR, fill: NAVY }, children: [new TextRun({ text: 'REMARKS:', bold: true, color: 'FFFFFF', size: 20, font: FONT })], spacing: { after: 160 } }),
+      new Paragraph({ children: [normal(opts.remarks || '', 20)] }),
+    ],
+  })
+
+  const bodyTable = new Table({
+    width: { size: USABLE_WIDTH, type: WidthType.DXA },
+    columnWidths: [LEFT_COL, RIGHT_COL],
+    rows: [new TableRow({ children: [borderlessCell(leftColumn, LEFT_COL), remarksCell] })],
+  })
+
+  const titleBadgeRow = new Table({
+    width: { size: USABLE_WIDTH, type: WidthType.DXA },
+    columnWidths: [USABLE_WIDTH - 2200, 2200],
+    rows: [new TableRow({ children: [
+      borderlessCell([new Paragraph({ children: [] })], USABLE_WIDTH - 2200),
+      new TableCell({
+        width: { size: 2200, type: WidthType.DXA },
+        shading: { type: ShadingType.CLEAR, fill: NAVY },
+        verticalAlign: VerticalAlign.CENTER,
+        borders: ALL_NO_BORDERS,
+        margins: { top: 60, bottom: 60, left: 100, right: 100 },
+        children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "FORM R5 (Office's Copy)", bold: true, color: 'FFFFFF', size: 16, font: FONT })] })],
+      }),
+    ] })],
+  })
 
   const doc = new Document({
     sections: [{
       properties: {
         page: {
           size: { width: 11906, height: 16838 },
-          margin: { top: 720, right: 720, bottom: 720, left: 720, header: 720, footer: 720 },
+          margin: { top: 500, right: 720, bottom: 500, left: 720, header: 500, footer: 500 },
+          borders: {
+            pageBorders: { display: PageBorderDisplay.ALL_PAGES, offsetFrom: PageBorderOffsetFrom.PAGE },
+            pageBorderTop: { style: BorderStyle.DOTTED, size: 12, color: '000000', space: 12 },
+            pageBorderRight: { style: BorderStyle.DOTTED, size: 12, color: '000000', space: 12 },
+            pageBorderBottom: { style: BorderStyle.DOTTED, size: 12, color: '000000', space: 12 },
+            pageBorderLeft: { style: BorderStyle.DOTTED, size: 12, color: '000000', space: 12 },
+          },
         },
       },
       headers: { default: header },
       children: [
-        new Paragraph({ children: [bold('REFERRAL FORM', 32)], alignment: AlignmentType.CENTER, spacing: { after: 60 } }),
-        new Paragraph({ children: [normal(`Scholar ID: ${opts.scholarIdNumber}`, 20)], alignment: AlignmentType.CENTER, spacing: { after: 300 } }),
-        new Table({
-          width: { size: 9488, type: WidthType.DXA },
-          columnWidths: [COL_LABEL, COL_VALUE],
-          rows: [
-            labeledRow('Name', opts.name),
-            labeledRow('Course & Yr. Level', opts.courseYear),
-            labeledRow('School', opts.school),
-            labeledRow('Barangay', opts.barangay),
-            labeledRow('Contact Number', opts.contactNo),
-            labeledRow('Previous Semester Status', opts.previousSemesterStatus),
-          ],
-        }),
-        emptyParagraph(),
-        new Paragraph({ children: [bold('Failed Subjects (since admission)', 22)], spacing: { after: 100 } }),
-        subjectMatrixTable(opts.failedSubjects),
-        emptyParagraph(),
-        new Paragraph({ children: [bold('Lacking Grades', 22)], spacing: { after: 100 } }),
-        subjectMatrixTable(opts.lackingGrades),
-        emptyParagraph(),
-        new Table({
-          width: { size: 9488, type: WidthType.DXA },
-          columnWidths: [COL_LABEL, COL_VALUE],
-          rows: [
-            labeledRow('Refer By', opts.referredByName),
-            labeledRow('Refer To', opts.referredToName),
-            labeledRow('Date', opts.referralDate),
-            labeledRow('Endorsed For', opts.endorsedFor),
-          ],
-        }),
-        emptyParagraph(),
-        new Paragraph({ children: [bold('Remarks', 22)], spacing: { after: 100 } }),
-        new Paragraph({ children: [normal(opts.remarks || '—', 22)], spacing: { after: 400 } }),
-        new Paragraph({ children: [bold('Noted by:', 22)], spacing: { after: 200 } }),
-        ...signatureParagraphs,
-        new Paragraph({ children: [normal(opts.approvedByName, 22)] }),
-        new Paragraph({ children: [normal(`SEAD Division Head — Approved ${opts.approvedAt}`, 18)] }),
+        titleBadgeRow,
+        new Paragraph({ children: [bold('REFERRAL FORM', 30)], alignment: AlignmentType.CENTER, spacing: { before: 80, after: 200 } }),
+        bodyTable,
       ],
     }],
   })
