@@ -19,11 +19,11 @@ export function CounselingHistoryModal({
   }, [scholarIdNumber]);
 
   return (
-    <Modal title={`Counseling History — ${scholarName}`} onClose={onClose}>
+    <Modal title={`Consultation History — ${scholarName}`} onClose={onClose}>
       {!records ? (
         <p className="text-[13px] text-slate-400 text-center py-8">Loading…</p>
       ) : records.length === 0 ? (
-        <p className="text-[13px] text-slate-400 text-center py-8 italic">No counseling visits logged yet.</p>
+        <p className="text-[13px] text-slate-400 text-center py-8 italic">No consultation visits logged yet.</p>
       ) : (
         <div className="space-y-3">
           {records.map(r => (

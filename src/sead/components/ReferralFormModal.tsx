@@ -4,7 +4,7 @@ import { ReferralFormPanel, type ReferralFormMode } from "./ReferralFormPanel";
 
 const TITLE_BY_MODE: Record<ReferralFormMode, string> = {
   create: "Referral Form",
-  counsel: "Referral Form — Counseling",
+  counsel: "Referral Form — Consultation",
   approve: "Referral Form — Approval",
   view: "Referral Form",
 };

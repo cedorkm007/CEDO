@@ -371,7 +371,7 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
                   {user.tags.includes("scholar_counseling") && (
                     <SidebarMenuItem className="min-w-0">
                       <SidebarMenuButton isActive={page === "scholarCounseling"} onClick={() => setPage("scholarCounseling")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
-                        <HeartHandshake /> <span className="truncate">Scholar Counseling Tool</span>
+                        <HeartHandshake /> <span className="truncate">Scholar Consultation Tool</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}

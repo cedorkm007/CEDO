@@ -24,8 +24,8 @@ export function ScholarCounselingToolPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-foreground mb-1">Scholar Counseling Tool</h1>
-      <p className="text-sm text-muted-foreground mb-5">Monitor scholars' scholarship status and log counseling visits.</p>
+      <h1 className="text-xl font-bold text-foreground mb-1">Scholar Consultation Tool</h1>
+      <p className="text-sm text-muted-foreground mb-5">Monitor scholars' scholarship status and log consultation visits.</p>
 
       <div className="flex w-full gap-1 border-b border-border mb-5">
         {TABS.map(t => (

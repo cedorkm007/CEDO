@@ -910,7 +910,7 @@ function ScholarsInformationSubtab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
-              <th className="px-4 py-3 whitespace-nowrap">For Counseling</th>
+              <th className="px-4 py-3 whitespace-nowrap">For Consultation</th>
               <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-4 py-3 whitespace-nowrap" />
               <SortableTh label="Name" sortKey="lastName" sortState={sortState} onSort={toggleSort} className="px-4 py-3 whitespace-nowrap" />
               {activeColumns.map(c => (

@@ -77,7 +77,7 @@ export function ProbationMonitoringTab() {
 
   return (
     <div>
-      <p className="text-sm text-muted-foreground mb-4">Scholars currently on Probationary status — track their study plan and academic contract alongside their counseling history.</p>
+      <p className="text-sm text-muted-foreground mb-4">Scholars currently on Probationary status — track their study plan and academic contract alongside their consultation history.</p>
 
       <div className="flex items-center gap-2 bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 max-w-sm mb-4">
         <Search size={15} className="text-slate-400" />
@@ -94,7 +94,7 @@ export function ProbationMonitoringTab() {
               <th className="px-4 py-3 whitespace-nowrap">Year</th>
               <th className="px-4 py-3 whitespace-nowrap">School</th>
               <th className="px-4 py-3 text-center whitespace-nowrap">Information</th>
-              <th className="px-4 py-3 text-center whitespace-nowrap">Counseling History</th>
+              <th className="px-4 py-3 text-center whitespace-nowrap">Consultation History</th>
               <th className="px-4 py-3 whitespace-nowrap">Study Plan</th>
               <th className="px-4 py-3 whitespace-nowrap">Academic Contract Update</th>
             </tr>

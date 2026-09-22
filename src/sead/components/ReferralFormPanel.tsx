@@ -202,7 +202,7 @@ export function ReferralFormPanel({
         {mode === "create" ? (
           <select value={referredTo} onChange={e => setReferredTo(e.target.value)}
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none bg-white">
-            <option value="">Select a counseling staff member…</option>
+            <option value="">Select a consultation staff member…</option>
             {staffOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         ) : (
@@ -229,7 +229,7 @@ export function ReferralFormPanel({
         {fieldLabel("Remarks")}
         {mode === "counsel" ? (
           <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={4}
-            placeholder="Add your counseling remarks before forwarding…"
+            placeholder="Add your consultation remarks before forwarding…"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc] resize-none" />
         ) : (
           <p className="text-sm text-[#062444] whitespace-pre-wrap">{referral?.remarks || "—"}</p>
@@ -319,7 +319,7 @@ export function ReferralFormPanel({
         <div className="fixed inset-0 z-[110] bg-black/40 flex items-center justify-center px-4" onClick={() => setShowConfirm(false)}>
           <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-5" onClick={e => e.stopPropagation()}>
             <p className="text-[14px] font-bold text-[#062444] mb-1.5">Refer {name}?</p>
-            <p className="text-[13px] text-slate-500 mb-4">This will notify {staffOptions.find(s => s.id === referredTo)?.name ?? "the selected staff member"} to begin counseling.</p>
+            <p className="text-[13px] text-slate-500 mb-4">This will notify {staffOptions.find(s => s.id === referredTo)?.name ?? "the selected staff member"} to begin consultation.</p>
             {error && <p className="text-[12.5px] text-red-600 mb-3">{error}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setShowConfirm(false)} className="px-4 py-2 rounded-lg border border-[#062444]/15 text-[13px] font-semibold text-[#062444] hover:bg-[#f8fafd]">Cancel</button>

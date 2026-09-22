@@ -90,10 +90,10 @@ export function ScholarCounselingDashboardTab() {
       <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden">
         <div className="px-4 py-3 border-b border-[#f0f3f8] flex items-center gap-2">
           <AlertTriangle size={14} className="text-[#0088cc]" />
-          <p className="text-[13px] font-bold text-[#062444]">Scholars to be Counseled</p>
+          <p className="text-[13px] font-bold text-[#062444]">Scholars to be Consulted</p>
         </div>
         {queue.length === 0 ? (
-          <p className="px-4 py-8 text-center text-slate-400 text-sm">No scholars are currently queued for counseling.</p>
+          <p className="px-4 py-8 text-center text-slate-400 text-sm">No scholars are currently queued for consultation.</p>
         ) : (
           <div>
             {queue.map((r, i) => (
