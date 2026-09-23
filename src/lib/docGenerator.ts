@@ -1,4 +1,4 @@
-/**
+﻿/**
  * docGenerator.ts
  * Generates Word (.docx) documents matching the LGU-CDO formats:
  *   1. Accomplishment Report  (Accomplishment_Report_FORMAT.docx)
@@ -14,12 +14,11 @@ import {
   Document, Packer, Paragraph, Table, TableRow, TableCell,
   TextRun, AlignmentType, WidthType, BorderStyle,
   ShadingType, VerticalAlign, Header, ImageRun,
-  PageBorderDisplay, PageBorderOffsetFrom,
 } from 'docx'
 import { saveAs } from 'file-saver'
 import letterheadUrl from '@/imports/CEDO_Letterhead.png'
 
-// ── Shared helpers ───────────────────────────────────────────
+// â”€â”€ Shared helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const MONTHS = [
   'January','February','March','April','May','June',
@@ -29,7 +28,7 @@ const MONTHS = [
 const FONT = 'Arial'
 
 // Letterhead image is 1121x173px in the source template, placed at
-// 6081713 x 941112 EMU (÷9525 = px) in the header.
+// 6081713 x 941112 EMU (Ã·9525 = px) in the header.
 const LOGO_WIDTH = 639
 const LOGO_HEIGHT = 99
 
@@ -99,14 +98,14 @@ function emptyParagraph(): Paragraph {
   return new Paragraph({ children: [new TextRun({ text: '', font: FONT })] })
 }
 
-// ── 1. Accomplishment Report ─────────────────────────────────
+// â”€â”€ 1. Accomplishment Report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Format: LGU-CDO Accomplishment Report Template_JO_Form3 (landscape A4)
 //
 // [Letterhead]
 // ACCOMPLISHMENT REPORT
 // [Month date-range, year]  (bold, underlined)
 // Table: NAME | NATURE OF WORK | ACCOMPLISHMENT REPORT
-//   — a single row per staff member. The ACCOMPLISHMENT REPORT cell holds a
+//   â€” a single row per staff member. The ACCOMPLISHMENT REPORT cell holds a
 //     numbered list; each numbered item has a bold heading followed by a
 //     plain-text description, all within the same cell (no extra rows).
 // Prepared by: ................................ Approved by:
@@ -121,7 +120,7 @@ export interface AccomplishmentItem {
 
 export interface AccomplishmentReportOptions {
   staffName: string
-  natureOfWork: string      // e.g. "Learning and Instructional Support" — printed in the NATURE OF WORK column
+  natureOfWork: string      // e.g. "Learning and Instructional Support" â€” printed in the NATURE OF WORK column
   staffItem: string         // printed on the line under the staff name (now: Position)
   staffPosition?: string    // printed on the line below that (now: Nature of Work)
   dateRange: string         // e.g. "July 1-15, 2025"
@@ -129,7 +128,7 @@ export interface AccomplishmentReportOptions {
 }
 
 export async function generateAccomplishmentReport(opts: AccomplishmentReportOptions): Promise<void> {
-  // Column widths (DXA) — exact match to the official template's table grid
+  // Column widths (DXA) â€” exact match to the official template's table grid
   const COL_NAME    = 3675
   const COL_NATURE  = 2625
   const COL_ACCOMP  = 9015
@@ -159,7 +158,7 @@ export async function generateAccomplishmentReport(opts: AccomplishmentReportOpt
         headerCell('ACCOMPLISHMENT REPORT', COL_ACCOMP),
       ],
     }),
-    // Single data row — no per-accomplishment rows are added
+    // Single data row â€” no per-accomplishment rows are added
     new TableRow({
       children: [
         cell(
@@ -237,7 +236,7 @@ export async function generateAccomplishmentReport(opts: AccomplishmentReportOpt
   saveAs(blob, `Accomplishment_Report_${opts.staffName.replace(/\s+/g,'_')}.docx`)
 }
 
-// ── 2. Accomplishment History ────────────────────────────────
+// â”€â”€ 2. Accomplishment History â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Format: LGU-CDO Accomplishment Report Template_JO_Form3 (portrait A4)
 //
 // [Letterhead]
@@ -255,7 +254,7 @@ export interface AccomplishmentHistoryOptions {
 }
 
 export async function generateAccomplishmentHistory(opts: AccomplishmentHistoryOptions): Promise<void> {
-  // Column widths (DXA) — exact match to the official template's table grid
+  // Column widths (DXA) â€” exact match to the official template's table grid
   const COL_ACCOMP = 5944
   const COL_DATE   = 3544
   const TABLE_WIDTH = COL_ACCOMP + COL_DATE // 9488
@@ -318,7 +317,7 @@ export async function generateAccomplishmentHistory(opts: AccomplishmentHistoryO
   saveAs(blob, `Accomplishment_History_${opts.staffName.replace(/\s+/g,'_')}.docx`)
 }
 
-// ── Helper: format a date range string for display ─────────────
+// â”€â”€ Helper: format a date range string for display â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export function formatDateRange(month: number, year: number, half: 'first' | 'second' | 'full'): string {
   const m = MONTHS[month]
   const daysInMonth = new Date(year, month + 1, 0).getDate()
@@ -327,8 +326,8 @@ export function formatDateRange(month: number, year: number, half: 'first' | 'se
   return `${m} 1-${daysInMonth}, ${year}`
 }
 
-// ── 3. CTO Application ───────────────────────────────────────
-// PROVISIONAL layout — built from the standard CSC compensatory-time-off
+// â”€â”€ 3. CTO Application â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// PROVISIONAL layout â€” built from the standard CSC compensatory-time-off
 // request fields. Swap this for the official CEDO template once it's
 // supplied (see docs/FORMS_TEMPLATES.md).
 
@@ -375,10 +374,10 @@ export async function generateCTOForm(opts: CTOFormOptions): Promise<void> {
             labeledRow('Name of Employee', opts.staffName),
             labeledRow('Division', opts.division),
             labeledRow('Position', opts.position),
-            labeledRow('Date(s) Requested', opts.dateFrom === opts.dateTo ? opts.dateFrom : `${opts.dateFrom} – ${opts.dateTo}`),
+            labeledRow('Date(s) Requested', opts.dateFrom === opts.dateTo ? opts.dateFrom : `${opts.dateFrom} â€“ ${opts.dateTo}`),
             labeledRow('Day Type', opts.dayType),
             labeledRow('Total Day(s)', opts.totalDays),
-            labeledRow('Reason', opts.reason || '—'),
+            labeledRow('Reason', opts.reason || 'â€”'),
           ],
         }),
         emptyParagraph(), emptyParagraph(),
@@ -398,8 +397,8 @@ export async function generateCTOForm(opts: CTOFormOptions): Promise<void> {
   saveAs(blob, `CTO_Application_${opts.staffName.replace(/\s+/g,'_')}.docx`)
 }
 
-// ── 4. Pass Slip ──────────────────────────────────────────────
-// PROVISIONAL layout — built from the standard CSC pass slip fields.
+// â”€â”€ 4. Pass Slip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// PROVISIONAL layout â€” built from the standard CSC pass slip fields.
 // Swap this for the official CEDO template once it's supplied.
 
 export interface PassSlipFormOptions {
@@ -438,7 +437,7 @@ export async function generatePassSlipForm(opts: PassSlipFormOptions): Promise<v
             labeledRow('Date', opts.date),
             labeledRow('Time Out', opts.timeOut),
             labeledRow('Time In (expected)', opts.timeIn),
-            labeledRow('Purpose', opts.purpose || '—'),
+            labeledRow('Purpose', opts.purpose || 'â€”'),
           ],
         }),
         emptyParagraph(), emptyParagraph(),
@@ -455,15 +454,15 @@ export async function generatePassSlipForm(opts: PassSlipFormOptions): Promise<v
   saveAs(blob, `Pass_Slip_${opts.staffName.replace(/\s+/g,'_')}.docx`)
 }
 
-// ── 5. Scholars Information Report ───────────────────────────
+// â”€â”€ 5. Scholars Information Report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Milestone 4b. Unlike 1-4 above, this isn't reproducing a fixed
-// official template — it's a dynamic-width data table (landscape A4,
+// official template â€” it's a dynamic-width data table (landscape A4,
 // letterhead header, one row per scholar), closest in structure to
 // Accomplishment History's ACCOMPLISHMENTS | DATE table above, just with
 // a caller-supplied column set instead of two fixed columns. Column
 // labels/order/values are entirely supplied by the caller
 // (buildExportColumns() in ScholarsTab.tsx) so this function has no
-// knowledge of ScholarInformationRow, filters, or Supabase — it only
+// knowledge of ScholarInformationRow, filters, or Supabase â€” it only
 // lays out already-formatted string cells, the same separation of
 // concerns Accomplishment Report/History already keep from their own
 // callers.
@@ -471,7 +470,7 @@ export async function generatePassSlipForm(opts: PassSlipFormOptions): Promise<v
 export interface ScholarsInformationReportOptions {
   columns: string[]
   /**
-   * Relative width per column, same length/order as `columns` — e.g.
+   * Relative width per column, same length/order as `columns` â€” e.g.
    * passing 1.6 for the Name column and 1 for every other one mirrors
    * the Milestone 4a PDF export's own column-weighting exactly, so a
    * downloaded Word table reads with the same proportions as the PDF.
@@ -481,7 +480,7 @@ export interface ScholarsInformationReportOptions {
   rows: string[][]
   /** Display-formatted, e.g. "August 25, 2026, 3:45 PM". */
   generatedAt: string
-  /** e.g. "Filters: none" — the same describeAppliedFilters() output the PDF export's header block already uses, for a consistent "what this file does/doesn't include" summary across formats. */
+  /** e.g. "Filters: none" â€” the same describeAppliedFilters() output the PDF export's header block already uses, for a consistent "what this file does/doesn't include" summary across formats. */
   filtersSummary: string
 }
 
@@ -496,7 +495,7 @@ export async function generateScholarsInformationReport(opts: ScholarsInformatio
   const rawWidths = weights.map(w => (w / totalWeight) * TABLE_WIDTH)
   // Round every column except the last, then let the last absorb whatever
   // rounding remainder is left so the row still sums to exactly
-  // TABLE_WIDTH — docx expects a table's declared width to match its
+  // TABLE_WIDTH â€” docx expects a table's declared width to match its
   // columns' widths.
   const colWidths = rawWidths.map((w, i) =>
     i === rawWidths.length - 1
@@ -506,12 +505,12 @@ export async function generateScholarsInformationReport(opts: ScholarsInformatio
 
   const tableRows: TableRow[] = [
     new TableRow({
-      tableHeader: true, // repeats this row on every page — same convention as every other table above
+      tableHeader: true, // repeats this row on every page â€” same convention as every other table above
       children: opts.columns.map((label, i) => headerCell(label, colWidths[i])),
     }),
     ...opts.rows.map(row => new TableRow({
       children: row.map((value, i) => cell(
-        // Body text at 20 (10pt) rather than the usual 24 (12pt) default —
+        // Body text at 20 (10pt) rather than the usual 24 (12pt) default â€”
         // deliberate size step-down from the header, matching the same
         // header/body distinction the Milestone 4a PDF export already
         // makes for the same reason: up to 9 columns need to stay
@@ -541,7 +540,7 @@ export async function generateScholarsInformationReport(opts: ScholarsInformatio
           spacing: { after: 120 },
         }),
         new Paragraph({
-          children: [normal(`Generated ${opts.generatedAt} • ${opts.rows.length} scholar${opts.rows.length === 1 ? '' : 's'}`, 20)],
+          children: [normal(`Generated ${opts.generatedAt} â€¢ ${opts.rows.length} scholar${opts.rows.length === 1 ? '' : 's'}`, 20)],
           alignment: AlignmentType.CENTER,
           spacing: { after: 60 },
         }),
@@ -563,9 +562,9 @@ export async function generateScholarsInformationReport(opts: ScholarsInformatio
   saveAs(blob, `Scholars_Information_${new Date().toISOString().slice(0, 10)}.docx`)
 }
 
-// ── 5b. Financial Assistance Applicants Report ───────────────
+// â”€â”€ 5b. Financial Assistance Applicants Report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Same dynamic-width table structure as Scholars Information Report
-// above — deliberately a separate function per this project's own
+// above â€” deliberately a separate function per this project's own
 // "one function per document type" convention (see the comment on the
 // Submission Monitoring Roster Report below), not a generalization of
 // that one, since Financial Assistance applicants are a distinct
@@ -623,7 +622,7 @@ export async function generateFinancialAssistanceReport(opts: FinancialAssistanc
           spacing: { after: 120 },
         }),
         new Paragraph({
-          children: [normal(`Generated ${opts.generatedAt} • ${opts.rows.length} applicant${opts.rows.length === 1 ? '' : 's'}`, 20)],
+          children: [normal(`Generated ${opts.generatedAt} â€¢ ${opts.rows.length} applicant${opts.rows.length === 1 ? '' : 's'}`, 20)],
           alignment: AlignmentType.CENTER,
           spacing: { after: 60 },
         }),
@@ -645,10 +644,10 @@ export async function generateFinancialAssistanceReport(opts: FinancialAssistanc
   saveAs(blob, `Financial_Assistance_Applicants_${new Date().toISOString().slice(0, 10)}.docx`)
 }
 
-// ── 6. Submission Monitoring Roster Report ───────────────────
+// â”€â”€ 6. Submission Monitoring Roster Report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Same dynamic-width table structure as Scholars Information Report
 // above (reused deliberately rather than generalizing that function's
-// hardcoded title/filename into a shared helper — this project's own
+// hardcoded title/filename into a shared helper â€” this project's own
 // convention here is one function per document type, matching Pass
 // Slip / Accomplishment Report / Accomplishment History / Scholars
 // Information each having their own function despite some layout
@@ -663,7 +662,7 @@ export interface SubmissionRosterReportOptions {
   columnWeights?: number[]
   rows: string[][]
   generatedAt: string
-  /** e.g. "Filters: Year Level = 3rd Year; Status = Needs Resubmission" — same convention as ScholarsInformationReportOptions.filtersSummary. */
+  /** e.g. "Filters: Year Level = 3rd Year; Status = Needs Resubmission" â€” same convention as ScholarsInformationReportOptions.filtersSummary. */
   filtersSummary: string
 }
 
@@ -716,7 +715,7 @@ export async function generateSubmissionRosterReport(opts: SubmissionRosterRepor
           spacing: { after: 120 },
         }),
         new Paragraph({
-          children: [normal(`Generated ${opts.generatedAt} • ${opts.rows.length} scholar${opts.rows.length === 1 ? '' : 's'}`, 20)],
+          children: [normal(`Generated ${opts.generatedAt} â€¢ ${opts.rows.length} scholar${opts.rows.length === 1 ? '' : 's'}`, 20)],
           alignment: AlignmentType.CENTER,
           spacing: { after: 60 },
         }),
@@ -738,12 +737,12 @@ export async function generateSubmissionRosterReport(opts: SubmissionRosterRepor
   saveAs(blob, `Submission_Roster_${opts.activityName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.docx`)
 }
 
-// ── 7. Comprehensive Scholar Profile ─────────────────────────
+// â”€â”€ 7. Comprehensive Scholar Profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // The Scholarship Program Information tab's per-scholar export: basic
 // info plus three subsystem sections (SDP, Formation Activities, Quest).
 // Unlike every report above, this is a single-entity, multi-section
 // document rather than one flat table, so it's built from scratch rather
-// than reusing generateScholarsInformationReport's table layout — but it
+// than reusing generateScholarsInformationReport's table layout â€” but it
 // still reuses the same low-level helpers (labeledRow, headerCell, cell,
 // normal, bold) already defined in this file. Kept generic (plain string
 // fields, no imported sead-specific types) to match this file's existing
@@ -814,32 +813,32 @@ export async function generateComprehensiveScholarProfile(opts: ComprehensiveSch
           rows: [
             labeledRow('Scholar ID', s.scholarIdNumber),
             labeledRow('Name', `${s.lastName}, ${s.firstName} ${s.middleName}`.trim()),
-            labeledRow('School', s.school || '—'),
-            labeledRow('Program', s.course || '—'),
-            labeledRow('Year Level', s.yearLevel || '—'),
-            labeledRow('Status', s.status || '—'),
-            labeledRow('Barangay', s.barangay || '—'),
-            labeledRow('Birthday', s.birthday || '—'),
-            labeledRow('Civil Status', s.civilStatus || '—'),
-            labeledRow('Contact No.', s.contactNo || '—'),
+            labeledRow('School', s.school || 'â€”'),
+            labeledRow('Program', s.course || 'â€”'),
+            labeledRow('Year Level', s.yearLevel || 'â€”'),
+            labeledRow('Status', s.status || 'â€”'),
+            labeledRow('Barangay', s.barangay || 'â€”'),
+            labeledRow('Birthday', s.birthday || 'â€”'),
+            labeledRow('Civil Status', s.civilStatus || 'â€”'),
+            labeledRow('Contact No.', s.contactNo || 'â€”'),
           ],
         }),
 
-        sectionHeading(`SDP — Completed Activities (${opts.sdpCompleted.length})`),
+        sectionHeading(`SDP â€” Completed Activities (${opts.sdpCompleted.length})`),
         ...simpleTable(
           ['Activity', 'Category', 'Date'], [5288, 2200, 2000],
-          opts.sdpCompleted.map(a => [a.activityName, a.category || '—', a.date || '—']),
+          opts.sdpCompleted.map(a => [a.activityName, a.category || 'â€”', a.date || 'â€”']),
           'No completed SDP activities.',
         ),
 
-        sectionHeading(`Formation Activities — Attended (${opts.formationAttended.length})`),
+        sectionHeading(`Formation Activities â€” Attended (${opts.formationAttended.length})`),
         ...simpleTable(
           ['Activity', 'Date', 'Venue'], [4288, 2400, 2800],
-          opts.formationAttended.map(a => [a.activityName, a.dateTime || '—', a.venue || '—']),
+          opts.formationAttended.map(a => [a.activityName, a.dateTime || 'â€”', a.venue || 'â€”']),
           'No formation activity attendance recorded.',
         ),
 
-        sectionHeading(`Quest — Subjects (${opts.questSubjects.length})`),
+        sectionHeading(`Quest â€” Subjects (${opts.questSubjects.length})`),
         ...simpleTable(
           ['Subject', 'Topics Completed', 'Score', 'Status'], [4488, 2400, 1400, 1200],
           opts.questSubjects.map(q => [q.subjectName, String(q.topicCount), `${q.percentage.toFixed(1)}%`, q.isCompleted ? 'Completed' : 'In Progress']),
@@ -851,233 +850,4 @@ export async function generateComprehensiveScholarProfile(opts: ComprehensiveSch
 
   const blob = await Packer.toBlob(doc)
   saveAs(blob, `Scholar_Profile_${s.scholarIdNumber}_${new Date().toISOString().slice(0, 10)}.docx`)
-}
-
-// ── 7. Scholar Counseling Referral Form (Form R5) ────────────
-// Reproduces the office's actual paper Referral Form layout (photo
-// supplied directly, not a generic label/value form like CTO/Pass Slip
-// above): a "FORM R5" badge top-right, a two-column body — labeled
-// fill-in fields + checkboxes + the two subject matrices on the left,
-// a bordered REMARKS box on the right — and a bottom strip for
-// Refer by/to, Date, Endorsed for, and Noted by. Only ever printed once
-// a referral has been Approved, so the Division Head's actual signature
-// image is embedded on the "Noted by" line instead of a blank line.
-
-export interface ReferralSubjectRow { subjectCode: string; semesterAcademicYear: string; yearLevel: string }
-
-const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }
-const ALL_NO_BORDERS = { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER }
-const RULE_BORDER = { style: BorderStyle.SINGLE, size: 4, color: '000000' }
-const NAVY = '062444'
-
-function borderlessCell(children: (Paragraph | Table)[], width: number, vAlign: (typeof VerticalAlign)[keyof typeof VerticalAlign] = VerticalAlign.TOP): TableCell {
-  return new TableCell({ children, width: { size: width, type: WidthType.DXA }, verticalAlign: vAlign, borders: ALL_NO_BORDERS, margins: { top: 20, bottom: 20, left: 0, right: 60 } })
-}
-
-/** Bold label followed by the filled-in, underlined value, padded with trailing underlined spaces so the rule keeps running toward the margin like the paper form's blank fill-in line. */
-function labeledLine(label: string, value: string, size = 20): Paragraph {
-  const padded = `${value || ''}${' '.repeat(22)}`
-  return new Paragraph({
-    children: [bold(`${label}: `, size), new TextRun({ text: padded, size, font: FONT, underline: {} })],
-    spacing: { after: 100 },
-  })
-}
-
-/** One line of ☑/☐ options — the selected value (matched by exact string) shows checked. */
-function checkboxLine(options: string[], selected: string, size = 19): Paragraph {
-  const children: TextRun[] = []
-  options.forEach((opt, i) => {
-    if (i > 0) children.push(normal('     ', size))
-    children.push(normal(opt === selected ? '☑ ' : '☐ ', size + 2))
-    children.push(normal(opt, size))
-  })
-  return new Paragraph({ children, spacing: { after: 100 } })
-}
-
-function ruledCell(text: string, width: number, isHeader: boolean): TableCell {
-  return new TableCell({
-    width: { size: width, type: WidthType.DXA },
-    children: [new Paragraph({ children: [isHeader ? new TextRun({ text, italics: true, size: 16, font: FONT }) : normal(text || ' ', 19)] })],
-    borders: { top: NO_BORDER, left: NO_BORDER, right: NO_BORDER, bottom: RULE_BORDER },
-    margins: { top: 20, bottom: 60, left: 40, right: 40 },
-  })
-}
-
-/** Failed Subjects / Lacking Grades — ruled fill-in lines (bottom border only per cell), matching the paper form's look, not a bordered data grid. */
-function ruledMatrixTable(rows: ReferralSubjectRow[]): Table {
-  const COL: [number, number, number] = [1300, 2200, 700]
-  const displayRows = rows.length ? rows : [{ subjectCode: '', semesterAcademicYear: '', yearLevel: '' }]
-  return new Table({
-    width: { size: COL[0] + COL[1] + COL[2], type: WidthType.DXA },
-    columnWidths: COL,
-    rows: [
-      new TableRow({ children: [ruledCell('(Subject Code)', COL[0], true), ruledCell('(Semester and Academic Year)', COL[1], true), ruledCell('(Yr. Lvl)', COL[2], true)] }),
-      ...displayRows.map(r => new TableRow({ children: [ruledCell(r.subjectCode, COL[0], false), ruledCell(r.semesterAcademicYear, COL[1], false), ruledCell(r.yearLevel, COL[2], false)] })),
-    ],
-  })
-}
-
-export interface ReferralFormOptions {
-  scholarIdNumber: string
-  name: string
-  courseYear: string
-  school: string
-  barangay: string
-  contactNo: string
-  previousSemesterStatus: string
-  failedSubjects: ReferralSubjectRow[]
-  lackingGrades: ReferralSubjectRow[]
-  referredByName: string
-  referredToName: string
-  referralDate: string   // display-formatted
-  endorsedFor: string
-  remarks: string
-  approvedByName: string
-  approvedAt: string      // display-formatted
-  /** The Division Head's actual approved signature image — null only if it genuinely couldn't be fetched. */
-  signature: { buffer: ArrayBuffer; width: number; height: number } | null
-}
-
-export async function generateReferralForm(opts: ReferralFormOptions): Promise<void> {
-  const header = await buildLetterheadHeader()
-  const USABLE_WIDTH = 10466 // 11906 page width − 720 left/right margins
-  const LEFT_COL = 4966 // ~47/53 split, matching the paper form's proportions
-  const RIGHT_COL = USABLE_WIDTH - LEFT_COL
-
-  const signatureParagraph = opts.signature
-    ? new Paragraph({ children: [new ImageRun({ data: opts.signature.buffer, transformation: { width: opts.signature.width, height: opts.signature.height } })], spacing: { before: 40, after: 0 } })
-    : new Paragraph({ children: [normal('(Signature unavailable)', 18)], spacing: { before: 40, after: 0 } })
-
-  // A precise 3-row × 2-column grid — Refer by/Endorsed for, Refer to/On
-  // Probation Status, Date/Removal+Renewal+Noted by — matching the paper
-  // form's exact row alignment, not two independently-stacked columns.
-  const bottomLeftWidth = Math.round(LEFT_COL * 0.4)
-  const bottomRightWidth = LEFT_COL - bottomLeftWidth
-  const bottomStrip = new Table({
-    width: { size: LEFT_COL, type: WidthType.DXA },
-    columnWidths: [bottomLeftWidth, bottomRightWidth],
-    rows: [
-      new TableRow({ children: [
-        borderlessCell([labeledLine('Refer by', opts.referredByName)], bottomLeftWidth),
-        borderlessCell([new Paragraph({ children: [bold('Endorsed for:', 20)] })], bottomRightWidth),
-      ] }),
-      new TableRow({ children: [
-        borderlessCell([labeledLine('Refer to', opts.referredToName)], bottomLeftWidth),
-        borderlessCell([checkboxLine(['On Probation Status'], opts.endorsedFor)], bottomRightWidth),
-      ] }),
-      new TableRow({ children: [
-        borderlessCell([labeledLine('Date', opts.referralDate)], bottomLeftWidth),
-        borderlessCell([
-          new Paragraph({ children: (() => {
-            const children: TextRun[] = []
-            ;['Removal', 'Renewal'].forEach((opt, i) => {
-              if (i > 0) children.push(normal('   ', 19))
-              children.push(normal(opt === opts.endorsedFor ? '☑ ' : '☐ ', 21))
-              children.push(normal(opt, 19))
-            })
-            children.push(normal('   ', 19), bold('Noted by:', 19))
-            return children
-          })() }),
-          signatureParagraph,
-          new Paragraph({ children: [normal(opts.approvedByName, 18)], alignment: AlignmentType.RIGHT }),
-        ], bottomRightWidth),
-      ] }),
-    ],
-  })
-
-  const leftColumn: (Paragraph | Table)[] = [
-    labeledLine('NAME', opts.name),
-    labeledLine('COURSE & YR. LEVEL.', opts.courseYear),
-    labeledLine('SCHOOL', opts.school),
-    labeledLine('BARANGAY', opts.barangay),
-    labeledLine('CONTACT NUMBER', opts.contactNo),
-    new Paragraph({ children: [bold('Previous Semester Status:', 20)], spacing: { before: 120, after: 60 } }),
-    checkboxLine(['Retained', 'On Probation', 'Special Recon'], opts.previousSemesterStatus),
-    new Paragraph({ children: [bold('Failed Subject/s (since admission):', 20)], spacing: { before: 160, after: 60 } }),
-    ruledMatrixTable(opts.failedSubjects),
-    new Paragraph({ children: [bold('Lacking Grade/s:', 20)], spacing: { before: 160, after: 60 } }),
-    ruledMatrixTable(opts.lackingGrades),
-    new Paragraph({ children: [normal('', 20)], spacing: { before: 160 } }),
-    bottomStrip,
-  ]
-
-  // A small badge (not a full-width bar) so it matches the "FORM R5" badge's
-  // own cell-shading look exactly, rather than a stretched paragraph fill.
-  const remarksBadgeWidth = 1800
-  const remarksBadge = new Table({
-    width: { size: remarksBadgeWidth, type: WidthType.DXA },
-    columnWidths: [remarksBadgeWidth],
-    rows: [new TableRow({ children: [
-      new TableCell({
-        width: { size: remarksBadgeWidth, type: WidthType.DXA },
-        shading: { type: ShadingType.CLEAR, fill: NAVY },
-        borders: ALL_NO_BORDERS,
-        margins: { top: 60, bottom: 60, left: 100, right: 100 },
-        children: [new Paragraph({ children: [new TextRun({ text: 'REMARKS:', bold: true, color: 'FFFFFF', size: 20, font: FONT })] })],
-      }),
-    ] })],
-  })
-
-  const remarksCell = new TableCell({
-    width: { size: RIGHT_COL, type: WidthType.DXA },
-    verticalAlign: VerticalAlign.TOP,
-    borders: { top: RULE_BORDER, bottom: RULE_BORDER, left: RULE_BORDER, right: RULE_BORDER },
-    margins: { top: 100, bottom: 100, left: 100, right: 100 },
-    children: [
-      remarksBadge,
-      new Paragraph({ children: [normal('', 20)], spacing: { after: 100 } }),
-      new Paragraph({ children: [normal(opts.remarks || '', 20)] }),
-    ],
-  })
-
-  const bodyTable = new Table({
-    width: { size: USABLE_WIDTH, type: WidthType.DXA },
-    columnWidths: [LEFT_COL, RIGHT_COL],
-    rows: [new TableRow({ children: [borderlessCell(leftColumn, LEFT_COL), remarksCell] })],
-  })
-
-  // Title shares the same row as the badge (both vertically centered),
-  // matching the paper form's header band — not a separate line below it.
-  const titleBadgeRow = new Table({
-    width: { size: USABLE_WIDTH, type: WidthType.DXA },
-    columnWidths: [USABLE_WIDTH - 2200, 2200],
-    rows: [new TableRow({ children: [
-      borderlessCell([new Paragraph({ children: [bold('REFERRAL FORM', 30)], alignment: AlignmentType.CENTER })], USABLE_WIDTH - 2200, VerticalAlign.CENTER),
-      new TableCell({
-        width: { size: 2200, type: WidthType.DXA },
-        shading: { type: ShadingType.CLEAR, fill: NAVY },
-        verticalAlign: VerticalAlign.CENTER,
-        borders: ALL_NO_BORDERS,
-        margins: { top: 60, bottom: 60, left: 100, right: 100 },
-        children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "FORM R5 (Office's Copy)", bold: true, color: 'FFFFFF', size: 16, font: FONT })] })],
-      }),
-    ] })],
-  })
-
-  const doc = new Document({
-    sections: [{
-      properties: {
-        page: {
-          size: { width: 11906, height: 16838 },
-          margin: { top: 500, right: 720, bottom: 500, left: 720, header: 500, footer: 500 },
-          borders: {
-            pageBorders: { display: PageBorderDisplay.ALL_PAGES, offsetFrom: PageBorderOffsetFrom.PAGE },
-            pageBorderTop: { style: BorderStyle.DOTTED, size: 12, color: '000000', space: 12 },
-            pageBorderRight: { style: BorderStyle.DOTTED, size: 12, color: '000000', space: 12 },
-            pageBorderBottom: { style: BorderStyle.DOTTED, size: 12, color: '000000', space: 12 },
-            pageBorderLeft: { style: BorderStyle.DOTTED, size: 12, color: '000000', space: 12 },
-          },
-        },
-      },
-      headers: { default: header },
-      children: [
-        titleBadgeRow,
-        new Paragraph({ children: [], spacing: { after: 160 } }),
-        bodyTable,
-      ],
-    }],
-  })
-
-  const blob = await Packer.toBlob(doc)
-  saveAs(blob, `Referral_Form_${opts.name.replace(/\s+/g, '_')}.docx`)
 }

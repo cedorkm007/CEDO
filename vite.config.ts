@@ -100,7 +100,7 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
   },
-  assetsInclude: ['**/*.svg', '**/*.csv'],
+  assetsInclude: ['**/*.svg', '**/*.csv', '**/*.docx'],
   // Expose env variables prefixed with VITE_ to the client
   envPrefix: 'VITE_',
   define: {

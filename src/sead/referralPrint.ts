@@ -1,4 +1,4 @@
-import { generateReferralForm, type ReferralSubjectRow } from "@/lib/docGenerator";
+import { generateReferralFormFromTemplate } from "@/lib/referralFormTemplate";
 import { fetchSignatureUrl, fetchMyStaffName, type QueuedReferral } from "./referralApi";
 
 const MAX_SIGNATURE_WIDTH = 180;
@@ -25,33 +25,31 @@ function formatDate(iso: string | null): string {
 
 /**
  * Generates the printable/downloadable Referral Form (.docx) for an
- * APPROVED referral — embeds the Division Head's actual approved
- * signature image rather than a blank signature line, since printing
- * only makes sense once that signature already exists.
+ * APPROVED referral by filling the office's own real Word template
+ * (src/assets/ReferralFormTemplate.docx) — embeds the Division Head's
+ * actual approved signature image rather than a blank signature line,
+ * since printing only makes sense once that signature already exists.
  */
 export async function printApprovedReferral(referral: QueuedReferral): Promise<void> {
   const [signature, myName] = await Promise.all([
     loadSignature(referral.signaturePath),
     fetchMyStaffName(),
   ]);
-  const toRow = (r: { subjectCode: string; semesterAcademicYear: string; yearLevel: string }): ReferralSubjectRow => r;
-  await generateReferralForm({
-    scholarIdNumber: referral.scholarIdNumber,
+  await generateReferralFormFromTemplate({
     name: referral.name,
     courseYear: `${referral.course || "—"} / ${referral.yearLevel || "—"}`,
     school: referral.school,
     barangay: referral.barangay,
     contactNo: referral.contactNo,
     previousSemesterStatus: referral.previousSemesterStatus,
-    failedSubjects: referral.failedSubjects.map(toRow),
-    lackingGrades: referral.lackingGrades.map(toRow),
+    failedSubjects: referral.failedSubjects,
+    lackingGrades: referral.lackingGrades,
     referredByName: referral.referredByName,
     referredToName: myName,
     referralDate: formatDate(referral.referralDate),
     endorsedFor: referral.endorsedFor,
     remarks: referral.remarks,
     approvedByName: referral.approvedByName || "—",
-    approvedAt: formatDate(referral.approvedAt),
     signature,
   });
 }
