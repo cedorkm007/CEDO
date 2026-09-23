@@ -18,9 +18,17 @@ async function loadSignature(path: string | null): Promise<{ buffer: ArrayBuffer
   return { buffer, width, height };
 }
 
+// AP-style abbreviations, matching how the office fills the printed Date field by hand
+// (e.g. "Sept. 23, 2026") — May/June/July are already short enough to leave unabbreviated.
+const ABBREVIATED_MONTHS = [
+  "Jan.", "Feb.", "March", "April", "May", "June",
+  "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec.",
+];
+
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso.includes("T") ? iso : `${iso}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const date = new Date(iso.includes("T") ? iso : `${iso}T00:00:00`);
+  return `${ABBREVIATED_MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 }
 
 /**

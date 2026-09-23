@@ -22,14 +22,22 @@ function replaceOnce(oldStr, newStr, label) {
 
 // ── Simple field values: each of these labels is immediately followed by an
 // empty paragraph in the next table cell — insert a run with the tag there. ──
-function fillEmptyCellAfterLabel(labelText, tag) {
-  // Find the label's own <w:p>...</w:p>, then the very next empty <w:p>...</w:p>
-  // (the value cell), and insert a run inside it.
+function fillEmptyCellAfterLabel(labelText, tag, skipCells = 0) {
+  // Find the label's own <w:p>...</w:p>, then the Nth-following empty
+  // <w:p>...</w:p> (the value cell), and insert a run inside it. Most labels
+  // are followed immediately by their value cell (skipCells = 0), but "Date:"
+  // is split into two adjacent blank cells on the real form and the office
+  // fills the second one, not the first — confirmed against the office's own
+  // hand-filled reference copy.
   const labelIdx = xml.indexOf(`<w:t>${labelText}</w:t>`);
   if (labelIdx === -1) throw new Error(`Label not found: ${labelText}`);
-  const afterLabelP = xml.indexOf('</w:p></w:tc>', labelIdx) + '</w:p></w:tc>'.length;
+  let cursor = xml.indexOf('</w:p></w:tc>', labelIdx) + '</w:p></w:tc>'.length;
+  for (let i = 0; i < skipCells; i++) {
+    const skipPStart = xml.indexOf('<w:p ', cursor);
+    cursor = xml.indexOf('</w:p>', skipPStart) + '</w:p>'.length;
+  }
   // The next <w:p ...>...</w:p> is the value cell's paragraph (self-contained, no runs).
-  const nextPStart = xml.indexOf('<w:p ', afterLabelP);
+  const nextPStart = xml.indexOf('<w:p ', cursor);
   const pPrEnd = xml.indexOf('</w:pPr>', nextPStart) + '</w:pPr>'.length;
   const closeP = xml.indexOf('</w:p>', pPrEnd);
   const run = `<w:r><w:t xml:space="preserve">{${tag}}</w:t></w:r>`;
@@ -43,7 +51,7 @@ fillEmptyCellAfterLabel('BARANGAY:', 'barangay');
 fillEmptyCellAfterLabel('CONTACT NUMBER:', 'contactNo');
 fillEmptyCellAfterLabel('Referred by:', 'referredByName');
 fillEmptyCellAfterLabel('Referred to:', 'referredToName');
-fillEmptyCellAfterLabel('Date:', 'referralDate');
+fillEmptyCellAfterLabel('Date:', 'referralDate', 1);
 
 // ── Previous Semester Status checkboxes ──
 replaceOnce(
