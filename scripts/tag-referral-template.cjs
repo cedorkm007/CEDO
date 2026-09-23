@@ -1,9 +1,20 @@
-// One-time script: takes the office's hand-built "REFERRAL FORM.docx" (a real
-// native Word table, not an image) and inserts {tag}-style placeholders into
-// its currently-empty field cells and checkbox labels, producing a template
-// docxtemplater can render at runtime. Run once with:
-//   node scripts/tag-referral-template.cjs "<path to source docx>"
+// One-time script: takes the office's own HAND-FILLED example Referral Form
+// (a real native Word table, already filled in with a worked example so it
+// carries the exact formatting Word applies once you type into it — not the
+// blank form's empty-cell defaults) and replaces each filled-in example
+// value with a {tag}-style placeholder docxtemplater can render at runtime.
+// Run once with:
+//   node scripts/tag-referral-template.cjs "<path to filled example .docx>"
 // Output: src/assets/ReferralFormTemplate.docx
+//
+// The office's example (as of the file this was built from) fills in:
+//   Name: RACHEL ABA · Course/Yr: BSMA / 3rd Year · School: Capitol University
+//   Barangay: Pagatpat · Contact: 9938395070 · Status: On Probation (checked)
+//   Failed Subjects row 1: Calculus I / 1st semester 2025-2026 / 3
+//   Referred by/to: Julius Jay · Endorsed for: On Probation Status (checked)
+//   Date: Sept. 23, 2026 · Approved by: Roxanne Jul L. Tandang
+// Lacking Grades and Failed Subjects rows 2-3 were left blank in the example,
+// so those are filled positionally instead (like the original blank cells).
 const fs = require('fs');
 const path = require('path');
 const PizZip = require('pizzip');
@@ -14,137 +25,127 @@ if (!srcPath) { console.error('Usage: node tag-referral-template.cjs <source.doc
 const zip = new PizZip(fs.readFileSync(srcPath));
 let xml = zip.file('word/document.xml').asText();
 
-function replaceOnce(oldStr, newStr, label) {
-  const count = xml.split(oldStr).length - 1;
+const originalRows = xml.match(/<w:tr\b[\s\S]*?<\/w:tr>/g);
+if (!originalRows || originalRows.length !== 21) {
+  throw new Error(`Expected 21 table rows, found ${originalRows ? originalRows.length : 0}`);
+}
+
+function replaceRowOnce(rowXml, oldStr, newStr, label) {
+  const count = rowXml.split(oldStr).length - 1;
   if (count !== 1) throw new Error(`Expected exactly 1 occurrence of ${label}, found ${count}`);
-  xml = xml.replace(oldStr, newStr);
+  return rowXml.replace(oldStr, newStr);
 }
 
-// ── Simple field values: each of these labels is immediately followed by an
-// empty paragraph in the next table cell — insert a run with the tag there. ──
-function fillEmptyCellAfterLabel(labelText, tag, skipCells = 0) {
-  // Find the label's own <w:p>...</w:p>, then the Nth-following empty
-  // <w:p>...</w:p> (the value cell), and insert a run inside it. Most labels
-  // are followed immediately by their value cell (skipCells = 0), but "Date:"
-  // is split into two adjacent blank cells on the real form and the office
-  // fills the second one, not the first — confirmed against the office's own
-  // hand-filled reference copy.
-  const labelIdx = xml.indexOf(`<w:t>${labelText}</w:t>`);
-  if (labelIdx === -1) throw new Error(`Label not found: ${labelText}`);
-  let cursor = xml.indexOf('</w:p></w:tc>', labelIdx) + '</w:p></w:tc>'.length;
-  for (let i = 0; i < skipCells; i++) {
-    const skipPStart = xml.indexOf('<w:p ', cursor);
-    cursor = xml.indexOf('</w:p>', skipPStart) + '</w:p>'.length;
+/** Replaces the Nth (1-indexed) checkbox glyph run found in rowXml with a {tag} placeholder run. */
+function replaceCheckboxSequence(rowXml, tags) {
+  let result = rowXml;
+  let cursor = 0;
+  for (const tag of tags) {
+    const m = /<w:t>[☐☑]<\/w:t>/.exec(result.slice(cursor));
+    if (!m) throw new Error(`Ran out of checkbox glyphs looking for {${tag}}`);
+    const idx = cursor + m.index;
+    const replacement = `<w:t>{${tag}}</w:t>`;
+    result = result.slice(0, idx) + replacement + result.slice(idx + m[0].length);
+    cursor = idx + replacement.length;
   }
-  // The next <w:p ...>...</w:p> is the value cell's paragraph (self-contained, no runs).
-  const nextPStart = xml.indexOf('<w:p ', cursor);
-  const pPrEnd = xml.indexOf('</w:pPr>', nextPStart) + '</w:pPr>'.length;
-  const closeP = xml.indexOf('</w:p>', pPrEnd);
+  return result;
+}
+
+function insertIntoEmptyCell(cellXml, tag) {
+  const pPrEnd = cellXml.indexOf('</w:pPr>') + '</w:pPr>'.length;
+  const closeP = cellXml.indexOf('</w:p>', pPrEnd);
   const run = `<w:r><w:t xml:space="preserve">{${tag}}</w:t></w:r>`;
-  xml = xml.slice(0, closeP) + run + xml.slice(closeP);
+  return cellXml.slice(0, closeP) + run + cellXml.slice(closeP);
 }
 
-fillEmptyCellAfterLabel('NAME:', 'name');
-fillEmptyCellAfterLabel('COURSE &amp; YR. LEVEL:', 'courseYear');
-fillEmptyCellAfterLabel('SCHOOL:', 'school');
-fillEmptyCellAfterLabel('BARANGAY:', 'barangay');
-fillEmptyCellAfterLabel('CONTACT NUMBER:', 'contactNo');
-fillEmptyCellAfterLabel('Referred by:', 'referredByName');
-fillEmptyCellAfterLabel('Referred to:', 'referredToName');
-fillEmptyCellAfterLabel('Date:', 'referralDate', 1);
-
-// ── Previous Semester Status checkboxes ──
-replaceOnce(
-  '<w:t>Retained</w:t>',
-  '<w:t xml:space="preserve">{cbRetained} Retained</w:t>',
-  'Retained checkbox slot',
-);
-replaceOnce(
-  '<w:t xml:space="preserve">  On Probation  Special Reconsideration</w:t>',
-  '<w:t xml:space="preserve">  {cbOnProbation} On Probation   {cbSpecialRecon} Special Reconsideration</w:t>',
-  'On Probation/Special Reconsideration checkbox slot',
-);
-
-// ── Endorsed for checkboxes ──
-replaceOnce(
-  '<w:t>On Probation Status Removal Renewal</w:t>',
-  '<w:t xml:space="preserve">{cbEndorsedProbation} On Probation Status   {cbEndorsedRemoval} Removal   {cbEndorsedRenewal} Renewal</w:t>',
-  'Endorsed for checkboxes slot',
-);
-
-// ── Failed Subjects / Lacking Grades matrix (3 fixed ruled rows each,
-// matching the physical form) — each empty <w:p> in these rows gets one
-// positional tag. ──
-function fillMatrixRow(precedingMarker, occurrenceIndexFromMarker, tags) {
-  // Not used directly — matrix cells are filled by direct sequential scan below.
+/** Matrix rows are 7 cells: code, divider, semester/year, divider, yr level, and 2 vMerge-continue fillers. */
+function fillEmptyMatrixRow(rowXml, [codeTag, semTag, yrTag]) {
+  const cells = rowXml.match(/<w:tc\b[\s\S]*?<\/w:tc>/g);
+  if (!cells || cells.length !== 7) throw new Error(`Expected 7 cells in matrix row, found ${cells ? cells.length : 0}`);
+  let result = rowXml;
+  [[0, codeTag], [2, semTag], [4, yrTag]].forEach(([cellIndex, tag]) => {
+    const original = cells[cellIndex];
+    const count = result.split(original).length - 1;
+    if (count !== 1) throw new Error(`Matrix cell ${cellIndex} not uniquely found in its own row (count ${count})`);
+    result = result.replace(original, insertIntoEmptyCell(original, tag));
+  });
+  return result;
 }
 
-// The 6 matrix rows (3 failed-subject + 3 lacking-grade) each have exactly 3
-// data cells (code / semester+year / yr level), all currently-empty <w:p>
-// with no <w:pPr><w:rPr> content difference from each other — so we walk them
-// in document order using the ruled-row anchor text that precedes each block.
-function fillMatrixBlock(afterText, rowTagSets) {
-  let cursor = xml.indexOf(afterText);
-  if (cursor === -1) throw new Error(`Matrix anchor not found: ${afterText}`);
-  for (const [codeTag, semTag, yrTag] of rowTagSets) {
-    for (const tag of [codeTag, semTag, yrTag]) {
-      const pStart = xml.indexOf('<w:p ', cursor);
-      const pPrEnd = xml.indexOf('</w:pPr>', pStart) + '</w:pPr>'.length;
-      const closeP = xml.indexOf('</w:p>', pPrEnd);
-      const run = `<w:r><w:t xml:space="preserve">{${tag}}</w:t></w:r>`;
-      xml = xml.slice(0, closeP) + run + xml.slice(closeP);
-      cursor = closeP + run.length;
-    }
-  }
-}
+const rows = [...originalRows];
 
-fillMatrixBlock('(Yr. </w:t></w:r><w:proofErr w:type="spellStart"/><w:r w:rsidRPr="00101CA9"><w:rPr><w:i/><w:sz w:val="14"/></w:rPr><w:t>Lvl</w:t></w:r><w:proofErr w:type="spellEnd"/><w:r w:rsidRPr="00101CA9"><w:rPr><w:i/><w:sz w:val="14"/></w:rPr><w:t>)</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="283" w:type="dxa"/><w:vMerge/>', [
-  ['fs0code', 'fs0sem', 'fs0yr'],
-  ['fs1code', 'fs1sem', 'fs1yr'],
-  ['fs2code', 'fs2sem', 'fs2yr'],
-]);
-
-// Second occurrence of the same header pattern precedes the Lacking Grades rows.
+// ── Row 0: NAME + REMARKS badge (remarks value appended after the badge) ──
+rows[0] = replaceRowOnce(rows[0], '<w:t>RACHEL ABA</w:t>', '<w:t>{name}</w:t>', 'NAME value');
 {
-  const marker = '(Yr. </w:t></w:r><w:proofErr w:type="spellStart"/><w:r w:rsidRPr="00101CA9"><w:rPr><w:i/><w:sz w:val="14"/></w:rPr><w:t>Lvl</w:t></w:r><w:proofErr w:type="spellEnd"/><w:r w:rsidRPr="00101CA9"><w:rPr><w:i/><w:sz w:val="14"/></w:rPr><w:t>)</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="283" w:type="dxa"/><w:vMerge/>';
-  const firstIdx = xml.indexOf(marker);
-  const secondIdx = xml.indexOf(marker, firstIdx + marker.length);
-  if (secondIdx === -1) throw new Error('Lacking Grades header marker not found');
-  let cursor = secondIdx;
-  for (const [codeTag, semTag, yrTag] of [['lg0code', 'lg0sem', 'lg0yr'], ['lg1code', 'lg1sem', 'lg1yr'], ['lg2code', 'lg2sem', 'lg2yr']]) {
-    for (const tag of [codeTag, semTag, yrTag]) {
-      const pStart = xml.indexOf('<w:p ', cursor);
-      const pPrEnd = xml.indexOf('</w:pPr>', pStart) + '</w:pPr>'.length;
-      const closeP = xml.indexOf('</w:p>', pPrEnd);
-      const run = `<w:r><w:t xml:space="preserve">{${tag}}</w:t></w:r>`;
-      xml = xml.slice(0, closeP) + run + xml.slice(closeP);
-      cursor = closeP + run.length;
-    }
-  }
+  const remarksIdx = rows[0].indexOf('REMARKS:');
+  const badgeParaEnd = rows[0].indexOf('</w:r></w:p></w:tc></w:tr>', remarksIdx);
+  if (badgeParaEnd === -1) throw new Error('Remarks insertion point not found in row 0');
+  const insertAt = badgeParaEnd + '</w:r></w:p>'.length;
+  const remarksPara = '<w:p><w:pPr><w:spacing w:before="360"/><w:rPr><w:sz w:val="20"/></w:rPr></w:pPr><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">{remarks}</w:t></w:r></w:p>';
+  rows[0] = rows[0].slice(0, insertAt) + remarksPara + rows[0].slice(insertAt);
 }
 
-// ── Noted by: signature image placeholder (image module tag) ──
-replaceOnce(
-  '<w:p w:rsidR="00553116" w:rsidRPr="00553116" w:rsidRDefault="00553116" w:rsidP="006A6E05"><w:pPr><w:rPr><w:b/><w:sz w:val="18"/></w:rPr></w:pPr></w:p></w:tc></w:tr>',
-  '<w:p w:rsidR="00553116" w:rsidRPr="00553116" w:rsidRDefault="00553116" w:rsidP="006A6E05"><w:pPr><w:rPr><w:b/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:t>{%signature}</w:t></w:r></w:p></w:tc></w:tr>',
-  'Noted-by signature cell',
-);
+// ── Row 1-4: single-value fields ──
+rows[1] = replaceRowOnce(rows[1], '<w:t>BSMA / 3rd Year</w:t>', '<w:t>{courseYear}</w:t>', 'COURSE & YR. LEVEL value');
+rows[2] = replaceRowOnce(rows[2], '<w:t>Capitol University</w:t>', '<w:t>{school}</w:t>', 'SCHOOL value');
+rows[3] = replaceRowOnce(rows[3], '<w:t>Pagatpat</w:t>', '<w:t>{barangay}</w:t>', 'BARANGAY value');
+rows[4] = replaceRowOnce(rows[4], '<w:t>9938395070</w:t>', '<w:t>{contactNo}</w:t>', 'CONTACT NUMBER value');
 
-// ── Approver printed name (was hardcoded "Roxanne Jul L. Tandang") ──
-replaceOnce(
+// ── Row 5: Previous Semester Status checkboxes (Retained / On Probation / Special Reconsideration) ──
+rows[5] = replaceCheckboxSequence(rows[5], ['cbRetained', 'cbOnProbation', 'cbSpecialRecon']);
+
+// ── Row 8: Failed Subjects, filled example row ──
+rows[8] = replaceRowOnce(rows[8], '<w:t>Calculus I</w:t>', '<w:t>{fs0code}</w:t>', 'fs0code');
+rows[8] = replaceRowOnce(
+  rows[8],
+  '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>1</w:t></w:r><w:r w:rsidRPr="00E72007"><w:rPr><w:sz w:val="18"/><w:vertAlign w:val="superscript"/></w:rPr><w:t>st</w:t></w:r><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve"> semester 2025-2026</w:t></w:r>',
+  '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">{fs0sem}</w:t></w:r>',
+  'fs0sem',
+);
+rows[8] = replaceRowOnce(rows[8], '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>3</w:t></w:r>', '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">{fs0yr}</w:t></w:r>', 'fs0yr');
+
+// ── Rows 9-10: Failed Subjects, blank example rows — filled positionally ──
+rows[9] = fillEmptyMatrixRow(rows[9], ['fs1code', 'fs1sem', 'fs1yr']);
+rows[10] = fillEmptyMatrixRow(rows[10], ['fs2code', 'fs2sem', 'fs2yr']);
+
+// ── Rows 14-16: Lacking Grades, all blank in the example — filled positionally ──
+rows[14] = fillEmptyMatrixRow(rows[14], ['lg0code', 'lg0sem', 'lg0yr']);
+rows[15] = fillEmptyMatrixRow(rows[15], ['lg1code', 'lg1sem', 'lg1yr']);
+rows[16] = fillEmptyMatrixRow(rows[16], ['lg2code', 'lg2sem', 'lg2yr']);
+
+// ── Row 17: Referred by ──
+rows[17] = replaceRowOnce(rows[17], '<w:t>Julius Jay</w:t>', '<w:t>{referredByName}</w:t>', 'referredByName');
+
+// ── Row 18: Referred to, Endorsed for checkboxes, Noted by signature (left untouched — swapped at render time) ──
+rows[18] = replaceRowOnce(rows[18], '<w:t>Julius Jay</w:t>', '<w:t>{referredToName}</w:t>', 'referredToName');
+rows[18] = replaceCheckboxSequence(rows[18], ['cbEndorsedProbation', 'cbEndorsedRemoval', 'cbEndorsedRenewal']);
+
+// ── Row 19: Date ──
+rows[19] = replaceRowOnce(rows[19], '<w:t>Sept. 23, 2026</w:t>', '<w:t>{referralDate}</w:t>', 'referralDate');
+
+// ── Row 20: Approver printed name ──
+rows[20] = replaceRowOnce(
+  rows[20],
   '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">Roxanne Jul L. </w:t></w:r><w:proofErr w:type="spellStart"/><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>Tandang</w:t></w:r><w:proofErr w:type="spellEnd"/>',
   '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>{approvedByName}</w:t></w:r>',
   'approver printed name',
 );
 
-// ── Remarks value — a new paragraph appended inside the REMARKS cell, right
-// after its floating "REMARKS:" badge shape's paragraph. ──
+// ── Splice the modified rows back into the document. Several blank matrix
+// rows are byte-identical to each other, so a plain string replace would hit
+// the wrong one — walk forward positionally instead, since originalRows are
+// already in top-to-bottom document order. ──
 {
-  const badgeParaEnd = xml.indexOf('</w:r></w:p></w:tc></w:tr>', xml.indexOf('REMARKS:'));
-  if (badgeParaEnd === -1) throw new Error('Remarks cell insertion point not found');
-  const insertAt = badgeParaEnd + '</w:r></w:p>'.length;
-  const remarksPara = '<w:p><w:pPr><w:spacing w:before="360"/><w:rPr><w:sz w:val="20"/></w:rPr></w:pPr><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">{remarks}</w:t></w:r></w:p>';
-  xml = xml.slice(0, insertAt) + remarksPara + xml.slice(insertAt);
+  let outXml = '';
+  let cursor = 0;
+  originalRows.forEach((original, i) => {
+    const idx = xml.indexOf(original, cursor);
+    if (idx === -1) throw new Error(`Row ${i} not found from cursor ${cursor}`);
+    outXml += xml.slice(cursor, idx) + rows[i];
+    cursor = idx + original.length;
+  });
+  outXml += xml.slice(cursor);
+  xml = outXml;
 }
 
 zip.file('word/document.xml', xml);

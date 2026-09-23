@@ -1,8 +1,6 @@
 import { generateReferralFormFromTemplate } from "@/lib/referralFormTemplate";
 import { fetchSignatureUrl, fetchMyStaffName, type QueuedReferral } from "./referralApi";
 
-const MAX_SIGNATURE_WIDTH = 180;
-
 async function loadSignature(path: string | null): Promise<{ buffer: ArrayBuffer; width: number; height: number } | null> {
   if (!path) return null;
   const url = await fetchSignatureUrl(path);
@@ -11,9 +9,7 @@ async function loadSignature(path: string | null): Promise<{ buffer: ArrayBuffer
   const blob = await res.blob();
   const buffer = await blob.arrayBuffer();
   const bitmap = await createImageBitmap(blob);
-  const scale = Math.min(1, MAX_SIGNATURE_WIDTH / bitmap.width);
-  const width = Math.round(bitmap.width * scale);
-  const height = Math.round(bitmap.height * scale);
+  const { width, height } = bitmap;
   bitmap.close();
   return { buffer, width, height };
 }
