@@ -4,6 +4,7 @@ import { printApprovedReferral } from "../referralPrint";
 import type { ScholarInformationRow } from "../seadApi";
 import { SubjectMatrix } from "./SubjectMatrix";
 import { SignatureUploadPanel } from "./SignatureUploadPanel";
+import { ReferralFormPreview } from "./ReferralFormPreview";
 import {
   PREVIOUS_SEMESTER_STATUSES, ENDORSED_FOR_OPTIONS, type PreviousSemesterStatus, type EndorsedFor,
   type SubjectMatrixRow, type StaffOption, type QueuedReferral,
@@ -60,6 +61,7 @@ export function ReferralFormPanel({
 
   // "approve" mode fields
   const [signaturePath, setSignaturePath] = useState<string | null>(null);
+  const [signaturePreviewUrl, setSignaturePreviewUrl] = useState<string | null>(null);
   const [showReconsiderInput, setShowReconsiderInput] = useState(false);
   const [reconsiderReason, setReconsiderReason] = useState("");
 
@@ -86,6 +88,7 @@ export function ReferralFormPanel({
       fetchMyStaffName().then(setMyName);
     } else if (referralId) {
       setLoading(true);
+      if (mode === "approve") fetchMyStaffName().then(setMyName);
       fetchReferralById(referralId).then(r => {
         setReferral(r);
         if (r) {
@@ -157,84 +160,90 @@ export function ReferralFormPanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 bg-white border border-[#e6ecf5] rounded-xl p-4">
-        {readOnlyField("Name", name)}
-        {readOnlyField("Course & Yr. Level", courseYear)}
-        {readOnlyField("School", school)}
-        {readOnlyField("Barangay", barangay)}
-        {readOnlyField("Contact Number", contactNo)}
-        {readOnlyField("Refer By", referredByName)}
-        {readOnlyField("Date", referralDate)}
-      </div>
+      {mode === "approve" && referral ? (
+        <ReferralFormPreview referral={referral} signatureUrl={signaturePreviewUrl} approverName={myName} />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 bg-white border border-[#e6ecf5] rounded-xl p-4">
+            {readOnlyField("Name", name)}
+            {readOnlyField("Course & Yr. Level", courseYear)}
+            {readOnlyField("School", school)}
+            {readOnlyField("Barangay", barangay)}
+            {readOnlyField("Contact Number", contactNo)}
+            {readOnlyField("Refer By", referredByName)}
+            {readOnlyField("Date", referralDate)}
+          </div>
 
-      {referral?.reconsiderationReason && mode === "counsel" && (
-        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-3">
-          <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
+          {referral?.reconsiderationReason && mode === "counsel" && (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-3">
+              <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-[12.5px] font-bold text-amber-700">Sent back for reconsideration</p>
+                <p className="text-[12.5px] text-amber-700">{referral.reconsiderationReason}</p>
+              </div>
+            </div>
+          )}
+
           <div>
-            <p className="text-[12.5px] font-bold text-amber-700">Sent back for reconsideration</p>
-            <p className="text-[12.5px] text-amber-700">{referral.reconsiderationReason}</p>
+            {fieldLabel("Previous Semester Status")}
+            {mode === "create" ? (
+              <select value={previousSemesterStatus} onChange={e => setPreviousSemesterStatus(e.target.value as PreviousSemesterStatus)}
+                className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none bg-white">
+                {PREVIOUS_SEMESTER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            ) : (
+              <p className="text-sm text-[#062444] font-medium">{referral?.previousSemesterStatus}</p>
+            )}
           </div>
-        </div>
+
+          <SubjectMatrix label="Failed Subjects (since admission)"
+            rows={mode === "create" ? failedSubjects : referral?.failedSubjects ?? []}
+            onChange={setFailedSubjects} readOnly={mode !== "create"} />
+
+          <SubjectMatrix label="Lacking Grades"
+            rows={mode === "create" ? lackingGrades : referral?.lackingGrades ?? []}
+            onChange={setLackingGrades} readOnly={mode !== "create"} />
+
+          <div>
+            {fieldLabel("Refer To")}
+            {mode === "create" ? (
+              <select value={referredTo} onChange={e => setReferredTo(e.target.value)}
+                className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none bg-white">
+                <option value="">Select a consultation staff member…</option>
+                {staffOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            ) : (
+              <p className="text-sm text-[#062444] font-medium">—</p>
+            )}
+          </div>
+
+          <div>
+            {fieldLabel("Endorsed For")}
+            {mode === "create" || mode === "counsel" ? (
+              <div className="flex gap-4">
+                {ENDORSED_FOR_OPTIONS.map(opt => (
+                  <label key={opt} className="flex items-center gap-1.5 text-[13px] text-[#062444]">
+                    <input type="radio" name="endorsedFor" checked={endorsedFor === opt} onChange={() => setEndorsedFor(opt)} /> {opt}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-[#062444] font-medium">{referral?.endorsedFor}</p>
+            )}
+          </div>
+
+          <div>
+            {fieldLabel("Remarks")}
+            {mode === "counsel" ? (
+              <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={4}
+                placeholder="Add your consultation remarks before forwarding…"
+                className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc] resize-none" />
+            ) : (
+              <p className="text-sm text-[#062444] whitespace-pre-wrap">{referral?.remarks || "—"}</p>
+            )}
+          </div>
+        </>
       )}
-
-      <div>
-        {fieldLabel("Previous Semester Status")}
-        {mode === "create" ? (
-          <select value={previousSemesterStatus} onChange={e => setPreviousSemesterStatus(e.target.value as PreviousSemesterStatus)}
-            className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none bg-white">
-            {PREVIOUS_SEMESTER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        ) : (
-          <p className="text-sm text-[#062444] font-medium">{referral?.previousSemesterStatus}</p>
-        )}
-      </div>
-
-      <SubjectMatrix label="Failed Subjects (since admission)"
-        rows={mode === "create" ? failedSubjects : referral?.failedSubjects ?? []}
-        onChange={setFailedSubjects} readOnly={mode !== "create"} />
-
-      <SubjectMatrix label="Lacking Grades"
-        rows={mode === "create" ? lackingGrades : referral?.lackingGrades ?? []}
-        onChange={setLackingGrades} readOnly={mode !== "create"} />
-
-      <div>
-        {fieldLabel("Refer To")}
-        {mode === "create" ? (
-          <select value={referredTo} onChange={e => setReferredTo(e.target.value)}
-            className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none bg-white">
-            <option value="">Select a consultation staff member…</option>
-            {staffOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        ) : (
-          <p className="text-sm text-[#062444] font-medium">—</p>
-        )}
-      </div>
-
-      <div>
-        {fieldLabel("Endorsed For")}
-        {mode === "create" || mode === "counsel" ? (
-          <div className="flex gap-4">
-            {ENDORSED_FOR_OPTIONS.map(opt => (
-              <label key={opt} className="flex items-center gap-1.5 text-[13px] text-[#062444]">
-                <input type="radio" name="endorsedFor" checked={endorsedFor === opt} onChange={() => setEndorsedFor(opt)} /> {opt}
-              </label>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-[#062444] font-medium">{referral?.endorsedFor}</p>
-        )}
-      </div>
-
-      <div>
-        {fieldLabel("Remarks")}
-        {mode === "counsel" ? (
-          <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={4}
-            placeholder="Add your consultation remarks before forwarding…"
-            className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc] resize-none" />
-        ) : (
-          <p className="text-sm text-[#062444] whitespace-pre-wrap">{referral?.remarks || "—"}</p>
-        )}
-      </div>
 
       {referral?.status === "approved" && (
         <div>
@@ -266,7 +275,7 @@ export function ReferralFormPanel({
         </div>
       )}
 
-      {mode === "approve" && <SignatureUploadPanel onReady={setSignaturePath} />}
+      {mode === "approve" && <SignatureUploadPanel onReady={setSignaturePath} onPreviewChange={setSignaturePreviewUrl} />}
 
       {error && <p className="text-[13px] text-red-600">{error}</p>}
 
