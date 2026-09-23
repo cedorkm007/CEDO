@@ -113,11 +113,21 @@ rows[14] = fillEmptyMatrixRow(rows[14], ['lg0code', 'lg0sem', 'lg0yr']);
 rows[15] = fillEmptyMatrixRow(rows[15], ['lg1code', 'lg1sem', 'lg1yr']);
 rows[16] = fillEmptyMatrixRow(rows[16], ['lg2code', 'lg2sem', 'lg2yr']);
 
-// ── Row 17: Referred by ──
-rows[17] = replaceRowOnce(rows[17], '<w:t>Julius Jay</w:t>', '<w:t>{referredByName}</w:t>', 'referredByName');
+// ── Row 17: Referred by (office sized the name down to 16pt from the template's default 18pt) ──
+rows[17] = replaceRowOnce(
+  rows[17],
+  '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>Julius Jay</w:t></w:r>',
+  '<w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:t>{referredByName}</w:t></w:r>',
+  'referredByName',
+);
 
-// ── Row 18: Referred to, Endorsed for checkboxes, Noted by signature (left untouched — swapped at render time) ──
-rows[18] = replaceRowOnce(rows[18], '<w:t>Julius Jay</w:t>', '<w:t>{referredToName}</w:t>', 'referredToName');
+// ── Row 18: Referred to (same 16pt sizing), Endorsed for checkboxes, Noted by signature (left untouched — swapped at render time) ──
+rows[18] = replaceRowOnce(
+  rows[18],
+  '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>Julius Jay</w:t></w:r>',
+  '<w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:t>{referredToName}</w:t></w:r>',
+  'referredToName',
+);
 rows[18] = replaceCheckboxSequence(rows[18], ['cbEndorsedProbation', 'cbEndorsedRemoval', 'cbEndorsedRenewal']);
 
 // ── Row 19: Date ──
