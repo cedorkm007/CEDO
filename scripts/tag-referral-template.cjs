@@ -54,7 +54,14 @@ function replaceCheckboxSequence(rowXml, tags) {
 function insertIntoEmptyCell(cellXml, tag) {
   const pPrEnd = cellXml.indexOf('</w:pPr>') + '</w:pPr>'.length;
   const closeP = cellXml.indexOf('</w:p>', pPrEnd);
-  const run = `<w:r><w:t xml:space="preserve">{${tag}}</w:t></w:r>`;
+  // A run with no rPr of its own doesn't reliably inherit the paragraph
+  // mark's size, so it can render at the style default instead of matching
+  // the office's own filled-in row — carry the cell's own paragraph-mark
+  // size onto the inserted run explicitly.
+  const pPrText = cellXml.slice(cellXml.indexOf('<w:pPr>', 0), pPrEnd);
+  const sz = (pPrText.match(/<w:sz w:val="(\d+)"\/>/) || [])[1];
+  const rPr = sz ? `<w:rPr><w:sz w:val="${sz}"/></w:rPr>` : '';
+  const run = `<w:r>${rPr}<w:t xml:space="preserve">{${tag}}</w:t></w:r>`;
   return cellXml.slice(0, closeP) + run + cellXml.slice(closeP);
 }
 
