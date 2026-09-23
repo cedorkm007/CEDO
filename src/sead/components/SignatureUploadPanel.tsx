@@ -11,23 +11,18 @@ import { fetchMySignaturePath, fetchSignatureUrl, uploadSignature } from "../ref
  * upload. `onReady` fires with the storage path to use for this approval
  * once a signature (existing or freshly uploaded) is available.
  */
-export function SignatureUploadPanel({ onReady, onPreviewChange }: { onReady: (path: string | null) => void; onPreviewChange?: (url: string | null) => void }) {
+export function SignatureUploadPanel({ onReady }: { onReady: (path: string | null) => void }) {
   const [existingPath, setExistingPath] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
-
-  function setPreview(url: string | null) {
-    setPreviewUrl(url);
-    onPreviewChange?.(url);
-  }
 
   useEffect(() => {
     (async () => {
       const path = await fetchMySignaturePath();
       setExistingPath(path);
       onReady(path);
-      if (path) setPreview(await fetchSignatureUrl(path));
+      if (path) setPreviewUrl(await fetchSignatureUrl(path));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -39,7 +34,7 @@ export function SignatureUploadPanel({ onReady, onPreviewChange }: { onReady: (p
     try {
       const transparent = await removeWhiteBackground(file);
       const localPreview = URL.createObjectURL(transparent);
-      setPreview(localPreview);
+      setPreviewUrl(localPreview);
       const result = await uploadSignature(transparent);
       if (!result.ok) { setError(result.error); setProcessing(false); return; }
       setExistingPath(result.path);
