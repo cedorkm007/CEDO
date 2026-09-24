@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3, FlaskConical, Trophy, HandCoins, HeartHandshake } from "lucide-react";
+import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3, FlaskConical, Trophy, HandCoins, HeartHandshake, BookOpenCheck } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarSeparator,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
@@ -161,6 +161,7 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
     || user.tags.includes("financial_assistance")
     || user.tags.includes("research_project_monitoring")
     || user.tags.includes("scholar_counseling")
+    || user.tags.includes("scholars_grades_monitoring")
     || user.username.toLowerCase() === IT_ADMIN_USERNAME;
 
   return (
@@ -372,6 +373,13 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
                     <SidebarMenuItem className="min-w-0">
                       <SidebarMenuButton isActive={page === "scholarCounseling"} onClick={() => setPage("scholarCounseling")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
                         <HeartHandshake /> <span className="truncate">Scholar Consultation Tool</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {user.tags.includes("scholars_grades_monitoring") && (
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "scholarsGradesMonitoring"} onClick={() => setPage("scholarsGradesMonitoring")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <BookOpenCheck /> <span className="truncate">Scholars' Grades Monitoring</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}

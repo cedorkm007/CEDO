@@ -1,25 +1,31 @@
 #!/usr/bin/env node
 /**
- * scripts/create-scholar-accounts.mjs
+ * scripts/create-school-accounts.mjs
  *
- * Staff-run provisioning script for SCHOLAR accounts — mirrors
- * scripts/create-admin-accounts.mjs, but writes to public.scholars instead
- * of public.users. Scholars do not self-register: CEDO staff creates each
- * scholar's login here (or via a future in-app "Add Scholar" admin screen
- * that calls the same Supabase Admin API from a secure server context).
+ * Staff-run provisioning script for SCHOOL accounts — structural mirror of
+ * scripts/create-scholar-accounts.mjs, but writes to public.school_accounts
+ * instead of public.scholars. Schools do not self-register: CEDO staff
+ * creates each school's login here.
  *
- * SETUP (same as create-admin-accounts.mjs):
- *   1. Make sure supabase_migration_scholar_portal.sql has been run.
+ * SETUP:
+ *   1. Make sure supabase_migration_scholars_grades_monitoring.sql has been
+ *      run (this creates public.schools, backfilled from scholars.school).
  *   2. .env.scripts must have SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY.
- *   3. Fill in SCHOLAR_ACCOUNTS below (or adapt this to read from a CSV).
- *   4. Run:  node scripts/create-scholar-accounts.mjs
+ *   3. Fill in SCHOOL_ACCOUNTS below. schoolName must exactly match an
+ *      existing row in public.schools — check with:
+ *        select name from public.schools order by name;
+ *      If the school you want isn't listed (or is listed under a slightly
+ *      different spelling than you expected), fix that in the schools
+ *      table first rather than creating a duplicate here.
+ *   4. Run:  node scripts/create-school-accounts.mjs
  *
  * WHAT IT DOES, per entry:
  *   - Creates a Supabase Auth user (email + generated password, pre-confirmed).
- *   - Inserts the matching row into public.scholars, keyed to that Auth user's id.
- *   - Skips anyone whose email already has a full account + profile.
- *   - Prints every newly created scholar's ID number / email / password ONCE
- *     at the end — save it into a password manager immediately, this is not
+ *   - Inserts the matching row into public.school_accounts, keyed to that
+ *     Auth user's id and the matched school_id.
+ *   - Skips anyone whose email already has a full account.
+ *   - Prints every newly created school's name / email / password ONCE at
+ *     the end — save it into a password manager immediately, this is not
  *     recoverable afterwards (Supabase only stores the hash).
  */
 
@@ -73,20 +79,11 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 })
 
-// ── Edit this list with real scholar records before running. ──────────────
-// scholarIdNumber must be unique. birthday is required (used by the
-// name+birthday login path). All other fields map straight to public.scholars.
-const SCHOLAR_ACCOUNTS = [
-  {
-    scholarIdNumber: '20180000',
-    firstName: 'Sittie Aliah', lastName: 'Paki', middleName: 'S',
-    birthday: '2003-05-14', // YYYY-MM-DD
-    email: 'sittiealiah.paki@example.com',
-    contactNo: '09171234567',
-    school: 'Xavier University', course: 'BS Nursing',
-    civilStatus: 'Single', address: 'Cagayan de Oro City',
-  },
-  // { scholarIdNumber: '20180001', firstName: '...', lastName: '...', middleName: '...', birthday: 'YYYY-MM-DD', email: '...', contactNo: '', school: '', course: '', civilStatus: '', address: '' },
+// ── Edit this list before running. schoolName must exactly match an
+// existing public.schools.name row (case-insensitive). ──────────────────
+const SCHOOL_ACCOUNTS = [
+  { schoolName: 'Capitol University', email: 'grades.capitoluniversity@example.com' },
+  // { schoolName: '...', email: '...' },
 ]
 
 function generatePassword(length = 14) {
@@ -109,8 +106,14 @@ async function findUserByEmail(email) {
   }
 }
 
-async function scholarProfileExists(id) {
-  const { data, error } = await supabase.from('scholars').select('id').eq('id', id).maybeSingle()
+async function findSchoolByName(name) {
+  const { data, error } = await supabase.from('schools').select('id, name').ilike('name', name.trim())
+  if (error) throw error
+  return data?.[0] ?? null
+}
+
+async function schoolAccountExists(id) {
+  const { data, error } = await supabase.from('school_accounts').select('id').eq('id', id).maybeSingle()
   if (error) throw error
   return !!data
 }
@@ -119,74 +122,70 @@ async function main() {
   const created = []
   const skipped = []
 
-  for (const s of SCHOLAR_ACCOUNTS) {
-    const existingAuthUser = await findUserByEmail(s.email)
+  for (const entry of SCHOOL_ACCOUNTS) {
+    const school = await findSchoolByName(entry.schoolName)
+    if (!school) {
+      console.error(`✗ No school named "${entry.schoolName}" found in public.schools. Check spelling with: select name from public.schools order by name;`)
+      continue
+    }
+
+    const existingAuthUser = await findUserByEmail(entry.email)
     let authUserId = existingAuthUser?.id
     let password = generatePassword()
 
     if (existingAuthUser) {
-      const hasProfile = await scholarProfileExists(existingAuthUser.id)
-      if (hasProfile) {
-        skipped.push(s.email)
+      const hasAccount = await schoolAccountExists(existingAuthUser.id)
+      if (hasAccount) {
+        skipped.push(entry.email)
         continue
       }
       const { error: resetError } = await supabase.auth.admin.updateUserById(existingAuthUser.id, { password })
       if (resetError) {
-        console.error(`✗ Found existing Auth user for ${s.email} but couldn't reset its password:`, resetError.message)
+        console.error(`✗ Found existing Auth user for ${entry.email} but couldn't reset its password:`, resetError.message)
         continue
       }
-      console.log(`↻ ${s.email} already existed in Auth with no scholar profile — password reset, profile will be created now.`)
+      console.log(`↻ ${entry.email} already existed in Auth with no school account — password reset, account will be created now.`)
     } else {
       const { data: authUser, error: createError } = await supabase.auth.admin.createUser({
-        email: s.email,
+        email: entry.email,
         password,
         email_confirm: true,
-        user_metadata: { scholarIdNumber: s.scholarIdNumber, kind: 'scholar' },
+        user_metadata: { schoolId: school.id, kind: 'school' },
       })
       if (createError || !authUser?.user) {
-        console.error(`✗ Failed to create Auth user for ${s.email}:`, createError?.message)
+        console.error(`✗ Failed to create Auth user for ${entry.email}:`, createError?.message)
         continue
       }
       authUserId = authUser.user.id
     }
 
-    const { error: profileError } = await supabase.from('scholars').insert({
+    const { error: accountError } = await supabase.from('school_accounts').insert({
       id: authUserId,
-      scholar_id_number: s.scholarIdNumber,
-      first_name: s.firstName,
-      last_name: s.lastName,
-      middle_name: s.middleName ?? '',
-      birthday: s.birthday,
-      email: s.email,
-      contact_no: s.contactNo ?? '',
-      school: s.school ?? '',
-      course: s.course ?? '',
-      civil_status: s.civilStatus ?? '',
-      address: s.address ?? '',
+      school_id: school.id,
+      email: entry.email,
     })
-    if (profileError) {
-      console.error(`✗ Auth user ready for ${s.email}, but scholars row insert failed:`, profileError.message)
+    if (accountError) {
+      console.error(`✗ Auth user ready for ${entry.email}, but school_accounts row insert failed:`, accountError.message)
       console.error('  Auth user id (for manual insert in Supabase Studio if needed):', authUserId)
-      console.error('  Make sure supabase_migration_scholar_portal.sql ran successfully first.')
       continue
     }
 
-    created.push({ ...s, password })
+    created.push({ schoolName: school.name, email: entry.email, password })
   }
 
   console.log('\n──────────────────────────────────────────────────────────')
-  console.log(`Set up ${created.length} scholar account(s). Skipped ${skipped.length} (already fully set up).`)
+  console.log(`Set up ${created.length} school account(s). Skipped ${skipped.length} (already fully set up).`)
   if (skipped.length) console.log('Already existed:', skipped.join(', '))
   console.log('──────────────────────────────────────────────────────────\n')
 
   if (created.length) {
     console.log('SAVE THESE NOW — this is the only time the passwords are shown.\n')
-    console.log('scholarID'.padEnd(12), 'name'.padEnd(28), 'email'.padEnd(32), 'password')
+    console.log('school'.padEnd(32), 'email'.padEnd(32), 'password')
     for (const a of created) {
-      console.log(a.scholarIdNumber.padEnd(12), `${a.firstName} ${a.lastName}`.padEnd(28), a.email.padEnd(32), a.password)
+      console.log(a.schoolName.padEnd(32), a.email.padEnd(32), a.password)
     }
     console.log('\nCopy these into a password manager, then clear your terminal (e.g. `clear`).')
-    console.log('Share each scholar\'s ID number + password with them directly (not over an open channel).\n')
+    console.log('Share each school\'s login (school name + password) with them directly (not over an open channel).\n')
   }
 }
 

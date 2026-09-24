@@ -41,6 +41,7 @@ export interface SubjectGrade {
   scholarIdNumber: string;
   schoolYear: string;
   semester: string;
+  subjectCode: string;
   subject: string;
   grade: string;
   remarks: string;

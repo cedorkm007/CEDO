@@ -97,10 +97,29 @@ export async function fetchSubjectsAndGrades(scholarIdNumber: string): Promise<S
     scholarIdNumber: String(r.scholar_id_number),
     schoolYear: String(r.school_year ?? ""),
     semester: String(r.semester ?? ""),
+    subjectCode: String(r.subject_code ?? ""),
     subject: String(r.subject ?? ""),
-    grade: String(r.grade ?? ""),
+    grade: r.grade == null ? "" : String(r.grade),
     remarks: String(r.remarks ?? ""),
   }));
+}
+
+/** This scholar's school's grading config/letter table, for computing GWA on the Grades tab. Both null/empty when no school_id is set on this scholar's row yet. */
+export async function fetchMyGradingConfig(): Promise<{ scaleMin: number; scaleMax: number; direction: "lower_is_better" | "higher_is_better"; usesLetterGrades: boolean } | null> {
+  const { data, error } = await supabase.rpc("get_scholar_grading_config").maybeSingle();
+  if (error || !data) return null;
+  const row = data as Record<string, unknown>;
+  return {
+    scaleMin: Number(row.scale_min ?? 1), scaleMax: Number(row.scale_max ?? 5),
+    direction: (row.direction as "lower_is_better" | "higher_is_better") ?? "lower_is_better",
+    usesLetterGrades: !!row.uses_letter_grades,
+  };
+}
+
+export async function fetchMyLetterGrades(): Promise<{ letter: string; numericValue: number | null }[]> {
+  const { data, error } = await supabase.rpc("get_scholar_letter_grades");
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({ letter: String(r.letter), numericValue: r.numeric_value == null ? null : Number(r.numeric_value) }));
 }
 
 export async function fetchQuestScores(scholarIdNumber: string): Promise<QuestScore[]> {

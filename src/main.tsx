@@ -2,23 +2,29 @@
   import { createRoot } from "react-dom/client";
   import App from "./app/App.tsx";
   import { ScholarSiteApp } from "./scholar/ScholarSiteApp.tsx";
+  import { SchoolSiteApp } from "./school/SchoolSiteApp.tsx";
   import { KaubanApp } from "./kauban/KaubanApp.tsx";
   import "./styles/index.css";
 
-  // Three separate apps, one Vite build, one Vercel deployment:
+  // Four separate apps, one Vite build, one Vercel deployment:
   //  - "/"        -> the existing staff/admin app (src/app/App.tsx). Now also
   //                  includes "Scholar Management Tools" as a page inside it
   //                  (src/sead/ScholarManagementToolsPage.tsx), visible only to
   //                  the "sead.sma1" account — not a separate module/login.
   //  - "/CEDO*"   -> the public CEDO site + Scholar Portal (src/scholar/ScholarSiteApp.tsx).
   //                  Matched case-insensitively, so /CEDO and /cedo both work.
+  //  - "/school*" -> the School Portal (src/school/SchoolSiteApp.tsx) — a
+  //                  school logs in to configure its grading system and
+  //                  enter its own scholars' grades. Separate account type
+  //                  (public.school_accounts), same Supabase Auth service.
   //  - "/kauban*" -> Kauban, a sign-language/speech accessibility tool for deaf
   //                  and hard-of-hearing learners (src/kauban/KaubanApp.tsx).
   //                  No accounts at all — see docs/kauban/PROGRESS.md.
-  // All three talk to the same Supabase project/database (src/lib/supabase.ts).
+  // All four talk to the same Supabase project/database (src/lib/supabase.ts).
   const path = window.location.pathname.toLowerCase();
   const isKaubanSite = path.startsWith("/kauban");
   const isScholarSite = !isKaubanSite && path.startsWith("/cedo");
+  const isSchoolSite = !isKaubanSite && !isScholarSite && path.startsWith("/school");
 
   // PWA baseline for Kauban only (docs/kauban/PROGRESS.md milestone 16):
   // manifest link, iOS home-screen icon, and theme-color are injected here
@@ -54,5 +60,5 @@
   }
 
   createRoot(document.getElementById("root")!).render(
-    isKaubanSite ? <KaubanApp /> : isScholarSite ? <ScholarSiteApp /> : <App />
+    isKaubanSite ? <KaubanApp /> : isScholarSite ? <ScholarSiteApp /> : isSchoolSite ? <SchoolSiteApp /> : <App />
   );

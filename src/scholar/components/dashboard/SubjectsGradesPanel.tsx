@@ -1,9 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, BookMarked, Info } from "lucide-react";
 import { SectionCard } from "./SectionCard";
+import { fetchMyGradingConfig, fetchMyLetterGrades } from "../../scholarApi";
+import { computeGwa, formatGwa, type LetterGrade } from "@/lib/gwa";
 import type { SubjectGrade } from "../../types";
 
 export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
+  const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
+
+  useEffect(() => {
+    fetchMyGradingConfig().then(config => {
+      if (config?.usesLetterGrades) fetchMyLetterGrades().then(setLetterGrades);
+    });
+  }, []);
+
   const groups = useMemo(() => {
     const map = new Map<string, SubjectGrade[]>();
     for (const g of grades) {
@@ -25,20 +35,25 @@ export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
       ) : (
         groups.map(([key, rows]) => {
           const open = openKey === key;
+          const gwa = computeGwa(rows, letterGrades);
           return (
             <div key={key} className="border border-[#e6ecf5] rounded-xl mb-3 overflow-hidden">
               <button
                 onClick={() => setOpenKey(open ? null : key)}
-                className="w-full flex items-center gap-2.5 bg-[#f7f9fc] hover:bg-[#eef3fb] px-4 py-3.5 text-left transition-colors"
+                className="w-full flex items-center justify-between gap-2.5 bg-[#f7f9fc] hover:bg-[#eef3fb] px-4 py-3.5 text-left transition-colors"
               >
-                <ChevronRight size={15} className={`text-[#0088cc] transition-transform ${open ? "rotate-90" : ""}`} />
-                <span className="font-bold text-sm text-[#062444]">{key}</span>
+                <span className="flex items-center gap-2.5">
+                  <ChevronRight size={15} className={`text-[#0088cc] transition-transform ${open ? "rotate-90" : ""}`} />
+                  <span className="font-bold text-sm text-[#062444]">{key}</span>
+                </span>
+                <span className="text-[12px] font-semibold text-slate-500">GWA: <span className="text-[#062444]">{formatGwa(gwa)}</span></span>
               </button>
               {open && (
                 <div className="px-4 pb-4 pt-1 overflow-x-auto">
                   <table className="w-full text-[13.5px] border-collapse">
                     <thead>
                       <tr>
+                        <th className="text-left text-[11.5px] uppercase tracking-wide text-[#0088cc] pb-2 border-b-2 border-[#e6ecf5]">Subject Code</th>
                         <th className="text-left text-[11.5px] uppercase tracking-wide text-[#0088cc] pb-2 border-b-2 border-[#e6ecf5]">Subject</th>
                         <th className="text-left text-[11.5px] uppercase tracking-wide text-[#0088cc] pb-2 border-b-2 border-[#e6ecf5]">Grade</th>
                         <th className="text-left text-[11.5px] uppercase tracking-wide text-[#0088cc] pb-2 border-b-2 border-[#e6ecf5]">Remarks</th>
@@ -47,8 +62,9 @@ export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
                     <tbody>
                       {rows.map(r => (
                         <tr key={r.id} className="hover:bg-[#f7f9fc]">
+                          <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">{r.subjectCode || "—"}</td>
                           <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">{r.subject}</td>
-                          <td className="py-2.5 border-b border-[#f0f3f8] font-semibold text-[#062444]">{r.grade}</td>
+                          <td className="py-2.5 border-b border-[#f0f3f8] font-semibold text-[#062444]">{r.grade || "—"}</td>
                           <td className="py-2.5 border-b border-[#f0f3f8] text-slate-500">{r.remarks || "—"}</td>
                         </tr>
                       ))}

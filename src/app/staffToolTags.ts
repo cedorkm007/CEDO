@@ -73,4 +73,9 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     label: "SEAD Division Head (Referral Approvals)",
     description: "Receives notifications to approve or reconsider Scholar Consultation referrals forwarded by consultation staff.",
   },
+  {
+    key: "scholars_grades_monitoring",
+    label: "Scholars' Grades Monitoring",
+    description: "Monitor scholars' grade-completion rates by school and program, and drill into individual grades and GWA.",
+  },
 ];
