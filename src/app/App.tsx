@@ -35,7 +35,7 @@ import { FinancialAssistanceToolsPage } from "@/sead/FinancialAssistanceToolsPag
 import { ScholarCounselingToolPage } from "@/sead/ScholarCounselingToolPage";
 import { ScholarsGradesMonitoringPage } from "@/sead/ScholarsGradesMonitoringPage";
 import { MyResearchPage } from "@/sead/pages/MyResearchPage";
-import { StaffAccountsPage } from "@/itadmin/StaffAccountsPage";
+import { AccountsPage } from "@/itadmin/AccountsPage";
 import { TopNav } from "@/app/components/TopNav";
 import { AppSidebar } from "@/app/components/Sidebar";
 import { SidebarProvider, SidebarInset } from "@/app/components/ui/sidebar";
@@ -3510,7 +3510,7 @@ export default function App() {
             <MyResearchPage/>
           )}
           {page==="staffAccounts" && currentUser.username.toLowerCase()===IT_ADMIN_USERNAME && (
-            <StaffAccountsPage/>
+            <AccountsPage/>
           )}
         </div>
         <FloatingChatWidget currentUser={currentUser} allUsers={users}/>

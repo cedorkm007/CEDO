@@ -16,10 +16,10 @@ const EMPTY_FORM: NewStaffInput = {
 };
 
 /**
- * Embedded in the main staff app (src/app/App.tsx) as "Staff Accounts" —
- * visible only to the account with username IT_ADMIN_USERNAME. Replaces
- * the retired self-registration flow entirely: this is now the only way
- * new staff accounts get created.
+ * The "Staff Accounts" subtab of AccountsPage.tsx — visible only to the
+ * account with username IT_ADMIN_USERNAME. Replaces the retired
+ * self-registration flow entirely: this is now the only way new staff
+ * accounts get created.
  */
 export function StaffAccountsPage() {
   const [form, setForm] = useState<NewStaffInput>(EMPTY_FORM);
@@ -134,9 +134,6 @@ export function StaffAccountsPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-foreground mb-1">Staff Accounts</h1>
-      <p className="text-sm text-muted-foreground mb-6">Create new staff logins. Self-registration is retired — this is the only way new accounts get made.</p>
-
       {toast && <div className="mb-4 bg-primary text-primary-foreground text-sm rounded-lg px-4 py-2.5">{toast}</div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-6">
