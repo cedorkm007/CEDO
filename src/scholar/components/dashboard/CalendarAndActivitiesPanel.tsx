@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { Calendar as CalendarIcon, ClipboardList, QrCode, ChevronLeft, ChevronRight, MapPin, CheckCircle2 } from "lucide-react";
+import { Calendar as CalendarIcon, ClipboardList, QrCode, ChevronLeft, ChevronRight, MapPin, CheckCircle2, History } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { AttendanceScanner } from "./AttendanceScanner";
 import { fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, SDP_CATEGORIES, type SDPActivity } from "../../sdpApi";
@@ -47,6 +47,15 @@ function AttendedBadge() {
   return (
     <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700">
       <CheckCircle2 size={11} /> Attended
+    </span>
+  );
+}
+
+/** Neutral gray "Ended" mark for a finished-but-unattended activity (see isFinished) — distinct from Attended so a scholar can tell "this already happened and I missed it" apart from "I was there." */
+function EndedBadge() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-bold text-slate-500">
+      <History size={11} /> Ended
     </span>
   );
 }
@@ -149,7 +158,7 @@ function CalendarGrid({ activities }: { activities: CalendarActivity[] }) {
             <div key={a.id} className="bg-[#f8fafd] rounded-lg px-3 py-2.5">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[13px] font-bold text-[#062444]">{a.name}</p>
-                {a.attended && <AttendedBadge />}
+                {a.attended ? <AttendedBadge /> : isFinished(a) && <EndedBadge />}
               </div>
               <p className="text-[11.5px] text-slate-400">{a.label} {a.venue && `· ${a.venue}`}</p>
               {a.shortDescription && <p className="mt-1 text-[11.5px] text-slate-500">{a.shortDescription}</p>}
@@ -172,7 +181,7 @@ function ActivitiesList({ activities }: { activities: CalendarActivity[] }) {
             <div className="flex items-start justify-between gap-2 mb-1">
               <p className="text-[13.5px] font-bold text-[#062444]">{a.name}</p>
               <div className="flex shrink-0 items-center gap-1.5">
-                {a.attended && <AttendedBadge />}
+                {a.attended ? <AttendedBadge /> : isFinished(a) && <EndedBadge />}
                 <span className="text-[10.5px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{a.label}</span>
               </div>
             </div>
