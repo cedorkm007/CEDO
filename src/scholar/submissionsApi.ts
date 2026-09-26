@@ -279,6 +279,12 @@ export async function fetchSubmissionUploadsForScholar(activityId: string): Prom
     .from("submission_uploads")
     .select("id, field_id, original_file_name, status, staff_comment, created_at")
     .eq("activity_id", activityId)
+    // A file staff (or the scholar themselves, via unsubmitSubmissionUpload)
+    // removed no longer occupies its slot or has anything to show — its row
+    // survives as a review audit trail (see submission-delete-file's own
+    // comment) but file_removed_at is the durable "this file is gone" signal,
+    // distinct from status, which is left untouched by a removal.
+    .is("file_removed_at", null)
     .order("created_at", { ascending: true });
   if (error || !data) return [];
   return (data as Record<string, unknown>[]).map(row => ({
@@ -311,4 +317,16 @@ export function overallSubmissionStatus(uploads: SubmissionUploadRecord[]): Subm
   for (const u of uploads) latestPerField.set(u.fieldId, u);
   if ([...latestPerField.values()].some(u => u.status === "needs_resubmission")) return "needs_resubmission";
   return "submitted";
+}
+
+/**
+ * Pulls back one of the scholar's own files while it's still awaiting
+ * review (status "uploaded"), freeing its slot so a replacement can be
+ * picked through the same upload flow — see submission-unsubmit-file's
+ * own comment for exactly what it does and doesn't allow. Once staff has
+ * reviewed a file (accepted or needs_resubmission), only staff can undo
+ * that; the server rejects an unsubmit attempt in either case.
+ */
+export async function unsubmitSubmissionUpload(uploadId: string): Promise<{ ok: boolean; error?: string }> {
+  return invokeScholarEdgeFunction("submission-unsubmit-file", { uploadId });
 }

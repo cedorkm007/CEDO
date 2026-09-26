@@ -34,6 +34,16 @@ export async function fetchOwnSubjectProgress(subjectId: string, scholarIdNumber
   return { percentage: Number(data.subject_percentage ?? 0), topicCount: Number(data.topic_count ?? 0) };
 }
 
+/** Every subject's progress at once, keyed by subject id — for the "passed" checkmark on the subject browse grid, so it doesn't need to open a subject to know. Same view as fetchOwnSubjectProgress, just without the subject_id filter. */
+export async function fetchOwnSubjectProgressAll(scholarIdNumber: string): Promise<Map<string, { percentage: number; topicCount: number }>> {
+  const { data, error } = await supabase.from("scholar_subject_progress")
+    .select("subject_id, subject_percentage, topic_count").eq("scholar_id_number", scholarIdNumber);
+  const map = new Map<string, { percentage: number; topicCount: number }>();
+  if (error || !data) return map;
+  for (const row of data) map.set(String(row.subject_id), { percentage: Number(row.subject_percentage ?? 0), topicCount: Number(row.topic_count ?? 0) });
+  return map;
+}
+
 /**
  * Storage RLS (not this function) is what actually decides whether this
  * succeeds — it only returns a signed URL if the scholar's own computed

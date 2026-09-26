@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download, Maximize2, RotateCw, BookOpen, FileText, File, ExternalLink, Star } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SectionCard } from "./SectionCard";
-import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, getSlideEmbed, getPdfEmbed, fetchOwnSubjectProgress, fetchOwnCertificateUrl } from "../../quizApi";
+import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, getSlideEmbed, getPdfEmbed, fetchOwnSubjectProgress, fetchOwnSubjectProgressAll, fetchOwnCertificateUrl } from "../../quizApi";
 import { fetchFormMaterialsForScholar, hasUnlockedMaterialForSubject, syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormMaterial, type FormUnlockNotification } from "../../formsApi";
 import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult, QuizSurveySubmitResult } from "../../types";
@@ -66,6 +66,10 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
   const [browseTab, setBrowseTab] = useState<"subject" | "history">("subject");
   const [historyDateFilter, setHistoryDateFilter] = useState(() => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }));
   const [subjectProgress, setSubjectProgress] = useState<{ percentage: number; topicCount: number } | null>(null);
+  // Every subject's progress at once, for the "passed" checkmark on the
+  // browse grid tiles — separate from subjectProgress above, which only
+  // ever holds the ONE currently-open subject's progress.
+  const [allSubjectProgress, setAllSubjectProgress] = useState<Map<string, { percentage: number; topicCount: number }>>(new Map());
   const [certBusy, setCertBusy] = useState(false);
   const [certError, setCertError] = useState("");
   const [newlyUnlocked, setNewlyUnlocked] = useState<FormUnlockNotification[]>([]);
@@ -127,7 +131,9 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
 
   async function loadSubjects() {
     setLoading(true);
-    setSubjects(await fetchQuizSubjects());
+    const [subjectsResult, progressResult] = await Promise.all([fetchQuizSubjects(), fetchOwnSubjectProgressAll(scholarIdNumber)]);
+    setSubjects(subjectsResult);
+    setAllSubjectProgress(progressResult);
     setLoading(false);
   }
 
@@ -144,6 +150,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
     ]);
     setTopics(topicsResult);
     setSubjectProgress(progressResult);
+    if (progressResult) setAllSubjectProgress(prev => new Map(prev).set(subject.id, progressResult));
     setFormMaterials(materialsResult);
     setLoading(false);
     setStep({ view: "topics", subject });
@@ -157,6 +164,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
     ]);
     setTopics(topicsResult);
     setSubjectProgress(progressResult);
+    if (progressResult) setAllSubjectProgress(prev => new Map(prev).set(subject.id, progressResult));
     setFormMaterials(materialsResult);
   }
 
@@ -301,12 +309,15 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {subjects.map(s => {
                     const pubmat = pubmatUrl(s.pubmatPath);
+                    const progress = allSubjectProgress.get(s.id);
+                    const passed = !s.isSurveyMode && !!progress && progress.percentage >= s.passingRateMin && progress.percentage <= s.passingRateMax;
                     return (
                       <button
                         key={s.id}
                         onClick={() => openSubject(s)}
-                        className="flex flex-col items-center justify-center gap-2 aspect-[1/0.85] rounded-2xl border border-[#e6ecf5] bg-white hover:border-[#0088cc]/40 hover:shadow-[0_4px_14px_rgba(6,36,68,0.08)] px-3 text-center transition-all"
+                        className={`relative flex flex-col items-center justify-center gap-2 aspect-[1/0.85] rounded-2xl border bg-white hover:shadow-[0_4px_14px_rgba(6,36,68,0.08)] px-3 text-center transition-all ${passed ? "border-green-300 bg-green-50" : "border-[#e6ecf5] hover:border-[#0088cc]/40"}`}
                       >
+                        {passed && <CheckCircle2 size={16} className="absolute top-2 right-2 text-green-600" />}
                         {pubmat ? (
                           <img src={pubmat} alt="" className="w-12 h-12 rounded-xl object-cover" />
                         ) : (

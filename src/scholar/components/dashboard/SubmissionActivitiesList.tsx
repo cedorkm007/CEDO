@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { UploadCloud, CheckCircle2, AlertCircle, RotateCw, MessageSquareWarning, Lock } from "lucide-react";
+import { UploadCloud, CheckCircle2, AlertCircle, RotateCw, MessageSquareWarning, Lock, Undo2 } from "lucide-react";
 import {
   fetchSubmissionActivitiesForScholar, isAllowedSubmissionFileType, submissionFieldAllowedTypesLabel,
-  uploadSubmissionFile, fetchSubmissionUploadsForScholar, overallSubmissionStatus,
+  uploadSubmissionFile, fetchSubmissionUploadsForScholar, unsubmitSubmissionUpload, overallSubmissionStatus,
   SUBMISSION_ALLOWED_FILE_TYPES, type SubmissionActivityForScholar, type SubmissionUploadFieldForScholar,
   type SubmissionUploadRecord,
 } from "../../submissionsApi";
@@ -38,6 +38,53 @@ function UploadReviewNote({ upload }: { upload: SubmissionUploadRecord }) {
     );
   }
   return null;
+}
+
+/**
+ * Lets the scholar pull back a file that's still pending review (only
+ * "uploaded" — once staff accepts or rejects it, this button disappears
+ * and only staff can free the slot again, via Needs Resubmission). Two-step
+ * inline confirm, same convention as the Reset Password/Delete actions on
+ * it.admin1's Staff/School Accounts pages.
+ */
+function UnsubmitControl({ upload, onUnsubmit }: { upload: SubmissionUploadRecord; onUnsubmit: (uploadId: string) => Promise<{ ok: boolean; error?: string }> }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  if (upload.status !== "uploaded") return null;
+
+  async function handleConfirm() {
+    setBusy(true);
+    setError("");
+    const result = await onUnsubmit(upload.id);
+    // On success the parent drops this upload from its list, unmounting this
+    // component — nothing left to update here. Only handle the failure path.
+    if (!result.ok) {
+      setBusy(false);
+      setError(result.error || "Failed to remove the file.");
+    }
+  }
+
+  if (confirming) {
+    return (
+      <span className="ml-4 flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="text-slate-500">Remove this file?</span>
+        <button type="button" onClick={handleConfirm} disabled={busy} className="font-bold text-red-600 hover:underline disabled:opacity-50">
+          {busy ? "Removing…" : "Confirm"}
+        </button>
+        <button type="button" onClick={() => { setConfirming(false); setError(""); }} disabled={busy} className="font-semibold text-slate-400 hover:underline disabled:opacity-50">
+          Cancel
+        </button>
+        {error && <span className="w-full text-red-600">{error}</span>}
+      </span>
+    );
+  }
+  return (
+    <button type="button" onClick={() => setConfirming(true)} className="ml-4 flex items-center gap-1 text-[11px] font-bold text-[#0088cc] hover:underline">
+      <Undo2 size={11} /> Unsubmit
+    </button>
+  );
 }
 
 /**
@@ -116,6 +163,12 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
     }
   }
 
+  async function handleUnsubmit(uploadId: string): Promise<{ ok: boolean; error?: string }> {
+    const result = await unsubmitSubmissionUpload(uploadId);
+    if (result.ok) setExistingUploads(prev => prev.filter(u => u.id !== uploadId));
+    return result;
+  }
+
   async function handleSubmit() {
     setSubmitAttempted(true);
     const missingRequired = activity.uploadFields.some(
@@ -173,8 +226,9 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
                 <ul className="mb-1.5 space-y-1">
                   {uploaded.map(u => (
                     <li key={u.id}>
-                      <div className="flex items-center gap-1.5 text-[11.5px] text-emerald-700">
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-emerald-700">
                         <CheckCircle2 size={13} className="shrink-0" /> {u.originalFileName}
+                        <UnsubmitControl upload={u} onUnsubmit={handleUnsubmit} />
                       </div>
                       <UploadReviewNote upload={u} />
                     </li>

@@ -103,6 +103,13 @@ export async function fetchScholarSDPCategoryStatus(scholarIdNumber: string): Pr
   return status;
 }
 
+/** IDs of every SDP activity this scholar has attended at least once — for the "Attended" mark in Calendar and Activities. A recurring activity's occurrences aren't individually tracked (sdp_attendance only records "attended N times," not which date), so every calendar entry for an attended activity gets the mark, not just the specific occurrence attended. */
+export async function fetchAttendedSDPActivityIds(scholarIdNumber: string): Promise<Set<string>> {
+  const { data, error } = await supabase.from("sdp_attendance").select("activity_id").eq("scholar_id_number", scholarIdNumber);
+  if (error || !data) return new Set();
+  return new Set(data.map(r => String(r.activity_id)));
+}
+
 export type SDPCreditCounts = Record<SDPCategory, number>;
 
 const zeroCreditCounts = (): SDPCreditCounts => ({ community_service: 0, community_volunteerism: 0, formation_program: 0 });

@@ -122,13 +122,18 @@ Deno.serve(async (req: Request) => {
     // the real boundary; the UI's own count is only a convenience. A file
     // staff marked "needs_resubmission" doesn't occupy its slot — otherwise
     // a rejected scholar could never upload a replacement once a field was
-    // already at its limit.
+    // already at its limit. Same for a file removed via submission-delete-file
+    // (staff) or submission-unsubmit-file (scholar, while still pending
+    // review) — file_removed_at is set but status is left untouched (see
+    // either function's own comment), so it must be excluded here too or a
+    // scholar could never re-upload into a slot they (or staff) already freed.
     const { count: existingCount, error: countError } = await admin
       .from("submission_uploads")
       .select("id", { count: "exact", head: true })
       .eq("scholar_id", scholar.id)
       .eq("field_id", fieldId)
-      .neq("status", "needs_resubmission");
+      .neq("status", "needs_resubmission")
+      .is("file_removed_at", null);
     if (countError) return jsonResponse({ error: countError.message }, 500);
     if ((existingCount ?? 0) >= (field.max_files as number)) {
       return jsonResponse(

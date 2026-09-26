@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { Calendar as CalendarIcon, ClipboardList, QrCode, ChevronLeft, ChevronRight, MapPin } from "lucide-react";
+import { Calendar as CalendarIcon, ClipboardList, QrCode, ChevronLeft, ChevronRight, MapPin, CheckCircle2 } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { AttendanceScanner } from "./AttendanceScanner";
-import { fetchApprovedSDPActivities, SDP_CATEGORIES, type SDPActivity } from "../../sdpApi";
-import { fetchFormationActivitiesForScholar } from "../../formationActivitiesApi";
+import { fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, SDP_CATEGORIES, type SDPActivity } from "../../sdpApi";
+import { fetchFormationActivitiesForScholar, fetchAttendedFormationActivityIds } from "../../formationActivitiesApi";
 import { SubmissionActivitiesList } from "./SubmissionActivitiesList";
 import { useUrlState } from "@/app/useUrlState";
 import { pubmatUrl } from "@/sead/pubmatApi";
@@ -22,7 +22,17 @@ type CalendarActivity = {
   label: string;
   attendanceEnabled: boolean;
   pubmatUrl: string | null;
+  attended: boolean;
 };
+
+/** Small green "Attended" mark, reused by both the Activities list and the Calendar's day-detail rows. */
+function AttendedBadge() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700">
+      <CheckCircle2 size={11} /> Attended
+    </span>
+  );
+}
 
 function categoryLabel(category: SDPActivity["category"]): string {
   return SDP_CATEGORIES.find(c => c.key === category)?.label ?? "General";
@@ -120,7 +130,10 @@ function CalendarGrid({ activities }: { activities: CalendarActivity[] }) {
           <p className="text-[11px] font-semibold text-slate-400 uppercase">{new Date(selectedDate).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</p>
           {selectedEvents.map(a => (
             <div key={a.id} className="bg-[#f8fafd] rounded-lg px-3 py-2.5">
-              <p className="text-[13px] font-bold text-[#062444]">{a.name}</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[13px] font-bold text-[#062444]">{a.name}</p>
+                {a.attended && <AttendedBadge />}
+              </div>
               <p className="text-[11.5px] text-slate-400">{a.label} {a.venue && `· ${a.venue}`}</p>
               {a.shortDescription && <p className="mt-1 text-[11.5px] text-slate-500">{a.shortDescription}</p>}
             </div>
@@ -141,7 +154,10 @@ function ActivitiesList({ activities }: { activities: CalendarActivity[] }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2 mb-1">
               <p className="text-[13.5px] font-bold text-[#062444]">{a.name}</p>
-              <span className="shrink-0 text-[10.5px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{a.label}</span>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {a.attended && <AttendedBadge />}
+                <span className="text-[10.5px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{a.label}</span>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-500">
               {a.dateTime && <span>{new Date(a.dateTime).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}{a.endTime && ` – ${new Date(a.endTime).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}</span>}
@@ -156,17 +172,21 @@ function ActivitiesList({ activities }: { activities: CalendarActivity[] }) {
   );
 }
 
-export function CalendarAndActivitiesPanel({ onNavigateToForms }: { onNavigateToForms: () => void }) {
+export function CalendarAndActivitiesPanel({ scholarIdNumber, onNavigateToForms }: { scholarIdNumber: string; onNavigateToForms: () => void }) {
   const [tab, setTab] = useUrlState<Tab>("calTab", "calendar", TABS);
   const [activities, setActivities] = useState<CalendarActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([fetchApprovedSDPActivities(), fetchFormationActivitiesForScholar()]).then(([sdpActivities, formationActivities]) => {
+    Promise.all([
+      fetchApprovedSDPActivities(), fetchFormationActivitiesForScholar(),
+      fetchAttendedSDPActivityIds(scholarIdNumber), fetchAttendedFormationActivityIds(scholarIdNumber),
+    ]).then(([sdpActivities, formationActivities, attendedSdpIds, attendedFormationIds]) => {
       const sdp = sdpActivities.flatMap(activity => {
         const shared = {
           name: activity.name, shortDescription: activity.rationale ?? "", endTime: null,
           label: categoryLabel(activity.category), attendanceEnabled: false, pubmatUrl: pubmatUrl(activity.pubmatPath),
+          attended: attendedSdpIds.has(activity.id),
         };
         const entries: CalendarActivity[] = [];
         if (activity.dateTime) entries.push({ id: `sdp-${activity.id}`, dateTime: activity.dateTime, venue: activity.venue, ...shared });
@@ -182,12 +202,12 @@ export function CalendarAndActivitiesPanel({ onNavigateToForms }: { onNavigateTo
       const formation = formationActivities.map(activity => ({
         id: `formation-${activity.id}`, name: activity.name, shortDescription: activity.shortDescription, dateTime: activity.dateTime,
         endTime: activity.endTime, venue: activity.venue, label: "Formation Activity", attendanceEnabled: activity.attendanceEnabled,
-        pubmatUrl: pubmatUrl(activity.pubmatPath),
+        pubmatUrl: pubmatUrl(activity.pubmatPath), attended: attendedFormationIds.has(activity.id),
       }));
       setActivities([...sdp, ...formation].sort((a, b) => a.dateTime.localeCompare(b.dateTime)));
       setLoading(false);
     });
-  }, []);
+  }, [scholarIdNumber]);
 
   return (
     <SectionCard icon={<CalendarIcon size={14} />} title="Calendar and Activities">
