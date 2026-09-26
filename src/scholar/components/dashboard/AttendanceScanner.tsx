@@ -1,13 +1,65 @@
 import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import jsQR from "jsqr";
-import { Camera, Keyboard, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { Camera, Keyboard, CheckCircle2, XCircle, Loader2, X } from "lucide-react";
 import { redeemAttendanceCode } from "../../scholarApi";
 import { syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormUnlockNotification } from "../../formsApi";
 import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
 import { SurveyResponseModal } from "./SurveyResponseModal";
 
 type Mode = "scan" | "manual";
-type Result = { ok: boolean; message: string; tone: "success" | "error" | "warning" } | null;
+type ScanResult = { ok: boolean; message: string; tone: "success" | "error" | "warning" };
+type Result = ScanResult | null;
+
+const RESULT_DISPLAY_SECONDS = 15;
+
+/**
+ * Centered, hard-to-miss overlay for a scan result — replaces the old
+ * below-the-camera banner, which was easy to miss and scrolled out of view
+ * before a scholar could screenshot it as proof of attendance. Stays up for
+ * RESULT_DISPLAY_SECONDS with a visible countdown, or closes immediately on
+ * the close button / backdrop click.
+ */
+function ScanResultOverlay({ result, onClose }: { result: ScanResult; onClose: () => void }) {
+  const [secondsLeft, setSecondsLeft] = useState(RESULT_DISPLAY_SECONDS);
+
+  useEffect(() => {
+    setSecondsLeft(RESULT_DISPLAY_SECONDS);
+    const interval = setInterval(() => {
+      setSecondsLeft(s => (s <= 1 ? 0 : s - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
+
+  useEffect(() => {
+    if (secondsLeft === 0) onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secondsLeft]);
+
+  const toneStyles = result.tone === "success"
+    ? "border-green-300 bg-green-50 text-green-700"
+    : result.tone === "warning"
+    ? "border-yellow-300 bg-yellow-50 text-yellow-800"
+    : "border-red-300 bg-red-50 text-red-600";
+  const Icon = result.ok ? CheckCircle2 : XCircle;
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[150] bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0 }}
+        className={`relative w-full max-w-sm rounded-2xl border-2 bg-white px-6 py-8 text-center shadow-2xl ${toneStyles}`}
+        onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} aria-label="Close" className="absolute top-3 right-3 text-slate-400 hover:text-slate-600">
+          <X size={20} />
+        </button>
+        <Icon size={44} className="mx-auto mb-3" />
+        <p className="text-[16px] font-bold leading-snug">{result.message}</p>
+        <p className="mt-5 text-[11px] font-semibold text-slate-400">Closing in {secondsLeft}s</p>
+      </motion.div>
+    </motion.div>
+  );
+}
 
 export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: () => void }) {
   const [mode, setMode] = useState<Mode>("scan");
@@ -179,14 +231,10 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
           </div>
         </div>
       )}
-
-      {result && (
-        <div className={`mt-4 flex items-start gap-2 rounded-xl border px-4 py-4 text-[14px] font-semibold ${result.tone === "success" ? "border-green-300 bg-green-50 text-green-700" : result.tone === "warning" ? "border-yellow-300 bg-yellow-50 text-yellow-800" : "border-red-300 bg-red-50 text-red-600"}`}>
-          {result.ok ? <CheckCircle2 size={18} className="shrink-0 mt-0.5" /> : <XCircle size={18} className="shrink-0 mt-0.5" />}
-          <span>{result.message}</span>
-        </div>
-      )}
     </div>
+    <AnimatePresence>
+      {result && <ScanResultOverlay result={result} onClose={() => setResult(null)} />}
+    </AnimatePresence>
     <NewlyUnlockedModal notifications={newlyUnlocked} onGoToForms={onNavigateToForms} onClose={dismissNewlyUnlocked} />
     {pendingSurvey && (
       <SurveyResponseModal
