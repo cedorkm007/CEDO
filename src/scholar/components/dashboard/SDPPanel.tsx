@@ -78,6 +78,13 @@ const CREDITS_REQUIRED = 3;
  * as "reserved" instead of discarding it — shown here as a read-only
  * tracker for now; applying it toward a later period isn't wired up yet.
  */
+/** Breaks a two-word category label onto two lines (matches the <br/> already used for these same labels in SDPMonitoringTab's checklist headers) so all three cards wrap the same way instead of "Formation Program" alone staying on one line. */
+function twoLineLabel(label: string) {
+  const splitAt = label.lastIndexOf(" ");
+  if (splitAt === -1) return label;
+  return <>{label.slice(0, splitAt)}<br />{label.slice(splitAt + 1)}</>;
+}
+
 function CreditProgress({ credits, reserved }: { credits: SDPCreditCounts; reserved: SDPCreditCounts }) {
   return (
     <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 mb-5">
@@ -88,7 +95,7 @@ function CreditProgress({ credits, reserved }: { credits: SDPCreditCounts; reser
         return (
           <div key={c.key} className={`rounded-lg sm:rounded-xl border px-1.5 py-1.5 sm:p-3 ${complete ? "bg-green-50 border-green-200" : "bg-[#f7f9fc] border-transparent"}`}>
             <div className="flex items-center justify-between gap-1 mb-1 sm:mb-1.5">
-              <span className="text-[8.5px] sm:text-[11px] font-bold text-[#062444] leading-tight line-clamp-2">{c.label}</span>
+              <span className="text-[8.5px] sm:text-[11px] font-bold text-[#062444] leading-tight line-clamp-2">{twoLineLabel(c.label)}</span>
               {complete && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-600 shrink-0" />}
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
