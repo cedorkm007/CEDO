@@ -8,6 +8,7 @@ import { fetchFormationActivitiesForScholar, fetchAttendedFormationActivityIds }
 import { SubmissionActivitiesList } from "./SubmissionActivitiesList";
 import { useUrlState } from "@/app/useUrlState";
 import { pubmatUrl } from "@/sead/pubmatApi";
+import DefaultPubmat from "@/imports/CEDO_Seal.png";
 
 type Tab = "calendar" | "activities" | "attendance";
 const TABS: readonly Tab[] = ["calendar", "activities", "attendance"];
@@ -175,22 +176,26 @@ function ActivitiesList({ activities }: { activities: CalendarActivity[] }) {
   return (
     <div className="space-y-2.5">
       {activities.map(a => (
-        <div key={a.id} className="bg-[#f8fafd] border border-[#e6ecf5] rounded-xl px-4 py-3 flex gap-3">
-          {a.pubmatUrl && <img src={a.pubmatUrl} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0" />}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2 mb-1">
-              <p className="text-[13.5px] font-bold text-[#062444]">{a.name}</p>
-              <div className="flex shrink-0 items-center gap-1.5">
-                {a.attended ? <AttendedBadge /> : isFinished(a) && <EndedBadge />}
-                <span className="text-[10.5px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">{a.label}</span>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-500">
+        <div key={a.id} className="bg-[#f8fafd] border border-[#e6ecf5] rounded-xl p-3 flex items-start gap-3 min-h-[104px]">
+          {/* Pubmat (or a default seal when none was uploaded) with the Attended/Ended mark directly beneath it. */}
+          <div className="flex w-16 shrink-0 flex-col items-center gap-1.5">
+            <img src={a.pubmatUrl ?? DefaultPubmat} alt="" className="h-16 w-16 rounded-lg object-cover" />
+            {a.attended ? <AttendedBadge /> : isFinished(a) && <EndedBadge />}
+          </div>
+
+          <div className="min-w-0 flex-1 self-center">
+            <p className="text-[12.5px] font-bold leading-snug text-[#062444] line-clamp-2">{a.name}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-slate-500">
               {a.dateTime && <span>{new Date(a.dateTime).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}{a.endTime && ` – ${new Date(a.endTime).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}</span>}
               {a.venue && <span className="flex items-center gap-1"><MapPin size={11} /> {a.venue}</span>}
-              {a.attendanceEnabled && <span className="font-semibold text-[#0088cc]">Attendance monitoring included</span>}
             </div>
-            {a.shortDescription && <p className="mt-2 text-[12px] text-slate-500">{a.shortDescription}</p>}
+            {a.attendanceEnabled && <p className="mt-1 text-[10.5px] font-semibold text-[#0088cc]">Attendance monitoring included</p>}
+            {a.shortDescription && <p className="mt-1 text-[11px] text-slate-500 line-clamp-2">{a.shortDescription}</p>}
+          </div>
+
+          {/* Category/type, pinned to the rightmost edge — small square badge instead of a pill so it reads as a tag, not a headline. */}
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-[#0088cc]/10 p-1 text-center text-[8px] font-bold leading-[1.15] text-[#0088cc]">
+            {a.label}
           </div>
         </div>
       ))}
