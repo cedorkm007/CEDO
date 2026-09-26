@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { X, ClipboardList, ChevronRight, Lightbulb, CheckCircle2 } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import {
-  fetchApprovedSDPActivities, fetchScholarSDPProgress, claimSDPReservedCredits, SDP_CATEGORIES,
-  type SDPActivity, type SDPCategory, type SDPCreditCounts,
+  fetchApprovedSDPActivities, fetchScholarSDPProgress, SDP_CATEGORIES,
+  type SDPActivity, type SDPCreditCounts,
 } from "../../sdpApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
 
@@ -75,13 +75,10 @@ const CREDITS_REQUIRED = 3;
  * the current grading period — see fetch_scholar_sdp_progress()), mirrors
  * the checkmark/circle badges already shown on the scholar's own Profile.
  * A category that's already capped for this period keeps banking excess
- * as "reserved" instead of discarding it; the scholar can claim it into
- * whatever period is current whenever they like.
+ * as "reserved" instead of discarding it — shown here as a read-only
+ * tracker for now; applying it toward a later period isn't wired up yet.
  */
-function CreditProgress({ credits, reserved, onClaim, claiming }: {
-  credits: SDPCreditCounts; reserved: SDPCreditCounts;
-  onClaim: (category: SDPCategory) => void; claiming: SDPCategory | null;
-}) {
+function CreditProgress({ credits, reserved }: { credits: SDPCreditCounts; reserved: SDPCreditCounts }) {
   return (
     <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 mb-5">
       {SDP_CATEGORIES.map(c => {
@@ -101,13 +98,9 @@ function CreditProgress({ credits, reserved, onClaim, claiming }: {
               <span className="text-[8.5px] sm:text-[10.5px] font-bold text-slate-500 shrink-0">{count}/{CREDITS_REQUIRED}</span>
             </div>
             {bank > 0 && (
-              <button
-                onClick={() => onClaim(c.key)}
-                disabled={claiming === c.key}
-                className="mt-1 sm:mt-1.5 w-full text-center text-[7.5px] sm:text-[9.5px] font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-md px-1 py-0.5 disabled:opacity-50 transition-colors"
-              >
-                {claiming === c.key ? "Applying…" : `+${bank} reserved · Apply`}
-              </button>
+              <div className="mt-1 sm:mt-1.5 w-full text-center text-[7.5px] sm:text-[9.5px] font-bold text-amber-700 bg-amber-100 rounded-md px-1 py-0.5">
+                +{bank} reserved
+              </div>
             )}
           </div>
         );
@@ -134,7 +127,6 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   const [selectedActivity, setSelectedActivity] = useState<SDPActivity | null>(null);
   const [credits, setCredits] = useState<SDPCreditCounts>({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
   const [reserved, setReserved] = useState<SDPCreditCounts>({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
-  const [claiming, setClaiming] = useState<SDPCategory | null>(null);
 
   async function loadAll() {
     setLoading(true);
@@ -148,18 +140,9 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   }
   useEffect(() => { loadAll(); }, [scholarIdNumber]);
 
-  async function handleClaim(category: SDPCategory) {
-    setClaiming(category);
-    await claimSDPReservedCredits(category);
-    const progress = await fetchScholarSDPProgress();
-    setCredits(progress.credits);
-    setReserved(progress.reserved);
-    setClaiming(null);
-  }
-
   return (
     <SectionCard icon={<Lightbulb size={14} />} title="Scholars' Development Program (SDP)">
-      {!loading && <CreditProgress credits={credits} reserved={reserved} onClaim={handleClaim} claiming={claiming} />}
+      {!loading && <CreditProgress credits={credits} reserved={reserved} />}
 
       <div className="flex items-center gap-2 mb-3">
         <h4 className="text-[#062444] font-bold text-sm flex-1">SDP Activities</h4>
