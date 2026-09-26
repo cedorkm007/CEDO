@@ -105,17 +105,33 @@ export async function fetchScholarSDPCategoryStatus(scholarIdNumber: string): Pr
 
 export type SDPCreditCounts = Record<SDPCategory, number>;
 
-/** This scholar's accumulated credits per SDP category (3 needed to complete one) — sums each credited activity's `credits`, not just a count of attendances. */
-export async function fetchScholarSDPCreditCounts(scholarIdNumber: string): Promise<SDPCreditCounts> {
-  const fallback: SDPCreditCounts = { community_service: 0, community_volunteerism: 0, formation_program: 0 };
-  const { data, error } = await supabase.from("sdp_attendance")
-    .select("sdp_activities(category, credits)").eq("scholar_id_number", scholarIdNumber);
+const zeroCreditCounts = (): SDPCreditCounts => ({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
+
+/**
+ * This scholar's credits per SDP category FOR THE CURRENT GRADING PERIOD
+ * (3 needed to complete one) plus any banked "reserved" credit not yet
+ * applied — see fetch_scholar_sdp_progress() (supabase_migration_sdp_
+ * reserved_credits.sql). Once a category hits the cap for the current
+ * period, further credit is banked as reserved instead of discarded, and
+ * a scholar can claim it into a later period via claimSDPReservedCredits.
+ */
+export async function fetchScholarSDPProgress(): Promise<{ credits: SDPCreditCounts; reserved: SDPCreditCounts }> {
+  const fallback = { credits: zeroCreditCounts(), reserved: zeroCreditCounts() };
+  const { data, error } = await supabase.rpc("fetch_scholar_sdp_progress");
   if (error || !data) return fallback;
-  const totals = { ...fallback };
-  for (const row of data as unknown as { sdp_activities: { category: SDPCategory | null; credits: number | null } | null }[]) {
-    const activity = row.sdp_activities;
-    if (activity?.category) totals[activity.category] += Number(activity.credits ?? 1);
+  const credits = zeroCreditCounts();
+  const reserved = zeroCreditCounts();
+  for (const row of data as { category: SDPCategory; credits: number; reserved: number }[]) {
+    credits[row.category] = Number(row.credits ?? 0);
+    reserved[row.category] = Number(row.reserved ?? 0);
   }
-  return totals;
+  return { credits, reserved };
+}
+
+/** Applies all of this scholar's unclaimed reserved credit in one category into the current grading period. Returns the amount claimed. */
+export async function claimSDPReservedCredits(category: SDPCategory): Promise<{ ok: boolean; error?: string; amount?: number }> {
+  const { data, error } = await supabase.rpc("claim_sdp_reserved_credits", { p_category: category });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, amount: Number(data ?? 0) };
 }
 

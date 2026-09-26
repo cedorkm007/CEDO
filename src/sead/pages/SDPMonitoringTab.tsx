@@ -955,12 +955,18 @@ function ActivitiesSection() {
 /** SDP category completion requires 3 credits (see redeem_attendance_code's category-cap check and recompute_sdp_category_status()) — shown alongside the actual count so staff see both the number and whether it's met. */
 const SDP_CATEGORY_CREDIT_GOAL = 3;
 
-function CreditCell({ credits }: { credits: number }) {
+/** `reserved` (banked excess for a later period — see supabase_migration_sdp_reserved_credits.sql) shown as a small badge; staff can see it but only the scholar can claim it into a period. */
+function CreditCell({ credits, reserved }: { credits: number; reserved?: number }) {
   const complete = credits >= SDP_CATEGORY_CREDIT_GOAL;
   return (
-    <span className={`inline-flex items-center gap-1 text-[11.5px] font-bold ${complete ? "text-green-700" : "text-slate-500"}`}>
-      {complete ? <CheckCircle2 size={13} /> : null}
-      {credits} / {SDP_CATEGORY_CREDIT_GOAL}
+    <span className="inline-flex flex-col items-center gap-0.5">
+      <span className={`inline-flex items-center gap-1 text-[11.5px] font-bold ${complete ? "text-green-700" : "text-slate-500"}`}>
+        {complete ? <CheckCircle2 size={13} /> : null}
+        {credits} / {SDP_CATEGORY_CREDIT_GOAL}
+      </span>
+      {!!reserved && (
+        <span className="text-[9.5px] font-bold text-amber-700 bg-amber-100 rounded px-1.5 py-0.5">+{reserved} reserved</span>
+      )}
     </span>
   );
 }
@@ -1031,9 +1037,9 @@ function ChecklistSection() {
                 <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
                   <td className="px-5 py-3 text-slate-500 whitespace-nowrap">{s.scholarIdNumber}</td>
                   <td className="px-5 py-3 font-medium text-[#062444] whitespace-nowrap">{s.name}</td>
-                  <td className="px-5 py-3 text-center"><CreditCell credits={s.communityService} /></td>
-                  <td className="px-5 py-3 text-center"><CreditCell credits={s.communityVolunteerism} /></td>
-                  <td className="px-5 py-3 text-center"><CreditCell credits={s.formationProgram} /></td>
+                  <td className="px-5 py-3 text-center"><CreditCell credits={s.communityService} reserved={s.communityServiceReserved} /></td>
+                  <td className="px-5 py-3 text-center"><CreditCell credits={s.communityVolunteerism} reserved={s.communityVolunteerismReserved} /></td>
+                  <td className="px-5 py-3 text-center"><CreditCell credits={s.formationProgram} reserved={s.formationProgramReserved} /></td>
                   <td className="px-5 py-3 text-center">
                     <button onClick={() => setViewingScholar(s)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">View</button>
                   </td>

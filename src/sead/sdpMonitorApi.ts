@@ -148,9 +148,17 @@ export async function creditAttendance(
   activityId: string, scholarIdNumber: string, attendedDate: string
 ): Promise<{ ok: boolean; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
+  // Stamped with the current grading period (supabase_migration_sdp_reserved_credits.sql)
+  // so this manual credit counts toward period-scoped totals — this path bypasses the
+  // cap/reserved-credit banking in redeem_attendance_code() intentionally, same as before.
+  const { data: period } = await supabase.rpc("get_current_grading_period").maybeSingle();
+  const periodRow = period as { current_school_year: string | null; current_semester: string | null } | null;
   const { error } = await supabase.from("sdp_attendance")
     .upsert(
-      { activity_id: activityId, scholar_id_number: scholarIdNumber, attended_date: attendedDate, created_by: auth.user?.id ?? null },
+      {
+        activity_id: activityId, scholar_id_number: scholarIdNumber, attended_date: attendedDate, created_by: auth.user?.id ?? null,
+        school_year: periodRow?.current_school_year ?? null, semester: periodRow?.current_semester ?? null,
+      },
       { onConflict: "activity_id,scholar_id_number,occurrence_number" }
     );
   return error ? { ok: false, error: error.message } : { ok: true };
@@ -167,6 +175,9 @@ export interface ScholarSDPChecklist {
   communityService: number;
   communityVolunteerism: number;
   formationProgram: number;
+  communityServiceReserved: number;
+  communityVolunteerismReserved: number;
+  formationProgramReserved: number;
 }
 
 /**
@@ -186,12 +197,19 @@ export async function fetchAllScholarsSDPChecklist(): Promise<ScholarSDPChecklis
   for (let from = 0; ; from += SDP_CHECKLIST_PAGE_SIZE) {
     const { data, error } = await supabase.rpc("scholars_sdp_checklist").range(from, from + SDP_CHECKLIST_PAGE_SIZE - 1);
     if (error || !data) break;
-    out.push(...(data as { scholar_id_number: string; name: string; community_service: number; community_volunteerism: number; formation_program: number }[]).map(r => ({
+    out.push(...(data as {
+      scholar_id_number: string; name: string;
+      community_service: number; community_volunteerism: number; formation_program: number;
+      community_service_reserved: number; community_volunteerism_reserved: number; formation_program_reserved: number;
+    }[]).map(r => ({
       scholarIdNumber: r.scholar_id_number,
       name: r.name,
       communityService: Number(r.community_service),
       communityVolunteerism: Number(r.community_volunteerism),
       formationProgram: Number(r.formation_program),
+      communityServiceReserved: Number(r.community_service_reserved),
+      communityVolunteerismReserved: Number(r.community_volunteerism_reserved),
+      formationProgramReserved: Number(r.formation_program_reserved),
     })));
     if (data.length < SDP_CHECKLIST_PAGE_SIZE) break;
   }
