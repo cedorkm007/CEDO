@@ -23,7 +23,24 @@ type CalendarActivity = {
   attendanceEnabled: boolean;
   pubmatUrl: string | null;
   attended: boolean;
+  // "Finished" (not attended, but no longer actionable) only applies to a
+  // non-recurring activity whose date has passed — a recurring SDP
+  // activity's occurrences never count as finished even once past, since
+  // more occurrences may still be coming. Formation activities are never
+  // recurring at all.
+  isRecurring: boolean;
 };
+
+function isFinished(a: CalendarActivity): boolean {
+  return !a.isRecurring && !!a.dateTime && new Date(a.dateTime).getTime() < Date.now();
+}
+
+/** Active items first (soonest first), attended/finished items sink to the bottom (most-recent first) — mirrors the same "done things sink" ordering used for Submission Activities. */
+function sortActivities(items: CalendarActivity[]): CalendarActivity[] {
+  const active = items.filter(a => !a.attended && !isFinished(a)).sort((a, b) => a.dateTime.localeCompare(b.dateTime));
+  const done = items.filter(a => a.attended || isFinished(a)).sort((a, b) => b.dateTime.localeCompare(a.dateTime));
+  return [...active, ...done];
+}
 
 /** Small green "Attended" mark, reused by both the Activities list and the Calendar's day-detail rows. */
 function AttendedBadge() {
@@ -186,7 +203,7 @@ export function CalendarAndActivitiesPanel({ scholarIdNumber, onNavigateToForms 
         const shared = {
           name: activity.name, shortDescription: activity.rationale ?? "", endTime: null,
           label: categoryLabel(activity.category), attendanceEnabled: false, pubmatUrl: pubmatUrl(activity.pubmatPath),
-          attended: attendedSdpIds.has(activity.id),
+          attended: attendedSdpIds.has(activity.id), isRecurring: activity.activityType === "recurring",
         };
         const entries: CalendarActivity[] = [];
         if (activity.dateTime) entries.push({ id: `sdp-${activity.id}`, dateTime: activity.dateTime, venue: activity.venue, ...shared });
@@ -202,9 +219,9 @@ export function CalendarAndActivitiesPanel({ scholarIdNumber, onNavigateToForms 
       const formation = formationActivities.map(activity => ({
         id: `formation-${activity.id}`, name: activity.name, shortDescription: activity.shortDescription, dateTime: activity.dateTime,
         endTime: activity.endTime, venue: activity.venue, label: "Formation Activity", attendanceEnabled: activity.attendanceEnabled,
-        pubmatUrl: pubmatUrl(activity.pubmatPath), attended: attendedFormationIds.has(activity.id),
+        pubmatUrl: pubmatUrl(activity.pubmatPath), attended: attendedFormationIds.has(activity.id), isRecurring: false,
       }));
-      setActivities([...sdp, ...formation].sort((a, b) => a.dateTime.localeCompare(b.dateTime)));
+      setActivities(sortActivities([...sdp, ...formation]));
       setLoading(false);
     });
   }, [scholarIdNumber]);

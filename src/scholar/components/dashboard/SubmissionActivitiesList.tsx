@@ -323,7 +323,20 @@ export function SubmissionActivitiesList() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchSubmissionActivitiesForScholar().then(a => { setActivities(a); setLoading(false); });
+    fetchSubmissionActivitiesForScholar().then(async fetched => {
+      // Fully "Submitted" activities sink to the bottom, same "done things
+      // sink" ordering as the SDP/Formation activities list below this one —
+      // locked and Not Started/Needs Resubmission activities (still
+      // actionable) stay on top. A stable sort keeps each group in the
+      // order the server returned it.
+      const withDone = await Promise.all(fetched.map(async activity => {
+        if (!activity.isUnlocked) return { activity, done: false };
+        const uploads = await fetchSubmissionUploadsForScholar(activity.id);
+        return { activity, done: overallSubmissionStatus(uploads) === "submitted" };
+      }));
+      setActivities(withDone.sort((a, b) => Number(a.done) - Number(b.done)).map(w => w.activity));
+      setLoading(false);
+    });
   }, []);
 
   if (loading) return <p className="mb-4 text-[13px] text-slate-400">Loading…</p>;
