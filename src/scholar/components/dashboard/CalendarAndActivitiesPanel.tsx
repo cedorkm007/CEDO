@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { Calendar as CalendarIcon, ClipboardList, QrCode, ChevronLeft, ChevronRight, MapPin, CheckCircle2, History } from "lucide-react";
+import { Calendar as CalendarIcon, ClipboardList, QrCode, ChevronLeft, ChevronRight, MapPin } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { AttendanceScanner } from "./AttendanceScanner";
 import { fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, SDP_CATEGORIES, type SDPActivity } from "../../sdpApi";
@@ -8,7 +8,7 @@ import { fetchFormationActivitiesForScholar, fetchAttendedFormationActivityIds }
 import { SubmissionActivitiesList } from "./SubmissionActivitiesList";
 import { useUrlState } from "@/app/useUrlState";
 import { pubmatUrl } from "@/sead/pubmatApi";
-import DefaultPubmat from "@/imports/CEDO_Seal.png";
+import { DefaultPubmat, AttendedBadge, EndedBadge, isPastDate } from "./activityCardKit";
 
 type Tab = "calendar" | "activities" | "attendance";
 const TABS: readonly Tab[] = ["calendar", "activities", "attendance"];
@@ -32,8 +32,16 @@ type CalendarActivity = {
   isRecurring: boolean;
 };
 
+// "Finished," for SORTING purposes only, deliberately exempts recurring
+// activities — a series with occurrences still to come shouldn't sink in
+// the list just because one date (even the base one) already passed. The
+// "Ended" BADGE shown per-entry is a separate, plain isPastDate check with
+// no such exemption (see the render code below) — so a recurring
+// activity's own past occurrences still get marked Ended individually
+// while its future occurrences stay unmarked and the series as a whole
+// stays in its normal chronological position.
 function isFinished(a: CalendarActivity): boolean {
-  return !a.isRecurring && !!a.dateTime && new Date(a.dateTime).getTime() < Date.now();
+  return !a.isRecurring && isPastDate(a.dateTime);
 }
 
 /** Active items first (soonest first), attended/finished items sink to the bottom (most-recent first) — mirrors the same "done things sink" ordering used for Submission Activities. */
@@ -41,24 +49,6 @@ function sortActivities(items: CalendarActivity[]): CalendarActivity[] {
   const active = items.filter(a => !a.attended && !isFinished(a)).sort((a, b) => a.dateTime.localeCompare(b.dateTime));
   const done = items.filter(a => a.attended || isFinished(a)).sort((a, b) => b.dateTime.localeCompare(a.dateTime));
   return [...active, ...done];
-}
-
-/** Small green "Attended" mark, reused by both the Activities list and the Calendar's day-detail rows. */
-function AttendedBadge() {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700">
-      <CheckCircle2 size={11} /> Attended
-    </span>
-  );
-}
-
-/** Neutral gray "Ended" mark for a finished-but-unattended activity (see isFinished) — distinct from Attended so a scholar can tell "this already happened and I missed it" apart from "I was there." */
-function EndedBadge() {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-bold text-slate-500">
-      <History size={11} /> Ended
-    </span>
-  );
 }
 
 function categoryLabel(category: SDPActivity["category"]): string {
@@ -159,7 +149,7 @@ function CalendarGrid({ activities }: { activities: CalendarActivity[] }) {
             <div key={a.id} className="bg-[#f8fafd] rounded-lg px-3 py-2.5">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[13px] font-bold text-[#062444]">{a.name}</p>
-                {a.attended ? <AttendedBadge /> : isFinished(a) && <EndedBadge />}
+                {a.attended ? <AttendedBadge /> : isPastDate(a.dateTime) && <EndedBadge />}
               </div>
               <p className="text-[11.5px] text-slate-400">{a.label} {a.venue && `· ${a.venue}`}</p>
               {a.shortDescription && <p className="mt-1 text-[11.5px] text-slate-500">{a.shortDescription}</p>}
@@ -180,7 +170,7 @@ function ActivitiesList({ activities }: { activities: CalendarActivity[] }) {
           {/* Pubmat (or a default seal when none was uploaded) with the Attended/Ended mark directly beneath it. */}
           <div className="flex w-16 shrink-0 flex-col items-center gap-1.5">
             <img src={a.pubmatUrl ?? DefaultPubmat} alt="" className="h-16 w-16 rounded-lg object-cover" />
-            {a.attended ? <AttendedBadge /> : isFinished(a) && <EndedBadge />}
+            {a.attended ? <AttendedBadge /> : isPastDate(a.dateTime) && <EndedBadge />}
           </div>
 
           <div className="min-w-0 flex-1 self-center">

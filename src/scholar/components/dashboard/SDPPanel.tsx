@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, ClipboardList, ChevronRight, Lightbulb, CheckCircle2 } from "lucide-react";
+import { X, ClipboardList, Lightbulb, CheckCircle2 } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import {
-  fetchApprovedSDPActivities, fetchScholarSDPProgress, SDP_CATEGORIES,
+  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPProgress, SDP_CATEGORIES,
   type SDPActivity, type SDPCreditCounts,
 } from "../../sdpApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
+import { DefaultPubmat, AttendedBadge, EndedBadge, isPastDate } from "./activityCardKit";
 
 function ActivityDetailModal({ activity, onClose }: { activity: SDPActivity; onClose: () => void }) {
   return (
@@ -45,25 +46,29 @@ function ActivityDetailModal({ activity, onClose }: { activity: SDPActivity; onC
   );
 }
 
-function ActivityCard({ act, onClick }: { act: SDPActivity; onClick: () => void }) {
+/** Same compact card structure as CalendarAndActivitiesPanel's Activities list and SubmissionActivitiesList's collapsed rows — consistent sizing across every activity list in the scholar portal. */
+function ActivityCard({ act, attended, onClick }: { act: SDPActivity; attended: boolean; onClick: () => void }) {
   const pubmat = pubmatUrl(act.pubmatPath);
+  const categoryLabel = act.category ? (SDP_CATEGORIES.find(c => c.key === act.category)?.label ?? act.category) : "General";
   return (
     <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={onClick}
-      className="w-full bg-white rounded-xl shadow-sm p-4 flex items-center gap-3 text-left hover:shadow-md transition-all border border-gray-100">
-      {pubmat && <img src={pubmat} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0" />}
-      <div className="flex-1 min-w-0">
-        <p className="font-bold text-[#062444] text-sm truncate">{act.name}</p>
-        <p className="text-xs text-gray-500 truncate">{act.organization}</p>
-        <div className="flex items-center gap-2 mt-1 flex-wrap">
-          {act.category && (
-            <span className="text-[10px] font-bold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2 py-0.5">
-              {SDP_CATEGORIES.find(c => c.key === act.category)?.label ?? act.category}
-            </span>
-          )}
-          {act.dateTime && <span className="text-xs text-gray-400">{new Date(act.dateTime).toLocaleDateString()}</span>}
-        </div>
+      className="w-full bg-white rounded-xl shadow-sm p-3 flex items-start gap-3 text-left hover:shadow-md transition-all border border-gray-100 min-h-[104px]">
+      {/* Pubmat (or a default seal when none was uploaded) with the Attended/Ended mark directly beneath it. */}
+      <div className="flex w-16 shrink-0 flex-col items-center gap-1.5">
+        <img src={pubmat ?? DefaultPubmat} alt="" className="h-16 w-16 rounded-lg object-cover" />
+        {attended ? <AttendedBadge /> : isPastDate(act.dateTime) && <EndedBadge />}
       </div>
-      <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+
+      <div className="min-w-0 flex-1 self-center">
+        <p className="font-bold text-[#062444] text-[12.5px] leading-snug line-clamp-2">{act.name}</p>
+        {act.organization && <p className="mt-1 text-[11px] text-gray-500 line-clamp-1">{act.organization}</p>}
+        {act.dateTime && <p className="mt-1 text-[11px] text-gray-400">{new Date(act.dateTime).toLocaleDateString()}</p>}
+      </div>
+
+      {/* Category, pinned to the rightmost edge — small square badge instead of a pill so it reads as a tag, not a headline. */}
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-[#0088cc]/10 p-1 text-center text-[8px] font-bold leading-[1.15] text-[#0088cc]">
+        {categoryLabel}
+      </div>
     </motion.button>
   );
 }
@@ -130,6 +135,7 @@ interface SDPPanelProps {
  */
 export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   const [activities, setActivities] = useState<SDPActivity[]>([]);
+  const [attendedIds, setAttendedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<SDPActivity | null>(null);
   const [credits, setCredits] = useState<SDPCreditCounts>({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
@@ -137,12 +143,13 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
 
   async function loadAll() {
     setLoading(true);
-    const [a, progress] = await Promise.all([
-      fetchApprovedSDPActivities(), fetchScholarSDPProgress(),
+    const [a, progress, attended] = await Promise.all([
+      fetchApprovedSDPActivities(), fetchScholarSDPProgress(), fetchAttendedSDPActivityIds(scholarIdNumber),
     ]);
     setActivities(a);
     setCredits(progress.credits);
     setReserved(progress.reserved);
+    setAttendedIds(attended);
     setLoading(false);
   }
   useEffect(() => { loadAll(); }, [scholarIdNumber]);
@@ -165,7 +172,7 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
             <p className="text-sm">No SDP activities yet.</p>
           </div>
         ) : (
-          activities.map(act => <ActivityCard key={act.id} act={act} onClick={() => setSelectedActivity(act)} />)
+          activities.map(act => <ActivityCard key={act.id} act={act} attended={attendedIds.has(act.id)} onClick={() => setSelectedActivity(act)} />)
         )}
       </div>
 

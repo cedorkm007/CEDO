@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { UploadCloud, CheckCircle2, AlertCircle, RotateCw, MessageSquareWarning, Lock, Undo2 } from "lucide-react";
+import { UploadCloud, CheckCircle2, AlertCircle, RotateCw, MessageSquareWarning, Lock, Undo2, ChevronDown } from "lucide-react";
 import {
   fetchSubmissionActivitiesForScholar, isAllowedSubmissionFileType, submissionFieldAllowedTypesLabel,
   uploadSubmissionFile, fetchSubmissionUploadsForScholar, unsubmitSubmissionUpload, overallSubmissionStatus,
@@ -8,6 +8,7 @@ import {
 } from "../../submissionsApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
 import { compressSubmissionFile } from "../../submissionCompression";
+import { DefaultPubmat } from "./activityCardKit";
 
 type FileUploadStatus = "compressing" | "uploading" | "uploaded" | "error";
 
@@ -16,12 +17,20 @@ function fileKey(fieldId: string, file: File): string {
   return `${fieldId}::${file.name}::${file.size}`;
 }
 
-/** Badge for the activity-level Not Started / Submitted / Needs Resubmission overview (see overallSubmissionStatus in submissionsApi.ts). */
-function OverallStatusBadge({ uploads }: { uploads: SubmissionUploadRecord[] }) {
+/** Compact status mark shown beneath the pubmat, matching AttendedBadge/EndedBadge's pill style so all three activity lists read consistently — see overallSubmissionStatus in submissionsApi.ts. */
+function StatusBadge({ uploads }: { uploads: SubmissionUploadRecord[] }) {
   const status = overallSubmissionStatus(uploads);
-  if (status === "not_started") return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-bold text-slate-500">Not Started</span>;
-  if (status === "needs_resubmission") return <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10.5px] font-bold text-red-700">Needs Resubmission</span>;
-  return <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700">Submitted</span>;
+  if (status === "not_started") {
+    return <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-bold text-slate-500">Not Started</span>;
+  }
+  if (status === "needs_resubmission") {
+    return <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10.5px] font-bold text-red-700"><MessageSquareWarning size={11} /> Resubmit</span>;
+  }
+  return <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700"><CheckCircle2 size={11} /> Submitted</span>;
+}
+
+function LockedBadge() {
+  return <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-bold text-amber-700"><Lock size={11} /> Locked</span>;
 }
 
 /** Per-file review outcome from staff (Part 5) — nothing shown once a file is just pending review, since the field's own "N/max files" count already covers that. */
@@ -99,6 +108,7 @@ function UnsubmitControl({ upload, onUnsubmit }: { upload: SubmissionUploadRecor
  * the activity-level status badge and per-file staff review notes.
  */
 function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForScholar }) {
+  const [expanded, setExpanded] = useState(false);
   const [existingUploads, setExistingUploads] = useState<SubmissionUploadRecord[]>([]);
   const [filesByField, setFilesByField] = useState<Record<string, File[]>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -188,18 +198,22 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
 
   const pubmat = pubmatUrl(activity.pubmatPath);
   return (
-    <div className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-3.5">
-      <div className="flex gap-3">
-        {pubmat && <img src={pubmat} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0" />}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="text-[13.5px] font-bold text-[#062444]">{activity.name}</p>
-            {activity.isUnlocked ? <OverallStatusBadge uploads={existingUploads} /> : <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-bold text-amber-700"><Lock size={10} /> Locked</span>}
-          </div>
-          {activity.description && <p className="mt-1 text-[12px] text-slate-500">{activity.description}</p>}
+    <div className="rounded-xl border border-[#e6ecf5] bg-white overflow-hidden">
+      {/* Collapsed row — same compact structure as the SDP/Formation activity cards, so every list in Calendar and Activities is sized consistently. The detailed upload form only shows once this is clicked. */}
+      <button type="button" onClick={() => setExpanded(e => !e)}
+        className="flex w-full min-h-[104px] items-start gap-3 p-3 text-left">
+        <div className="flex w-16 shrink-0 flex-col items-center gap-1.5">
+          <img src={pubmat ?? DefaultPubmat} alt="" className="h-16 w-16 rounded-lg object-cover" />
+          {activity.isUnlocked ? <StatusBadge uploads={existingUploads} /> : <LockedBadge />}
         </div>
-      </div>
+        <div className="min-w-0 flex-1 self-center">
+          <p className="text-[12.5px] font-bold leading-snug text-[#062444] line-clamp-2">{activity.name}</p>
+          {activity.description && <p className="mt-1 text-[11px] text-slate-500 line-clamp-2">{activity.description}</p>}
+        </div>
+        <ChevronDown size={16} className={`mt-1 shrink-0 text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
+      </button>
 
+      {expanded && <div className="border-t border-[#e6ecf5] px-4 py-3.5">
       {!activity.isUnlocked ? (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
           <p className="flex items-center gap-1.5 text-[12px] font-bold text-amber-800"><Lock size={13} /> Complete these requirements to unlock uploads</p>
@@ -306,6 +320,7 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
       >
         <UploadCloud size={14} /> {submitting ? "Uploading…" : "Submit"}
       </button>}
+      </div>}
     </div>
   );
 }
