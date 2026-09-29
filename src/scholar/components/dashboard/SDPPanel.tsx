@@ -83,9 +83,10 @@ function ActivityCard({ act, attended, onClick }: { act: SDPActivity; attended: 
         {(status.nextDate ?? act.dateTime) && <p className="mt-1 text-[11px] text-gray-400">{new Date(status.nextDate ?? act.dateTime).toLocaleDateString()}</p>}
       </div>
 
-      {/* Category, pinned to the rightmost edge — small square badge instead of a pill so it reads as a tag, not a headline. */}
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-[#0088cc]/10 p-1 text-center text-[8px] font-bold leading-[1.15] text-[#0088cc]">
-        {categoryLabel}
+      {/* Category, pinned to the rightmost edge — small square badge instead of a pill so it reads as a tag, not a headline. The credit count sits right below it so a scholar can see at a glance what attending is worth. */}
+      <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center gap-0.5 rounded-md bg-[#0088cc]/10 p-1 text-center text-[#0088cc]">
+        <span className="text-[8px] font-bold leading-[1.15]">{categoryLabel}</span>
+        <span className="text-[7px] font-semibold text-[#0088cc]/70">{act.credits} credit{act.credits === 1 ? "" : "s"}</span>
       </div>
     </motion.button>
   );
