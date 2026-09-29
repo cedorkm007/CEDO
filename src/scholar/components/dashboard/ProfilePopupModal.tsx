@@ -1,5 +1,7 @@
-import { X, ShieldCheck, GraduationCap, LogOut, MapPinned, CheckCircle2, Circle } from "lucide-react";
+import { useState } from "react";
+import { X, ShieldCheck, GraduationCap, LogOut, MapPinned, CheckCircle2, Circle, QrCode } from "lucide-react";
 import { ProfilePanel } from "./ProfilePanel";
+import { ScholarIdQrCanvas, FullscreenScholarQr } from "./ScholarIdQrCode";
 import { clusterForBarangay, clusterLabel } from "@/lib/cdoBarangays";
 import { SDP_CATEGORIES, type SDPCategoryStatus } from "../../sdpApi";
 import type { ScholarProfile } from "../../types";
@@ -21,6 +23,7 @@ interface ProfilePopupModalProps {
  */
 export function ProfilePopupModal({ profile, sdpStatus, positions, onClose, onChangePassword, onProfileUpdated, onSignOut }: ProfilePopupModalProps) {
   const cluster = profile.barangay ? clusterForBarangay(profile.barangay) : null;
+  const [showFullscreenQr, setShowFullscreenQr] = useState(false);
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-end justify-center md:hidden" onClick={onClose}>
@@ -33,7 +36,7 @@ export function ProfilePopupModal({ profile, sdpStatus, positions, onClose, onCh
             <div className="w-16 h-16 rounded-full border-4 border-[#F3BC00] shadow-lg bg-[#0a3a6b] flex items-center justify-center text-white shrink-0">
               <GraduationCap size={28} />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-white font-bold text-[15px] leading-tight truncate">
                 {profile.lastName.toUpperCase()}, {profile.firstName.toUpperCase()}{profile.middleName ? ` ${profile.middleName[0].toUpperCase()}` : ""}
               </p>
@@ -62,6 +65,18 @@ export function ProfilePopupModal({ profile, sdpStatus, positions, onClose, onCh
                 )}
               </div>
             </div>
+            {profile.qrToken && (
+              <button
+                onClick={() => setShowFullscreenQr(true)}
+                aria-label="View your Scholar ID QR code full screen"
+                className="flex shrink-0 flex-col items-center gap-1 rounded-[10px] border border-white/30 bg-white/10 p-1.5 backdrop-blur-sm"
+              >
+                <ScholarIdQrCanvas token={profile.qrToken} size={48} className="rounded-md bg-white p-1" />
+                <span className="flex items-center gap-1 text-[9px] font-semibold text-[#F3BC00]">
+                  <QrCode size={9} /> Tap
+                </span>
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2 mt-4">
             <button onClick={onChangePassword}
@@ -79,6 +94,10 @@ export function ProfilePopupModal({ profile, sdpStatus, positions, onClose, onCh
           <ProfilePanel profile={profile} onProfileUpdated={onProfileUpdated} />
         </div>
       </div>
+
+      {showFullscreenQr && profile.qrToken && (
+        <FullscreenScholarQr token={profile.qrToken} onClose={() => setShowFullscreenQr(false)} />
+      )}
     </div>
   );
 }
