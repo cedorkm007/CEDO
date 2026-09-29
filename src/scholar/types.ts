@@ -34,6 +34,14 @@ export interface ScholarProfile {
   // Powers the "set a security question" prompt shown after login — see
   // set_scholar_security_question() / scholar-self-reset-password.
   hasSecurityQuestion: boolean;
+  // Permanent, opaque QR-safe identity token — NOT scholar_id_number
+  // (real/guessable) and NOT id (the actual auth identity). Encoded into
+  // the QR shown on the scholar's own Profile tab; resolved publicly
+  // (no login) via get_public_scholar_emergency_info().
+  qrToken: string;
+  emergencyContactName: string;
+  emergencyContactRelationship: string;
+  emergencyContactNumber: string;
 }
 
 export interface SubjectGrade {

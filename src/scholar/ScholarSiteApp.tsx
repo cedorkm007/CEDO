@@ -6,9 +6,10 @@ import { UnderDevelopmentPage } from "./pages/UnderDevelopmentPage";
 import { ScholarLoginPage } from "./pages/ScholarLoginPage";
 import { ScholarPortalPage } from "./pages/ScholarPortalPage";
 import { FinancialAssistanceStatusPage } from "./pages/FinancialAssistanceStatusPage";
+import { ScholarEmergencyInfoPage } from "./pages/ScholarEmergencyInfoPage";
 import type { PublicPage } from "./types";
 
-type SiteView = PublicPage | "scholar-login" | "new-college" | "new-law-medical" | "portal" | "financial-assistance-status";
+type SiteView = PublicPage | "scholar-login" | "new-college" | "new-law-medical" | "portal" | "financial-assistance-status" | "scholar-id";
 
 // Every view gets its own URL under /CEDO so a scholar can bookmark/share a
 // direct link (e.g. a QR code to the login page) and so refreshing the page
@@ -19,6 +20,7 @@ const VIEW_PATHS: Record<SiteView, string> = {
   "new-college": "new-college", "new-law-medical": "new-law-medical",
   "scholar-login": "login", portal: "portal",
   "financial-assistance-status": "financial-assistance-status",
+  "scholar-id": "id",
 };
 const PATH_TO_VIEW = Object.fromEntries(
   Object.entries(VIEW_PATHS).map(([view, path]) => [path, view])
@@ -61,6 +63,17 @@ export function ScholarSiteApp() {
   // a scholar, skip straight to the portal instead of showing the login form.
   useEffect(() => {
     (async () => {
+      // Never bounce a QR-reached, account-less public page (this one, or
+      // the Financial Assistance status page) over to the portal just
+      // because the device happens to ALSO have some other scholar's
+      // session stored — e.g. a shared/staff phone scanning a scholar's
+      // emergency-info QR must show that page, not whoever is logged in
+      // on that device.
+      const initialView = viewFromLocation();
+      if (initialView === "scholar-id" || initialView === "financial-assistance-status") {
+        setCheckingSession(false);
+        return;
+      }
       const { data: { session } } = await supabase.auth.getSession();
       if (session) setView("portal");
       setCheckingSession(false);
@@ -91,7 +104,7 @@ export function ScholarSiteApp() {
 
   return (
     <div className="min-h-screen bg-white">
-      {view !== "financial-assistance-status" && (
+      {view !== "financial-assistance-status" && view !== "scholar-id" && (
         <div className={view === "portal" ? "hidden md:block" : ""}>
           <PublicNav
             page={navPage}
@@ -111,6 +124,7 @@ export function ScholarSiteApp() {
       {view === "scholar-login" && <ScholarLoginPage onLoginSuccess={() => setView("portal")} />}
       {view === "portal" && <ScholarPortalPage onSignOut={() => setView("home")} />}
       {view === "financial-assistance-status" && <FinancialAssistanceStatusPage />}
+      {view === "scholar-id" && <ScholarEmergencyInfoPage />}
     </div>
   );
 }

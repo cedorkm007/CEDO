@@ -73,6 +73,10 @@ function rowToProfile(r: Record<string, unknown>): ScholarProfile {
     zipCode: String(r.zip_code ?? ""),
     status: (r.status as ScholarProfile["status"]) ?? "Regular",
     hasSecurityQuestion: !!r.security_question,
+    qrToken: String(r.qr_token ?? ""),
+    emergencyContactName: String(r.emergency_contact_name ?? ""),
+    emergencyContactRelationship: String(r.emergency_contact_relationship ?? ""),
+    emergencyContactNumber: String(r.emergency_contact_number ?? ""),
   };
 }
 
@@ -172,6 +176,15 @@ export async function updateOwnContactInfo(fields: OwnProfileEditableFields): Pr
     p_province_region: fields.provinceRegion,
     p_country: fields.country,
     p_zip_code: fields.zipCode,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/** Scholar self-service: update their own emergency contact info — shown to whoever scans their QR (see get_public_scholar_emergency_info()). */
+export async function updateOwnEmergencyContact(name: string, relationship: string, number: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("update_own_emergency_contact", {
+    p_name: name, p_relationship: relationship, p_number: number,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };

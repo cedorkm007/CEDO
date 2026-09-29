@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { CheckCircle2, AlertTriangle, Ban, IdCard, User, Building2, BookOpen, Heart, Phone, MapPin, Save } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Ban, IdCard, User, Building2, BookOpen, Heart, Phone, MapPin, Save, QrCode, ShieldAlert } from "lucide-react";
 import { SectionCard } from "./SectionCard";
-import { updateOwnContactInfo } from "../../scholarApi";
+import { updateOwnContactInfo, updateOwnEmergencyContact } from "../../scholarApi";
 import { ALL_BARANGAYS, clusterForBarangay, clusterLabel } from "@/lib/cdoBarangays";
 import type { ScholarProfile } from "../../types";
 
@@ -30,6 +30,9 @@ export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarPr
   const [provinceRegion, setProvinceRegion] = useState(profile.provinceRegion || "");
   const [country, setCountry] = useState(profile.country || "");
   const [zipCode, setZipCode] = useState(profile.zipCode || "");
+  const [emergencyContactName, setEmergencyContactName] = useState(profile.emergencyContactName || "");
+  const [emergencyContactRelationship, setEmergencyContactRelationship] = useState(profile.emergencyContactRelationship || "");
+  const [emergencyContactNumber, setEmergencyContactNumber] = useState(profile.emergencyContactNumber || "");
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
@@ -38,13 +41,16 @@ export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarPr
     setSaving(true);
     setSaveMessage(null);
     const fields = { civilStatus, contactNo, houseUnitNo, street, barangay, cityMunicipality, provinceRegion, country, zipCode };
-    const result = await updateOwnContactInfo(fields);
+    const [contactResult, emergencyResult] = await Promise.all([
+      updateOwnContactInfo(fields),
+      updateOwnEmergencyContact(emergencyContactName, emergencyContactRelationship, emergencyContactNumber),
+    ]);
     setSaving(false);
-    if (result.ok) {
+    if (contactResult.ok && emergencyResult.ok) {
       setSaveMessage({ kind: "ok", text: "Saved." });
-      onProfileUpdated({ ...profile, ...fields });
+      onProfileUpdated({ ...profile, ...fields, emergencyContactName, emergencyContactRelationship, emergencyContactNumber });
     } else {
-      setSaveMessage({ kind: "error", text: result.error || "Couldn't save changes." });
+      setSaveMessage({ kind: "error", text: contactResult.error || emergencyResult.error || "Couldn't save changes." });
     }
   }
 
@@ -84,6 +90,21 @@ export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarPr
         <InfoItem icon={<Phone size={11} />} label="Contact No." value={profile.contactNo || "—"} />
         <InfoItem icon={<MapPin size={11} />} label="Address" value={formatAddress(profile)} full />
       </div>
+
+      {profile.qrToken && (
+        <>
+          <hr className="border-t border-[#e6ecf5] my-6" />
+          <div className="flex flex-col sm:flex-row items-center gap-4 bg-[#f8fafd] border border-[#e8edf2] rounded-[10px] p-4">
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(`${window.location.origin}/CEDO/id?token=${profile.qrToken}`)}`}
+              alt="Your Scholar ID QR code" className="h-[140px] w-[140px] shrink-0 rounded-lg bg-white p-1.5" />
+            <div>
+              <p className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide text-[#0088cc] mb-1"><QrCode size={13} /> Your Scholar ID QR</p>
+              <p className="text-[13px] text-[#1a2e44] leading-relaxed">Anyone can scan this to see your emergency contact and CEDO's contact info — carry it for SDP/Formation activities, and for emergencies.</p>
+            </div>
+          </div>
+        </>
+      )}
 
       <hr className="border-t border-[#e6ecf5] my-6" />
 
@@ -153,6 +174,27 @@ export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarPr
           <div>
             <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Zip Code</label>
             <input value={zipCode} onChange={e => setZipCode(e.target.value)}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+          </div>
+        </div>
+
+        <p className="text-[10.5px] font-bold uppercase tracking-[1.2px] text-[#0088cc] mb-4 flex items-center gap-1.5"><ShieldAlert size={12} /> Emergency Contact</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Name</label>
+            <input value={emergencyContactName} onChange={e => setEmergencyContactName(e.target.value)}
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Relationship</label>
+            <input value={emergencyContactRelationship} onChange={e => setEmergencyContactRelationship(e.target.value)}
+              placeholder="e.g. Mother"
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
+          </div>
+          <div>
+            <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Contact Number</label>
+            <input value={emergencyContactNumber} onChange={e => setEmergencyContactNumber(e.target.value)}
+              placeholder="09XXXXXXXXX"
               className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
           </div>
         </div>
