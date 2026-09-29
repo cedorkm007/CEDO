@@ -7,7 +7,7 @@ import {
   type SDPActivity, type SDPCreditCounts,
 } from "../../sdpApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
-import { DefaultPubmat, AttendedBadge, EndedBadge, NextScheduleBadge, isPastDate } from "./activityCardKit";
+import { DefaultPubmat, AttendedBadge, EndedBadge, NextScheduleBadge, isPastDate, formatShortDate } from "./activityCardKit";
 
 /**
  * For a recurring activity, status has to look at EVERY schedule (the base
@@ -44,7 +44,7 @@ function ActivityDetailModal({ activity, onClose }: { activity: SDPActivity; onC
           {[
             { label: "Name of Activity", value: activity.name },
             { label: "Organization", value: activity.organization },
-            { label: "Date / Time", value: activity.dateTime ? new Date(activity.dateTime).toLocaleString() : "—" },
+            { label: "Date / Time", value: activity.dateTime ? `${formatShortDate(activity.dateTime)}, ${new Date(activity.dateTime).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}` : "—" },
             { label: "Venue", value: activity.venue },
             { label: "Credit per Attendance", value: String(activity.credits) },
           ].map(({ label, value }) => (
@@ -80,7 +80,7 @@ function ActivityCard({ act, attended, onClick }: { act: SDPActivity; attended: 
         <p className="font-bold text-[#062444] text-[12.5px] leading-snug line-clamp-2">{act.name}</p>
         {act.organization && <p className="mt-1 text-[11px] text-gray-500 line-clamp-1">{act.organization}</p>}
         {/* A recurring activity with an upcoming occurrence shows THAT date here instead of the (possibly long-past) base dateTime — the next schedule is what a scholar actually needs to see. */}
-        {(status.nextDate ?? act.dateTime) && <p className="mt-1 text-[11px] text-gray-400">{new Date(status.nextDate ?? act.dateTime).toLocaleDateString()}</p>}
+        {(status.nextDate ?? act.dateTime) && <p className="mt-1 text-[11px] text-gray-400">{formatShortDate(status.nextDate ?? act.dateTime)}</p>}
       </div>
 
       {/* Category, pinned to the rightmost edge — small square badge instead of a pill so it reads as a tag, not a headline. The credit count sits right below it so a scholar can see at a glance what attending is worth. */}

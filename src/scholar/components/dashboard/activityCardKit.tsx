@@ -37,6 +37,14 @@ export function NextScheduleBadge() {
   );
 }
 
+const MONTH_ABBR = ["Jan.", "Feb.", "Mar.", "Apr.", "May", "Jun.", "Jul.", "Aug.", "Sep.", "Oct.", "Nov.", "Dec."];
+
+/** Formats a date as "Dec. 9, 2026" — used everywhere an activity date is shown in the scholar portal, instead of the locale-dependent toLocaleDateString() shorthand (e.g. "12/9/2026"). */
+export function formatShortDate(dateTime: string): string {
+  const d = new Date(dateTime);
+  return `${MONTH_ABBR[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
 /** Whether a given ISO date string is already in the past — the pure "has this date happened" check, with no recurring-activity exemption (contrast with a sort-only "finished" check, which does exempt recurring activities so an ongoing series doesn't sink in the list just because one date passed). */
 export function isPastDate(dateTime: string): boolean {
   return !!dateTime && new Date(dateTime).getTime() < Date.now();
