@@ -20,6 +20,7 @@ import { useUrlState } from "@/app/useUrlState";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
 import { ExportButton } from "@/app/components/ExportButtons";
 import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
+import { MonitorsSection } from "../components/MonitorsSection";
 
 function categoryLabel(category: SDPCategory | null): string {
   return SDP_CATEGORIES.find(c => c.key === category)?.label ?? "No category set";
@@ -843,6 +844,8 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
               </label>
             </div>
           </div>
+
+          <MonitorsSection activityType="sdp" activityId={activity.id} />
 
           {error && <p className="text-[13px] text-red-600">{error}</p>}
           </>}

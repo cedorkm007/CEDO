@@ -12,6 +12,7 @@ import {
 } from "../formationActivitiesApi";
 import type { AttendanceCode, AttendanceRosterEntry, AttendanceSession, AttendanceType } from "../sdpMonitorApi";
 import { uploadPubmat, pubmatUrl } from "../pubmatApi";
+import { MonitorsSection } from "../components/MonitorsSection";
 
 function isActivityDone(activity: FormationActivity): boolean {
   const end = activity.endTime ?? activity.dateTime;
@@ -125,6 +126,8 @@ function FormationActivityModal({ activity, onClose, onCreated }: { activity: Fo
           <label className="flex cursor-pointer items-center gap-2 border-t border-[#f0f3f8] pt-3 text-[12.5px] font-semibold text-[#062444]"><input type="checkbox" checked={attendanceEnabled} disabled={!!activity} onChange={event => setAttendanceEnabled(event.target.checked)} className="h-4 w-4 accent-[#062444]" /><QrCode size={14} /> Include attendance monitoring</label>
           {activity && <p className="text-[11px] text-slate-400">Attendance setup cannot be changed after creation.</p>}
           {attendanceEnabled && !activity && <div className="space-y-2.5 rounded-lg bg-[#f8fafd] p-3"><div className="flex gap-2"><button type="button" onClick={() => setAttendanceType("time_in_time_out")} className={`flex-1 rounded-lg border px-2 py-2 text-[11.5px] font-bold ${attendanceType === "time_in_time_out" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}>Time-in / Time-out</button><button type="button" onClick={() => setAttendanceType("voucher")} className={`flex-1 rounded-lg border px-2 py-2 text-[11.5px] font-bold ${attendanceType === "voucher" ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500"}`}>Voucher</button></div><input type="number" min={1} value={participantCount} onChange={event => setParticipantCount(event.target.value)} placeholder="Expected participants" className="w-full rounded-lg border border-[#062444]/15 px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />{attendanceType === "voucher" && <select value={voucherHours} onChange={event => setVoucherHours(Number(event.target.value))} className="w-full rounded-lg border border-[#062444]/15 px-3 py-2 text-sm outline-none">{[1, 2, 4, 8].map(hours => <option key={hours} value={hours}>{hours} hour{hours === 1 ? "" : "s"} per voucher</option>)}</select>}</div>}
+          {activity && <MonitorsSection activityType="formation" activityId={activity.id} />}
+
           {error && <p className="text-[13px] text-red-600">{error}</p>}
           <button onClick={() => void handleSubmit()} disabled={busy} className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#062444] py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Check size={15} />{busy ? "Saving…" : activity ? "Save Changes" : "Create Activity"}</button>
         </div>
