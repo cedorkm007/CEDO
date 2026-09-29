@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { Trophy, Info, ChevronRight, ChevronLeft, CheckCircle2, XCircle, Circle, Lock, PlayCircle, Lightbulb, List, CalendarDays, X as XIcon, Award, Download, Maximize2, RotateCw, BookOpen, FileText, File, ExternalLink, Star } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SectionCard } from "./SectionCard";
-import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, getLectureEmbed, getSlideEmbed, getPdfEmbed, fetchOwnSubjectProgress, fetchOwnSubjectProgressAll, fetchOwnCertificateUrl } from "../../quizApi";
+import { fetchQuizSubjects, fetchQuizTopics, startQuizAttempt, submitQuizAttempt, startWordCloudActivity, submitWordCloudWord, getLectureEmbed, getSlideEmbed, getPdfEmbed, fetchOwnSubjectProgress, fetchOwnSubjectProgressAll, fetchOwnCertificateUrl } from "../../quizApi";
 import { fetchFormMaterialsForScholar, hasUnlockedMaterialForSubject, syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormMaterial, type FormUnlockNotification } from "../../formsApi";
 import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
 import type { QuestScore, QuizSubject, QuizTopic, QuizQuestion, QuizSubmitResult, QuizSurveySubmitResult } from "../../types";
@@ -33,7 +33,9 @@ type Step =
   | { view: "topics"; subject: QuizSubject }
   | { view: "quiz"; subject: QuizSubject; topic: QuizTopic; surveyMode: boolean; questions: QuizQuestion[]; index: number }
   | { view: "results"; subject: QuizSubject; topic: QuizTopic; result: QuizSubmitResult }
-  | { view: "survey_done"; subject: QuizSubject; topic: QuizTopic; result: QuizSurveySubmitResult };
+  | { view: "survey_done"; subject: QuizSubject; topic: QuizTopic; result: QuizSurveySubmitResult }
+  | { view: "word_cloud"; subject: QuizSubject; topic: QuizTopic; prompt: string; maxLength: number; attemptsUsedToday: number; maxAttemptsPerDay: number }
+  | { view: "word_cloud_done"; subject: QuizSubject; topic: QuizTopic; word: string; attemptsUsedToday: number; maxAttemptsPerDay: number };
 
 interface QuestsPanelProps {
   scores: QuestScore[];
@@ -59,6 +61,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
   const [error, setError] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({}); // questionId -> choiceId
   const [otherAnswers, setOtherAnswers] = useState<Record<string, string>>({}); // questionId -> free-text, only when the selected choice isOther
+  const [wordCloudInput, setWordCloudInput] = useState(""); // Word Cloud mode's single text input
   const [submitting, setSubmitting] = useState(false);
   const [activeLecture, setActiveLecture] = useState<{ name: string; src: string } | null>(null);
   const lecturePlayerRef = useRef<HTMLDivElement>(null);
@@ -202,6 +205,26 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
     setOtherAnswers({});
     setOpenMaterials(CLOSED_MATERIALS);
     setStep({ view: "quiz", subject, topic, surveyMode: result.surveyMode, questions: result.questions, index: 0 });
+  }
+
+  async function beginWordCloud(subject: QuizSubject, topic: QuizTopic) {
+    setError("");
+    setLoading(true);
+    const result = await startWordCloudActivity(topic.id);
+    setLoading(false);
+    if (!result.ok) { setError(result.error); return; }
+    setWordCloudInput("");
+    setStep({ view: "word_cloud", subject, topic, prompt: result.prompt, maxLength: 40, attemptsUsedToday: result.attemptsUsedToday, maxAttemptsPerDay: result.maxAttemptsPerDay });
+  }
+
+  async function handleSubmitWordCloud() {
+    if (step.view !== "word_cloud") return;
+    setError("");
+    setSubmitting(true);
+    const result = await submitWordCloudWord(step.topic.id, wordCloudInput);
+    setSubmitting(false);
+    if (!result.ok) { setError(result.error); return; }
+    setStep({ view: "word_cloud_done", subject: step.subject, topic: step.topic, word: wordCloudInput.trim(), attemptsUsedToday: result.attemptsUsedToday, maxAttemptsPerDay: result.maxAttemptsPerDay });
   }
 
   function selectAnswer(questionId: string, choiceId: string) {
@@ -395,7 +418,7 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
                 return (
                   <div key={t.id} className={`border rounded-lg overflow-hidden flex relative ${t.isCompleted ? "border-green-200 bg-green-50" : "border-[#e8edf2] bg-[#f8fafd]"}`}>
                     <button
-                      onClick={() => !exhausted && beginQuiz(step.subject, t)}
+                      onClick={() => !exhausted && (step.subject.isWordCloudMode ? beginWordCloud(step.subject, t) : beginQuiz(step.subject, t))}
                       disabled={exhausted}
                       className={`min-w-0 flex-1 flex flex-col gap-1.5 hover:bg-[#eef3fb] disabled:cursor-not-allowed px-4 py-3.5 text-left transition-colors ${exhausted ? "opacity-60" : ""}`}
                     >
@@ -580,6 +603,49 @@ export function QuestsPanel({ scores, scholarIdNumber, onScoreSubmitted, onNavig
             <p className="text-[17px] font-extrabold text-[#062444] mb-1">Thanks! Your answers were recorded.</p>
             <p className="text-sm text-slate-400">{step.topic.name}</p>
             <p className="text-sm text-slate-400 mt-1">{step.result.attemptsUsedToday}/{step.result.maxAttemptsPerDay} attempts used today for this topic</p>
+          </div>
+          <button onClick={() => { setStep({ view: "topics", subject: step.subject }); reloadTopics(step.subject); }}
+            className="w-full bg-[#062444] text-white font-semibold text-sm rounded-xl py-3">
+            Back to Topics
+          </button>
+        </div>
+      )}
+
+      {step.view === "word_cloud" && (
+        <div>
+          <BackButton label="Back to topics" onClick={() => setStep({ view: "topics", subject: step.subject })} />
+          <h4 className="text-[15px] font-extrabold text-[#062444] mb-1">{step.prompt}</h4>
+          <p className="text-sm text-slate-400 mb-5">Enter one word or a short phrase — it'll join a live word cloud.</p>
+
+          {error && <ErrorBox message={error} />}
+
+          <input
+            value={wordCloudInput}
+            onChange={e => setWordCloudInput(e.target.value)}
+            maxLength={step.maxLength}
+            placeholder="Type your word or short phrase…"
+            autoFocus
+            className="w-full text-sm border border-[#062444]/15 rounded-xl px-4 py-3 outline-none focus:border-[#0088cc] mb-2"
+          />
+          <p className="text-[11px] text-slate-400 mb-5 text-right">{wordCloudInput.length}/{step.maxLength}</p>
+
+          <button
+            onClick={handleSubmitWordCloud}
+            disabled={!wordCloudInput.trim() || submitting}
+            className="w-full bg-gradient-to-br from-[#062444] to-[#0a3a6b] disabled:opacity-50 text-white font-semibold text-sm rounded-xl py-3"
+          >
+            {submitting ? "Submitting…" : "Submit"}
+          </button>
+        </div>
+      )}
+
+      {step.view === "word_cloud_done" && (
+        <div>
+          <div className="text-center py-8 mb-6">
+            <CheckCircle2 size={44} className="text-green-500 mx-auto mb-3" />
+            <p className="text-[17px] font-extrabold text-[#062444] mb-1">Thanks! Your word was added to the cloud.</p>
+            <p className="text-sm text-slate-500 font-semibold">"{step.word}"</p>
+            <p className="text-sm text-slate-400 mt-1">{step.attemptsUsedToday}/{step.maxAttemptsPerDay} attempts used today for this topic</p>
           </div>
           <button onClick={() => { setStep({ view: "topics", subject: step.subject }); reloadTopics(step.subject); }}
             className="w-full bg-[#062444] text-white font-semibold text-sm rounded-xl py-3">

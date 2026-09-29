@@ -76,6 +76,8 @@ export interface QuizSubject {
   pubmatPath: string | null;
   // "survey_results" subjects are never graded — no progress %, passing rate, or certificate applies.
   isSurveyMode: boolean;
+  // "word_cloud" subjects have no questions/choices at all — each topic is a prompt the scholar types one word/short phrase for.
+  isWordCloudMode: boolean;
 }
 
 export interface QuizTopic {

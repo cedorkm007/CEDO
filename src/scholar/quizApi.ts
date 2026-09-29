@@ -23,7 +23,28 @@ export async function fetchQuizSubjects(): Promise<QuizSubject[]> {
     certificateFilename: s.certificate_filename ?? "",
     pubmatPath: s.pubmat_path ?? null,
     isSurveyMode: s.answer_destination === "survey_results",
+    isWordCloudMode: s.answer_destination === "word_cloud",
   }));
+}
+
+/** Starts a Word Cloud attempt — same daily-attempt-limit gate as start_quiz_attempt, just returning the topic's name as the prompt instead of a question list (see supabase_migration_quest_word_cloud.sql). */
+export async function startWordCloudActivity(topicId: string): Promise<
+  { ok: true; prompt: string; attemptsUsedToday: number; maxAttemptsPerDay: number } | { ok: false; error: string }
+> {
+  const { data, error } = await supabase.rpc("start_word_cloud_activity", { p_topic_id: topicId });
+  if (error) return { ok: false, error: error.message };
+  if (!data?.ok) return { ok: false, error: data?.error ?? "Failed to start." };
+  return { ok: true, prompt: data.prompt, attemptsUsedToday: data.attemptsUsedToday, maxAttemptsPerDay: data.maxAttemptsPerDay };
+}
+
+/** Submits one word/short phrase for a Word Cloud topic. */
+export async function submitWordCloudWord(topicId: string, word: string): Promise<
+  { ok: true; attemptsUsedToday: number; maxAttemptsPerDay: number } | { ok: false; error: string }
+> {
+  const { data, error } = await supabase.rpc("submit_word_cloud_entry", { p_topic_id: topicId, p_word: word });
+  if (error) return { ok: false, error: error.message };
+  if (!data?.ok) return { ok: false, error: data?.error ?? "Failed to submit." };
+  return { ok: true, attemptsUsedToday: data.attemptsUsedToday, maxAttemptsPerDay: data.maxAttemptsPerDay };
 }
 
 /** The scholar's own aggregate percentage for a subject (best attempt per topic, averaged). */

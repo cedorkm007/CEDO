@@ -13,6 +13,7 @@ import { uploadPubmat, pubmatUrl } from "../pubmatApi";
 import { isValidHttpsUrl } from "@/lib/urlValidation";
 import { QuestionEditorModal } from "../components/QuestionEditorModal";
 import { BulkQuestionUploadModal } from "../components/BulkQuestionUploadModal";
+import { WordCloudLiveView } from "../components/WordCloudLiveView";
 import type { QuestSubject, QuestTopic, QuestQuestion, QuestAnswerDestination } from "../types";
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
 import { ModalShell, ColumnHeader, EmptyColumn } from "../components/SeadUiShell";
@@ -100,17 +101,21 @@ export function QuestionBankTab() {
         onDelete={async id => { const r = await deleteTopic(id); if (r.ok) setSelectedTopic(null); reloadTopics(); return r; }}
       />
 
-      <QuestionColumn
-        topic={selectedTopic}
-        mode={selectedSubject?.answerDestination ?? "quest_monitoring"}
-        questions={questions}
-        onAdd={() => setEditingQuestion("new")}
-        onBulkUpload={() => setShowBulkUpload(true)}
-        onEdit={q => setEditingQuestion(q)}
-        onView={q => setPreviewQuestion(q)}
-        onDelete={async id => { await deleteQuestion(id); reloadQuestions(); }}
-        onToggleActive={async (id, active) => { await toggleQuestionActive(id, active); reloadQuestions(); }}
-      />
+      {selectedSubject?.answerDestination === "word_cloud" ? (
+        <WordCloudLiveView topic={selectedTopic} />
+      ) : (
+        <QuestionColumn
+          topic={selectedTopic}
+          mode={selectedSubject?.answerDestination ?? "quest_monitoring"}
+          questions={questions}
+          onAdd={() => setEditingQuestion("new")}
+          onBulkUpload={() => setShowBulkUpload(true)}
+          onEdit={q => setEditingQuestion(q)}
+          onView={q => setPreviewQuestion(q)}
+          onDelete={async id => { await deleteQuestion(id); reloadQuestions(); }}
+          onToggleActive={async (id, active) => { await toggleQuestionActive(id, active); reloadQuestions(); }}
+        />
+      )}
 
       {editingQuestion && selectedTopic && (
         <QuestionEditorModal
@@ -179,8 +184,8 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
     setError("");
     const attempts = Number(editMaxAttempts);
     if (!Number.isFinite(attempts) || attempts < 1) { setError("Allowable attempts per day must be at least 1."); return; }
-    const isSurvey = editAnswerDestination === "survey_results";
-    const rate = isSurvey ? { ok: true as const, min: 0, max: 100 } : validatePassingRate(editPassingMin, editPassingMax);
+    const isGraded = editAnswerDestination === "quest_monitoring";
+    const rate = isGraded ? validatePassingRate(editPassingMin, editPassingMax) : { ok: true as const, min: 0, max: 100 };
     if (!rate.ok) { setError("Passing rate must be 0–100%, with the minimum not exceeding the maximum."); return; }
 
     const original = subjects.find(s => s.id === id);
@@ -188,7 +193,7 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
     if (!renameResult.ok) { setError(renameResult.error || "Failed to rename."); return; }
     const attemptsResult = !original || original.maxAttemptsPerDay !== attempts ? await onUpdateMaxAttempts(id, attempts) : { ok: true as const };
     if (!attemptsResult.ok) { setError(attemptsResult.error || "Failed to update attempts limit."); return; }
-    const rateResult = !isSurvey && (!original || original.passingRateMin !== rate.min || original.passingRateMax !== rate.max)
+    const rateResult = isGraded && (!original || original.passingRateMin !== rate.min || original.passingRateMax !== rate.max)
       ? await onUpdatePassingRate(id, rate.min, rate.max) : { ok: true as const };
     if (!rateResult.ok) { setError(rateResult.error || "Failed to update passing rate."); return; }
     const destinationResult = !original || original.answerDestination !== editAnswerDestination
@@ -273,6 +278,10 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
                         className={`flex-1 rounded px-2 py-1 text-[11px] font-bold border ${editAnswerDestination === "survey_results" ? "border-[#062444] bg-[#062444] text-white" : "border-[#0088cc]/30 text-slate-500"}`}>
                         Survey Results
                       </button>
+                      <button type="button" onClick={() => setEditAnswerDestination("word_cloud")}
+                        className={`flex-1 rounded px-2 py-1 text-[11px] font-bold border ${editAnswerDestination === "word_cloud" ? "border-[#062444] bg-[#062444] text-white" : "border-[#0088cc]/30 text-slate-500"}`}>
+                        Word Cloud
+                      </button>
                     </div>
                   </div>
 
@@ -342,6 +351,10 @@ function SubjectColumn({ subjects, selected, onSelect, onCreate, onRename, onUpd
                         <span className="text-[10.5px] font-semibold text-purple-700 bg-purple-100 rounded-full px-2 py-0.5">
                           Survey Results
                         </span>
+                      ) : s.answerDestination === "word_cloud" ? (
+                        <span className="text-[10.5px] font-semibold text-teal-700 bg-teal-100 rounded-full px-2 py-0.5">
+                          Word Cloud
+                        </span>
                       ) : (
                         <span className="text-[10.5px] font-semibold text-[#F3BC00] bg-[#F3BC00]/15 rounded-full px-2 py-0.5">
                           Pass: {s.passingRateMin}%–{s.passingRateMax}%
@@ -392,6 +405,8 @@ function CreateSubjectModal({ onClose, onCreate }: {
   const [busy, setBusy] = useState(false);
 
   const isSurvey = answerDestination === "survey_results";
+  const isWordCloud = answerDestination === "word_cloud";
+  const isGraded = answerDestination === "quest_monitoring";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -400,7 +415,7 @@ function CreateSubjectModal({ onClose, onCreate }: {
     const attempts = Number(maxAttempts);
     if (!Number.isFinite(attempts) || attempts < 1) { setError("Allowable attempts per day must be at least 1."); return; }
     const min = Number(passingMin), max = Number(passingMax);
-    if (!isSurvey && (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 100 || min > max)) {
+    if (isGraded && (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 100 || min > max)) {
       setError("Passing rate must be 0–100%, with the minimum not exceeding the maximum."); return;
     }
     setBusy(true);
@@ -425,22 +440,28 @@ function CreateSubjectModal({ onClose, onCreate }: {
           <span className="text-[12px] text-slate-500 block mb-1.5">Answers land in:</span>
           <div className="flex items-center gap-2">
             <button type="button" disabled={busy} onClick={() => setAnswerDestination("quest_monitoring")}
-              className={`flex-1 rounded-lg border px-3 py-2 text-[12.5px] font-bold ${!isSurvey ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
+              className={`flex-1 rounded-lg border px-3 py-2 text-[12.5px] font-bold ${isGraded ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
               Quest Monitoring
             </button>
             <button type="button" disabled={busy} onClick={() => setAnswerDestination("survey_results")}
               className={`flex-1 rounded-lg border px-3 py-2 text-[12.5px] font-bold ${isSurvey ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
               Survey Results
             </button>
+            <button type="button" disabled={busy} onClick={() => setAnswerDestination("word_cloud")}
+              className={`flex-1 rounded-lg border px-3 py-2 text-[12.5px] font-bold ${isWordCloud ? "border-[#062444] bg-[#062444] text-white" : "border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
+              Word Cloud
+            </button>
           </div>
           <p className="text-[11px] text-slate-400 mt-1">
-            {isSurvey
+            {isWordCloud
+              ? "Each topic is a prompt — scholars type one word or short phrase instead of picking from choices. Answers aggregate into a live word cloud you view and export right here in Question Bank."
+              : isSurvey
               ? "Questions have no correct answer and won't be graded — one choice per question can be an \"Other\" write-in. Answers show up in Research Project Monitoring → Survey Results."
               : "Graded multiple choice, one correct answer per question — feeds Quests Monitoring's scores, rankings, and completion status."}
           </p>
         </div>
 
-        {!isSurvey && (
+        {isGraded && (
           <div className="flex items-center gap-2">
             <span className="text-[12px] text-slate-500 whitespace-nowrap">Passing rate:</span>
             <input type="number" min={0} max={100} value={passingMin} onChange={e => setPassingMin(e.target.value)} disabled={busy}
@@ -451,7 +472,7 @@ function CreateSubjectModal({ onClose, onCreate }: {
             <span className="text-[12px] text-slate-500">%</span>
           </div>
         )}
-        {!isSurvey && <p className="text-[11px] text-slate-400">Certificate upload is available after creating the subject (edit it to attach one).</p>}
+        {isGraded && <p className="text-[11px] text-slate-400">Certificate upload is available after creating the subject (edit it to attach one).</p>}
         {error && <p className="text-[12.5px] text-red-600">{error}</p>}
         <button type="submit" disabled={busy} className="w-full flex items-center justify-center gap-1.5 bg-[#062444] text-[#F3BC00] rounded-lg p-2.5 font-semibold disabled:opacity-50">
           <Plus size={15} /> {busy ? "Creating…" : "Add Subject"}

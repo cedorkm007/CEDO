@@ -1,4 +1,4 @@
-export type QuestAnswerDestination = "quest_monitoring" | "survey_results";
+export type QuestAnswerDestination = "quest_monitoring" | "survey_results" | "word_cloud";
 
 export interface QuestSubject {
   id: string;

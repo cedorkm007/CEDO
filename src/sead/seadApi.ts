@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { isValidHttpsUrl } from "@/lib/urlValidation";
 import type {
-  QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, ScholarListItem, ScholarAccountLogEntry, ScoreRow, ScholarshipStatus,
+  QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, QuestAnswerDestination, ScholarListItem, ScholarAccountLogEntry, ScoreRow, ScholarshipStatus,
   Survey, SurveyActivityType, SurveySource, SurveyQuestion, SurveyQuestionType, SurveyOpenEndedFormat, SurveyChoiceDraft, SurveyChoiceResult, SurveyLikertResult,
   SurveyOpenEndedResult, GatingRosterEntry,
 } from "./types";
@@ -500,7 +500,7 @@ export async function saveQuestion(input: {
   points: number;
   explanation: string;
   choices: QuestChoiceDraft[];
-  mode?: "quest_monitoring" | "survey_results";
+  mode?: QuestAnswerDestination;
 }): Promise<{ ok: boolean; error?: string }> {
   const mode = input.mode ?? "quest_monitoring";
   if (input.choices.length < 2) {
@@ -563,7 +563,7 @@ export interface BulkQuestionRowResult {
 export async function bulkCreateQuestions(
   topicId: string,
   questions: BulkQuestionInput[],
-  mode: "quest_monitoring" | "survey_results" = "quest_monitoring"
+  mode: QuestAnswerDestination = "quest_monitoring"
 ): Promise<{ created: number; results: BulkQuestionRowResult[] }> {
   const results: BulkQuestionRowResult[] = [];
   let created = 0;
