@@ -1,4 +1,4 @@
-import { CheckCircle2, History } from "lucide-react";
+import { CheckCircle2, History, CalendarClock } from "lucide-react";
 import DefaultPubmat from "@/imports/CEDO_Seal.png";
 
 /**
@@ -24,6 +24,15 @@ export function EndedBadge() {
   return (
     <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-bold text-slate-500">
       <History size={11} /> Ended
+    </span>
+  );
+}
+
+/** Blue "next schedule" mark for a recurring activity that still has an upcoming occurrence — distinct from Ended, since the series as a whole isn't finished even though its base date (or an earlier occurrence) already passed. */
+export function NextScheduleBadge({ date }: { date: string }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#0088cc]/10 px-2 py-0.5 text-[10.5px] font-bold text-[#0088cc]">
+      <CalendarClock size={11} /> {new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
     </span>
   );
 }

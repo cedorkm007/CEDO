@@ -23,13 +23,24 @@ function extensionFor(file: File): string {
 const MAX_PUBMAT_DIMENSION = 1600;
 const PUBMAT_JPEG_QUALITY = 0.82;
 
+/** True if any pixel's alpha channel is below 255 — i.e. the image actually uses transparency, as opposed to an opaque photo/poster that merely happens to be saved as PNG. */
+function hasRealTransparency(ctx: CanvasRenderingContext2D, width: number, height: number): boolean {
+  const { data } = ctx.getImageData(0, 0, width, height);
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] < 255) return true;
+  }
+  return false;
+}
+
 /**
  * Compresses a pubmat image client-side before upload — same
  * never-block-the-upload-on-failure, only-keep-it-if-actually-smaller
  * approach as compressSubmissionFile (src/scholar/submissionCompression.ts).
- * PNG stays PNG (pubmats can carry a transparent logo/overlay); every other
- * input type (JPEG, WebP, etc.) is re-encoded to JPEG for the biggest size
- * reduction, since only PNG's transparency is worth preserving here.
+ * A PNG only stays PNG if it actually uses transparency (a real logo/overlay
+ * cutout) — an opaque PNG (a poster or photo someone happened to save as
+ * PNG) is re-encoded to JPEG like everything else, since PNG's lossless
+ * encoding on a photo-like image can be many times larger for no visual
+ * benefit once there's no transparency to preserve.
  */
 async function compressPubmatImage(file: File): Promise<File> {
   const bitmap = await createImageBitmap(file);
@@ -46,7 +57,7 @@ async function compressPubmatImage(file: File): Promise<File> {
   ctx.drawImage(bitmap, 0, 0, width, height);
   bitmap.close();
 
-  const outputType = file.type === "image/png" ? "image/png" : "image/jpeg";
+  const outputType = file.type === "image/png" && hasRealTransparency(ctx, width, height) ? "image/png" : "image/jpeg";
   const blob = await new Promise<Blob | null>(resolve =>
     canvas.toBlob(resolve, outputType, outputType === "image/jpeg" ? PUBMAT_JPEG_QUALITY : undefined)
   );

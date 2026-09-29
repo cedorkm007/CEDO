@@ -7,7 +7,25 @@ import {
   type SDPActivity, type SDPCreditCounts,
 } from "../../sdpApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
-import { DefaultPubmat, AttendedBadge, EndedBadge, isPastDate } from "./activityCardKit";
+import { DefaultPubmat, AttendedBadge, EndedBadge, NextScheduleBadge, isPastDate } from "./activityCardKit";
+
+/**
+ * For a recurring activity, status has to look at EVERY schedule (the base
+ * dateTime plus every occurrence in recurringDates), not just the base date
+ * — a series isn't "Ended" just because its first occurrence already
+ * passed. Returns the soonest upcoming date if any schedule hasn't
+ * happened yet; null (and ended=true) once every schedule has passed. A
+ * one-time activity just uses its own single date.
+ */
+function activityStatus(act: SDPActivity): { ended: boolean; nextDate: string | null } {
+  if (act.activityType !== "recurring") {
+    return { ended: isPastDate(act.dateTime), nextDate: null };
+  }
+  const allDates = [act.dateTime, ...act.recurringDates.map(o => o.date)].filter(Boolean).sort();
+  if (allDates.length === 0) return { ended: false, nextDate: null };
+  const upcoming = allDates.find(d => !isPastDate(d));
+  return upcoming ? { ended: false, nextDate: upcoming } : { ended: true, nextDate: null };
+}
 
 function ActivityDetailModal({ activity, onClose }: { activity: SDPActivity; onClose: () => void }) {
   return (
@@ -25,12 +43,10 @@ function ActivityDetailModal({ activity, onClose }: { activity: SDPActivity; onC
         <div className="p-6 space-y-3 max-h-96 overflow-y-auto">
           {[
             { label: "Name of Activity", value: activity.name },
-            { label: "Nature of Activity", value: activity.nature.join(", ") },
             { label: "Organization", value: activity.organization },
             { label: "Date / Time", value: activity.dateTime ? new Date(activity.dateTime).toLocaleString() : "—" },
             { label: "Venue", value: activity.venue },
-            { label: "Project Head", value: activity.projectHead || "—" },
-            { label: "Head, Cluster", value: activity.headCluster || "—" },
+            { label: "Credit per Attendance", value: String(activity.credits) },
           ].map(({ label, value }) => (
             <div key={label} className="flex gap-3">
               <span className="text-xs text-gray-400 w-32 shrink-0 font-medium pt-0.5">{label}</span>
@@ -50,13 +66,14 @@ function ActivityDetailModal({ activity, onClose }: { activity: SDPActivity; onC
 function ActivityCard({ act, attended, onClick }: { act: SDPActivity; attended: boolean; onClick: () => void }) {
   const pubmat = pubmatUrl(act.pubmatPath);
   const categoryLabel = act.category ? (SDP_CATEGORIES.find(c => c.key === act.category)?.label ?? act.category) : "General";
+  const status = activityStatus(act);
   return (
     <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={onClick}
       className="w-full bg-white rounded-xl shadow-sm p-3 flex items-start gap-3 text-left hover:shadow-md transition-all border border-gray-100 min-h-[104px]">
-      {/* Pubmat (or a default seal when none was uploaded) with the Attended/Ended mark directly beneath it. */}
+      {/* Pubmat (or a default seal when none was uploaded) with the Attended/Ended/Next-schedule mark directly beneath it. */}
       <div className="flex w-16 shrink-0 flex-col items-center gap-1.5">
         <img src={pubmat ?? DefaultPubmat} alt="" className="h-16 w-16 rounded-lg object-cover" />
-        {attended ? <AttendedBadge /> : isPastDate(act.dateTime) && <EndedBadge />}
+        {attended ? <AttendedBadge /> : status.ended ? <EndedBadge /> : status.nextDate ? <NextScheduleBadge date={status.nextDate} /> : null}
       </div>
 
       <div className="min-w-0 flex-1 self-center">
