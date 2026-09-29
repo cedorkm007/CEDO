@@ -31,8 +31,8 @@ export function EndedBadge() {
 /** Blue "Next Schedule" mark for a recurring activity that still has an upcoming occurrence — distinct from Ended, since the series as a whole isn't finished even though its base date (or an earlier occurrence) already passed. The card's own date line shows the actual next date; this badge is just the status tag. */
 export function NextScheduleBadge() {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#0088cc]/10 px-2 py-0.5 text-[10.5px] font-bold text-[#0088cc]">
-      <CalendarClock size={11} /> Next Schedule
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#0088cc]/10 px-2 py-0.5 text-[5.25px] font-bold text-[#0088cc]">
+      <CalendarClock size={18} /> Next Schedule
     </span>
   );
 }
