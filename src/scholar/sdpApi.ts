@@ -44,6 +44,8 @@ export interface SDPActivity {
   activityType: SDPActivityType;
   recurringDates: RecurringOccurrence[];
   credits: number;
+  yearLevels: string[];
+  allYearLevels: boolean;
   createdAt: string;
 }
 
@@ -76,6 +78,8 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     activityType: (r.activity_type as SDPActivityType | null) ?? "one_time",
     recurringDates: (r.recurring_dates as RecurringOccurrence[] | null) ?? [],
     credits: Number(r.credits ?? 1),
+    yearLevels: (r.target_year_levels as string[]) ?? [],
+    allYearLevels: Boolean(r.all_year_levels),
     createdAt: String(r.created_at ?? ""),
   };
 }

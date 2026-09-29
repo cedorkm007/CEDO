@@ -11,6 +11,7 @@ import {
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
 } from "../sdpMonitorApi";
 import { SDP_CATEGORIES } from "@/scholar/sdpApi";
+import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { uploadPubmat, pubmatUrl } from "../pubmatApi";
 import { ScholarSearchField, type ScholarSearchResult } from "../components/ScholarSearchField";
 import { SDPHistoryModal } from "../components/SDPHistoryModal";
@@ -58,8 +59,14 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [venue, setVenue] = useState("");
   const [activityType, setActivityType] = useState<SDPActivityType>("one_time");
   const [credits, setCredits] = useState("1");
+  const [yearLevels, setYearLevels] = useState<string[]>([]);
+  const [allYearLevels, setAllYearLevels] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  function toggleYearLevel(level: string) {
+    setYearLevels(levels => levels.includes(level) ? levels.filter(item => item !== level) : [...levels, level]);
+  }
 
   const [attendanceEnabled, setAttendanceEnabled] = useState(false);
   const [attendanceType, setAttendanceType] = useState<AttendanceType>("time_in_time_out");
@@ -72,6 +79,7 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
     if (!category) { setError("Choose which SDP category this activity counts toward."); return; }
     const creditsValue = Number(credits);
     if (!credits.trim() || creditsValue < 1) { setError("Enter how many credits scholars earn per attendance."); return; }
+    if (!allYearLevels && yearLevels.length === 0) { setError("Select at least one eligible year level, or choose all year levels."); return; }
     const count = Number(attendanceCount);
     if (attendanceEnabled && (!attendanceCount.trim() || count < 1)) {
       setError("Enter the expected number of participants.");
@@ -88,7 +96,7 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
       return;
     }
     setBusy(true);
-    const result = await createApprovedActivity({ name: name.trim(), category, organization: organization.trim(), dateTime, endTime: activityEndTime, venue: venue.trim(), nature: [], activityType, credits: creditsValue });
+    const result = await createApprovedActivity({ name: name.trim(), category, organization: organization.trim(), dateTime, endTime: activityEndTime, venue: venue.trim(), nature: [], activityType, credits: creditsValue, yearLevels, allYearLevels });
     if (!result.ok || !result.id) { setBusy(false); setError(result.error || "Failed to create."); return; }
 
     if (attendanceEnabled) {
@@ -141,6 +149,13 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
               className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
             <p className="mt-1.5 text-[11px] text-slate-400">Scholars need 3 credits total in a category to complete it — a bigger activity can be worth more than one credit.</p>
           </div>
+          <fieldset className="border-t border-[#f0f3f8] pt-3">
+            <legend className="mb-2 text-[12.5px] font-bold text-[#062444]">Activity for scholars with year level</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {FORMATION_YEAR_LEVELS.map(level => <label key={level} className="flex items-center gap-2 text-[12px] text-slate-600"><input type="checkbox" checked={yearLevels.includes(level)} disabled={allYearLevels} onChange={() => toggleYearLevel(level)} className="h-4 w-4 accent-[#062444]" />{level}</label>)}
+              <label className="col-span-2 flex items-center gap-2 text-[12px] font-bold text-[#062444]"><input type="checkbox" checked={allYearLevels} onChange={e => setAllYearLevels(e.target.checked)} className="h-4 w-4 accent-[#062444]" />All year levels</label>
+            </div>
+          </fieldset>
           <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder="Organization"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
           <input type="date" value={date} onChange={e => setDate(e.target.value)} aria-label="Activity date"
@@ -548,6 +563,8 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   const [projectHead, setProjectHead] = useState(activity.projectHead);
   const [headCluster, setHeadCluster] = useState(activity.headCluster);
   const [category, setCategory] = useState<SDPCategory | null>(activity.category);
+  const [yearLevels, setYearLevels] = useState<string[]>(activity.yearLevels);
+  const [allYearLevels, setAllYearLevels] = useState(activity.allYearLevels);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [pubmatPath, setPubmatPath] = useState(activity.pubmatPath);
@@ -582,6 +599,10 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
     onChanged();
   }
 
+  function toggleYearLevel(level: string) {
+    setYearLevels(levels => levels.includes(level) ? levels.filter(item => item !== level) : [...levels, level]);
+  }
+
   function addOccurrenceRow() {
     setOccurrences(rows => [...rows, { date: "", startTime: "", endTime: "", venue: rows[rows.length - 1]?.venue ?? "" }]);
   }
@@ -598,6 +619,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
     if (!category) { setError("Choose which SDP category this activity counts toward."); return; }
     const creditsValue = Number(credits);
     if (!credits.trim() || creditsValue < 1) { setError("Enter how many credits scholars earn per attendance."); return; }
+    if (!allYearLevels && yearLevels.length === 0) { setError("Select at least one eligible year level, or choose all year levels."); return; }
 
     let dateTimeIso = "";
     let endTimeIso = "";
@@ -646,6 +668,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
       name: name.trim(), organization: organization.trim(), venue: venueToSave,
       dateTime: dateTimeIso || null,
       endTime: endTimeIso || null,
+      yearLevels, allYearLevels,
     });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save."); return; }
@@ -762,6 +785,14 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
           </div>
 
           <Field label="Type of Activity" value={isRecurring ? "Recurring" : "One-time"} />
+
+          <fieldset className="border-t border-[#f0f3f8] pt-3">
+            <legend className="mb-2 text-[12.5px] font-bold text-[#062444]">Activity for scholars with year level</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {FORMATION_YEAR_LEVELS.map(level => <label key={level} className="flex items-center gap-2 text-[12px] text-slate-600"><input type="checkbox" checked={yearLevels.includes(level)} disabled={allYearLevels} onChange={() => toggleYearLevel(level)} className="h-4 w-4 accent-[#062444]" />{level}</label>)}
+              <label className="col-span-2 flex items-center gap-2 text-[12px] font-bold text-[#062444]"><input type="checkbox" checked={allYearLevels} onChange={e => setAllYearLevels(e.target.checked)} className="h-4 w-4 accent-[#062444]" />All year levels</label>
+            </div>
+          </fieldset>
 
           {activity.rationale && (
             <div>

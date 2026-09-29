@@ -36,6 +36,8 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     activityType: (r.activity_type as SDPActivityType | null) ?? "one_time",
     recurringDates: (r.recurring_dates as RecurringOccurrence[] | null) ?? [],
     credits: Number(r.credits ?? 1),
+    yearLevels: (r.target_year_levels as string[]) ?? [],
+    allYearLevels: Boolean(r.all_year_levels),
     createdAt: String(r.created_at ?? ""),
   };
 }
@@ -52,6 +54,7 @@ export async function updateSDPActivity(
   id: string, fields: {
     projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: RecurringOccurrence[]; credits?: number;
     name?: string; organization?: string; venue?: string; dateTime?: string | null; endTime?: string | null;
+    yearLevels?: string[]; allYearLevels?: boolean;
   }
 ): Promise<{ ok: boolean; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
@@ -66,6 +69,8 @@ export async function updateSDPActivity(
     ...(fields.venue !== undefined ? { venue: fields.venue } : {}),
     ...(fields.dateTime !== undefined ? { date_time: fields.dateTime } : {}),
     ...(fields.endTime !== undefined ? { end_time: fields.endTime } : {}),
+    ...(fields.yearLevels !== undefined ? { target_year_levels: fields.yearLevels } : {}),
+    ...(fields.allYearLevels !== undefined ? { all_year_levels: fields.allYearLevels } : {}),
     reviewed_by: auth.user?.id ?? null,
     reviewed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -91,6 +96,8 @@ export interface NewApprovedActivityInput {
   nature: string[];
   activityType: SDPActivityType;
   credits: number;
+  yearLevels: string[];
+  allYearLevels: boolean;
 }
 
 function localDateTimeToIso(value: string): string | null {
@@ -101,6 +108,7 @@ function localDateTimeToIso(value: string): string | null {
 
 /** Staff can create an activity directly — open to every scholar immediately, no review/approval step. */
 export async function createApprovedActivity(input: NewApprovedActivityInput): Promise<{ ok: boolean; error?: string; id?: string }> {
+  const { data: auth } = await supabase.auth.getUser();
   const { data, error } = await supabase.from("sdp_activities").insert({
     name: input.name,
     submitted_by_scholar_id: null,
@@ -112,6 +120,9 @@ export async function createApprovedActivity(input: NewApprovedActivityInput): P
     nature: input.nature,
     activity_type: input.activityType,
     credits: input.credits,
+    target_year_levels: input.yearLevels,
+    all_year_levels: input.allYearLevels,
+    created_by: auth.user?.id ?? null,
   }).select("id").single();
   return error ? { ok: false, error: error.message } : { ok: true, id: data.id };
 }
