@@ -73,13 +73,14 @@ function ActivityCard({ act, attended, onClick }: { act: SDPActivity; attended: 
       {/* Pubmat (or a default seal when none was uploaded) with the Attended/Ended/Next-schedule mark directly beneath it. */}
       <div className="flex w-16 shrink-0 flex-col items-center gap-1.5">
         <img src={pubmat ?? DefaultPubmat} alt="" className="h-16 w-16 rounded-lg object-cover" />
-        {attended ? <AttendedBadge /> : status.ended ? <EndedBadge /> : status.nextDate ? <NextScheduleBadge date={status.nextDate} /> : null}
+        {attended ? <AttendedBadge /> : status.ended ? <EndedBadge /> : status.nextDate ? <NextScheduleBadge /> : null}
       </div>
 
       <div className="min-w-0 flex-1 self-center">
         <p className="font-bold text-[#062444] text-[12.5px] leading-snug line-clamp-2">{act.name}</p>
         {act.organization && <p className="mt-1 text-[11px] text-gray-500 line-clamp-1">{act.organization}</p>}
-        {act.dateTime && <p className="mt-1 text-[11px] text-gray-400">{new Date(act.dateTime).toLocaleDateString()}</p>}
+        {/* A recurring activity with an upcoming occurrence shows THAT date here instead of the (possibly long-past) base dateTime — the next schedule is what a scholar actually needs to see. */}
+        {(status.nextDate ?? act.dateTime) && <p className="mt-1 text-[11px] text-gray-400">{new Date(status.nextDate ?? act.dateTime).toLocaleDateString()}</p>}
       </div>
 
       {/* Category, pinned to the rightmost edge — small square badge instead of a pill so it reads as a tag, not a headline. */}
