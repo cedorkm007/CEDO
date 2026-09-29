@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
-import type { SDPActivity } from "./sdpMonitorApi";
+import { fetchAllSDPActivities, type SDPActivity } from "./sdpMonitorApi";
+import { fetchFormationActivities } from "./formationActivitiesApi";
 import type { FormationActivity } from "@/scholar/formationActivitiesApi";
 
 export type ActivityType = "sdp" | "formation";
@@ -67,23 +68,37 @@ export interface MonitoredActivity {
 
 /**
  * Every SDP/Formation activity the signed-in staff member monitors —
- * powers the "Scanning Tools" tile grid. RLS alone decides which rows
- * come back (the monitor-scoped SELECT policies added in
- * supabase_migration_activity_monitor_helpers_and_policies.sql); this
- * just runs the two queries and unions the results client-side.
+ * powers the "Scanning Tools" tile grid. Calls a SECURITY DEFINER RPC
+ * that explicitly filters by is_activity_monitor() rather than trusting
+ * sdp_activities'/formation_activities' own SELECT policies to scope
+ * this — both tables' pre-existing scholar-facing policies turned out to
+ * be identity-agnostic for any all_year_levels row (i.e. effectively
+ * public), which silently broke a plain `.select()` here (see
+ * supabase_migration_fetch_my_monitored_activities.sql).
  */
 export async function fetchMyMonitoredActivities(): Promise<MonitoredActivity[]> {
-  const [sdpResult, formationResult] = await Promise.all([
-    supabase.from("sdp_activities").select("id, name, pubmat_path").order("date_time", { ascending: false }),
-    supabase.from("formation_activities").select("id, name, pubmat_path").order("date_time", { ascending: false }),
-  ]);
-  const sdp: MonitoredActivity[] = (sdpResult.data ?? []).map((r: Record<string, unknown>) => ({
-    activityType: "sdp" as const, id: String(r.id), name: String(r.name), pubmatPath: (r.pubmat_path as string | null) ?? null,
+  const { data, error } = await supabase.rpc("fetch_my_monitored_activities");
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({
+    activityType: r.activity_type as ActivityType, id: String(r.id), name: String(r.name), pubmatPath: (r.pubmat_path as string | null) ?? null,
   }));
-  const formation: MonitoredActivity[] = (formationResult.data ?? []).map((r: Record<string, unknown>) => ({
-    activityType: "formation" as const, id: String(r.id), name: String(r.name), pubmatPath: (r.pubmat_path as string | null) ?? null,
-  }));
-  return [...sdp, ...formation];
+}
+
+/** Loads the full activity record (for the lightweight edit modal, which needs more than the tile grid's minimal fields) via the RLS-permitted monitor-scoped read, reusing the existing full-list fetchers rather than duplicating their row mapping. */
+export async function fetchActivityForEdit(activityType: ActivityType, id: string): Promise<SDPActivity | FormationActivity | null> {
+  if (activityType === "sdp") {
+    const all = await fetchAllSDPActivities();
+    return all.find(a => a.id === id) ?? null;
+  }
+  const all = await fetchFormationActivities();
+  return all.find(a => a.id === id) ?? null;
+}
+
+/** The attendance session's own type ('time_in_time_out' | 'voucher'), or null if attendance hasn't been enabled for this activity yet — the scanner uses this to decide whether to show a Time In/Time Out toggle before scanning (a voucher-type session needs no toggle; an activity with no session at all can't be scanned, matching record_monitor_attendance's own attendance_not_enabled outcome). */
+export async function fetchAttendanceSessionType(activityType: ActivityType, activityId: string): Promise<"time_in_time_out" | "voucher" | null> {
+  const column = activityType === "sdp" ? "sdp_activity_id" : "formation_activity_id";
+  const { data } = await supabase.from("attendance_sessions").select("type").eq(column, activityId).maybeSingle();
+  return (data?.type as "time_in_time_out" | "voucher" | null) ?? null;
 }
 
 export type { SDPActivity, FormationActivity };

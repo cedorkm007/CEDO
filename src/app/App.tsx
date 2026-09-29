@@ -26,6 +26,7 @@ import CEDOSeal from "@/imports/CEDO_Seal.png";
 import { ScholarManagementToolsPage } from "@/sead/ScholarManagementToolsPage";
 import { QuestManagementToolsPage } from "@/sead/QuestManagementToolsPage";
 import { SDPMonitoringTab } from "@/sead/pages/SDPMonitoringTab";
+import { ScanningToolsTab } from "@/sead/pages/ScanningToolsTab";
 import { FormationToolsTab } from "@/sead/pages/FormationToolsTab";
 import { FormsManagementTab } from "@/sead/pages/FormsManagementTab";
 import { KaubanContentManagementPage } from "@/kauban/admin/KaubanContentManagementPage";
@@ -62,7 +63,7 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
-export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "questManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "researchProjectMonitoring" | "myResearch" | "staffAccounts" | "financialAssistanceTools" | "scholarCounseling" | "scholarsGradesMonitoring";
+export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "questManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "researchProjectMonitoring" | "myResearch" | "staffAccounts" | "financialAssistanceTools" | "scholarCounseling" | "scholarsGradesMonitoring" | "scanningTools";
 
 /** "Scholar Management Tools" (question bank + scholar accounts) is now gated by
  *  the "scholar_management" tag (see src/app/staffToolTags.ts) instead of a fixed
@@ -83,7 +84,7 @@ export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitorin
 // hand-copied a third time into a different file.
 export const IT_ADMIN_USERNAME = "it.admin1";
 
-const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "questManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "researchProjectMonitoring", "myResearch", "staffAccounts", "financialAssistanceTools", "scholarCounseling", "scholarsGradesMonitoring"];
+const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "questManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "researchProjectMonitoring", "myResearch", "staffAccounts", "financialAssistanceTools", "scholarCounseling", "scholarsGradesMonitoring", "scanningTools"];
 
 /**
  * Mirrors the exact gating conditions in the render switch at the bottom
@@ -111,6 +112,7 @@ function isPageAuthorizedFor(page: Page, user: UserProfile): boolean {
     case "financialAssistanceTools": return user.tags.includes("financial_assistance");
     case "scholarCounseling": return user.tags.includes("scholar_counseling");
     case "scholarsGradesMonitoring": return user.tags.includes("scholars_grades_monitoring");
+    case "scanningTools": return user.hasMonitorAssignment;
     default: return true; // home, profile, tasks, accomplishments, notifications, forms, myResearch — open to any signed-in user
   }
 }
@@ -136,9 +138,13 @@ export interface UserProfile {
   /** Which gated tools/tabs this account can see — assigned by it.admin1 on the Staff
    *  Accounts page (see src/app/staffToolTags.ts for the registry of possible tags). */
   tags: string[];
+  /** True if this account is an explicit monitor of, or the creator of, at least
+   *  one SDP/Formation activity — gates the "Scanning Tools" tab, independent of
+   *  the tags above (see has_any_monitor_assignment() / activityMonitorsApi.ts). */
+  hasMonitorAssignment: boolean;
 }
-function makeUser(u: Omit<UserProfile, "isAdmin" | "tags"> & { tags?: string[] }): UserProfile {
-  return { ...u, isAdmin: u.role === "division_admin" || u.role === "super_admin", tags: u.tags ?? [] };
+function makeUser(u: Omit<UserProfile, "isAdmin" | "tags" | "hasMonitorAssignment"> & { tags?: string[]; hasMonitorAssignment?: boolean }): UserProfile {
+  return { ...u, isAdmin: u.role === "division_admin" || u.role === "super_admin", tags: u.tags ?? [], hasMonitorAssignment: u.hasMonitorAssignment ?? false };
 }
 interface Deliverable { id: string; title: string; status: "pending" | "done"; }
 interface DailyTask {
@@ -2681,7 +2687,7 @@ function userToRow(u: UserProfile): Record<string, unknown> {
 }
 
 /** Converts a Supabase row back to a UserProfile. */
-function rowToUser(r: Record<string, unknown>, tags: string[] = []): UserProfile {
+function rowToUser(r: Record<string, unknown>, tags: string[] = [], hasMonitorAssignment = false): UserProfile {
   const division = (String(r.division ?? "LITM") as DivisionCode);
   // Back-compat: rows written before the `role` column existed only had `is_admin`.
   const role = (r.role ? String(r.role) : (r.is_admin ? "division_admin" : "staff")) as UserRole;
@@ -2695,19 +2701,20 @@ function rowToUser(r: Record<string, unknown>, tags: string[] = []): UserProfile
     division: DIVISIONS[division] ? division : "LITM", role,
     isAdmin: role === "division_admin" || role === "super_admin",
     profilePicture: String(r.profile_picture ?? ""),
-    tags,
+    tags, hasMonitorAssignment,
   };
 }
 
 /** Fetches a single profile row by its Supabase Auth user id (auth.uid()), along with
  *  which tool tags it.admin1 has assigned to this account (see staffToolTags.ts). */
 async function fetchUserProfile(authUserId: string): Promise<UserProfile | null> {
-  const [{ data, error }, { data: tagRows }] = await Promise.all([
+  const [{ data, error }, { data: tagRows }, { data: hasMonitor }] = await Promise.all([
     supabase.from(TABLES.USERS).select("*").eq("id", authUserId).maybeSingle(),
     supabase.from("staff_account_tags").select("tag_key").eq("staff_id", authUserId),
+    supabase.rpc("has_any_monitor_assignment"),
   ]);
   if (error || !data) return null;
-  return rowToUser(data as Record<string, unknown>, (tagRows ?? []).map(t => t.tag_key as string));
+  return rowToUser(data as Record<string, unknown>, (tagRows ?? []).map(t => t.tag_key as string), !!hasMonitor);
 }
 
 /** Converts a Supabase notification row back to AppNotification. */
@@ -2925,6 +2932,22 @@ export default function App() {
       setCurrentUser(prev => {
         if (!prev) return prev;
         const next = { ...prev, tags };
+        try { localStorage.setItem("litm_current_user", JSON.stringify(next)); } catch { /* ignore */ }
+        return next;
+      });
+    })();
+  }, Boolean(currentUserId));
+
+  // Same idea as the staff_account_tags subscription above, for the
+  // "Scanning Tools" tab: being added/removed as a monitor should show/hide
+  // it live too, not just after a reload.
+  useRealtimeRefresh("activity_monitors", () => {
+    if (!currentUserId) return;
+    void (async () => {
+      const { data: hasMonitor } = await supabase.rpc("has_any_monitor_assignment");
+      setCurrentUser(prev => {
+        if (!prev) return prev;
+        const next = { ...prev, hasMonitorAssignment: !!hasMonitor };
         try { localStorage.setItem("litm_current_user", JSON.stringify(next)); } catch { /* ignore */ }
         return next;
       });
@@ -3481,6 +3504,9 @@ export default function App() {
           )}
           {page==="sdpMonitoring" && currentUser.tags.includes("sdp_monitoring") && (
             <SDPMonitoringTab/>
+          )}
+          {page==="scanningTools" && currentUser.hasMonitorAssignment && (
+            <ScanningToolsTab/>
           )}
           {page==="formationTools" && currentUser.tags.includes("scholars_formation") && (
             <FormationToolsTab/>

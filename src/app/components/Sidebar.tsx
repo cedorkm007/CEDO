@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3, FlaskConical, Trophy, HandCoins, HeartHandshake, BookOpenCheck } from "lucide-react";
+import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3, FlaskConical, Trophy, HandCoins, HeartHandshake, BookOpenCheck, QrCode } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarSeparator,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
@@ -162,6 +162,7 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
     || user.tags.includes("research_project_monitoring")
     || user.tags.includes("scholar_counseling")
     || user.tags.includes("scholars_grades_monitoring")
+    || user.hasMonitorAssignment
     || user.username.toLowerCase() === IT_ADMIN_USERNAME;
 
   return (
@@ -324,6 +325,13 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
                     <SidebarMenuItem className="min-w-0">
                       <SidebarMenuButton isActive={page === "sdpMonitoring"} onClick={() => setPage("sdpMonitoring")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
                         <Lightbulb /> <span className="truncate">SDP Monitoring</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {user.hasMonitorAssignment && (
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "scanningTools"} onClick={() => setPage("scanningTools")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <QrCode /> <span className="truncate">Scanning Tools</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
