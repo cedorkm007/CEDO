@@ -1,6 +1,8 @@
-import { GraduationCap, ShieldCheck, MapPinned, CheckCircle2, Circle } from "lucide-react";
+import { useState } from "react";
+import { GraduationCap, ShieldCheck, MapPinned, CheckCircle2, Circle, QrCode } from "lucide-react";
 import { clusterForBarangay, clusterLabel } from "@/lib/cdoBarangays";
 import { SDP_CATEGORIES, type SDPCategoryStatus } from "../../sdpApi";
+import { ScholarIdQrCanvas, FullscreenScholarQr } from "./ScholarIdQrCode";
 import type { ScholarProfile } from "../../types";
 
 interface ProfileBannerProps {
@@ -12,6 +14,7 @@ interface ProfileBannerProps {
 
 export function ProfileBanner({ profile, sdpStatus, positions, onChangePassword }: ProfileBannerProps) {
   const cluster = profile.barangay ? clusterForBarangay(profile.barangay) : null;
+  const [showFullscreenQr, setShowFullscreenQr] = useState(false);
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#062444] via-[#0a3a6b] to-[#0d4d8a] p-6 md:p-8 mb-6 shadow-[0_8px_32px_rgba(6,36,68,0.25)]">
@@ -61,6 +64,19 @@ export function ProfileBanner({ profile, sdpStatus, positions, onChangePassword 
           </span>
         </div>
 
+        {profile.qrToken && (
+          <button
+            onClick={() => setShowFullscreenQr(true)}
+            aria-label="View your Scholar ID QR code full screen"
+            className="group flex shrink-0 flex-col items-center gap-1 rounded-[10px] border border-white/30 bg-white/10 p-2 backdrop-blur-sm transition-colors hover:bg-white/20"
+          >
+            <ScholarIdQrCanvas token={profile.qrToken} size={64} className="rounded-md bg-white p-1" />
+            <span className="flex items-center gap-1 text-[10px] font-semibold text-[#F3BC00]">
+              <QrCode size={10} /> Tap to expand
+            </span>
+          </button>
+        )}
+
         <button
           onClick={onChangePassword}
           className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/30 text-white text-[13px] font-semibold rounded-[10px] px-4 py-2.5 transition-colors backdrop-blur-sm"
@@ -69,6 +85,10 @@ export function ProfileBanner({ profile, sdpStatus, positions, onChangePassword 
           Change Password
         </button>
       </div>
+
+      {showFullscreenQr && profile.qrToken && (
+        <FullscreenScholarQr token={profile.qrToken} onClose={() => setShowFullscreenQr(false)} />
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CheckCircle2, AlertTriangle, Ban, IdCard, User, Building2, BookOpen, Heart, Phone, MapPin, Save, QrCode, ShieldAlert } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { updateOwnContactInfo, updateOwnEmergencyContact } from "../../scholarApi";
+import { ScholarIdQrCanvas } from "./ScholarIdQrCode";
 import { ALL_BARANGAYS, clusterForBarangay, clusterLabel } from "@/lib/cdoBarangays";
 import type { ScholarProfile } from "../../types";
 
@@ -95,9 +96,7 @@ export function ProfilePanel({ profile, onProfileUpdated }: { profile: ScholarPr
         <>
           <hr className="border-t border-[#e6ecf5] my-6" />
           <div className="flex flex-col sm:flex-row items-center gap-4 bg-[#f8fafd] border border-[#e8edf2] rounded-[10px] p-4">
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(`${window.location.origin}/CEDO/id?token=${profile.qrToken}`)}`}
-              alt="Your Scholar ID QR code" className="h-[140px] w-[140px] shrink-0 rounded-lg bg-white p-1.5" />
+            <ScholarIdQrCanvas token={profile.qrToken} size={140} className="shrink-0 rounded-lg bg-white p-1.5" />
             <div>
               <p className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide text-[#0088cc] mb-1"><QrCode size={13} /> Your Scholar ID QR</p>
               <p className="text-[13px] text-[#1a2e44] leading-relaxed">Anyone can scan this to see your emergency contact and CEDO's contact info — carry it for SDP/Formation activities, and for emergencies.</p>
