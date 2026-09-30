@@ -123,7 +123,11 @@ export function MonitorAttendanceScanner({
   }
 
   async function submitQr(raw: string) {
-    if (busy || !raw.trim() || raw === lastAttemptedQr.current) return;
+    // sessionType still loading -- don't guess a kind (submit() defaults
+    // to "time_in" while it's unresolved). Leave lastAttemptedQr unset so
+    // the camera loop's next frame (it re-fires every frame this same QR
+    // stays in view) retries once the fetch resolves, typically instantly.
+    if (busy || !raw.trim() || raw === lastAttemptedQr.current || sessionType === "loading") return;
     lastAttemptedQr.current = raw;
     const token = extractQrToken(raw);
     if (!token) {
@@ -141,7 +145,7 @@ export function MonitorAttendanceScanner({
   // instead of silently doing nothing.
   async function submitManual() {
     const scholarIdNumber = manualScholarId.trim();
-    if (busy || !scholarIdNumber) return;
+    if (busy || !scholarIdNumber || sessionType === "loading") return;
     await submit({ scholarIdNumber });
   }
 
@@ -251,9 +255,9 @@ export function MonitorAttendanceScanner({
               <input value={manualScholarId} onChange={e => setManualScholarId(e.target.value)}
                 placeholder="e.g. 0001" onKeyDown={e => e.key === "Enter" && submitManual()}
                 className="flex-1 border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm font-mono outline-none focus:border-[#0088cc]" />
-              <button onClick={submitManual} disabled={busy || !manualScholarId.trim()}
+              <button onClick={submitManual} disabled={busy || !manualScholarId.trim() || sessionType === "loading"}
                 className="bg-[#062444] text-white text-sm font-semibold rounded-lg px-4 disabled:opacity-50">
-                {busy ? <Loader2 size={16} className="animate-spin" /> : "Submit"}
+                {busy || sessionType === "loading" ? <Loader2 size={16} className="animate-spin" /> : "Submit"}
               </button>
             </div>
           </div>
