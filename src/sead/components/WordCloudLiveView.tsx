@@ -45,6 +45,8 @@ export function WordCloudLiveView({ topic }: { topic: QuestTopic | null }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const cloudRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fullscreenAreaRef = useRef<HTMLDivElement>(null);
+  const [fullscreenBoxPx, setFullscreenBoxPx] = useState<{ width: number; height: number } | null>(null);
 
   async function load(silent = false) {
     if (!topic) return;
@@ -77,6 +79,38 @@ export function WordCloudLiveView({ topic }: { topic: QuestTopic | null }) {
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
+
+  // In fullscreen, the cloud box must fit BOTH the screen's width and its
+  // height -- a fixed max-width alone (the old approach) can size a box
+  // taller than the actual screen on a shorter/narrower display, and
+  // `overflow-y-auto` just makes it scroll instead of shrinking, which
+  // looks like the cloud is "zoomed in" with words cut off below the fold.
+  // Measuring the real available area and picking whichever dimension is
+  // the binding constraint keeps the whole cloud on screen at once.
+  useEffect(() => {
+    if (!isFullscreen) {
+      setFullscreenBoxPx(null);
+      return;
+    }
+    const el = fullscreenAreaRef.current;
+    if (!el) return;
+    const ratio = CANVAS_WIDTH / CANVAS_HEIGHT;
+    function measure() {
+      const availW = el!.clientWidth;
+      const availH = el!.clientHeight;
+      let width = availW;
+      let height = width / ratio;
+      if (height > availH) {
+        height = availH;
+        width = height * ratio;
+      }
+      setFullscreenBoxPx({ width, height });
+    }
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isFullscreen, counts.length]);
 
   async function togglePresent() {
     if (document.fullscreenElement) {
@@ -154,10 +188,43 @@ export function WordCloudLiveView({ topic }: { topic: QuestTopic | null }) {
             <MessageSquareText className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p className="text-sm">No responses yet — words will appear here as scholars submit them.</p>
           </div>
+        ) : isFullscreen ? (
+          // Measuring wrapper fills the actual available fullscreen area;
+          // the cloud box below is sized in JS (fullscreenBoxPx) to fit
+          // both its width and height, rather than a fixed max-width that
+          // ignores the screen's actual height.
+          <div ref={fullscreenAreaRef} className="w-full h-full flex items-center justify-center">
+            {fullscreenBoxPx && (
+              <div
+                ref={cloudRef}
+                className="relative bg-white rounded-xl"
+                style={{ width: fullscreenBoxPx.width, height: fullscreenBoxPx.height, containerType: "inline-size" } as CSSProperties}
+              >
+                {placedWords.map((w, i) => (
+                  <span
+                    key={w.text}
+                    title={`${w.text} — ${w.count} response${w.count === 1 ? "" : "s"}`}
+                    style={{
+                      position: "absolute",
+                      left: `${(w.x / CANVAS_WIDTH) * 100}%`,
+                      top: `${(w.y / CANVAS_HEIGHT) * 100}%`,
+                      fontSize: `${(w.fontSize / CANVAS_WIDTH) * 100}cqw`,
+                      color: COLORS[i % COLORS.length],
+                      lineHeight: 1.15,
+                      whiteSpace: "nowrap",
+                    }}
+                    className="font-extrabold"
+                  >
+                    {w.text}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
           <div
             ref={cloudRef}
-            className={`relative bg-white rounded-xl mx-auto w-full ${isFullscreen ? "max-w-[1400px]" : "max-w-[720px]"}`}
+            className="relative bg-white rounded-xl mx-auto w-full max-w-[720px]"
             style={{ aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, containerType: "inline-size" } as CSSProperties}
           >
             {placedWords.map((w, i) => (
@@ -169,9 +236,8 @@ export function WordCloudLiveView({ topic }: { topic: QuestTopic | null }) {
                   left: `${(w.x / CANVAS_WIDTH) * 100}%`,
                   top: `${(w.y / CANVAS_HEIGHT) * 100}%`,
                   // cqw, not px -- see the identical comment in SlideResults.tsx's
-                  // WordCloudResults; this container's rendered width varies
-                  // (720px panel vs. a 1400px fullscreen projector), and fixed
-                  // px font sizes would overflow instead of scaling with it.
+                  // WordCloudResults; this container's rendered width varies,
+                  // and fixed px font sizes would overflow instead of scaling with it.
                   fontSize: `${(w.fontSize / CANVAS_WIDTH) * 100}cqw`,
                   color: COLORS[i % COLORS.length],
                   lineHeight: 1.15,
