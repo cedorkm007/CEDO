@@ -6,7 +6,7 @@ import type { PresentationItem } from "../presentationsApi";
 import type { PresentationSlide, TitleSlideSettings, WordCloudSettings, MultipleChoiceSettings, RankingSettings } from "../slidesApi";
 import {
   startPresentationSession, endPresentationSession, setPresentationSessionSlide, setPresentationSessionState,
-  resetSlideResponses, fetchPresentationSession, fetchSlideResponses, type PresentationSession,
+  resetSlideResponses, fetchPresentationSession, fetchSlideResponses, type PresentationSession, type PresentationResponseRow,
 } from "../presentationSessionApi";
 import { setResponseHidden } from "../resultsApi";
 import { WordCloudResults, MultipleChoiceResults, RankingResults } from "./SlideResults";

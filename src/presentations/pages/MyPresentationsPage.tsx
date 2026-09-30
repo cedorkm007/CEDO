@@ -58,7 +58,7 @@ export function MyPresentationsPage() {
   const [dragItem, setDragItem] = useState<DragItem | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
 
-  async function load(folderId: string) {
+  async function load(folderId: string | null) {
     setLoading(true);
     const [contents, crumb, owned] = await Promise.all([
       fetchFolderContents(folderId),
