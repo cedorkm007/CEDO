@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Plus, FolderPlus, LayoutGrid, List as ListIcon, Search, ArrowUpDown, Home, ChevronRight,
-  Folder, MonitorPlay, ArrowLeft,
+  Folder, MonitorPlay,
 } from "lucide-react";
 import {
   fetchFolderContents, fetchBreadcrumbPath, fetchAllOwnedFolders, createFolder, renameFolder, moveFolder, deleteFolder,
@@ -11,6 +11,7 @@ import {
 import { ItemActionsMenu } from "../components/ItemActionsMenu";
 import { MoveToFolderModal } from "../components/MoveToFolderModal";
 import { DeleteConfirmModal } from "../components/DeleteConfirmModal";
+import { PresentationEditorPage } from "./PresentationEditorPage";
 
 type ViewMode = "grid" | "list";
 type SortBy = "name" | "date";
@@ -139,22 +140,10 @@ export function MyPresentationsPage() {
 
   if (openPresentation) {
     return (
-      <div>
-        <button onClick={() => { setOpenPresentation(null); void load(currentFolderId); }} className="flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-500 hover:text-[#062444] mb-4">
-          <ArrowLeft size={14} /> Back to My Presentations
-        </button>
-        <div className="bg-white rounded-2xl border border-[#e6ecf5] p-8 text-center">
-          <MonitorPlay size={32} className="mx-auto mb-3 text-[#F3BC00]" />
-          <input
-            defaultValue={openPresentation.title}
-            onBlur={e => { const t = e.target.value.trim(); if (t && t !== openPresentation.title) void renamePresentation(openPresentation.id, t); }}
-            className="text-[18px] font-bold text-[#062444] text-center outline-none border-b border-transparent hover:border-[#e6ecf5] focus:border-[#0088cc] px-2 py-1"
-          />
-          <p className="text-[13px] text-slate-400 mt-3 max-w-sm mx-auto">
-            The slide editor is coming in the next phase of this tool — for now this is just a placeholder so "New Presentation" has somewhere to open to.
-          </p>
-        </div>
-      </div>
+      <PresentationEditorPage
+        presentation={openPresentation}
+        onBack={() => { setOpenPresentation(null); void load(currentFolderId); }}
+      />
     );
   }
 
