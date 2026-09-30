@@ -234,7 +234,6 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
           positions={positions}
           onClose={() => setShowProfilePopup(false)}
           onChangePassword={() => { setShowProfilePopup(false); setShowChangePassword(true); }}
-          onProfileUpdated={setProfile}
           onSignOut={handleSignOut}
         />
       )}

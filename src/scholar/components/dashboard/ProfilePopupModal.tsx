@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { X, ShieldCheck, GraduationCap, LogOut, MapPinned, CheckCircle2, Circle, QrCode } from "lucide-react";
-import { ProfilePanel } from "./ProfilePanel";
 import { ScholarIdQrCanvas, FullscreenScholarQr } from "./ScholarIdQrCode";
 import { clusterForBarangay, clusterLabel } from "@/lib/cdoBarangays";
 import { SDP_CATEGORIES, type SDPCategoryStatus } from "../../sdpApi";
@@ -12,16 +11,16 @@ interface ProfilePopupModalProps {
   positions: string[];
   onClose: () => void;
   onChangePassword: () => void;
-  onProfileUpdated: (p: ScholarProfile) => void;
   onSignOut: () => void;
 }
 
 /**
  * Mobile-only profile popup, opened from MobilePortalHeader's profile
  * button — shows name/ID/SDP checklist + Change Password up top, then the
- * full profile page content below (same ProfilePanel used elsewhere).
+ * scholar's QR code (editing profile fields already lives in the separate
+ * "Profile" tab, so it isn't duplicated here).
  */
-export function ProfilePopupModal({ profile, sdpStatus, positions, onClose, onChangePassword, onProfileUpdated, onSignOut }: ProfilePopupModalProps) {
+export function ProfilePopupModal({ profile, sdpStatus, positions, onClose, onChangePassword, onSignOut }: ProfilePopupModalProps) {
   const cluster = profile.barangay ? clusterForBarangay(profile.barangay) : null;
   const [showFullscreenQr, setShowFullscreenQr] = useState(false);
 
@@ -36,7 +35,7 @@ export function ProfilePopupModal({ profile, sdpStatus, positions, onClose, onCh
             <div className="w-16 h-16 rounded-full border-4 border-[#F3BC00] shadow-lg bg-[#0a3a6b] flex items-center justify-center text-white shrink-0">
               <GraduationCap size={28} />
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0">
               <p className="text-white font-bold text-[15px] leading-tight truncate">
                 {profile.lastName.toUpperCase()}, {profile.firstName.toUpperCase()}{profile.middleName ? ` ${profile.middleName[0].toUpperCase()}` : ""}
               </p>
@@ -65,18 +64,6 @@ export function ProfilePopupModal({ profile, sdpStatus, positions, onClose, onCh
                 )}
               </div>
             </div>
-            {profile.qrToken && (
-              <button
-                onClick={() => setShowFullscreenQr(true)}
-                aria-label="View your Scholar ID QR code full screen"
-                className="flex shrink-0 flex-col items-center gap-1 rounded-[10px] border border-white/30 bg-white/10 p-1.5 backdrop-blur-sm"
-              >
-                <ScholarIdQrCanvas token={profile.qrToken} size={48} className="rounded-md bg-white p-1" />
-                <span className="flex items-center gap-1 text-[9px] font-semibold text-[#F3BC00]">
-                  <QrCode size={9} /> Tap
-                </span>
-              </button>
-            )}
           </div>
           <div className="flex items-center gap-2 mt-4">
             <button onClick={onChangePassword}
@@ -90,9 +77,23 @@ export function ProfilePopupModal({ profile, sdpStatus, positions, onClose, onCh
           </div>
         </div>
 
-        <div className="p-4 pb-8">
-          <ProfilePanel profile={profile} onProfileUpdated={onProfileUpdated} />
-        </div>
+        {profile.qrToken && (
+          <div className="p-6 pb-8 flex flex-col items-center">
+            <button
+              onClick={() => setShowFullscreenQr(true)}
+              aria-label="View your Scholar ID QR code full screen"
+              className="flex flex-col items-center gap-3 rounded-2xl border border-[#e6ecf5] bg-white p-5 shadow-sm active:scale-[0.98] transition-transform"
+            >
+              <ScholarIdQrCanvas token={profile.qrToken} size={200} className="rounded-lg" />
+              <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#062444]">
+                <QrCode size={13} /> Tap to view full screen
+              </span>
+            </button>
+            <p className="mt-3 text-center text-[12px] text-[#5b6b82] max-w-[260px]">
+              Show this to an activity monitor to record your attendance, or let anyone scan it to view your emergency contact info.
+            </p>
+          </div>
+        )}
       </div>
 
       {showFullscreenQr && profile.qrToken && (
