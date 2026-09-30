@@ -1,30 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import type { PresentationResponseRow } from "../presentationSessionApi";
 import type { MultipleChoiceSettings, RankingSettings } from "../slidesApi";
-import { layoutWordCloud, CANVAS_WIDTH, CANVAS_HEIGHT } from "./wordCloudLayout";
+import { layoutWordCloud, tokenizeWordCloudEntry as tokenize, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/wordCloudLayout";
 
 const CLOUD_COLORS = ["#062444", "#0088cc", "#F3BC00", "#7C3AED", "#0E9F6E"];
 const MAX_DISTINCT_WORDS = 100;
-
-/**
- * Lowercases and splits a submitted entry into its individual words --
- * someone asked for "one word" will still often type a short phrase, and
- * per the update request, a phrase's own words should count toward
- * similarity with everyone else's single-word answers ("excellent
- * service" contributes to the same "excellent" bubble as a separate
- * "Excellent" submission), not sit off to the side as an unmatched
- * three-word blob. Strips leading/trailing punctuation per token so
- * "excellent!" and "excellent" still merge.
- */
-function tokenize(entry: string): string[] {
-  return entry
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .map(token => token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
-    .filter(Boolean);
-}
 
 export function WordCloudResults({ responses, moderatable, onToggleHidden }: {
   responses: PresentationResponseRow[];
@@ -58,7 +39,10 @@ export function WordCloudResults({ responses, moderatable, onToggleHidden }: {
       {placedWords.length === 0 ? (
         <p className="text-slate-400 text-[13px] text-center">No responses yet</p>
       ) : (
-        <div className="relative w-full mx-auto" style={{ maxWidth: CANVAS_WIDTH, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}` }}>
+        <div
+          className="relative w-full mx-auto"
+          style={{ maxWidth: CANVAS_WIDTH, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, containerType: "inline-size" } as CSSProperties}
+        >
           {placedWords.map((w, i) => (
             <span
               key={w.text}
@@ -66,7 +50,15 @@ export function WordCloudResults({ responses, moderatable, onToggleHidden }: {
                 position: "absolute",
                 left: `${(w.x / CANVAS_WIDTH) * 100}%`,
                 top: `${(w.y / CANVAS_HEIGHT) * 100}%`,
-                fontSize: `${w.fontSize}px`,
+                // cqw (1% of this container's own width), not px -- layout was
+                // computed in a fixed CANVAS_WIDTH-px virtual space, but this
+                // container can render narrower (a phone-width slide preview,
+                // a small results panel); fixed px font sizes would overflow
+                // a shrunk container since only the x/y % positions would
+                // scale down, not the text itself. Uniformly scaling both
+                // position and size this way preserves the collision-free
+                // layout the packer computed -- it's a similarity transform.
+                fontSize: `${(w.fontSize / CANVAS_WIDTH) * 100}cqw`,
                 color: CLOUD_COLORS[i % CLOUD_COLORS.length],
                 whiteSpace: "nowrap",
               }}

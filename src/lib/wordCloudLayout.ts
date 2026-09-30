@@ -1,3 +1,9 @@
+// Shared by both word-cloud features in this app: the quests one
+// (src/sead/components/WordCloudLiveView.tsx, quest_word_cloud_entries)
+// and the presentations one (src/presentations/components/SlideResults.tsx,
+// presentation_responses). Lives here rather than under either feature's
+// own directory since neither owns it.
+
 export interface WordCount {
   text: string;
   count: number;
@@ -14,6 +20,35 @@ export interface PlacedWord extends WordCount {
 
 export const CANVAS_WIDTH = 640;
 export const CANVAS_HEIGHT = 340;
+
+// Conjunctions carry no meaning on their own and only clutter the cloud
+// with tiny, high-frequency filler bubbles -- excluded from counting.
+// Covers both English and Filipino, since scholar responses mix both.
+const CONJUNCTIONS = new Set([
+  "and", "or", "but", "nor", "so", "yet", "for", "although", "because",
+  "since", "unless", "while", "whereas", "though", "if", "than",
+  "at", "o", "pero", "dahil", "kasi", "kung", "para", "kaya", "ngunit", "subalit",
+]);
+
+/**
+ * Lowercases and splits a submitted entry into its individual words -- a
+ * "one word" prompt still often gets a short phrase typed into it, and a
+ * phrase's own words should count toward similarity with everyone else's
+ * single-word answers ("excellent service" contributes to the same
+ * "excellent" bubble as a separate "Excellent" submission), not sit off
+ * to the side as an unmatched multi-word blob. Strips leading/trailing
+ * punctuation per token so "excellent!" and "excellent" still merge, and
+ * drops conjunctions so they don't count toward the cloud.
+ */
+export function tokenizeWordCloudEntry(entry: string): string[] {
+  return entry
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map(token => token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter(Boolean)
+    .filter(token => !CONJUNCTIONS.has(token));
+}
 
 function rectsOverlap(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }): boolean {
   const pad = 8; // breathing room so adjacent words don't visually touch -- bold text's real ascent/descent runs taller than the height estimate below, so this needs to be generous, not just cosmetic
@@ -61,8 +96,8 @@ export function layoutWordCloud(words: WordCount[], minFontPx: number, maxFontPx
     }
     const height = fontSize * 1.15;
 
-    let bestX = centerX - width / 2;
-    let bestY = centerY - height / 2;
+    let bestX = 0;
+    let bestY = 0;
     let found = false;
 
     const radiusStep = 4;
@@ -84,10 +119,12 @@ export function layoutWordCloud(words: WordCount[], minFontPx: number, maxFontPx
         }
       }
     }
-    // Falling through without `found` (only plausible with an extremely
-    // crowded cloud, well beyond classroom scale) still places the word --
-    // at dead center, so it'll overlap the top word -- rather than
-    // dropping it; some visual overlap beats silently hiding a submission.
+    // A word that can't find a clean, non-overlapping spot within the
+    // canvas is dropped rather than force-placed -- a smaller cloud of
+    // legible words beats a full one with an illegible overlapping
+    // cluster in the middle. Words are processed most-frequent first, so
+    // what survives is always the highest-count ones that actually fit.
+    if (!found) continue;
 
     placed.push({ ...word, x: bestX, y: bestY, width, height, fontSize });
   }

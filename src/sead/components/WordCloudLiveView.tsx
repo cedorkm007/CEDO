@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import html2canvas from "html2canvas";
 import { Download, MessageSquareText, Maximize, Minimize } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
+import { layoutWordCloud, tokenizeWordCloudEntry, CANVAS_WIDTH, CANVAS_HEIGHT, type WordCount } from "@/lib/wordCloudLayout";
 import { EmptyColumn } from "./SeadUiShell";
 import type { QuestTopic } from "../types";
 
@@ -14,11 +15,6 @@ const PRESENT_MIN_FONT_PX = 28;
 const PRESENT_MAX_FONT_PX = 96;
 const MAX_WORDS_SHOWN = 150;
 const COLORS = ["#062444", "#0088cc", "#F3BC00", "#0f766e", "#7c3aed", "#be123c", "#15803d"];
-
-interface WordCount {
-  word: string;
-  count: number;
-}
 
 /**
  * Live word cloud for a Word Cloud-mode topic — replaces QuestionColumn
@@ -57,12 +53,12 @@ export function WordCloudLiveView({ topic }: { topic: QuestTopic | null }) {
     if (!error && data) {
       const tally = new Map<string, number>();
       for (const row of data as { word: string }[]) {
-        const normalized = row.word.trim().toLowerCase();
-        if (!normalized) continue;
-        tally.set(normalized, (tally.get(normalized) ?? 0) + 1);
+        for (const token of tokenizeWordCloudEntry(row.word)) {
+          tally.set(token, (tally.get(token) ?? 0) + 1);
+        }
       }
       const sorted = [...tally.entries()]
-        .map(([word, count]) => ({ word, count }))
+        .map(([text, count]) => ({ text, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, MAX_WORDS_SHOWN);
       setCounts(sorted);
@@ -109,13 +105,18 @@ export function WordCloudLiveView({ topic }: { topic: QuestTopic | null }) {
     }
   }
 
+  const minFont = isFullscreen ? PRESENT_MIN_FONT_PX : MIN_FONT_PX;
+  const maxFont = isFullscreen ? PRESENT_MAX_FONT_PX : MAX_FONT_PX;
+  const placedWords = useMemo(
+    () => layoutWordCloud(counts, minFont, maxFont),
+    // counts is a fresh array every render -- key off its actual content (including min/max font, which change on fullscreen toggle) so layout only recomputes when something that'd actually change it does, not on every unrelated re-render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(counts), minFont, maxFont],
+  );
+
   if (!topic) {
     return <EmptyColumn title="Word Cloud" message="Select a topic to see its live word cloud." />;
   }
-
-  const maxCount = counts[0]?.count ?? 1;
-  const minFont = isFullscreen ? PRESENT_MIN_FONT_PX : MIN_FONT_PX;
-  const maxFont = isFullscreen ? PRESENT_MAX_FONT_PX : MAX_FONT_PX;
 
   return (
     <div ref={containerRef}
@@ -154,17 +155,33 @@ export function WordCloudLiveView({ topic }: { topic: QuestTopic | null }) {
             <p className="text-sm">No responses yet — words will appear here as scholars submit them.</p>
           </div>
         ) : (
-          <div ref={cloudRef} className={`flex flex-wrap items-center justify-center bg-white rounded-xl ${isFullscreen ? "gap-x-8 gap-y-4 max-w-[90vw]" : "gap-x-3 gap-y-1 p-6"}`}>
-            {counts.map((c, i) => {
-              const fontSize = minFont + (c.count / maxCount) * (maxFont - minFont);
-              return (
-                <span key={c.word} title={`${c.word} — ${c.count} response${c.count === 1 ? "" : "s"}`}
-                  style={{ fontSize: `${fontSize}px`, color: COLORS[i % COLORS.length], lineHeight: 1.15 }}
-                  className="font-extrabold">
-                  {c.word}
-                </span>
-              );
-            })}
+          <div
+            ref={cloudRef}
+            className={`relative bg-white rounded-xl mx-auto w-full ${isFullscreen ? "max-w-[1400px]" : "max-w-[720px]"}`}
+            style={{ aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, containerType: "inline-size" } as CSSProperties}
+          >
+            {placedWords.map((w, i) => (
+              <span
+                key={w.text}
+                title={`${w.text} — ${w.count} response${w.count === 1 ? "" : "s"}`}
+                style={{
+                  position: "absolute",
+                  left: `${(w.x / CANVAS_WIDTH) * 100}%`,
+                  top: `${(w.y / CANVAS_HEIGHT) * 100}%`,
+                  // cqw, not px -- see the identical comment in SlideResults.tsx's
+                  // WordCloudResults; this container's rendered width varies
+                  // (720px panel vs. a 1400px fullscreen projector), and fixed
+                  // px font sizes would overflow instead of scaling with it.
+                  fontSize: `${(w.fontSize / CANVAS_WIDTH) * 100}cqw`,
+                  color: COLORS[i % COLORS.length],
+                  lineHeight: 1.15,
+                  whiteSpace: "nowrap",
+                }}
+                className="font-extrabold"
+              >
+                {w.text}
+              </span>
+            ))}
           </div>
         )}
       </div>
