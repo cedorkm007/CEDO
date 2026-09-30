@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Play, Plus, Copy, Trash2 } from "lucide-react";
+import { ArrowLeft, Play, Plus, Copy, Trash2, BarChart3 } from "lucide-react";
 import { renamePresentation, type PresentationItem } from "../presentationsApi";
 import {
   fetchSlides, createSlide, duplicateSlide, deleteSlide, updateSlideType, updateSlideSettings, reorderSlides,
@@ -9,6 +9,7 @@ import {
 import { SlideSettingsForm } from "../components/SlideSettingsForm";
 import { SlidePreview } from "../components/SlidePreview";
 import { PresentModeView } from "../components/PresentModeView";
+import { PresentationResultsView } from "../components/PresentationResultsView";
 
 type SaveStatus = "saved" | "saving";
 
@@ -36,6 +37,7 @@ export function PresentationEditorPage({ presentation, onBack }: { presentation:
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [presenting, setPresenting] = useState(false);
+  const [viewingResults, setViewingResults] = useState(false);
 
   const saveTimeoutRef = useRef<number | undefined>(undefined);
 
@@ -116,6 +118,10 @@ export function PresentationEditorPage({ presentation, onBack }: { presentation:
     return <PresentModeView presentation={{ ...presentation, title }} slides={slides} onClose={() => setPresenting(false)} />;
   }
 
+  if (viewingResults) {
+    return <PresentationResultsView presentation={{ ...presentation, title }} slides={slides} onClose={() => setViewingResults(false)} />;
+  }
+
   return (
     <div className="fixed inset-0 z-[100] bg-[#f7f9fc] flex flex-col">
       {/* Top bar */}
@@ -129,6 +135,12 @@ export function PresentationEditorPage({ presentation, onBack }: { presentation:
         />
         <span className="text-[11.5px] text-slate-400 shrink-0">{saveStatus === "saving" ? "Saving…" : "Saved"}</span>
         <div className="flex-1" />
+        <button
+          onClick={() => setViewingResults(true)}
+          className="flex items-center gap-1.5 border border-[#e6ecf5] text-[#062444] text-[12.5px] font-semibold rounded-lg px-3.5 py-2 hover:bg-[#f7f9fc]"
+        >
+          <BarChart3 size={14} /> Results
+        </button>
         <button
           onClick={() => setPresenting(true)}
           disabled={slides.length === 0}

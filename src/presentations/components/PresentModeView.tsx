@@ -6,8 +6,10 @@ import type { PresentationItem } from "../presentationsApi";
 import type { PresentationSlide, TitleSlideSettings, WordCloudSettings, MultipleChoiceSettings, RankingSettings } from "../slidesApi";
 import {
   startPresentationSession, endPresentationSession, setPresentationSessionSlide, setPresentationSessionState,
-  resetSlideResponses, fetchPresentationSession, fetchSlideResponses, type PresentationSession, type PresentationResponseRow,
+  resetSlideResponses, fetchPresentationSession, fetchSlideResponses, type PresentationSession,
 } from "../presentationSessionApi";
+import { setResponseHidden } from "../resultsApi";
+import { WordCloudResults, MultipleChoiceResults, RankingResults } from "./SlideResults";
 
 function joinUrl(code: string): string {
   return `${window.location.origin}/join?code=${code}`;
@@ -19,75 +21,6 @@ function JoinQrCode({ joinCode }: { joinCode: string }) {
     if (canvasRef.current) void QRCode.toCanvas(canvasRef.current, joinUrl(joinCode), { width: 160, margin: 1, color: { dark: "#062444", light: "#ffffff" } });
   }, [joinCode]);
   return <canvas ref={canvasRef} className="rounded-lg" />;
-}
-
-function WordCloudResults({ responses }: { responses: PresentationResponseRow[] }) {
-  const tally = new Map<string, number>();
-  for (const r of responses) {
-    for (const word of r.response.words ?? []) {
-      const normalized = word.trim().toLowerCase();
-      if (!normalized) continue;
-      tally.set(normalized, (tally.get(normalized) ?? 0) + 1);
-    }
-  }
-  const sorted = [...tally.entries()].map(([word, count]) => ({ word, count })).sort((a, b) => b.count - a.count);
-  if (sorted.length === 0) return <p className="text-slate-400 text-[13px] text-center">No responses yet</p>;
-  const maxCount = sorted[0].count;
-  return (
-    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 max-h-full overflow-y-auto">
-      {sorted.slice(0, 100).map(({ word, count }, i) => (
-        <span
-          key={word}
-          style={{ fontSize: `${14 + (count / maxCount) * 40}px`, color: ["#062444", "#0088cc", "#F3BC00", "#7C3AED", "#0E9F6E"][i % 5] }}
-          className="font-bold leading-tight"
-          title={`${count} response${count > 1 ? "s" : ""}`}
-        >
-          {word}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function MultipleChoiceResults({ responses, settings }: { responses: PresentationResponseRow[]; settings: MultipleChoiceSettings }) {
-  const counts = settings.options.map((_, i) => responses.filter(r => r.response.selectedIndexes?.includes(i)).length);
-  const maxCount = Math.max(1, ...counts);
-  const total = responses.length;
-  if (total === 0) return <p className="text-slate-400 text-[13px] text-center">No responses yet</p>;
-  return (
-    <div className="w-full max-w-lg space-y-3">
-      {settings.options.map((option, i) => (
-        <div key={i}>
-          <div className="flex items-center justify-between text-[13px] font-semibold text-[#062444] mb-1">
-            <span className="truncate">{option}</span>
-            <span className="text-slate-400 shrink-0 ml-2">{counts[i]} ({Math.round((counts[i] / total) * 100)}%)</span>
-          </div>
-          <div className="h-3 bg-[#f0f3f8] rounded-full overflow-hidden">
-            <div className="h-full bg-[#0088cc] rounded-full transition-all" style={{ width: `${(counts[i] / maxCount) * 100}%` }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RankingResults({ responses, settings }: { responses: PresentationResponseRow[]; settings: RankingSettings }) {
-  if (responses.length === 0) return <p className="text-slate-400 text-[13px] text-center">No responses yet</p>;
-  const averages = settings.items.map((item, itemIndex) => {
-    const positions = responses.map(r => (r.response.order ?? []).indexOf(itemIndex)).filter(p => p >= 0);
-    const avg = positions.length ? positions.reduce((a, b) => a + b, 0) / positions.length : null;
-    return { item, avg };
-  }).sort((a, b) => (a.avg ?? 99) - (b.avg ?? 99));
-  return (
-    <div className="w-full max-w-lg space-y-2">
-      {averages.map(({ item, avg }, i) => (
-        <div key={item + i} className="flex items-center justify-between border border-[#e6ecf5] rounded-lg px-4 py-2.5">
-          <span className="text-[13.5px] font-semibold text-[#062444]">{i + 1}. {item}</span>
-          <span className="text-[12px] text-slate-400">{avg !== null ? `Avg rank ${(avg + 1).toFixed(1)}` : "—"}</span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 export function PresentModeView({ presentation, slides, onClose }: { presentation: PresentationItem; slides: PresentationSlide[]; onClose: () => void }) {
@@ -149,6 +82,11 @@ export function PresentModeView({ presentation, slides, onClose }: { presentatio
     onClose();
   }
 
+  async function handleToggleHidden(responseId: string, hidden: boolean) {
+    setResponses(rs => rs.map(r => r.id === responseId ? { ...r, hidden } : r));
+    await setResponseHidden(responseId, hidden);
+  }
+
   if (!session) {
     return (
       <div className="fixed inset-0 z-[200] bg-[#062444] flex items-center justify-center">
@@ -189,7 +127,7 @@ export function PresentModeView({ presentation, slides, onClose }: { presentatio
                 </h2>
                 <p className="text-[12px] text-slate-400 mb-6">{responses.length} response{responses.length === 1 ? "" : "s"}</p>
                 {session.showResults && (
-                  currentSlide.type === "word_cloud" ? <WordCloudResults responses={responses} />
+                  currentSlide.type === "word_cloud" ? <WordCloudResults responses={responses} moderatable onToggleHidden={handleToggleHidden} />
                   : currentSlide.type === "multiple_choice" ? <MultipleChoiceResults responses={responses} settings={currentSlide.settings as MultipleChoiceSettings} />
                   : <RankingResults responses={responses} settings={currentSlide.settings as RankingSettings} />
                 )}
