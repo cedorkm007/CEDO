@@ -7,13 +7,30 @@ import { fetchAttendanceSessionType, type ActivityType } from "../activityMonito
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * A scholar's QR encodes the public emergency-info page's URL
+ * (ScholarIdQrCode.tsx's scholarIdUrl()), not a bare token — pull the
+ * qr_token back out of that URL's `?token=` param (or accept a raw UUID
+ * directly, in case some other source ever encodes just the token).
+ */
+function extractQrToken(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (UUID_RE.test(trimmed)) return trimmed;
+  try {
+    const token = new URL(trimmed).searchParams.get("token");
+    return token && UUID_RE.test(token) ? token : null;
+  } catch {
+    return null;
+  }
+}
+
 type Mode = "scan" | "manual";
 type Tone = "success" | "neutral" | "error";
 interface ScanFeedback { tone: Tone; message: string; }
 
 const OUTCOME_MESSAGE: Record<Exclude<ScanOutcome, "success">, string> = {
   already_scanned: "Already scanned for this activity.",
-  unrecognized_token: "QR code not recognized — not a valid scholar ID.",
+  unrecognized_token: "Scholar not recognized — check the QR code or ID and try again.",
   not_eligible: "This scholar isn't eligible for this activity's year level.",
   removed_scholar: "This scholar's account is no longer active.",
   attendance_not_enabled: "Attendance hasn't been enabled for this activity yet.",
@@ -58,7 +75,7 @@ export function MonitorAttendanceScanner({
   activityType, activityId, activityName, onClose,
 }: { activityType: ActivityType; activityId: string; activityName: string; onClose: () => void }) {
   const [mode, setMode] = useState<Mode>("scan");
-  const [manualToken, setManualToken] = useState("");
+  const [manualScholarId, setManualScholarId] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
   const [cameraError, setCameraError] = useState("");
@@ -70,7 +87,7 @@ export function MonitorAttendanceScanner({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
-  const lastAttemptedToken = useRef<string>("");
+  const lastAttempted = useRef<string>("");
   const pendingToken = useRef<string>("");
   const pendingTokenStreak = useRef(0);
 
@@ -79,26 +96,16 @@ export function MonitorAttendanceScanner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activityType, activityId]);
 
-  async function submitToken(token: string) {
-    if (busy || !token.trim()) return;
-    if (token === lastAttemptedToken.current) return;
-    lastAttemptedToken.current = token;
-
-    if (!UUID_RE.test(token.trim())) {
-      setFeedback({ tone: "error", message: INVALID_QR_MESSAGE });
-      lastAttemptedToken.current = "";
-      return;
-    }
-
+  async function submit(identifier: Parameters<typeof recordMonitorAttendance>[3]) {
     setBusy(true);
     setFeedback(null);
     const effectiveKind: AttendanceKind = sessionType === "voucher" ? "voucher" : kind;
-    const res = await recordMonitorAttendance(activityType, activityId, token.trim(), effectiveKind);
+    const res = await recordMonitorAttendance(activityType, activityId, effectiveKind, identifier);
     setBusy(false);
 
     if (!res.ok) {
       setFeedback({ tone: "error", message: res.error });
-      lastAttemptedToken.current = "";
+      lastAttempted.current = "";
       return;
     }
     const { result } = res;
@@ -111,8 +118,27 @@ export function MonitorAttendanceScanner({
     } else {
       const prefix = result.scholarName ? `${result.scholarName} — ` : "";
       setFeedback({ tone: "error", message: `${prefix}${OUTCOME_MESSAGE[result.outcome]}` });
-      lastAttemptedToken.current = "";
+      lastAttempted.current = "";
     }
+  }
+
+  async function submitQr(raw: string) {
+    if (busy || !raw.trim() || raw === lastAttempted.current) return;
+    lastAttempted.current = raw;
+    const token = extractQrToken(raw);
+    if (!token) {
+      setFeedback({ tone: "error", message: INVALID_QR_MESSAGE });
+      lastAttempted.current = "";
+      return;
+    }
+    await submit({ qrToken: token });
+  }
+
+  async function submitManual() {
+    const scholarIdNumber = manualScholarId.trim();
+    if (busy || !scholarIdNumber || scholarIdNumber === lastAttempted.current) return;
+    lastAttempted.current = scholarIdNumber;
+    await submit({ scholarIdNumber });
   }
 
   useEffect(() => {
@@ -155,7 +181,7 @@ export function MonitorAttendanceScanner({
         if (qr?.data) {
           if (qr.data === pendingToken.current) pendingTokenStreak.current += 1;
           else { pendingToken.current = qr.data; pendingTokenStreak.current = 1; }
-          if (pendingTokenStreak.current >= 2) submitToken(qr.data);
+          if (pendingTokenStreak.current >= 2) submitQr(qr.data);
         } else {
           pendingToken.current = "";
           pendingTokenStreak.current = 0;
@@ -216,12 +242,12 @@ export function MonitorAttendanceScanner({
           </div>
         ) : (
           <div className="bg-white rounded-2xl p-6 max-w-sm mx-auto w-full">
-            <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Scholar QR Token</label>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Scholar ID</label>
             <div className="flex gap-2">
-              <input value={manualToken} onChange={e => setManualToken(e.target.value)}
-                placeholder="Paste or type the token"
+              <input value={manualScholarId} onChange={e => setManualScholarId(e.target.value)}
+                placeholder="e.g. 0001" onKeyDown={e => e.key === "Enter" && submitManual()}
                 className="flex-1 border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm font-mono outline-none focus:border-[#0088cc]" />
-              <button onClick={() => submitToken(manualToken)} disabled={busy || !manualToken.trim()}
+              <button onClick={submitManual} disabled={busy || !manualScholarId.trim()}
                 className="bg-[#062444] text-white text-sm font-semibold rounded-lg px-4 disabled:opacity-50">
                 {busy ? <Loader2 size={16} className="animate-spin" /> : "Submit"}
               </button>
