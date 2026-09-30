@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { FileText, Eye } from "lucide-react";
 import {
   fetchSubmissionUploadCountsByActivity, fetchSubmissionUploadCountsByYearLevel, fetchSubmissionUploadCountsBySchool,
-  fetchSubmissionFiles, type SubmissionUploadActivityCount, type SubmissionUploadGroupCount, type SubmissionFileRow,
+  fetchSubmissionFiles, fetchSubmissionUploadStatusCounts,
+  type SubmissionUploadActivityCount, type SubmissionUploadGroupCount, type SubmissionFileRow, type SubmissionUploadStatusCounts,
 } from "../submissionActivitiesApi";
 import { GroupCountBreakdown, type GroupCountRow } from "../components/GroupCountBreakdown";
 import { Modal } from "../components/Modal";
@@ -36,6 +37,7 @@ const STATUS_CLASSES: Record<string, string> = {
  */
 export function SubmissionFileBrowserTab() {
   const [activityCounts, setActivityCounts] = useState<SubmissionUploadActivityCount[] | null>(null);
+  const [statusCounts, setStatusCounts] = useState<SubmissionUploadStatusCounts | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [selectedActivity, setSelectedActivity] = useState<SubmissionUploadActivityCount | null>(null);
@@ -54,7 +56,9 @@ export function SubmissionFileBrowserTab() {
   useEffect(() => {
     void (async () => {
       setLoading(true);
-      setActivityCounts(await fetchSubmissionUploadCountsByActivity());
+      const [activities, statuses] = await Promise.all([fetchSubmissionUploadCountsByActivity(), fetchSubmissionUploadStatusCounts()]);
+      setActivityCounts(activities);
+      setStatusCounts(statuses);
       setLoading(false);
     })();
   }, []);
@@ -126,6 +130,21 @@ export function SubmissionFileBrowserTab() {
           <Crumb label={selectedSchool} current />
         </>}
       </div>
+
+      {!selectedActivity && statusCounts && (statusCounts.accepted + statusCounts.needsResubmission + statusCounts.pending > 0) && (
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            ["accepted", "Accepted", statusCounts.accepted],
+            ["needs_resubmission", "Needs Resubmission", statusCounts.needsResubmission],
+            ["uploaded", "Pending", statusCounts.pending],
+          ] as const).map(([key, label, count]) => (
+            <div key={key} className={`rounded-xl px-4 py-3 text-center ${STATUS_CLASSES[key]}`}>
+              <p className="text-[20px] font-extrabold">{count.toLocaleString()}</p>
+              <p className="text-[10.5px] font-bold uppercase tracking-wide leading-tight">{label}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!selectedActivity && (
         activityRows.length === 0 || activityRows.every(r => r.count === 0)

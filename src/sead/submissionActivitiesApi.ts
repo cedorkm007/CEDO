@@ -449,6 +449,21 @@ export async function backfillDriveFilesToStorage(
 
 export interface SubmissionUploadActivityCount { activityId: string; activityName: string; uploadCount: number }
 export interface SubmissionUploadGroupCount { label: string; count: number }
+export interface SubmissionUploadStatusCounts { accepted: number; needsResubmission: number; pending: number }
+
+/** Overall Accepted/Needs Resubmission/Pending breakdown across every submission upload, for the summary shown above the per-activity table in SubmissionFileBrowserTab.tsx. 'uploaded' (the only status a scholar's own upload is ever created with) is the "Pending" bucket -- see supabase_migration_submission_review.sql. */
+export async function fetchSubmissionUploadStatusCounts(): Promise<SubmissionUploadStatusCounts> {
+  const { data, error } = await supabase.rpc("submission_upload_status_counts");
+  const counts: SubmissionUploadStatusCounts = { accepted: 0, needsResubmission: 0, pending: 0 };
+  if (error || !data) return counts;
+  for (const r of data as Record<string, unknown>[]) {
+    const n = Number(r.upload_count);
+    if (r.status === "accepted") counts.accepted = n;
+    else if (r.status === "needs_resubmission") counts.needsResubmission = n;
+    else if (r.status === "uploaded") counts.pending = n;
+  }
+  return counts;
+}
 
 export async function fetchSubmissionUploadCountsByActivity(): Promise<SubmissionUploadActivityCount[]> {
   const { data, error } = await supabase.rpc("submission_uploads_by_activity");
