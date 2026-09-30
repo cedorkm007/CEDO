@@ -451,13 +451,13 @@ export interface SubmissionUploadActivityCount { activityId: string; activityNam
 export interface SubmissionUploadGroupCount { label: string; count: number }
 export interface SubmissionUploadStatusCounts { accepted: number; needsResubmission: number; pending: number }
 
-/** Overall Accepted/Needs Resubmission/Pending breakdown across every submission upload, for the summary shown above the per-activity table in SubmissionFileBrowserTab.tsx. 'uploaded' (the only status a scholar's own upload is ever created with) is the "Pending" bucket -- see supabase_migration_submission_review.sql. */
+/** Overall Accepted/Needs Resubmission/Pending breakdown for the summary shown above the per-activity table in SubmissionFileBrowserTab.tsx -- each number is a count of DISTINCT SCHOLARS with at least one upload in that status, not raw upload rows (an activity can have several upload fields, so one scholar easily has 2-3 rows). A scholar with uploads in more than one status is counted in each. 'uploaded' (the only status a scholar's own upload is ever created with) is the "Pending" bucket -- see supabase_migration_submission_review.sql. */
 export async function fetchSubmissionUploadStatusCounts(): Promise<SubmissionUploadStatusCounts> {
   const { data, error } = await supabase.rpc("submission_upload_status_counts");
   const counts: SubmissionUploadStatusCounts = { accepted: 0, needsResubmission: 0, pending: 0 };
   if (error || !data) return counts;
   for (const r of data as Record<string, unknown>[]) {
-    const n = Number(r.upload_count);
+    const n = Number(r.scholar_count);
     if (r.status === "accepted") counts.accepted = n;
     else if (r.status === "needs_resubmission") counts.needsResubmission = n;
     else if (r.status === "uploaded") counts.pending = n;

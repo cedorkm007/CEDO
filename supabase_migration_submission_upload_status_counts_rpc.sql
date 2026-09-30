@@ -6,9 +6,17 @@
 -- (src/sead/pages/SubmissionFileBrowserTab.tsx), above the existing
 -- per-activity total-uploads table. Same idiom as the sibling count
 -- RPCs in supabase_migration_submission_upload_counts_rpc.sql
--- (is_sead_staff() check, security definer, stable) -- just a plain
--- GROUP BY status across every submission_uploads row instead of
--- scoped to one activity/year level/school.
+-- (is_sead_staff() check, security definer, stable).
+--
+-- Counts DISTINCT scholars per status, not raw upload rows -- an
+-- activity can have several upload fields (see
+-- SubmissionActivitiesSection.tsx's uploadFields), so one scholar can
+-- easily have 2-3 upload rows, which would otherwise inflate each
+-- bucket. A scholar with uploads in more than one status (e.g. one
+-- accepted file and one needing resubmission) is counted in each
+-- status they actually have -- these buckets aren't meant to be
+-- mutually exclusive partitions of the scholar population, each one
+-- answers "how many scholars have at least one upload in this state."
 --
 -- Safe to re-run.
 -- ─────────────────────────────────────────────────────────────
@@ -16,7 +24,7 @@
 create or replace function public.submission_upload_status_counts()
 returns table (
   status text,
-  upload_count bigint
+  scholar_count bigint
 )
 language plpgsql
 security definer
@@ -29,7 +37,7 @@ begin
   end if;
 
   return query
-  select su.status, count(*)
+  select su.status, count(distinct su.scholar_id)
   from public.submission_uploads su
   group by su.status;
 end;
