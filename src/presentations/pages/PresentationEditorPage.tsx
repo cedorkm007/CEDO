@@ -1,25 +1,31 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Play, Plus, Copy, Trash2, Type, Cloud, ListChecks, ArrowUpDown } from "lucide-react";
+import { ArrowLeft, Play, Plus, Copy, Trash2 } from "lucide-react";
 import { renamePresentation, type PresentationItem } from "../presentationsApi";
 import {
   fetchSlides, createSlide, duplicateSlide, deleteSlide, updateSlideType, updateSlideSettings, reorderSlides,
-  SLIDE_TYPE_LABELS, IMPLEMENTED_SLIDE_TYPES, type PresentationSlide, type SlideType, type TitleSlideSettings,
+  SLIDE_TYPE_LABELS, type PresentationSlide, type SlideType, type SlideSettings,
+  type TitleSlideSettings, type WordCloudSettings, type MultipleChoiceSettings, type RankingSettings,
 } from "../slidesApi";
-
-const SLIDE_TYPE_ICONS: Record<SlideType, React.ReactNode> = {
-  title: <Type size={14} />, word_cloud: <Cloud size={14} />, multiple_choice: <ListChecks size={14} />, ranking: <ArrowUpDown size={14} />,
-};
+import { SlideSettingsForm } from "../components/SlideSettingsForm";
+import { SlidePreview } from "../components/SlidePreview";
 
 type SaveStatus = "saved" | "saving";
 
+function thumbnailLabel(slide: PresentationSlide): string {
+  switch (slide.type) {
+    case "title": return (slide.settings as TitleSlideSettings).heading || "Untitled slide";
+    case "word_cloud": return (slide.settings as WordCloudSettings).question || "Word Cloud";
+    case "multiple_choice": return (slide.settings as MultipleChoiceSettings).question || "Multiple Choice";
+    case "ranking": return (slide.settings as RankingSettings).question || "Ranking";
+  }
+}
+
 /**
- * Phase 2 of "My Presentations": the editor's layout, chrome, and
- * auto-save wiring -- top bar (title/save status/Present/back), left
- * slide-thumbnail sidebar (add/delete/duplicate/reorder), main preview,
- * right settings panel. Only the "Title / Text" slide type has real
- * settings so far; Word Cloud/Multiple Choice/Ranking are selectable
- * (the type sticks in the database) but show a "coming in Phase 3"
- * placeholder here, per the approved phased plan.
+ * Phase 2 built the editor's layout/chrome; Phase 3 (this) fills in real
+ * settings + a structural preview for all three interactive slide types
+ * (Word Cloud, Multiple Choice, Ranking), on top of Phase 2's Title/Text.
+ * Live results and audience voting are a later phase -- the main preview
+ * here shows the slide's configured content, not simulated responses.
  */
 export function PresentationEditorPage({ presentation, onBack }: { presentation: PresentationItem; onBack: () => void }) {
   const [title, setTitle] = useState(presentation.title);
@@ -92,17 +98,12 @@ export function PresentationEditorPage({ presentation, onBack }: { presentation:
   }
 
   async function handleTypeChange(slide: PresentationSlide, type: SlideType) {
-    if (!IMPLEMENTED_SLIDE_TYPES.includes(type) && type !== slide.type) {
-      // still allowed -- persists so Phase 3 can pick it up -- just resets settings to that type's default shape.
-    }
-    const ok = await updateSlideType(slide.id, type);
-    if (!ok.ok) return;
+    const res = await updateSlideType(slide.id, type);
+    if (!res.ok) return;
     setSlides(await fetchSlides(presentation.id));
   }
 
-  function handleTitleSettingsChange(slide: PresentationSlide, field: keyof TitleSlideSettings, value: string) {
-    const current = slide.settings as TitleSlideSettings;
-    const next: TitleSlideSettings = { ...current, [field]: value };
+  function handleSettingsChange(slide: PresentationSlide, next: SlideSettings) {
     setSlides(s => s.map(x => x.id === slide.id ? { ...x, settings: next } : x));
     scheduleSave(() => updateSlideSettings(slide.id, next));
   }
@@ -159,9 +160,7 @@ export function PresentationEditorPage({ presentation, onBack }: { presentation:
                   </div>
                 </div>
                 <div className="aspect-video rounded bg-[#f7f9fc] border border-[#f0f3f8] flex items-center justify-center px-2">
-                  <p className="text-[9px] font-semibold text-[#062444] text-center truncate w-full">
-                    {slide.type === "title" ? ((slide.settings as TitleSlideSettings).heading || "Untitled slide") : SLIDE_TYPE_LABELS[slide.type]}
-                  </p>
+                  <p className="text-[9px] font-semibold text-[#062444] text-center truncate w-full">{thumbnailLabel(slide)}</p>
                 </div>
               </div>
             ))}
@@ -185,21 +184,8 @@ export function PresentationEditorPage({ presentation, onBack }: { presentation:
               </button>
             </div>
           ) : (
-            <div className="w-full max-w-3xl aspect-video bg-white rounded-2xl border border-[#e6ecf5] shadow-sm flex flex-col items-center justify-center p-10 text-center">
-              {selectedSlide.type === "title" ? (
-                <>
-                  <h2 className="text-3xl font-bold text-[#062444] mb-3 break-words">{(selectedSlide.settings as TitleSlideSettings).heading || "Untitled slide"}</h2>
-                  {(selectedSlide.settings as TitleSlideSettings).subheading && (
-                    <p className="text-[15px] text-slate-500 break-words">{(selectedSlide.settings as TitleSlideSettings).subheading}</p>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="text-[#F3BC00] mb-3">{SLIDE_TYPE_ICONS[selectedSlide.type]}</div>
-                  <p className="text-[15px] font-bold text-[#062444] mb-1.5">{SLIDE_TYPE_LABELS[selectedSlide.type]}</p>
-                  <p className="text-[12.5px] text-slate-400 max-w-xs">The live preview and audience voting for this slide type arrive in the next phase of this tool.</p>
-                </>
-              )}
+            <div className="w-full max-w-3xl aspect-video bg-white rounded-2xl border border-[#e6ecf5] shadow-sm flex flex-col items-center justify-center p-10 text-center overflow-y-auto">
+              <SlidePreview slide={selectedSlide} />
             </div>
           )}
         </div>
@@ -215,37 +201,11 @@ export function PresentationEditorPage({ presentation, onBack }: { presentation:
                 className="w-full border border-[#e6ecf5] rounded-lg px-2.5 py-2 text-[12.5px] font-medium text-[#062444] outline-none focus:border-[#0088cc] mb-5"
               >
                 {(Object.keys(SLIDE_TYPE_LABELS) as SlideType[]).map(type => (
-                  <option key={type} value={type}>
-                    {SLIDE_TYPE_LABELS[type]}{!IMPLEMENTED_SLIDE_TYPES.includes(type) ? " (Phase 3)" : ""}
-                  </option>
+                  <option key={type} value={type}>{SLIDE_TYPE_LABELS[type]}</option>
                 ))}
               </select>
 
-              {selectedSlide.type === "title" ? (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Heading</label>
-                    <input
-                      value={(selectedSlide.settings as TitleSlideSettings).heading}
-                      onChange={e => handleTitleSettingsChange(selectedSlide, "heading", e.target.value)}
-                      className="w-full border border-[#e6ecf5] rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-[#0088cc]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Subheading (optional)</label>
-                    <textarea
-                      value={(selectedSlide.settings as TitleSlideSettings).subheading}
-                      onChange={e => handleTitleSettingsChange(selectedSlide, "subheading", e.target.value)}
-                      rows={3}
-                      className="w-full border border-[#e6ecf5] rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-[#0088cc] resize-none"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <p className="text-[12px] text-slate-400 bg-[#f7f9fc] rounded-lg p-3">
-                  Settings for {SLIDE_TYPE_LABELS[selectedSlide.type]} slides (question text, options, etc.) are coming in the next phase of this tool. The slide's type is already saved.
-                </p>
-              )}
+              <SlideSettingsForm slide={selectedSlide} onChange={next => handleSettingsChange(selectedSlide, next)} />
             </>
           ) : (
             <p className="text-[12.5px] text-slate-400">Select or add a slide to edit its settings.</p>

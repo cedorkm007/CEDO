@@ -1,6 +1,5 @@
 import { supabase } from "@/lib/supabase";
 
-/** Only "title" has real settings UI in the editor so far (Phase 2) — the other three are selectable now so a slide's type sticks once Phase 3 adds their settings/results UI, matching the DB check constraint already allowing all four. */
 export type SlideType = "title" | "word_cloud" | "multiple_choice" | "ranking";
 
 export interface TitleSlideSettings {
@@ -8,7 +7,25 @@ export interface TitleSlideSettings {
   subheading: string;
 }
 
-export type SlideSettings = TitleSlideSettings | Record<string, never>;
+export interface WordCloudSettings {
+  question: string;
+  maxWordsPerPerson: number; // 1-3
+  maxCharsPerWord: number;
+}
+
+export interface MultipleChoiceSettings {
+  question: string;
+  options: string[]; // 2-8
+  allowMultiple: boolean;
+  correctIndexes: number[]; // empty = no correct answer set (optional per spec)
+}
+
+export interface RankingSettings {
+  question: string;
+  items: string[]; // 2-8, in their default/starting order
+}
+
+export type SlideSettings = TitleSlideSettings | WordCloudSettings | MultipleChoiceSettings | RankingSettings;
 
 export interface PresentationSlide {
   id: string;
@@ -27,12 +44,16 @@ export const SLIDE_TYPE_LABELS: Record<SlideType, string> = {
   ranking: "Ranking",
 };
 
-/** Slide types with settings/results UI built so far — the editor disables picking the others until their phase lands. */
-export const IMPLEMENTED_SLIDE_TYPES: SlideType[] = ["title"];
+/** All four slide types have real settings UI as of Phase 3 — kept as an exported list (rather than removed outright) since PresentationEditorPage still uses it to decide whether to show a type's settings form or a placeholder, and Phase 4's audience/results views will need the same kind of "is this type presentable yet" check. */
+export const IMPLEMENTED_SLIDE_TYPES: SlideType[] = ["title", "word_cloud", "multiple_choice", "ranking"];
 
-function defaultSettingsFor(type: SlideType): SlideSettings {
-  if (type === "title") return { heading: "Untitled slide", subheading: "" };
-  return {};
+export function defaultSettingsFor(type: SlideType): SlideSettings {
+  switch (type) {
+    case "title": return { heading: "Untitled slide", subheading: "" };
+    case "word_cloud": return { question: "", maxWordsPerPerson: 1, maxCharsPerWord: 40 };
+    case "multiple_choice": return { question: "", options: ["Option 1", "Option 2"], allowMultiple: false, correctIndexes: [] };
+    case "ranking": return { question: "", items: ["Item 1", "Item 2"] };
+  }
 }
 
 function rowToSlide(r: Record<string, unknown>): PresentationSlide {
