@@ -1,8 +1,30 @@
+import { useMemo } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import type { PresentationResponseRow } from "../presentationSessionApi";
 import type { MultipleChoiceSettings, RankingSettings } from "../slidesApi";
+import { layoutWordCloud, CANVAS_WIDTH, CANVAS_HEIGHT } from "./wordCloudLayout";
 
 const CLOUD_COLORS = ["#062444", "#0088cc", "#F3BC00", "#7C3AED", "#0E9F6E"];
+const MAX_DISTINCT_WORDS = 100;
+
+/**
+ * Lowercases and splits a submitted entry into its individual words --
+ * someone asked for "one word" will still often type a short phrase, and
+ * per the update request, a phrase's own words should count toward
+ * similarity with everyone else's single-word answers ("excellent
+ * service" contributes to the same "excellent" bubble as a separate
+ * "Excellent" submission), not sit off to the side as an unmatched
+ * three-word blob. Strips leading/trailing punctuation per token so
+ * "excellent!" and "excellent" still merge.
+ */
+function tokenize(entry: string): string[] {
+  return entry
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map(token => token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter(Boolean);
+}
 
 export function WordCloudResults({ responses, moderatable, onToggleHidden }: {
   responses: PresentationResponseRow[];
@@ -13,29 +35,45 @@ export function WordCloudResults({ responses, moderatable, onToggleHidden }: {
   const visible = responses.filter(r => !r.hidden);
   const tally = new Map<string, number>();
   for (const r of visible) {
-    for (const word of r.response.words ?? []) {
-      const normalized = word.trim().toLowerCase();
-      if (!normalized) continue;
-      tally.set(normalized, (tally.get(normalized) ?? 0) + 1);
+    for (const entry of r.response.words ?? []) {
+      for (const token of tokenize(entry)) {
+        tally.set(token, (tally.get(token) ?? 0) + 1);
+      }
     }
   }
-  const sorted = [...tally.entries()].map(([word, count]) => ({ word, count })).sort((a, b) => b.count - a.count);
-  const maxCount = sorted[0]?.count ?? 1;
+  const counted = [...tally.entries()]
+    .map(([text, count]) => ({ text, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, MAX_DISTINCT_WORDS);
+
+  const placedWords = useMemo(
+    () => layoutWordCloud(counted, 14, 54),
+    // counted is a fresh array every render -- key off its actual content so layout isn't recomputed (and doesn't visually jitter) unless the words/counts genuinely changed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(counted)],
+  );
 
   return (
     <div className="w-full">
-      {sorted.length === 0 ? (
+      {placedWords.length === 0 ? (
         <p className="text-slate-400 text-[13px] text-center">No responses yet</p>
       ) : (
-        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 max-h-64 overflow-y-auto">
-          {sorted.slice(0, 100).map(({ word, count }, i) => (
+        <div className="relative w-full mx-auto" style={{ maxWidth: CANVAS_WIDTH, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}` }}>
+          {placedWords.map((w, i) => (
             <span
-              key={word}
-              style={{ fontSize: `${14 + (count / maxCount) * 40}px`, color: CLOUD_COLORS[i % CLOUD_COLORS.length] }}
+              key={w.text}
+              style={{
+                position: "absolute",
+                left: `${(w.x / CANVAS_WIDTH) * 100}%`,
+                top: `${(w.y / CANVAS_HEIGHT) * 100}%`,
+                fontSize: `${w.fontSize}px`,
+                color: CLOUD_COLORS[i % CLOUD_COLORS.length],
+                whiteSpace: "nowrap",
+              }}
               className="font-bold leading-tight"
-              title={`${count} response${count > 1 ? "s" : ""}`}
+              title={`${w.count} mention${w.count > 1 ? "s" : ""}`}
             >
-              {word}
+              {w.text}
             </span>
           ))}
         </div>
