@@ -21,6 +21,15 @@ export interface PlacedWord extends WordCount {
 export const CANVAS_WIDTH = 640;
 export const CANVAS_HEIGHT = 340;
 
+// The canvas measurement below and the actual rendered <span> must use this
+// exact font family/weight -- any mismatch (e.g. rendering in the app's
+// default sans-serif at a different weight than what was measured here)
+// makes the real text wider or narrower than the box the packer computed,
+// which is invisible at small sizes but becomes many pixels of visible
+// overlap at the large font sizes used in fullscreen/projector mode.
+export const WORD_CLOUD_FONT_WEIGHT = 700;
+export const WORD_CLOUD_FONT_FAMILY = "Arial, sans-serif";
+
 // Conjunctions carry no meaning on their own and only clutter the cloud
 // with tiny, high-frequency filler bubbles -- excluded from counting.
 // Covers both English and Filipino, since scholar responses mix both.
@@ -89,7 +98,7 @@ export function layoutWordCloud(words: WordCount[], minFontPx: number, maxFontPx
     const fontSize = minFontPx + ((word.count - minCount) / countRange) * (maxFontPx - minFontPx);
     let width: number;
     if (ctx) {
-      ctx.font = `700 ${fontSize}px Arial, sans-serif`;
+      ctx.font = `${WORD_CLOUD_FONT_WEIGHT} ${fontSize}px ${WORD_CLOUD_FONT_FAMILY}`;
       width = ctx.measureText(word.text).width;
     } else {
       width = word.text.length * fontSize * 0.6; // no canvas (non-browser render) -- rough estimate is fine as a fallback

@@ -3,7 +3,7 @@ import html2canvas from "html2canvas";
 import { Download, MessageSquareText, Maximize, Minimize } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
-import { layoutWordCloud, tokenizeWordCloudEntry, CANVAS_WIDTH, CANVAS_HEIGHT, type WordCount } from "@/lib/wordCloudLayout";
+import { layoutWordCloud, tokenizeWordCloudEntry, CANVAS_WIDTH, CANVAS_HEIGHT, WORD_CLOUD_FONT_WEIGHT, WORD_CLOUD_FONT_FAMILY, type WordCount } from "@/lib/wordCloudLayout";
 import { EmptyColumn } from "./SeadUiShell";
 import type { QuestTopic } from "../types";
 
@@ -209,11 +209,13 @@ export function WordCloudLiveView({ topic }: { topic: QuestTopic | null }) {
                       left: `${(w.x / CANVAS_WIDTH) * 100}%`,
                       top: `${(w.y / CANVAS_HEIGHT) * 100}%`,
                       fontSize: `${(w.fontSize / CANVAS_WIDTH) * 100}cqw`,
+                      // must match the canvas font used to measure/pack this word in wordCloudLayout.ts exactly, or the rendered text can be wider than the box the packer computed
+                      fontFamily: WORD_CLOUD_FONT_FAMILY,
+                      fontWeight: WORD_CLOUD_FONT_WEIGHT,
                       color: COLORS[i % COLORS.length],
                       lineHeight: 1.15,
                       whiteSpace: "nowrap",
                     }}
-                    className="font-extrabold"
                   >
                     {w.text}
                   </span>
@@ -239,11 +241,12 @@ export function WordCloudLiveView({ topic }: { topic: QuestTopic | null }) {
                   // WordCloudResults; this container's rendered width varies,
                   // and fixed px font sizes would overflow instead of scaling with it.
                   fontSize: `${(w.fontSize / CANVAS_WIDTH) * 100}cqw`,
+                  fontFamily: WORD_CLOUD_FONT_FAMILY,
+                  fontWeight: WORD_CLOUD_FONT_WEIGHT,
                   color: COLORS[i % COLORS.length],
                   lineHeight: 1.15,
                   whiteSpace: "nowrap",
                 }}
-                className="font-extrabold"
               >
                 {w.text}
               </span>

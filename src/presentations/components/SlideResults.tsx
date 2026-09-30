@@ -2,7 +2,7 @@ import { useMemo, type CSSProperties } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import type { PresentationResponseRow } from "../presentationSessionApi";
 import type { MultipleChoiceSettings, RankingSettings } from "../slidesApi";
-import { layoutWordCloud, tokenizeWordCloudEntry as tokenize, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/wordCloudLayout";
+import { layoutWordCloud, tokenizeWordCloudEntry as tokenize, CANVAS_WIDTH, CANVAS_HEIGHT, WORD_CLOUD_FONT_WEIGHT, WORD_CLOUD_FONT_FAMILY } from "@/lib/wordCloudLayout";
 
 const CLOUD_COLORS = ["#062444", "#0088cc", "#F3BC00", "#7C3AED", "#0E9F6E"];
 const MAX_DISTINCT_WORDS = 100;
@@ -59,10 +59,13 @@ export function WordCloudResults({ responses, moderatable, onToggleHidden }: {
                 // position and size this way preserves the collision-free
                 // layout the packer computed -- it's a similarity transform.
                 fontSize: `${(w.fontSize / CANVAS_WIDTH) * 100}cqw`,
+                // must match the canvas font used to measure/pack this word in wordCloudLayout.ts exactly, or the rendered text can be wider than the box the packer computed
+                fontFamily: WORD_CLOUD_FONT_FAMILY,
+                fontWeight: WORD_CLOUD_FONT_WEIGHT,
                 color: CLOUD_COLORS[i % CLOUD_COLORS.length],
                 whiteSpace: "nowrap",
               }}
-              className="font-bold leading-tight"
+              className="leading-tight"
               title={`${w.count} mention${w.count > 1 ? "s" : ""}`}
             >
               {w.text}
