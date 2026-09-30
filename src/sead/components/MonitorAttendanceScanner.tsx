@@ -87,7 +87,7 @@ export function MonitorAttendanceScanner({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
-  const lastAttempted = useRef<string>("");
+  const lastAttemptedQr = useRef<string>("");
   const pendingToken = useRef<string>("");
   const pendingTokenStreak = useRef(0);
 
@@ -105,7 +105,7 @@ export function MonitorAttendanceScanner({
 
     if (!res.ok) {
       setFeedback({ tone: "error", message: res.error });
-      lastAttempted.current = "";
+      lastAttemptedQr.current = "";
       return;
     }
     const { result } = res;
@@ -118,26 +118,30 @@ export function MonitorAttendanceScanner({
     } else {
       const prefix = result.scholarName ? `${result.scholarName} — ` : "";
       setFeedback({ tone: "error", message: `${prefix}${OUTCOME_MESSAGE[result.outcome]}` });
-      lastAttempted.current = "";
+      lastAttemptedQr.current = "";
     }
   }
 
   async function submitQr(raw: string) {
-    if (busy || !raw.trim() || raw === lastAttempted.current) return;
-    lastAttempted.current = raw;
+    if (busy || !raw.trim() || raw === lastAttemptedQr.current) return;
+    lastAttemptedQr.current = raw;
     const token = extractQrToken(raw);
     if (!token) {
       setFeedback({ tone: "error", message: INVALID_QR_MESSAGE });
-      lastAttempted.current = "";
+      lastAttemptedQr.current = "";
       return;
     }
     await submit({ qrToken: token });
   }
 
+  // Unlike submitQr (which re-fires every animation frame while the same
+  // code sits in view and so needs a dedupe guard), a manual Submit click
+  // is one explicit action each time — always let it through so a second
+  // tap of the same ID reaches the server and can show "already scanned"
+  // instead of silently doing nothing.
   async function submitManual() {
     const scholarIdNumber = manualScholarId.trim();
-    if (busy || !scholarIdNumber || scholarIdNumber === lastAttempted.current) return;
-    lastAttempted.current = scholarIdNumber;
+    if (busy || !scholarIdNumber) return;
     await submit({ scholarIdNumber });
   }
 
