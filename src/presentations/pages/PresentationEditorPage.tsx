@@ -8,6 +8,7 @@ import {
 } from "../slidesApi";
 import { SlideSettingsForm } from "../components/SlideSettingsForm";
 import { SlidePreview } from "../components/SlidePreview";
+import { PresentModeView } from "../components/PresentModeView";
 
 type SaveStatus = "saved" | "saving";
 
@@ -34,6 +35,7 @@ export function PresentationEditorPage({ presentation, onBack }: { presentation:
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [presenting, setPresenting] = useState(false);
 
   const saveTimeoutRef = useRef<number | undefined>(undefined);
 
@@ -110,6 +112,10 @@ export function PresentationEditorPage({ presentation, onBack }: { presentation:
 
   const selectedSlide = slides.find(s => s.id === selectedSlideId) ?? null;
 
+  if (presenting) {
+    return <PresentModeView presentation={{ ...presentation, title }} slides={slides} onClose={() => setPresenting(false)} />;
+  }
+
   return (
     <div className="fixed inset-0 z-[100] bg-[#f7f9fc] flex flex-col">
       {/* Top bar */}
@@ -124,9 +130,10 @@ export function PresentationEditorPage({ presentation, onBack }: { presentation:
         <span className="text-[11.5px] text-slate-400 shrink-0">{saveStatus === "saving" ? "Saving…" : "Saved"}</span>
         <div className="flex-1" />
         <button
-          disabled
-          title="Presenting live comes in a later phase of this tool"
-          className="flex items-center gap-1.5 bg-[#062444]/40 text-white text-[12.5px] font-semibold rounded-lg px-3.5 py-2 cursor-not-allowed"
+          onClick={() => setPresenting(true)}
+          disabled={slides.length === 0}
+          title={slides.length === 0 ? "Add a slide before presenting" : undefined}
+          className="flex items-center gap-1.5 bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-3.5 py-2 hover:bg-[#0a3a6b] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Play size={14} /> Present
         </button>

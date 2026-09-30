@@ -1,0 +1,224 @@
+import { useEffect, useRef, useState } from "react";
+import QRCode from "qrcode";
+import { X, ChevronLeft, ChevronRight, Eye, EyeOff, Lock, Unlock, RotateCcw } from "lucide-react";
+import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
+import type { PresentationItem } from "../presentationsApi";
+import type { PresentationSlide, TitleSlideSettings, WordCloudSettings, MultipleChoiceSettings, RankingSettings } from "../slidesApi";
+import {
+  startPresentationSession, endPresentationSession, setPresentationSessionSlide, setPresentationSessionState,
+  resetSlideResponses, fetchPresentationSession, fetchSlideResponses, type PresentationSession, type PresentationResponseRow,
+} from "../presentationSessionApi";
+
+function joinUrl(code: string): string {
+  return `${window.location.origin}/join?code=${code}`;
+}
+
+function JoinQrCode({ joinCode }: { joinCode: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (canvasRef.current) void QRCode.toCanvas(canvasRef.current, joinUrl(joinCode), { width: 160, margin: 1, color: { dark: "#062444", light: "#ffffff" } });
+  }, [joinCode]);
+  return <canvas ref={canvasRef} className="rounded-lg" />;
+}
+
+function WordCloudResults({ responses }: { responses: PresentationResponseRow[] }) {
+  const tally = new Map<string, number>();
+  for (const r of responses) {
+    for (const word of r.response.words ?? []) {
+      const normalized = word.trim().toLowerCase();
+      if (!normalized) continue;
+      tally.set(normalized, (tally.get(normalized) ?? 0) + 1);
+    }
+  }
+  const sorted = [...tally.entries()].map(([word, count]) => ({ word, count })).sort((a, b) => b.count - a.count);
+  if (sorted.length === 0) return <p className="text-slate-400 text-[13px] text-center">No responses yet</p>;
+  const maxCount = sorted[0].count;
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 max-h-full overflow-y-auto">
+      {sorted.slice(0, 100).map(({ word, count }, i) => (
+        <span
+          key={word}
+          style={{ fontSize: `${14 + (count / maxCount) * 40}px`, color: ["#062444", "#0088cc", "#F3BC00", "#7C3AED", "#0E9F6E"][i % 5] }}
+          className="font-bold leading-tight"
+          title={`${count} response${count > 1 ? "s" : ""}`}
+        >
+          {word}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function MultipleChoiceResults({ responses, settings }: { responses: PresentationResponseRow[]; settings: MultipleChoiceSettings }) {
+  const counts = settings.options.map((_, i) => responses.filter(r => r.response.selectedIndexes?.includes(i)).length);
+  const maxCount = Math.max(1, ...counts);
+  const total = responses.length;
+  if (total === 0) return <p className="text-slate-400 text-[13px] text-center">No responses yet</p>;
+  return (
+    <div className="w-full max-w-lg space-y-3">
+      {settings.options.map((option, i) => (
+        <div key={i}>
+          <div className="flex items-center justify-between text-[13px] font-semibold text-[#062444] mb-1">
+            <span className="truncate">{option}</span>
+            <span className="text-slate-400 shrink-0 ml-2">{counts[i]} ({Math.round((counts[i] / total) * 100)}%)</span>
+          </div>
+          <div className="h-3 bg-[#f0f3f8] rounded-full overflow-hidden">
+            <div className="h-full bg-[#0088cc] rounded-full transition-all" style={{ width: `${(counts[i] / maxCount) * 100}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RankingResults({ responses, settings }: { responses: PresentationResponseRow[]; settings: RankingSettings }) {
+  if (responses.length === 0) return <p className="text-slate-400 text-[13px] text-center">No responses yet</p>;
+  const averages = settings.items.map((item, itemIndex) => {
+    const positions = responses.map(r => (r.response.order ?? []).indexOf(itemIndex)).filter(p => p >= 0);
+    const avg = positions.length ? positions.reduce((a, b) => a + b, 0) / positions.length : null;
+    return { item, avg };
+  }).sort((a, b) => (a.avg ?? 99) - (b.avg ?? 99));
+  return (
+    <div className="w-full max-w-lg space-y-2">
+      {averages.map(({ item, avg }, i) => (
+        <div key={item + i} className="flex items-center justify-between border border-[#e6ecf5] rounded-lg px-4 py-2.5">
+          <span className="text-[13.5px] font-semibold text-[#062444]">{i + 1}. {item}</span>
+          <span className="text-[12px] text-slate-400">{avg !== null ? `Avg rank ${(avg + 1).toFixed(1)}` : "—"}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function PresentModeView({ presentation, slides, onClose }: { presentation: PresentationItem; slides: PresentationSlide[]; onClose: () => void }) {
+  const [session, setSession] = useState<PresentationSession | null>(null);
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [responses, setResponses] = useState<PresentationResponseRow[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      const started = await startPresentationSession(presentation.id);
+      if (!started.ok) return;
+      const full = await fetchPresentationSession(started.sessionId);
+      if (!full) return;
+      setSession(full);
+      const idx = slides.findIndex(s => s.id === full.currentSlideId);
+      setSlideIndex(idx >= 0 ? idx : 0);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presentation.id]);
+
+  const currentSlide = slides[slideIndex] as PresentationSlide | undefined;
+
+  async function loadResponses() {
+    if (!session || !currentSlide) return;
+    setResponses(await fetchSlideResponses(session.id, currentSlide.id));
+  }
+
+  useEffect(() => { void loadResponses(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [session?.id, currentSlide?.id]);
+  useRealtimeRefresh("presentation_responses", () => void loadResponses(), !!session);
+
+  async function goToSlide(index: number) {
+    if (!session || index < 0 || index >= slides.length) return;
+    setSlideIndex(index);
+    await setPresentationSessionSlide(session.id, slides[index].id);
+  }
+
+  async function toggleShowResults() {
+    if (!session) return;
+    const next = !session.showResults;
+    setSession({ ...session, showResults: next });
+    await setPresentationSessionState(session.id, { showResults: next });
+  }
+
+  async function toggleVotingLocked() {
+    if (!session) return;
+    const next = !session.votingLocked;
+    setSession({ ...session, votingLocked: next });
+    await setPresentationSessionState(session.id, { votingLocked: next });
+  }
+
+  async function handleResetVotes() {
+    if (!session || !currentSlide) return;
+    await resetSlideResponses(session.id, currentSlide.id);
+    await loadResponses();
+  }
+
+  async function handleEndSession() {
+    if (session) await endPresentationSession(session.id);
+    onClose();
+  }
+
+  if (!session) {
+    return (
+      <div className="fixed inset-0 z-[200] bg-[#062444] flex items-center justify-center">
+        <p className="text-white/60 text-[13px]">Starting session…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-[#062444] flex flex-col">
+      <div className="flex items-center justify-between px-5 py-3 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="bg-white rounded-lg p-1.5"><JoinQrCode joinCode={session.joinCode} /></div>
+          <div>
+            <p className="text-[#F3BC00] text-[11px] font-bold uppercase tracking-wide">Join at {window.location.host}/join</p>
+            <p className="text-white text-2xl font-bold tracking-[0.2em]">{session.joinCode}</p>
+          </div>
+        </div>
+        <button onClick={handleEndSession} className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white text-[12.5px] font-semibold rounded-lg px-3.5 py-2">
+          <X size={15} /> End Session
+        </button>
+      </div>
+
+      <div className="flex-1 flex items-center justify-center px-8 min-h-0">
+        {!currentSlide ? (
+          <p className="text-white/50">No slides in this presentation.</p>
+        ) : (
+          <div className="w-full max-w-3xl bg-white rounded-2xl p-10 max-h-full overflow-y-auto flex flex-col items-center text-center">
+            {currentSlide.type === "title" ? (
+              <>
+                <h2 className="text-3xl font-bold text-[#062444] mb-3 break-words">{(currentSlide.settings as TitleSlideSettings).heading}</h2>
+                {(currentSlide.settings as TitleSlideSettings).subheading && <p className="text-[15px] text-slate-500">{(currentSlide.settings as TitleSlideSettings).subheading}</p>}
+              </>
+            ) : (
+              <>
+                <h2 className="text-2xl font-bold text-[#062444] mb-2 break-words">
+                  {(currentSlide.settings as WordCloudSettings | MultipleChoiceSettings | RankingSettings).question || "Untitled question"}
+                </h2>
+                <p className="text-[12px] text-slate-400 mb-6">{responses.length} response{responses.length === 1 ? "" : "s"}</p>
+                {session.showResults && (
+                  currentSlide.type === "word_cloud" ? <WordCloudResults responses={responses} />
+                  : currentSlide.type === "multiple_choice" ? <MultipleChoiceResults responses={responses} settings={currentSlide.settings as MultipleChoiceSettings} />
+                  : <RankingResults responses={responses} settings={currentSlide.settings as RankingSettings} />
+                )}
+                {!session.showResults && <p className="text-slate-300 text-[13px]">Results are hidden</p>}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-center gap-2 px-5 py-4 shrink-0 flex-wrap">
+        <button onClick={() => void goToSlide(slideIndex - 1)} disabled={slideIndex === 0} className="p-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-white disabled:opacity-30" aria-label="Previous slide">
+          <ChevronLeft size={18} />
+        </button>
+        <span className="text-white/60 text-[12.5px] font-semibold px-2">{slideIndex + 1} / {slides.length}</span>
+        <button onClick={() => void goToSlide(slideIndex + 1)} disabled={slideIndex >= slides.length - 1} className="p-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-white disabled:opacity-30" aria-label="Next slide">
+          <ChevronRight size={18} />
+        </button>
+        <div className="w-px h-6 bg-white/20 mx-1" />
+        <button onClick={toggleShowResults} className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[12px] font-semibold px-3 py-2.5">
+          {session.showResults ? <EyeOff size={15} /> : <Eye size={15} />} {session.showResults ? "Hide Results" : "Show Results"}
+        </button>
+        <button onClick={toggleVotingLocked} className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[12px] font-semibold px-3 py-2.5">
+          {session.votingLocked ? <Unlock size={15} /> : <Lock size={15} />} {session.votingLocked ? "Unlock Voting" : "Lock Voting"}
+        </button>
+        <button onClick={() => void handleResetVotes()} className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[12px] font-semibold px-3 py-2.5">
+          <RotateCcw size={15} /> Reset Votes
+        </button>
+      </div>
+    </div>
+  );
+}

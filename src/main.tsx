@@ -4,9 +4,10 @@
   import { ScholarSiteApp } from "./scholar/ScholarSiteApp.tsx";
   import { SchoolSiteApp } from "./school/SchoolSiteApp.tsx";
   import { KaubanApp } from "./kauban/KaubanApp.tsx";
+  import { JoinSiteApp } from "./join/JoinSiteApp.tsx";
   import "./styles/index.css";
 
-  // Four separate apps, one Vite build, one Vercel deployment:
+  // Five separate apps, one Vite build, one Vercel deployment:
   //  - "/"        -> the existing staff/admin app (src/app/App.tsx). Now also
   //                  includes "Scholar Management Tools" as a page inside it
   //                  (src/sead/ScholarManagementToolsPage.tsx), visible only to
@@ -20,11 +21,15 @@
   //  - "/kauban*" -> Kauban, a sign-language/speech accessibility tool for deaf
   //                  and hard-of-hearing learners (src/kauban/KaubanApp.tsx).
   //                  No accounts at all — see docs/kauban/PROGRESS.md.
-  // All four talk to the same Supabase project/database (src/lib/supabase.ts).
+  //  - "/join*"   -> the "My Presentations" audience app (src/join/JoinSiteApp.tsx) —
+  //                  a person enters a 6-digit code or scans a QR to vote on a live
+  //                  presentation. No accounts at all, same idea as Kauban.
+  // All five talk to the same Supabase project/database (src/lib/supabase.ts).
   const path = window.location.pathname.toLowerCase();
   const isKaubanSite = path.startsWith("/kauban");
   const isScholarSite = !isKaubanSite && path.startsWith("/cedo");
   const isSchoolSite = !isKaubanSite && !isScholarSite && path.startsWith("/school");
+  const isJoinSite = !isKaubanSite && !isScholarSite && !isSchoolSite && path.startsWith("/join");
 
   // PWA baseline for Kauban only (docs/kauban/PROGRESS.md milestone 16):
   // manifest link, iOS home-screen icon, and theme-color are injected here
@@ -60,5 +65,5 @@
   }
 
   createRoot(document.getElementById("root")!).render(
-    isKaubanSite ? <KaubanApp /> : isScholarSite ? <ScholarSiteApp /> : isSchoolSite ? <SchoolSiteApp /> : <App />
+    isKaubanSite ? <KaubanApp /> : isScholarSite ? <ScholarSiteApp /> : isSchoolSite ? <SchoolSiteApp /> : isJoinSite ? <JoinSiteApp /> : <App />
   );
