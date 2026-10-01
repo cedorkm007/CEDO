@@ -70,7 +70,13 @@ export function ProfileBanner({ profile, sdpStatus, positions, onChangePassword 
             aria-label="View your Scholar ID QR code full screen"
             className="group flex shrink-0 flex-col items-center gap-1 rounded-[10px] border border-white/30 bg-white/10 p-2 backdrop-blur-sm transition-colors hover:bg-white/20"
           >
-            <ScholarIdQrCanvas token={profile.qrToken} size={64} className="rounded-md bg-white p-1" />
+            {/* 140px, not the old 64px -- below ~104px the City Scholar logo
+                overlay leaves too few QR modules for a scanner to resolve,
+                so a scholar showing this thumbnail directly (without
+                tapping to expand) handed staff a QR that could never be
+                scanned, camera quality aside. Matches ProfilePanel.tsx's
+                already-reliable size. */}
+            <ScholarIdQrCanvas token={profile.qrToken} size={140} className="rounded-md bg-white p-1" />
             <span className="flex items-center gap-1 text-[10px] font-semibold text-[#F3BC00]">
               <QrCode size={10} /> Tap to expand
             </span>
