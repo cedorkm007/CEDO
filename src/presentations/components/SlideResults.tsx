@@ -5,7 +5,10 @@ import type { MultipleChoiceSettings, RankingSettings } from "../slidesApi";
 import { layoutWordCloud, tokenizeWordCloudEntry as tokenize, CANVAS_WIDTH, CANVAS_HEIGHT, WORD_CLOUD_FONT_WEIGHT, WORD_CLOUD_FONT_FAMILY } from "@/lib/wordCloudLayout";
 
 const CLOUD_COLORS = ["#062444", "#0088cc", "#F3BC00", "#7C3AED", "#0E9F6E"];
-const MAX_DISTINCT_WORDS = 100;
+// Capped at a size that actually fits the 640x340 layout canvas densely
+// without needing to drop any -- see the identical comment in
+// WordCloudLiveView.tsx's MAX_WORDS_SHOWN.
+const MAX_DISTINCT_WORDS = 70;
 
 export function WordCloudResults({ responses, moderatable, onToggleHidden }: {
   responses: PresentationResponseRow[];

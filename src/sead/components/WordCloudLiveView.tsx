@@ -13,7 +13,12 @@ const MAX_FONT_PX = 48;
 // same relative sizing, just a bigger min/max range.
 const PRESENT_MIN_FONT_PX = 28;
 const PRESENT_MAX_FONT_PX = 96;
-const MAX_WORDS_SHOWN = 150;
+// Capped at a size that actually fits the 640x340 layout canvas densely
+// without needing to drop any -- feeding in more just means the packer
+// burns time on near-impossible placements for low-priority words it'll
+// end up dropping anyway, with no visual benefit (they're the smallest,
+// least-noticed words in the cloud).
+const MAX_WORDS_SHOWN = 70;
 const COLORS = ["#062444", "#0088cc", "#F3BC00", "#0f766e", "#7c3aed", "#be123c", "#15803d"];
 
 /**
