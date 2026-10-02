@@ -152,7 +152,7 @@ export function layoutWordCloud(words: WordCount[], minFontPx: number, maxFontPx
   // meant searching a huge ring of candidates that can never be in-bounds.
   const maxRadius = Math.hypot(CANVAS_WIDTH / 2, (CANVAS_HEIGHT / 2) / VERTICAL_SQUASH);
 
-  for (const word of sorted) {
+  sorted.forEach((word, index) => {
     const fontSize = minFontPx + ((word.count - minCount) / countRange) * (maxFontPx - minFontPx);
     let width: number;
     if (ctx) {
@@ -167,30 +167,43 @@ export function layoutWordCloud(words: WordCount[], minFontPx: number, maxFontPx
     let bestY = 0;
     let found = false;
 
-    // Constant angle step (the old approach) samples the SAME number of
-    // points per ring regardless of radius -- at a large radius the ring's
-    // circumference is huge, so those few points end up spaced 100+ virtual
-    // px apart, skipping right over gaps plenty big enough for a smaller
-    // word. Stepping by a constant ARC LENGTH instead keeps sample spacing
-    // roughly constant in actual canvas pixels at every radius, so it
-    // actually finds the gaps a word cloud this dense needs.
-    const radiusStep = 3;
-    const stepArcLength = 4;
-    for (let radius = 0; radius <= maxRadius && !found; radius += radiusStep) {
-      const circumference = 2 * Math.PI * radius;
-      const stepsAtRadius = radius === 0 ? 1 : Math.max(8, Math.ceil(circumference / stepArcLength));
-      const angleStep = (2 * Math.PI) / stepsAtRadius;
-      for (let step = 0; step < stepsAtRadius; step++) {
-        const angle = step * angleStep;
-        const candidateX = centerX + radius * Math.cos(angle) - width / 2;
-        const candidateY = centerY + radius * Math.sin(angle) * VERTICAL_SQUASH - height / 2;
-        const box = { x: candidateX, y: candidateY, width, height };
-        if (box.x < 0 || box.y < 0 || box.x + width > CANVAS_WIDTH || box.y + height > CANVAS_HEIGHT) continue;
-        if (!grid.overlapsAny(box)) {
-          bestX = candidateX;
-          bestY = candidateY;
-          found = true;
-          break;
+    if (index === 0) {
+      // The top (most-frequent) word is pinned dead-center, not just
+      // incidentally landed there by being the first spiral search (which
+      // starts at radius 0 anyway) -- an explicit guarantee rather than a
+      // side effect, so it holds even if this word's own box is wide
+      // enough to clip the canvas edge at center (the spiral search would
+      // otherwise reject that candidate as out-of-bounds and go hunting
+      // for an off-center spot instead).
+      bestX = centerX - width / 2;
+      bestY = centerY - height / 2;
+      found = true;
+    } else {
+      // Constant angle step (the old approach) samples the SAME number of
+      // points per ring regardless of radius -- at a large radius the ring's
+      // circumference is huge, so those few points end up spaced 100+ virtual
+      // px apart, skipping right over gaps plenty big enough for a smaller
+      // word. Stepping by a constant ARC LENGTH instead keeps sample spacing
+      // roughly constant in actual canvas pixels at every radius, so it
+      // actually finds the gaps a word cloud this dense needs.
+      const radiusStep = 3;
+      const stepArcLength = 4;
+      for (let radius = 0; radius <= maxRadius && !found; radius += radiusStep) {
+        const circumference = 2 * Math.PI * radius;
+        const stepsAtRadius = radius === 0 ? 1 : Math.max(8, Math.ceil(circumference / stepArcLength));
+        const angleStep = (2 * Math.PI) / stepsAtRadius;
+        for (let step = 0; step < stepsAtRadius; step++) {
+          const angle = step * angleStep;
+          const candidateX = centerX + radius * Math.cos(angle) - width / 2;
+          const candidateY = centerY + radius * Math.sin(angle) * VERTICAL_SQUASH - height / 2;
+          const box = { x: candidateX, y: candidateY, width, height };
+          if (box.x < 0 || box.y < 0 || box.x + width > CANVAS_WIDTH || box.y + height > CANVAS_HEIGHT) continue;
+          if (!grid.overlapsAny(box)) {
+            bestX = candidateX;
+            bestY = candidateY;
+            found = true;
+            break;
+          }
         }
       }
     }
@@ -199,12 +212,12 @@ export function layoutWordCloud(words: WordCount[], minFontPx: number, maxFontPx
     // legible words beats a full one with an illegible overlapping
     // cluster in the middle. Words are processed most-frequent first, so
     // what survives is always the highest-count ones that actually fit.
-    if (!found) continue;
+    if (!found) return;
 
     const placedWord = { ...word, x: bestX, y: bestY, width, height, fontSize };
     placed.push(placedWord);
     grid.add(placedWord);
-  }
+  });
 
   return placed;
 }
