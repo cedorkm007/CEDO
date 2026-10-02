@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Plus, FolderPlus, LayoutGrid, List as ListIcon, Search, ArrowUpDown, Home, ChevronRight,
-  Folder, MonitorPlay,
+  Folder, MonitorPlay, X,
 } from "lucide-react";
 import {
   fetchFolderContents, fetchBreadcrumbPath, fetchAllOwnedFolders, createFolder, renameFolder, moveFolder, deleteFolder,
@@ -58,6 +58,14 @@ export function MyPresentationsPage() {
   const [dragItem, setDragItem] = useState<DragItem | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
 
+  // Every mutation below used to discard its {ok, error} result on failure
+  // and just silently do nothing -- someone clicking "New Presentation"
+  // with, say, an expired session or an RLS/FK issue on their account saw
+  // no feedback at all, indistinguishable from a dead button. Surfacing
+  // the real error is what actually makes a report like "it doesn't work
+  // for some accounts" diagnosable instead of a guessing game.
+  const [error, setError] = useState<string | null>(null);
+
   async function load(folderId: string | null) {
     setLoading(true);
     const [contents, crumb, owned] = await Promise.all([
@@ -80,7 +88,8 @@ export function MyPresentationsPage() {
 
   async function handleNewFolder() {
     const res = await createFolder(currentFolderId, "Untitled folder");
-    if (!res.ok) return;
+    if (!res.ok) { setError(res.error); return; }
+    setError(null);
     await load(currentFolderId);
     setRenaming({ id: res.folder.id, type: "folder" });
     setRenameDraft(res.folder.name);
@@ -88,7 +97,8 @@ export function MyPresentationsPage() {
 
   async function handleNewPresentation() {
     const res = await createPresentation(currentFolderId);
-    if (!res.ok) return;
+    if (!res.ok) { setError(res.error); return; }
+    setError(null);
     setOpenPresentation(res.presentation);
   }
 
@@ -96,8 +106,9 @@ export function MyPresentationsPage() {
     if (!renaming) return;
     const name = renameDraft.trim();
     if (name) {
-      if (renaming.type === "folder") await renameFolder(renaming.id, name);
-      else await renamePresentation(renaming.id, name);
+      const res = renaming.type === "folder" ? await renameFolder(renaming.id, name) : await renamePresentation(renaming.id, name);
+      if (!res.ok) setError(res.error ?? "Failed to rename.");
+      else setError(null);
     }
     setRenaming(null);
     await load(currentFolderId);
@@ -105,22 +116,26 @@ export function MyPresentationsPage() {
 
   async function handleMove(destinationFolderId: string | null) {
     if (!moveTarget) return;
-    if (moveTarget.type === "folder") await moveFolder(moveTarget.id, destinationFolderId);
-    else await movePresentation(moveTarget.id, destinationFolderId);
+    const res = moveTarget.type === "folder" ? await moveFolder(moveTarget.id, destinationFolderId) : await movePresentation(moveTarget.id, destinationFolderId);
+    if (!res.ok) setError(res.error ?? "Failed to move.");
+    else setError(null);
     setMoveTarget(null);
     await load(currentFolderId);
   }
 
   async function handleDelete() {
     if (!deleteTarget) return;
-    if (deleteTarget.type === "folder") await deleteFolder(deleteTarget.id);
-    else await deletePresentation(deleteTarget.id);
+    const res = deleteTarget.type === "folder" ? await deleteFolder(deleteTarget.id) : await deletePresentation(deleteTarget.id);
+    if (!res.ok) setError(res.error ?? "Failed to delete.");
+    else setError(null);
     setDeleteTarget(null);
     await load(currentFolderId);
   }
 
   async function handleDuplicate(id: string) {
-    await duplicatePresentation(id);
+    const res = await duplicatePresentation(id);
+    if (!res.ok) setError(res.error ?? "Failed to duplicate.");
+    else setError(null);
     await load(currentFolderId);
   }
 
@@ -131,9 +146,13 @@ export function MyPresentationsPage() {
     if (!item || item.id === targetFolderId) return;
     if (item.type === "folder") {
       if (isFolderOrDescendant(allFolders, item.id, targetFolderId)) return; // can't drop a folder into itself/its own subtree
-      await moveFolder(item.id, targetFolderId);
+      const res = await moveFolder(item.id, targetFolderId);
+      if (!res.ok) setError(res.error ?? "Failed to move.");
+      else setError(null);
     } else {
-      await movePresentation(item.id, targetFolderId);
+      const res = await movePresentation(item.id, targetFolderId);
+      if (!res.ok) setError(res.error ?? "Failed to move.");
+      else setError(null);
     }
     await load(currentFolderId);
   }
@@ -157,6 +176,13 @@ export function MyPresentationsPage() {
 
   return (
     <div>
+      {error && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-[13px] font-medium text-red-700">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} aria-label="Dismiss" className="shrink-0 text-red-400 hover:text-red-600"><X size={15} /></button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-[#062444]">My Presentations</h1>
