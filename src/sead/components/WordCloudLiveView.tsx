@@ -75,7 +75,13 @@ export function WordCloudLiveView({ topic }: { topic: QuestTopic | null }) {
   }
 
   useEffect(() => { void load(); }, [topic?.id]);
-  useRealtimeRefresh("quest_word_cloud_entries", () => void load(true));
+  // Scoped to this topic only (not every topic's entries across the whole
+  // org), and throttled -- see the identical comment in PresentModeView.tsx;
+  // the same risk applies if a topic gets a burst of submissions at once.
+  useRealtimeRefresh("quest_word_cloud_entries", () => void load(true), true, {
+    filter: topic ? `topic_id=eq.${topic.id}` : undefined,
+    throttleMs: 600,
+  });
 
   useEffect(() => {
     function handleFullscreenChange() {

@@ -49,7 +49,15 @@ export function PresentModeView({ presentation, slides, onClose }: { presentatio
   }
 
   useEffect(() => { void loadResponses(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [session?.id, currentSlide?.id]);
-  useRealtimeRefresh("presentation_responses", () => void loadResponses(), !!session);
+  // Scoped to this session only (not every concurrent presenter's), and
+  // throttled -- an audience of up to ~1000 people voting on a word cloud
+  // can submit in a tight burst right after the slide appears, and without
+  // this a refetch-and-relayout per individual submission would lock up
+  // this presenter's own tab instead of just showing the cloud update live.
+  useRealtimeRefresh("presentation_responses", () => void loadResponses(), !!session, {
+    filter: session ? `session_id=eq.${session.id}` : undefined,
+    throttleMs: 600,
+  });
 
   async function goToSlide(index: number) {
     if (!session || index < 0 || index >= slides.length) return;

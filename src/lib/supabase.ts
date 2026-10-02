@@ -16,13 +16,21 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 // ── Realtime subscription helper ────────────────────────────
 // Triggers `callback` whenever any row in `table` is inserted or updated.
 // Returns an unsubscribe function — call it on component unmount.
+// `filter` (Postgres changes filter syntax, e.g. "session_id=eq.<uuid>")
+// scopes the subscription server-side to just the rows the caller cares
+// about -- without it, every subscriber to a table gets woken up by every
+// OTHER caller's unrelated rows too (e.g. a presenter watching their own
+// session's responses otherwise also reacts to every other presenter's
+// concurrent session), which only costs a wasted refetch at small scale
+// but adds up once a table sees real concurrent traffic.
 export function subscribeToTable(
   table: string,
   callback: () => void,
+  filter?: string,
 ): () => void {
   const channel = supabase
-    .channel(`realtime:${table}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table }, callback)
+    .channel(`realtime:${table}:${filter ?? "*"}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table, ...(filter ? { filter } : {}) }, callback)
     .subscribe()
   return () => { supabase.removeChannel(channel) }
 }
