@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Building2, Lock, Eye, EyeOff, LogIn } from "lucide-react";
+import { User, Lock, Eye, EyeOff, LogIn } from "lucide-react";
 import { schoolSignIn } from "../schoolApi";
 import CEDOSeal from "@/imports/CEDO_Seal.png";
 
@@ -8,9 +8,9 @@ interface SchoolLoginPageProps {
   onLoginSuccess: () => void;
 }
 
-/** Same visual benchmark as the Scholar Portal's login page — a single login path (school name + password), no alternate identification mode needed. */
+/** Same visual benchmark as the Scholar Portal's login page — a single login path (username + password). Accounts made before usernames existed can still type their school name in the same field. */
 export function SchoolLoginPage({ onLoginSuccess }: SchoolLoginPageProps) {
-  const [schoolName, setSchoolName] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -19,12 +19,12 @@ export function SchoolLoginPage({ onLoginSuccess }: SchoolLoginPageProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!schoolName.trim() || !password) {
-      setError("Enter your school name and password.");
+    if (!username.trim() || !password) {
+      setError("Enter your username and password.");
       return;
     }
     setBusy(true);
-    const result = await schoolSignIn(schoolName.trim(), password);
+    const result = await schoolSignIn(username.trim(), password);
     setBusy(false);
     if (!result.ok) { setError(result.error); return; }
     onLoginSuccess();
@@ -48,12 +48,14 @@ export function SchoolLoginPage({ onLoginSuccess }: SchoolLoginPageProps) {
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label className="block text-[11px] font-semibold text-slate-500 mb-1">School Name</label>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Username</label>
             <div className={inputWrapCls}>
-              <Building2 size={15} className="text-[#F3BC00] shrink-0" />
-              <input value={schoolName} onChange={e => setSchoolName(e.target.value)} placeholder="e.g. Capitol University"
+              <User size={15} className="text-[#F3BC00] shrink-0" />
+              <input value={username} onChange={e => setUsername(e.target.value)} placeholder="e.g. capitol.university"
+                autoComplete="username" autoCapitalize="none" spellCheck={false}
                 className="w-full text-sm outline-none placeholder:text-slate-300" />
             </div>
+            <p className="text-[11px] text-slate-400 mt-1">Schools set up before usernames existed can still use their school name here.</p>
           </div>
 
           <div className="mb-5">

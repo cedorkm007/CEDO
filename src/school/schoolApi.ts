@@ -9,18 +9,21 @@ import type { SchoolProfile, GradingConfig, LetterGrade, SchoolScholarRow, Schoo
 import type { GradingPeriod } from "@/sead/scholarsGradesMonitoringApi";
 
 /**
- * Logs a school in. Schools are identified by their exact school name
- * (public.schools.name is unique) — Supabase Auth itself only understands
- * email + password, so this first resolves the matching email via the
- * `resolve_school_login_email` RPC, then signs in with it. Mirrors
- * scholarSignIn() in src/scholar/scholarApi.ts.
+ * Logs a school in with its USERNAME (set by IT when the account was
+ * created) or, for accounts that predate usernames, its exact school name
+ * (public.schools.name is unique). Supabase Auth itself only understands
+ * email + password, so this first resolves the matching login email via the
+ * `resolve_school_login_email` RPC (username first, then school name), then
+ * signs in with it. Mirrors scholarSignIn() in src/scholar/scholarApi.ts.
+ * The RPC's parameter is still called p_school_name so the call shape didn't
+ * change when username support was added.
  */
-export async function schoolSignIn(schoolName: string, password: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { data: email, error: rpcError } = await supabase.rpc("resolve_school_login_email", { p_school_name: schoolName });
-  if (rpcError || !email) return { ok: false, error: "We couldn't find a school account matching that name." };
+export async function schoolSignIn(usernameOrSchoolName: string, password: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: email, error: rpcError } = await supabase.rpc("resolve_school_login_email", { p_school_name: usernameOrSchoolName });
+  if (rpcError || !email) return { ok: false, error: "We couldn't find a school account matching that username." };
 
   const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-  if (authError) return { ok: false, error: "Incorrect school name or password." };
+  if (authError) return { ok: false, error: "Incorrect username or password." };
   return { ok: true };
 }
 

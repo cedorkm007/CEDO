@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Building2, KeyRound, Trash2 } from "lucide-react";
+import { UserPlus, Building2, KeyRound, Trash2, Eye, EyeOff } from "lucide-react";
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
 import {
   fetchSchoolsList, createSchoolAccount, fetchSchoolAccountsList, deleteSchoolAccount, resetSchoolPassword,
+  validateSchoolUsername, validateSchoolPassword, SCHOOL_PASSWORD_MIN,
   type SchoolOption, type SchoolAccountListItem,
 } from "./schoolAccountsApi";
 
@@ -16,7 +17,9 @@ import {
 export function SchoolAccountsPage() {
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState("");
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<string | null>(null);
@@ -41,17 +44,19 @@ export function SchoolAccountsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!selectedSchoolId || !email.trim()) {
-      setError("Choose a school and enter an email address.");
-      return;
-    }
+    if (!selectedSchoolId) { setError("Choose a school."); return; }
+    const normalizedUsername = username.trim().toLowerCase();
+    const problem = validateSchoolUsername(normalizedUsername) ?? validateSchoolPassword(password);
+    if (problem) { setError(problem); return; }
     setBusy(true);
-    const result = await createSchoolAccount(selectedSchoolId, email.trim());
+    const result = await createSchoolAccount(selectedSchoolId, normalizedUsername, password);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to create account."); return; }
-    setSuccess(`Account for "${result.schoolName}" created. Default password: ${result.defaultPassword}`);
+    setSuccess(`Account for "${result.schoolName}" created. Username: ${result.username ?? normalizedUsername} · Password: ${password}`);
     setSelectedSchoolId("");
-    setEmail("");
+    setUsername("");
+    setPassword("");
+    setShowPassword(false);
     loadData();
   }
 
@@ -75,7 +80,7 @@ export function SchoolAccountsPage() {
   }
 
   const { paged, search, setSearch, page, setPage, totalPages, filteredCount, pageSize } =
-    usePaginatedList(accounts, { searchKeys: ["schoolName", "email"] });
+    usePaginatedList(accounts, { searchKeys: ["schoolName", "username"] });
 
   return (
     <div>
@@ -109,10 +114,25 @@ export function SchoolAccountsPage() {
                 )}
               </div>
 
-              <div className="mb-5">
-                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Email Address</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="e.g., grades.capitoluniversity@example.com"
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Username</label>
+                <input value={username} onChange={e => setUsername(e.target.value)} placeholder="e.g., capitol.university"
+                  autoComplete="off" autoCapitalize="none" spellCheck={false}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-input-background outline-none focus:ring-2 focus:ring-accent/50" />
+                <p className="text-[11.5px] text-muted-foreground mt-1.5">The school signs in with this. Lowercase letters and numbers, with dots, dashes, or underscores between them.</p>
+              </div>
+
+              <div className="mb-5">
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Password</label>
+                <div className="flex items-center border border-border rounded-lg bg-input-background focus-within:ring-2 focus-within:ring-accent/50">
+                  <input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)}
+                    placeholder={`At least ${SCHOOL_PASSWORD_MIN} characters`} autoComplete="new-password"
+                    className="w-full bg-transparent px-3 py-2 text-sm outline-none" />
+                  <button type="button" onClick={() => setShowPassword(s => !s)} aria-label={showPassword ? "Hide password" : "Show password"}
+                    style={{ cursor: "pointer" }} className="px-3 text-muted-foreground hover:text-foreground">
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
               </div>
 
               {error && <p className="text-sm text-destructive mb-3">{error}</p>}
@@ -133,7 +153,7 @@ export function SchoolAccountsPage() {
           </div>
           {accounts.length > 0 && (
             <div className="px-5 py-3 border-b border-border">
-              <ListSearchBox value={search} onChange={setSearch} placeholder="Search by school or email…" />
+              <ListSearchBox value={search} onChange={setSearch} placeholder="Search by school or username…" />
             </div>
           )}
           <div className="max-h-[560px] overflow-y-auto">
@@ -149,7 +169,9 @@ export function SchoolAccountsPage() {
                   <div className="flex items-center justify-between mb-2">
                     <div>
                       <p className="text-sm font-medium text-foreground">{a.schoolName}</p>
-                      <p className="text-xs text-muted-foreground">{a.email}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {a.username ? <>Username: <span className="font-semibold text-foreground">{a.username}</span></> : "Signs in with the school name"}
+                      </p>
                     </div>
                   </div>
 
