@@ -80,7 +80,17 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
   // whenever it was opened, so a new upload while staff had it open
   // needed a manual reload to show up. Silent (no loading flicker) since
   // the existing rows stay visible/usable while the fresh set loads.
-  useRealtimeRefresh("submission_uploads", () => { void load(activityId, true); });
+  //
+  // Scoped to THIS activity's uploads and throttled to once per 15s. Each
+  // refresh runs the heavy roster query for ~7,000 scholars, and this used
+  // to fire once per upload from ANY activity, per open monitoring screen
+  // -- so a wave of scholars submitting at once turned into hundreds of
+  // full roster reloads, which is what drove "canceling statement due to
+  // statement timeout" for staff AND for the scholars trying to upload.
+  useRealtimeRefresh("submission_uploads", () => { void load(activityId, true); }, true, {
+    filter: `activity_id=eq.${activityId}`,
+    throttleMs: 15000,
+  });
 
   // Reset filters that no longer apply when switching activities — a
   // school/year-level selected for one activity's roster may not exist

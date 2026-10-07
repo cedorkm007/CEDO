@@ -572,7 +572,37 @@ export interface SubmissionRosterRow {
  * (supabase_migration_submission_roster_status_rpc.sql) for the exact
  * status precedence and the Q2/Q3 design decisions this depends on.
  */
+function mapRosterRow(r: Record<string, unknown>): SubmissionRosterRow {
+  return {
+    scholarId: r.scholar_id as string,
+    scholarIdNumber: (r.scholar_id_number as string) ?? "",
+    firstName: r.first_name as string,
+    lastName: r.last_name as string,
+    yearLevel: r.year_level as string,
+    school: (r.school as string) ?? "",
+    status: r.status as SubmissionRosterStatus,
+  };
+}
+
 export async function fetchSubmissionRosterStatus(activityId: string): Promise<{ ok: boolean; error?: string; rows?: SubmissionRosterRow[] }> {
+  // Preferred path: ONE call to get_submission_roster_status_json()
+  // (supabase_migration_submission_unlock_perf.sql), which runs the roster
+  // query once and returns it as a single JSON array. The paged fallback
+  // below re-executes the entire roster query for every page -- up to 20
+  // times per load -- which, combined with a live-refresh on every scholar
+  // upload, was a major contributor to "canceling statement due to
+  // statement timeout" when many scholars submitted at once.
+  const single = await supabase.rpc("get_submission_roster_status_json", { p_activity_id: activityId });
+  if (!single.error && Array.isArray(single.data)) {
+    return { ok: true, rows: (single.data as Record<string, unknown>[]).map(mapRosterRow) };
+  }
+  // Anything other than "that function doesn't exist yet" (not authorized,
+  // a real timeout, ...) is a genuine failure -- report it instead of
+  // quietly re-running the expensive path that likely just failed too.
+  const missingFunction = single.error?.code === "PGRST202" || /could not find the function/i.test(single.error?.message ?? "");
+  if (single.error && !missingFunction) return { ok: false, error: single.error.message };
+
+  // Fallback (migration not applied yet): the original paged approach.
   // get_submission_roster_status() returns one row per eligible scholar,
   // which can exceed Supabase/PostgREST's default 1,000-row response cap
   // for a broadly-targeted activity (e.g. all_year_levels=true) — this
@@ -615,15 +645,7 @@ export async function fetchSubmissionRosterStatus(activityId: string): Promise<{
     for (const { data, error } of results) {
       if (error) return { ok: false, error: error.message };
       if (!data || data.length === 0) break outer;
-      rows.push(...(data as Record<string, unknown>[]).map(r => ({
-        scholarId: r.scholar_id as string,
-        scholarIdNumber: (r.scholar_id_number as string) ?? "",
-        firstName: r.first_name as string,
-        lastName: r.last_name as string,
-        yearLevel: r.year_level as string,
-        school: (r.school as string) ?? "",
-        status: r.status as SubmissionRosterStatus,
-      })));
+      rows.push(...(data as Record<string, unknown>[]).map(mapRosterRow));
       if (data.length < pageSize) break outer;
     }
     pageIndex += batchSize;
