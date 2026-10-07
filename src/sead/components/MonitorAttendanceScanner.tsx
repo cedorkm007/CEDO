@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import jsQR from "jsqr";
 import { Camera, Keyboard, CheckCircle2, XCircle, Clock3, Loader2, X } from "lucide-react";
 import { recordMonitorAttendance, type AttendanceKind, type ScanOutcome } from "../monitorAttendanceApi";
 import { fetchAttendanceSessionType, type ActivityType } from "../activityMonitorsApi";
+import { createQrFrameDecoder, type QrFrameDecoder } from "@/lib/qrFrameDecoder";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -36,6 +36,15 @@ const OUTCOME_MESSAGE: Record<Exclude<ScanOutcome, "success">, string> = {
   attendance_not_enabled: "Attendance hasn't been enabled for this activity yet.",
 };
 const INVALID_QR_MESSAGE = "Couldn't read a scholar QR code — try again.";
+
+// How often to try reading a frame, and how a code gets confirmed: the same
+// text seen CONFIRM_HITS times within CONFIRM_WINDOW_MS. Not "in consecutive
+// frames" -- a code that's only readable on some frames (distance, glare)
+// would keep resetting a consecutive-frames counter and never confirm.
+const DECODE_INTERVAL_MS = 80;
+const CONFIRM_HITS = 2;
+const CONFIRM_WINDOW_MS = 1500;
+const HINT_AFTER_MS = 7000;
 
 /** Full-screen result card — success (green), already_scanned (neutral gray, distinct from a genuine error), everything else (red). */
 function ResultOverlay({ feedback, onClose }: { feedback: ScanFeedback; onClose: () => void }) {
@@ -84,12 +93,21 @@ export function MonitorAttendanceScanner({
   const [sessionType, setSessionType] = useState<"time_in_time_out" | "voucher" | null | "loading">("loading");
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
   const lastAttemptedQr = useRef<string>("");
-  const pendingToken = useRef<string>("");
-  const pendingTokenStreak = useRef(0);
+  const pendingHit = useRef<{ data: string; hits: number; lastAt: number } | null>(null);
+  const lastAnyHitAt = useRef(0);
+  const [showHint, setShowHint] = useState(false);
+  // The camera loop is started once, when the scanner opens, and keeps
+  // running across many renders -- so it must NOT call submitQr directly:
+  // the copy it would capture belongs to that first render, where the
+  // attendance type is still "loading". submitQr bails out while loading,
+  // so every camera scan was silently dropped until the camera happened to
+  // restart (e.g. switching to Enter ID and back). It also froze the
+  // Time In/Time Out choice and the busy flag at their first-render values.
+  // The loop calls through this ref, which always holds the latest one.
+  const submitQrRef = useRef<(raw: string) => Promise<void>>(async () => {});
 
   useEffect(() => {
     void fetchAttendanceSessionType(activityType, activityId).then(setSessionType);
@@ -137,6 +155,7 @@ export function MonitorAttendanceScanner({
     }
     await submit({ qrToken: token });
   }
+  submitQrRef.current = submitQr;
 
   // Unlike submitQr (which re-fires every animation frame while the same
   // code sits in view and so needs a dedupe guard), a manual Submit click
@@ -151,19 +170,56 @@ export function MonitorAttendanceScanner({
 
   useEffect(() => {
     if (mode !== "scan") { stopCamera(); return; }
-    startCamera();
-    return () => stopCamera();
+    let cancelled = false;
+    lastAnyHitAt.current = Date.now();
+    pendingHit.current = null;
+    void startCamera(() => cancelled);
+    return () => { cancelled = true; stopCamera(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  async function startCamera() {
+  // "Nothing detected for a while" nudge -- the usual reasons (too far away,
+  // screen too dim, hand moving) are all things the person holding the phone
+  // can fix once they know that's the problem.
+  useEffect(() => {
+    if (mode !== "scan" || cameraError) { setShowHint(false); return; }
+    const id = window.setInterval(() => setShowHint(Date.now() - lastAnyHitAt.current > HINT_AFTER_MS), 1000);
+    return () => window.clearInterval(id);
+  }, [mode, cameraError]);
+
+  // Asks for a real resolution: with no size requested, many phones hand a web
+  // page a 640x480 camera, where a QR held at a normal distance has too few
+  // pixels per square to read. 1080p when the browser's own detector will do
+  // the reading (hardware-assisted, cheap at any size); 720p when it's the
+  // pure-JS decoder, whose cost climbs fast with pixel count.
+  async function openCameraStream(engine: QrFrameDecoder["engine"]): Promise<MediaStream> {
+    const [width, height] = engine === "native" ? [1920, 1080] : [1280, 720];
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: width }, height: { ideal: height } },
+      });
+    } catch (error) {
+      const name = (error as { name?: string })?.name;
+      if (name === "NotAllowedError" || name === "SecurityError" || name === "NotFoundError") throw error;
+      return navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    }
+  }
+
+  async function startCamera(isCancelled: () => boolean) {
     setCameraError("");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      const decoder = await createQrFrameDecoder();
+      if (isCancelled()) return;
+      const stream = await openCameraStream(decoder.engine);
+      if (isCancelled()) { stream.getTracks().forEach(t => t.stop()); return; }
       streamRef.current = stream;
+      // Keep refocusing as the phone moves; silently ignored where unsupported.
+      void stream.getVideoTracks()[0]?.applyConstraints({ advanced: [{ focusMode: "continuous" } as unknown as MediaTrackConstraintSet] }).catch(() => {});
       if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
-      tick();
+      if (isCancelled()) return;
+      runDecodeLoop(decoder, isCancelled);
     } catch {
+      if (isCancelled()) return;
       setCameraError("Couldn't access the camera. You can still enter a scholar ID manually below.");
       setMode("manual");
     }
@@ -175,28 +231,34 @@ export function MonitorAttendanceScanner({
     streamRef.current = null;
   }
 
-  function tick() {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const qr = jsQR(imageData.data, imageData.width, imageData.height);
-        if (qr?.data) {
-          if (qr.data === pendingToken.current) pendingTokenStreak.current += 1;
-          else { pendingToken.current = qr.data; pendingTokenStreak.current = 1; }
-          if (pendingTokenStreak.current >= 2) submitQr(qr.data);
-        } else {
-          pendingToken.current = "";
-          pendingTokenStreak.current = 0;
-        }
-      }
+  function registerHit(data: string) {
+    const now = Date.now();
+    lastAnyHitAt.current = now;
+    const pending = pendingHit.current;
+    if (pending && pending.data === data && now - pending.lastAt <= CONFIRM_WINDOW_MS) {
+      pending.hits += 1;
+      pending.lastAt = now;
+    } else {
+      pendingHit.current = { data, hits: 1, lastAt: now };
     }
-    rafRef.current = requestAnimationFrame(tick);
+    if ((pendingHit.current?.hits ?? 0) >= CONFIRM_HITS) void submitQrRef.current(data);
+  }
+
+  function runDecodeLoop(decoder: QrFrameDecoder, isCancelled: () => boolean) {
+    let decoding = false;
+    let lastRunAt = 0;
+    const step = (now: number) => {
+      if (isCancelled()) return;
+      rafRef.current = requestAnimationFrame(step);
+      const video = videoRef.current;
+      if (decoding || !video || video.readyState < video.HAVE_ENOUGH_DATA || now - lastRunAt < DECODE_INTERVAL_MS) return;
+      decoding = true;
+      lastRunAt = now;
+      void decoder.decode(video)
+        .then(data => { if (data && !isCancelled()) registerHit(data); })
+        .finally(() => { decoding = false; });
+    };
+    rafRef.current = requestAnimationFrame(step);
   }
 
   return (
@@ -239,9 +301,13 @@ export function MonitorAttendanceScanner({
         {mode === "scan" ? (
           <div className="relative rounded-2xl overflow-hidden bg-black aspect-square max-h-[55vh] mx-auto w-full max-w-sm">
             <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
-            <canvas ref={canvasRef} className="hidden" />
             <div className="absolute inset-6 border-2 border-[#F3BC00] rounded-xl pointer-events-none" />
             {busy && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><Loader2 size={28} className="animate-spin text-white" /></div>}
+            {showHint && !busy && !cameraError && (
+              <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-black/70 px-3 py-2 text-center text-[12px] leading-snug text-white">
+                No QR code detected yet. Hold the phone steady about 15–25 cm from the scholar's screen, and ask them to raise their screen brightness.
+              </div>
+            )}
             {cameraError && (
               <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-6">
                 <p className="text-white text-[13px] text-center">{cameraError}</p>
