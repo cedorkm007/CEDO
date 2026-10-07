@@ -38,6 +38,8 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     credits: Number(r.credits ?? 1),
     yearLevels: (r.target_year_levels as string[]) ?? [],
     allYearLevels: Boolean(r.all_year_levels),
+    targetBarangays: (r.target_barangays as string[] | null) ?? [],
+    targetClusters: (r.target_clusters as string[] | null) ?? [],
     createdAt: String(r.created_at ?? ""),
   };
 }
@@ -55,6 +57,8 @@ export async function updateSDPActivity(
     projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: RecurringOccurrence[]; credits?: number;
     name?: string; organization?: string; venue?: string; dateTime?: string | null; endTime?: string | null;
     yearLevels?: string[]; allYearLevels?: boolean;
+    /** Only sent when provided -- callers pass these only if the restriction actually changed. */
+    targetBarangays?: string[]; targetClusters?: string[];
   }
 ): Promise<{ ok: boolean; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
@@ -71,6 +75,8 @@ export async function updateSDPActivity(
     ...(fields.endTime !== undefined ? { end_time: fields.endTime } : {}),
     ...(fields.yearLevels !== undefined ? { target_year_levels: fields.yearLevels } : {}),
     ...(fields.allYearLevels !== undefined ? { all_year_levels: fields.allYearLevels } : {}),
+    ...(fields.targetBarangays !== undefined ? { target_barangays: fields.targetBarangays } : {}),
+    ...(fields.targetClusters !== undefined ? { target_clusters: fields.targetClusters } : {}),
     reviewed_by: auth.user?.id ?? null,
     reviewed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -98,6 +104,9 @@ export interface NewApprovedActivityInput {
   credits: number;
   yearLevels: string[];
   allYearLevels: boolean;
+  /** Empty (both) = visible to every barangay; see supabase_migration_sdp_barangay_cluster_visibility.sql. */
+  targetBarangays: string[];
+  targetClusters: string[];
 }
 
 function localDateTimeToIso(value: string): string | null {
@@ -122,6 +131,10 @@ export async function createApprovedActivity(input: NewApprovedActivityInput): P
     credits: input.credits,
     target_year_levels: input.yearLevels,
     all_year_levels: input.allYearLevels,
+    // Omitted when unrestricted so creating an ordinary activity doesn't
+    // depend on the barangay/cluster columns existing yet.
+    ...(input.targetBarangays.length > 0 ? { target_barangays: input.targetBarangays } : {}),
+    ...(input.targetClusters.length > 0 ? { target_clusters: input.targetClusters } : {}),
     created_by: auth.user?.id ?? null,
   }).select("id").single();
   return error ? { ok: false, error: error.message } : { ok: true, id: data.id };

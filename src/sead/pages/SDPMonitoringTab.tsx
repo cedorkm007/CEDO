@@ -21,6 +21,11 @@ import { useSort, SortableTh } from "@/app/components/SortableTable";
 import { ExportButton } from "@/app/components/ExportButtons";
 import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
 import { MonitorsSection } from "../components/MonitorsSection";
+import { BarangayClusterPicker } from "../components/BarangayClusterPicker";
+
+function sameSet(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every(x => b.includes(x));
+}
 
 function categoryLabel(category: SDPCategory | null): string {
   return SDP_CATEGORIES.find(c => c.key === category)?.label ?? "No category set";
@@ -62,6 +67,8 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [credits, setCredits] = useState("1");
   const [yearLevels, setYearLevels] = useState<string[]>([]);
   const [allYearLevels, setAllYearLevels] = useState(true);
+  const [targetBarangays, setTargetBarangays] = useState<string[]>([]);
+  const [targetClusters, setTargetClusters] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -97,7 +104,7 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
       return;
     }
     setBusy(true);
-    const result = await createApprovedActivity({ name: name.trim(), category, organization: organization.trim(), dateTime, endTime: activityEndTime, venue: venue.trim(), nature: [], activityType, credits: creditsValue, yearLevels, allYearLevels });
+    const result = await createApprovedActivity({ name: name.trim(), category, organization: organization.trim(), dateTime, endTime: activityEndTime, venue: venue.trim(), nature: [], activityType, credits: creditsValue, yearLevels, allYearLevels, targetBarangays, targetClusters });
     if (!result.ok || !result.id) { setBusy(false); setError(result.error || "Failed to create."); return; }
 
     if (attendanceEnabled) {
@@ -121,7 +128,7 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
           <button onClick={onClose} className="text-white/70 hover:text-white"><X size={18} /></button>
         </div>
         <div className="p-6 space-y-3">
-          <p className="text-[12.5px] text-slate-500 mb-1">Open to all scholars immediately once created.</p>
+          <p className="text-[12.5px] text-slate-500 mb-1">Visible to scholars immediately once created, limited by the year level, barangay, and cluster choices below.</p>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Activity name"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
           <div>
@@ -157,6 +164,7 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
               <label className="col-span-2 flex items-center gap-2 text-[12px] font-bold text-[#062444]"><input type="checkbox" checked={allYearLevels} onChange={e => setAllYearLevels(e.target.checked)} className="h-4 w-4 accent-[#062444]" />All year levels</label>
             </div>
           </fieldset>
+          <BarangayClusterPicker barangays={targetBarangays} clusters={targetClusters} onBarangaysChange={setTargetBarangays} onClustersChange={setTargetClusters} />
           <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder="Organization"
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc]" />
           <input type="date" value={date} onChange={e => setDate(e.target.value)} aria-label="Activity date"
@@ -566,6 +574,8 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   const [category, setCategory] = useState<SDPCategory | null>(activity.category);
   const [yearLevels, setYearLevels] = useState<string[]>(activity.yearLevels);
   const [allYearLevels, setAllYearLevels] = useState(activity.allYearLevels);
+  const [targetBarangays, setTargetBarangays] = useState<string[]>(activity.targetBarangays);
+  const [targetClusters, setTargetClusters] = useState<string[]>(activity.targetClusters);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [pubmatPath, setPubmatPath] = useState(activity.pubmatPath);
@@ -670,6 +680,9 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
       dateTime: dateTimeIso || null,
       endTime: endTimeIso || null,
       yearLevels, allYearLevels,
+      // Only when changed, so saving an unrelated edit never touches these columns.
+      ...(!sameSet(targetBarangays, activity.targetBarangays) ? { targetBarangays } : {}),
+      ...(!sameSet(targetClusters, activity.targetClusters) ? { targetClusters } : {}),
     });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to save."); return; }
@@ -794,6 +807,8 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
               <label className="col-span-2 flex items-center gap-2 text-[12px] font-bold text-[#062444]"><input type="checkbox" checked={allYearLevels} onChange={e => setAllYearLevels(e.target.checked)} className="h-4 w-4 accent-[#062444]" />All year levels</label>
             </div>
           </fieldset>
+
+          <BarangayClusterPicker barangays={targetBarangays} clusters={targetClusters} onBarangaysChange={setTargetBarangays} onClustersChange={setTargetClusters} />
 
           {activity.rationale && (
             <div>

@@ -46,6 +46,9 @@ export interface SDPActivity {
   credits: number;
   yearLevels: string[];
   allYearLevels: boolean;
+  /** Barangays/clusters ('A'–'H') whose scholars can see this activity -- both empty means everyone. */
+  targetBarangays: string[];
+  targetClusters: string[];
   createdAt: string;
 }
 
@@ -80,6 +83,8 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     credits: Number(r.credits ?? 1),
     yearLevels: (r.target_year_levels as string[]) ?? [],
     allYearLevels: Boolean(r.all_year_levels),
+    targetBarangays: (r.target_barangays as string[] | null) ?? [],
+    targetClusters: (r.target_clusters as string[] | null) ?? [],
     createdAt: String(r.created_at ?? ""),
   };
 }
