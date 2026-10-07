@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Camera, Keyboard, CheckCircle2, XCircle, Clock3, Loader2, X } from "lucide-react";
 import { recordMonitorAttendance, type AttendanceKind, type ScanOutcome } from "../monitorAttendanceApi";
 import { fetchAttendanceSessionType, type ActivityType } from "../activityMonitorsApi";
-import { createQrFrameDecoder, type QrFrameDecoder } from "@/lib/qrFrameDecoder";
+import { useQrCameraScanner } from "@/lib/useQrCameraScanner";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -37,14 +37,11 @@ const OUTCOME_MESSAGE: Record<Exclude<ScanOutcome, "success">, string> = {
 };
 const INVALID_QR_MESSAGE = "Couldn't read a scholar QR code — try again.";
 
-// How often to try reading a frame, and how a code gets confirmed: the same
-// text seen CONFIRM_HITS times within CONFIRM_WINDOW_MS. Not "in consecutive
-// frames" -- a code that's only readable on some frames (distance, glare)
-// would keep resetting a consecutive-frames counter and never confirm.
-const DECODE_INTERVAL_MS = 80;
-const CONFIRM_HITS = 2;
-const CONFIRM_WINDOW_MS = 1500;
-const HINT_AFTER_MS = 7000;
+// After a code is rejected, the camera won't auto-resubmit that SAME code for
+// this long -- it's usually still sitting in view, and without a pause it was
+// resent every ~second, hammering the server and flickering the error card.
+// A different code is read immediately; the manual Submit button is never held.
+const FAILED_RETRY_COOLDOWN_MS = 5000;
 
 /** Full-screen result card — success (green), already_scanned (neutral gray, distinct from a genuine error), everything else (red). */
 function ResultOverlay({ feedback, onClose }: { feedback: ScanFeedback; onClose: () => void }) {
@@ -92,29 +89,16 @@ export function MonitorAttendanceScanner({
   const [kind, setKind] = useState<AttendanceKind>("time_in");
   const [sessionType, setSessionType] = useState<"time_in_time_out" | "voucher" | null | "loading">("loading");
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number>(0);
   const lastAttemptedQr = useRef<string>("");
-  const pendingHit = useRef<{ data: string; hits: number; lastAt: number } | null>(null);
-  const lastAnyHitAt = useRef(0);
-  const [showHint, setShowHint] = useState(false);
-  // The camera loop is started once, when the scanner opens, and keeps
-  // running across many renders -- so it must NOT call submitQr directly:
-  // the copy it would capture belongs to that first render, where the
-  // attendance type is still "loading". submitQr bails out while loading,
-  // so every camera scan was silently dropped until the camera happened to
-  // restart (e.g. switching to Enter ID and back). It also froze the
-  // Time In/Time Out choice and the busy flag at their first-render values.
-  // The loop calls through this ref, which always holds the latest one.
-  const submitQrRef = useRef<(raw: string) => Promise<void>>(async () => {});
+  const lastFailure = useRef<{ raw: string; at: number } | null>(null);
 
   useEffect(() => {
     void fetchAttendanceSessionType(activityType, activityId).then(setSessionType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activityType, activityId]);
 
-  async function submit(identifier: Parameters<typeof recordMonitorAttendance>[3]) {
+  /** Resolves true when the scan was accepted (or was a harmless repeat), false when it was rejected. */
+  async function submit(identifier: Parameters<typeof recordMonitorAttendance>[3]): Promise<boolean> {
     setBusy(true);
     setFeedback(null);
     const effectiveKind: AttendanceKind = sessionType === "voucher" ? "voucher" : kind;
@@ -124,7 +108,7 @@ export function MonitorAttendanceScanner({
     if (!res.ok) {
       setFeedback({ tone: "error", message: res.error });
       lastAttemptedQr.current = "";
-      return;
+      return false;
     }
     const { result } = res;
     if (result.outcome === "success") {
@@ -137,7 +121,9 @@ export function MonitorAttendanceScanner({
       const prefix = result.scholarName ? `${result.scholarName} — ` : "";
       setFeedback({ tone: "error", message: `${prefix}${OUTCOME_MESSAGE[result.outcome]}` });
       lastAttemptedQr.current = "";
+      return false;
     }
+    return true;
   }
 
   async function submitQr(raw: string) {
@@ -146,16 +132,19 @@ export function MonitorAttendanceScanner({
     // the camera loop's next frame (it re-fires every frame this same QR
     // stays in view) retries once the fetch resolves, typically instantly.
     if (busy || !raw.trim() || raw === lastAttemptedQr.current || sessionType === "loading") return;
+    const failure = lastFailure.current;
+    if (failure && failure.raw === raw && Date.now() - failure.at < FAILED_RETRY_COOLDOWN_MS) return;
     lastAttemptedQr.current = raw;
     const token = extractQrToken(raw);
     if (!token) {
       setFeedback({ tone: "error", message: INVALID_QR_MESSAGE });
       lastAttemptedQr.current = "";
+      lastFailure.current = { raw, at: Date.now() };
       return;
     }
-    await submit({ qrToken: token });
+    const accepted = await submit({ qrToken: token });
+    if (!accepted) lastFailure.current = { raw, at: Date.now() };
   }
-  submitQrRef.current = submitQr;
 
   // Unlike submitQr (which re-fires every animation frame while the same
   // code sits in view and so needs a dedupe guard), a manual Submit click
@@ -168,98 +157,18 @@ export function MonitorAttendanceScanner({
     await submit({ scholarIdNumber });
   }
 
-  useEffect(() => {
-    if (mode !== "scan") { stopCamera(); return; }
-    let cancelled = false;
-    lastAnyHitAt.current = Date.now();
-    pendingHit.current = null;
-    void startCamera(() => cancelled);
-    return () => { cancelled = true; stopCamera(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  useEffect(() => { if (mode === "scan") setCameraError(""); }, [mode]);
 
-  // "Nothing detected for a while" nudge -- the usual reasons (too far away,
-  // screen too dim, hand moving) are all things the person holding the phone
-  // can fix once they know that's the problem.
-  useEffect(() => {
-    if (mode !== "scan" || cameraError) { setShowHint(false); return; }
-    const id = window.setInterval(() => setShowHint(Date.now() - lastAnyHitAt.current > HINT_AFTER_MS), 1000);
-    return () => window.clearInterval(id);
-  }, [mode, cameraError]);
-
-  // Asks for a real resolution: with no size requested, many phones hand a web
-  // page a 640x480 camera, where a QR held at a normal distance has too few
-  // pixels per square to read. 1080p when the browser's own detector will do
-  // the reading (hardware-assisted, cheap at any size); 720p when it's the
-  // pure-JS decoder, whose cost climbs fast with pixel count.
-  async function openCameraStream(engine: QrFrameDecoder["engine"]): Promise<MediaStream> {
-    const [width, height] = engine === "native" ? [1920, 1080] : [1280, 720];
-    try {
-      return await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" }, width: { ideal: width }, height: { ideal: height } },
-      });
-    } catch (error) {
-      const name = (error as { name?: string })?.name;
-      if (name === "NotAllowedError" || name === "SecurityError" || name === "NotFoundError") throw error;
-      return navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-    }
-  }
-
-  async function startCamera(isCancelled: () => boolean) {
-    setCameraError("");
-    try {
-      const decoder = await createQrFrameDecoder();
-      if (isCancelled()) return;
-      const stream = await openCameraStream(decoder.engine);
-      if (isCancelled()) { stream.getTracks().forEach(t => t.stop()); return; }
-      streamRef.current = stream;
-      // Keep refocusing as the phone moves; silently ignored where unsupported.
-      void stream.getVideoTracks()[0]?.applyConstraints({ advanced: [{ focusMode: "continuous" } as unknown as MediaTrackConstraintSet] }).catch(() => {});
-      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
-      if (isCancelled()) return;
-      runDecodeLoop(decoder, isCancelled);
-    } catch {
-      if (isCancelled()) return;
+  // The hook always calls the latest submitQr (see its doc comment for why
+  // that matters), so Time In/Out, busy, and the attendance type are current.
+  const { videoRef, showHint } = useQrCameraScanner({
+    active: mode === "scan",
+    onCode: submitQr,
+    onUnavailable: () => {
       setCameraError("Couldn't access the camera. You can still enter a scholar ID manually below.");
       setMode("manual");
-    }
-  }
-
-  function stopCamera() {
-    cancelAnimationFrame(rafRef.current);
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-  }
-
-  function registerHit(data: string) {
-    const now = Date.now();
-    lastAnyHitAt.current = now;
-    const pending = pendingHit.current;
-    if (pending && pending.data === data && now - pending.lastAt <= CONFIRM_WINDOW_MS) {
-      pending.hits += 1;
-      pending.lastAt = now;
-    } else {
-      pendingHit.current = { data, hits: 1, lastAt: now };
-    }
-    if ((pendingHit.current?.hits ?? 0) >= CONFIRM_HITS) void submitQrRef.current(data);
-  }
-
-  function runDecodeLoop(decoder: QrFrameDecoder, isCancelled: () => boolean) {
-    let decoding = false;
-    let lastRunAt = 0;
-    const step = (now: number) => {
-      if (isCancelled()) return;
-      rafRef.current = requestAnimationFrame(step);
-      const video = videoRef.current;
-      if (decoding || !video || video.readyState < video.HAVE_ENOUGH_DATA || now - lastRunAt < DECODE_INTERVAL_MS) return;
-      decoding = true;
-      lastRunAt = now;
-      void decoder.decode(video)
-        .then(data => { if (data && !isCancelled()) registerHit(data); })
-        .finally(() => { decoding = false; });
-    };
-    rafRef.current = requestAnimationFrame(step);
-  }
+    },
+  });
 
   return (
     <div className="fixed inset-0 z-[200] bg-[#062444] flex flex-col">

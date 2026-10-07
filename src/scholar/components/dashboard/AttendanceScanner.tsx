@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import jsQR from "jsqr";
 import { Camera, Keyboard, CheckCircle2, XCircle, Loader2, X } from "lucide-react";
 import { redeemAttendanceCode } from "../../scholarApi";
+import { useQrCameraScanner } from "@/lib/useQrCameraScanner";
 import { syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormUnlockNotification } from "../../formsApi";
 import { NewlyUnlockedModal } from "./NewlyUnlockedModal";
 import { SurveyResponseModal } from "./SurveyResponseModal";
@@ -12,6 +12,13 @@ type ScanResult = { ok: boolean; message: string; tone: "success" | "error" | "w
 type Result = ScanResult | null;
 
 const RESULT_DISPLAY_SECONDS = 15;
+
+// After a code is rejected, the camera won't auto-resubmit that SAME code for
+// this long -- it's usually still sitting in view, and without a pause it was
+// resent over and over, hammering the server and restarting the error card's
+// countdown each time. A different code is read immediately; the manual
+// Submit button is never held.
+const FAILED_RETRY_COOLDOWN_MS = 5000;
 
 /**
  * Centered, hard-to-miss overlay for a scan result — replaces the old
@@ -70,18 +77,14 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
   const [newlyUnlocked, setNewlyUnlocked] = useState<FormUnlockNotification[]>([]);
   const [pendingSurvey, setPendingSurvey] = useState<{ surveyId: string; kind?: string } | null>(null);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number>(0);
   const lastAttemptedCode = useRef<string>("");
-  const pendingCode = useRef<string>("");
-  const pendingCodeStreak = useRef(0);
+  const lastFailure = useRef<{ code: string; at: number } | null>(null);
 
-  async function submitCode(code: string) {
-    if (busy || !code.trim()) return;
+  /** "skipped" = nothing was sent (blank, busy, or the same code is still being handled). */
+  async function submitCode(code: string): Promise<"accepted" | "rejected" | "skipped"> {
+    if (busy || !code.trim()) return "skipped";
     // Avoid re-submitting the same code repeatedly while it's still in view of the camera.
-    if (code === lastAttemptedCode.current) return;
+    if (code === lastAttemptedCode.current) return "skipped";
     lastAttemptedCode.current = code;
 
     setBusy(true);
@@ -95,7 +98,7 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
         // isn't finalized yet (see redeem_attendance_code's pending_survey
         // status), so nothing has actually unlocked either.
         setPendingSurvey({ surveyId: res.surveyId, kind: res.kind });
-        return;
+        return "accepted";
       }
       const label = res.kind === "time_in" ? "Timed in" : res.kind === "time_out" ? "Timed out" : "Hour credited";
       if (res.categoryCompleted) {
@@ -107,12 +110,20 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
         setResult({ ok: true, tone: "success", message: `${label} for "${res.activityName ?? "the activity"}".` });
       }
       setNewlyUnlocked(await syncAndFetchUnreadFormUnlockNotifications());
-    } else {
-      const message = res.error || "Invalid QR code.";
-      setResult({ ok: false, tone: /you already completed/i.test(message) ? "warning" : "error", message });
-      // Allow retrying the same code after a failure (e.g. typo), just not spamming a success.
-      lastAttemptedCode.current = "";
+      return "accepted";
     }
+    const message = res.error || "Invalid QR code.";
+    setResult({ ok: false, tone: /you already completed/i.test(message) ? "warning" : "error", message });
+    // Allow retrying the same code after a failure (e.g. typo), just not spamming a success.
+    lastAttemptedCode.current = "";
+    return "rejected";
+  }
+
+  /** Entry point for codes read by the camera: same as submitCode, but backs off a code that was just rejected. */
+  async function submitScannedCode(code: string) {
+    const failure = lastFailure.current;
+    if (failure && failure.code === code && Date.now() - failure.at < FAILED_RETRY_COOLDOWN_MS) return;
+    if ((await submitCode(code)) === "rejected") lastFailure.current = { code, at: Date.now() };
   }
 
   async function handleSurveyFinalized(finalized: { finalizedCount: number; activityName: string }) {
@@ -128,69 +139,19 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
     if (ids.length > 0) void markFormUnlockNotificationsRead(ids);
   }
 
-  useEffect(() => {
-    if (mode !== "scan") {
-      stopCamera();
-      return;
-    }
-    startCamera();
-    return () => stopCamera();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  useEffect(() => { if (mode === "scan") setCameraError(""); }, [mode]);
 
-  async function startCamera() {
-    setCameraError("");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      tick();
-    } catch {
+  // The hook always calls the latest submitScannedCode, so busy and the rest
+  // of this component's state are current -- the camera loop starts once and
+  // would otherwise keep using the first render's copies.
+  const { videoRef, showHint } = useQrCameraScanner({
+    active: mode === "scan",
+    onCode: submitScannedCode,
+    onUnavailable: () => {
       setCameraError("Couldn't access the camera. You can still enter the code manually below.");
       setMode("manual");
-    }
-  }
-
-  function stopCamera() {
-    cancelAnimationFrame(rafRef.current);
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-  }
-
-  function tick() {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const qr = jsQR(imageData.data, imageData.width, imageData.height);
-        if (qr?.data) {
-          // Require the same decode on 2 consecutive frames before acting on
-          // it — a single blurry/partial frame can make jsQR misread a code,
-          // which the backend then correctly rejects as invalid. Waiting one
-          // extra ~16ms frame for confirmation filters that out.
-          if (qr.data === pendingCode.current) {
-            pendingCodeStreak.current += 1;
-          } else {
-            pendingCode.current = qr.data;
-            pendingCodeStreak.current = 1;
-          }
-          if (pendingCodeStreak.current >= 2) submitCode(qr.data);
-        } else {
-          pendingCode.current = "";
-          pendingCodeStreak.current = 0;
-        }
-      }
-    }
-    rafRef.current = requestAnimationFrame(tick);
-  }
+    },
+  });
 
   return (
     <>
@@ -209,8 +170,12 @@ export function AttendanceScanner({ onNavigateToForms }: { onNavigateToForms: ()
       {mode === "scan" ? (
         <div className="relative rounded-2xl overflow-hidden bg-black aspect-square">
           <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
-          <canvas ref={canvasRef} className="hidden" />
           <div className="absolute inset-6 border-2 border-[#F3BC00] rounded-xl pointer-events-none" />
+          {showHint && !busy && !cameraError && (
+            <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-black/70 px-3 py-2 text-center text-[12px] leading-snug text-white">
+              No QR code detected yet. Hold the phone steady about 15–25 cm from the code, and make sure it's well lit.
+            </div>
+          )}
           {cameraError && (
             <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-6">
               <p className="text-white text-[13px] text-center">{cameraError}</p>
