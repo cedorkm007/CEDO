@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, Check, Eye, Globe, Info, Layers, Loader2, Users, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BarChart3, Check, Eye, Globe, Info, Layers, Loader2, Users, X } from "lucide-react";
 import { useSurveyDoc } from "../builder/useSurveyDoc";
 import { QuestionCard } from "../builder/QuestionCard";
 import { SectionCard } from "../builder/SectionCard";
@@ -33,7 +33,7 @@ type Pending =
  * edits the in-memory document. Who may edit is decided by the database --
  * viewers get a read-only builder (and can still open the Preview).
  */
-export function SurveyBuilderPage({ surveyId, onBack }: { surveyId: string; onBack: () => void }) {
+export function SurveyBuilderPage({ surveyId, onBack, onViewResponses }: { surveyId: string; onBack: () => void; onViewResponses?: (title: string) => void }) {
   const survey = useSurveyDoc(surveyId);
   const { doc, update, canEdit } = survey;
 
@@ -126,6 +126,12 @@ export function SurveyBuilderPage({ surveyId, onBack }: { surveyId: string; onBa
     else removeItem(q.questionKey);
   }
 
+  async function handleViewResponses() {
+    if (!onViewResponses || !doc) return;
+    const clean = await survey.flush();
+    if (clean) onViewResponses(doc.title); else setPending({ kind: "leave" });
+  }
+
   async function handleBack() {
     const clean = await survey.flush();
     if (clean) onBack(); else setPending({ kind: "leave" });
@@ -199,6 +205,14 @@ export function SurveyBuilderPage({ surveyId, onBack }: { surveyId: string; onBa
         >
           <Eye size={14} /> <span className="hidden sm:inline">Preview</span>
         </button>
+        {onViewResponses && (doc.status !== "draft" || doc.responseCount > 0) && (
+          <button
+            onClick={() => void handleViewResponses()} aria-label="View responses"
+            className="flex items-center gap-1.5 border border-[#e6ecf5] text-[#062444] text-[12.5px] font-semibold rounded-lg px-2.5 sm:px-3.5 py-2 hover:bg-[#f7f9fc]"
+          >
+            <BarChart3 size={14} /> <span className="hidden sm:inline">Responses</span>
+          </button>
+        )}
         {doc.role === "owner" && (
           <button
             onClick={() => setSharing(true)} aria-label="Share with colleagues"

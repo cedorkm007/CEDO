@@ -14,9 +14,7 @@ interface SurveyActionsMenuProps {
   onShare: () => void;
   /** Editors and viewers: remove themselves from the survey. */
   onLeave: () => void;
-  // View Responses is wired in a later phase; until then it is shown (so the
-  // final layout is visible) but disabled.
-  onViewResponses?: () => void;
+  onViewResponses: () => void;
 }
 
 /**
@@ -75,8 +73,8 @@ export function SurveyActionsMenu({ role, hasLink, onOpen, onDuplicate, onDelete
           <button role="menuitem" onClick={() => pick(onGetLink)} disabled={!hasLink} className={itemClass}>
             <QrCode size={14} /> Get Link / QR {!hasLink && <span className="ml-auto text-[10px] font-semibold text-slate-300">Not published</span>}
           </button>
-          <button role="menuitem" onClick={() => onViewResponses && pick(onViewResponses)} disabled={!onViewResponses} className={itemClass}>
-            <BarChart3 size={14} /> View Responses {!onViewResponses && <span className="ml-auto text-[10px] font-semibold text-slate-300">Soon</span>}
+          <button role="menuitem" onClick={() => pick(onViewResponses)} className={itemClass}>
+            <BarChart3 size={14} /> View Responses
           </button>
           {role !== "owner" && (
             <>

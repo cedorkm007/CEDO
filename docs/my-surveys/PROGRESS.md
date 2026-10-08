@@ -9,8 +9,8 @@ owner before the next one starts. Append-only: one entry per finished micro-task
 2. Survey builder (all question types, preview, auto-save)  (done, committed)
 3. Publishing: public URL, QR code, one-question-at-a-time respondent page, saving responses  (done, committed)
 4. CSV template download and upload with validation  (done, committed)
-5. Sharing and roles  ← **Phase 5**
-6. Connection to the Research Project Monitoring tool (automatic charts)
+5. Sharing and roles  (done, committed)
+6. Connection to the Research Project Monitoring tool (automatic charts)  ← **Phase 6**
 7. Exports, closing dates, response limits, polish
 
 ## Decisions locked in Phase 1
@@ -214,3 +214,55 @@ owner before the next one starts. Append-only: one entry per finished micro-task
   demotion while typing (one refused save, read-only + notice, earlier edit intact), removal while
   open (access-lost screen within one poll), leave-survey confirmation, 360px layout.
 - `npx tsc -b --force` exit 0, `npm run build` exit 0, eslint clean.
+
+## Decisions locked in Phase 6
+
+- Connection to Research Project Monitoring (RPM): no import/export step. Responses already live in
+  `my_survey_*` (Phase 3); RPM's **Survey Results** tab now has a second dropdown group,
+  "My Surveys (yours or shared with you)", so each survey is its own dataset. The existing
+  `research_surveys*` system is untouched (only an additive edit to
+  `src/sead/pages/research/SurveyResultsSubtab.tsx`: 37 lines added, 4 changed; the old dropdown
+  contents and views behave exactly as before).
+- Access rule (the owner's choice, option 1): ONLY the survey's owner and the people it is shared with.
+  RPM itself is still gated by the `research_project_monitoring` tag, so tag holders see just the
+  surveys they own or were shared on -- never other people's. Staff WITHOUT the tag use
+  My Surveys > **View Responses** (same charts, same server rule). Enforced by
+  `get_my_survey_results`, which checks the caller's role on that survey (any role).
+- One server function does the aggregation in one round trip (no per-row RLS cost, no downloading
+  answer rows): per question the answered count, option counts (zero-count options kept), scale
+  distribution + mean + median, date/time value counts, the latest 300 text answers + total, plus
+  responses per day in the viewer's time zone (bad time zone falls back to UTC).
+- Charts: single choice/dropdown -> bar or pie toggle; checkboxes -> bar (% of respondents, since
+  people tick several); scale/rating -> mean/median tiles + column distribution (every value
+  labelled); date -> column per date; time -> column per hour of day; short answer/paragraph ->
+  newest-first list or word cloud (same layout code as the Quest / Presentations clouds).
+- Question versions: every version that has answers is returned as its own row, flagged archived when
+  replaced or removed. Each question card shows "N versions", each version's wording and response
+  count, and a picker: "All versions" (combined by option label / value, only when all versions are the
+  same kind of question) or a single version. If the type changed between versions they are never
+  combined: one section per version. A removed question that has answers is still shown, marked
+  "Removed from the survey". Versions with no answers are left out.
+- Live updates: `my_survey_responses` is added to `supabase_realtime` (guarded, re-runnable) and the
+  panel refetches on changes to THAT survey's responses (throttled to once per 3s) via the existing
+  `useRealtimeRefresh`; a 30s poll is a safety net so a dropped connection can't leave charts stale.
+- Staff-only: recharts and the chart code are not in the public respondent bundle (checked in the
+  production build).
+- NOT in this phase (per the plan): exports to CSV/Excel (Phase 7) and a per-response table (the
+  exports will carry one row per response).
+
+### Phase 6 log
+- Migration `supabase_migration_my_surveys_results.sql`: `get_my_survey_results` + realtime
+  publication. 32/32 checks pass in an in-process Postgres, driven through the real publish and
+  public-submit functions (counts per option, zero options, checkbox respondents vs selections,
+  scale stats, date/time values, text newest-first, absent data per type, per-day timeline in two time
+  zones + invalid zone, versioning with reworded + removed questions, access for editor/viewer,
+  denied for strangers/anon/removed people, publication added and safe to re-run).
+- UI: `src/mysurveys/results/` (api + grouping/merging helpers, charts, question card, panel),
+  `pages/SurveyResultsPage.tsx`; list menu "View Responses" is live; builder gets a "Responses" button.
+- Verified in a browser against the real SQL (local Postgres shim, 42 -> 45 responses, 2 versions of one
+  question): summary, per-day chart, every chart type, bar/pie toggle, version picker (all / v1),
+  word cloud, the page picking up 3 new responses by itself, the RPM tab showing both groups with
+  an existing activity survey still rendering as before, 360px layout without sideways scrolling.
+  NOT verifiable here: the realtime push itself (needs the migration on the live project); the
+  polling safety net was verified.
+- `npx tsc -b --force` exit 0, `npm run build` exit 0, eslint clean on `src/mysurveys`.

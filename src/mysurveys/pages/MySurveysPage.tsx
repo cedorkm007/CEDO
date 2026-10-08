@@ -14,6 +14,7 @@ import { ShareDialog } from "../components/ShareDialog";
 import { ConfirmModal } from "../builder/ConfirmModal";
 import { removeShare } from "../shareApi";
 import { SurveyBuilderPage } from "./SurveyBuilderPage";
+import { SurveyResultsPage } from "./SurveyResultsPage";
 
 type StatusFilter = "all" | SurveyStatus;
 
@@ -33,7 +34,7 @@ function formatDateTime(iso: string): string {
  * not by this UI: the buttons here only mirror those permissions.
  *
  * List, filter, create, create from a CSV template, duplicate, delete, share,
- * and Get Link/QR. View Responses is visible but disabled until its own phase.
+ * Get Link/QR, and View Responses (charts).
  */
 export function MySurveysPage() {
   const [tab, setTab] = useState<SurveyScope>("mine");
@@ -43,6 +44,7 @@ export function MySurveysPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [error, setError] = useState<string | null>(null);
   const [openSurveyId, setOpenSurveyId] = useState<string | null>(null);
+  const [resultsSurvey, setResultsSurvey] = useState<{ id: string; title: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SurveyListItem | null>(null);
   const [linkTarget, setLinkTarget] = useState<SurveyListItem | null>(null);
   const [importingCsv, setImportingCsv] = useState(false);
@@ -100,8 +102,17 @@ export function MySurveysPage() {
     await load(tab);
   }
 
+  if (resultsSurvey) {
+    return <SurveyResultsPage surveyId={resultsSurvey.id} title={resultsSurvey.title} onBack={() => { setResultsSurvey(null); void load(tab); }} />;
+  }
   if (openSurveyId) {
-    return <SurveyBuilderPage surveyId={openSurveyId} onBack={() => { setOpenSurveyId(null); void load(tab); }} />;
+    return (
+      <SurveyBuilderPage
+        surveyId={openSurveyId}
+        onBack={() => { setOpenSurveyId(null); void load(tab); }}
+        onViewResponses={title => { setResultsSurvey({ id: openSurveyId, title }); setOpenSurveyId(null); }}
+      />
+    );
   }
 
   const query = search.trim().toLowerCase();
@@ -210,7 +221,7 @@ export function MySurveysPage() {
                   <button onClick={() => setOpenSurveyId(s.id)} className="text-left min-w-0">
                     <p className="text-[14px] font-semibold text-[#062444] break-words">{s.title}</p>
                   </button>
-                  <RowMenu survey={s} onOpen={() => setOpenSurveyId(s.id)} onDuplicate={() => void handleDuplicate(s)} onDelete={() => setDeleteTarget(s)} onGetLink={() => setLinkTarget(s)} onShare={() => setShareTarget(s)} onLeave={() => setLeaveTarget(s)} />
+                  <RowMenu survey={s} onOpen={() => setOpenSurveyId(s.id)} onDuplicate={() => void handleDuplicate(s)} onDelete={() => setDeleteTarget(s)} onGetLink={() => setLinkTarget(s)} onShare={() => setShareTarget(s)} onLeave={() => setLeaveTarget(s)} onViewResponses={() => setResultsSurvey({ id: s.id, title: s.title })} />
                 </div>
                 <div className="mt-2 flex items-center gap-2 flex-wrap">
                   <SurveyStatusBadge status={s.status} />
@@ -253,7 +264,7 @@ export function MySurveysPage() {
                       {s.lastEditedByName && <span className="block text-[11px]">by {s.lastEditedByName}</span>}
                     </td>
                     <td className="px-4 py-2.5">
-                      <RowMenu survey={s} onOpen={() => setOpenSurveyId(s.id)} onDuplicate={() => void handleDuplicate(s)} onDelete={() => setDeleteTarget(s)} onGetLink={() => setLinkTarget(s)} onShare={() => setShareTarget(s)} onLeave={() => setLeaveTarget(s)} />
+                      <RowMenu survey={s} onOpen={() => setOpenSurveyId(s.id)} onDuplicate={() => void handleDuplicate(s)} onDelete={() => setDeleteTarget(s)} onGetLink={() => setLinkTarget(s)} onShare={() => setShareTarget(s)} onLeave={() => setLeaveTarget(s)} onViewResponses={() => setResultsSurvey({ id: s.id, title: s.title })} />
                     </td>
                   </tr>
                 ))}
@@ -298,6 +309,6 @@ export function MySurveysPage() {
   );
 }
 
-function RowMenu({ survey, onOpen, onDuplicate, onDelete, onGetLink, onShare, onLeave }: { survey: SurveyListItem; onOpen: () => void; onDuplicate: () => void; onDelete: () => void; onGetLink: () => void; onShare: () => void; onLeave: () => void }) {
-  return <SurveyActionsMenu role={survey.myRole} hasLink={survey.publicSlug !== null} onOpen={onOpen} onDuplicate={onDuplicate} onDelete={onDelete} onGetLink={onGetLink} onShare={onShare} onLeave={onLeave} />;
+function RowMenu({ survey, onOpen, onDuplicate, onDelete, onGetLink, onShare, onLeave, onViewResponses }: { survey: SurveyListItem; onOpen: () => void; onDuplicate: () => void; onDelete: () => void; onGetLink: () => void; onShare: () => void; onLeave: () => void; onViewResponses: () => void }) {
+  return <SurveyActionsMenu role={survey.myRole} hasLink={survey.publicSlug !== null} onOpen={onOpen} onDuplicate={onDuplicate} onDelete={onDelete} onGetLink={onGetLink} onShare={onShare} onLeave={onLeave} onViewResponses={onViewResponses} />;
 }

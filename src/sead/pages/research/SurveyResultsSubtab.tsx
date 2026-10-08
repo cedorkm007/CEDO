@@ -3,22 +3,32 @@ import { ListChecks, SlidersHorizontal, MessageSquareText, Clock, CheckCircle2, 
 import { fetchSurveys, fetchSurveyQuestions, fetchSurveyQuestionResults, fetchSurveyGatingRoster } from "../../seadApi";
 import { SurveyResultsChart } from "../../components/SurveyResultsChart";
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
+import { fetchSurveyList, type SurveyListItem } from "@/mysurveys/mySurveysApi";
+import { SurveyResultsPanel } from "@/mysurveys/results/SurveyResultsPanel";
 import type { Survey, SurveySource, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult, SurveyOpenEndedResult, GatingRosterEntry, GatingRosterStatus } from "../../types";
 
 export function SurveyResultsSubtab() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loadingSurveys, setLoadingSurveys] = useState(true);
   const [selectedSurveyId, setSelectedSurveyId] = useState("");
+  // Surveys built in "My Surveys" appear here as their own datasets. The server only
+  // returns the ones the person owns or that were shared with them (the same rule as
+  // My Surveys itself), so this list is never wider than what they could already open.
+  const [mySurveys, setMySurveys] = useState<SurveyListItem[]>([]);
 
   useEffect(() => {
     (async () => {
       setLoadingSurveys(true);
-      setSurveys(await fetchSurveys());
+      const [legacy, mine, shared] = await Promise.all([fetchSurveys(), fetchSurveyList("mine"), fetchSurveyList("shared")]);
+      setSurveys(legacy);
+      setMySurveys([...(mine.ok ? mine.surveys : []), ...(shared.ok ? shared.surveys : [])].filter(s => s.status !== "draft"));
       setLoadingSurveys(false);
     })();
   }, []);
 
+  const mySurveyId = selectedSurveyId.startsWith("my:") ? selectedSurveyId.slice(3) : "";
   const selectedSurvey = surveys.find(s => s.id === selectedSurveyId) ?? null;
+  const selectedMySurvey = mySurveys.find(s => s.id === mySurveyId) ?? null;
 
   return (
     <div className="space-y-4">
@@ -27,13 +37,36 @@ export function SurveyResultsSubtab() {
         <select value={selectedSurveyId} onChange={e => setSelectedSurveyId(e.target.value)} disabled={loadingSurveys}
           className="w-full max-w-md border border-[#062444]/15 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0088cc] bg-white">
           <option value="">{loadingSurveys ? "Loading surveys…" : "Select a survey…"}</option>
-          {surveys.map(s => (
-            <option key={s.id} value={s.id}>{s.title} — {s.activityName}</option>
-          ))}
+          {mySurveys.length > 0 ? (
+            <>
+              <optgroup label="Activity surveys">
+                {surveys.map(s => (
+                  <option key={s.id} value={s.id}>{s.title} — {s.activityName}</option>
+                ))}
+              </optgroup>
+              <optgroup label="My Surveys (yours or shared with you)">
+                {mySurveys.map(s => (
+                  <option key={s.id} value={`my:${s.id}`}>{s.title} — {s.myRole === "owner" ? "yours" : `shared by ${s.ownerName}`} ({s.responseCount} response{s.responseCount === 1 ? "" : "s"})</option>
+                ))}
+              </optgroup>
+            </>
+          ) : (
+            surveys.map(s => (
+              <option key={s.id} value={s.id}>{s.title} — {s.activityName}</option>
+            ))
+          )}
         </select>
       </div>
 
       {selectedSurvey && <SurveyResultsView survey={selectedSurvey} />}
+      {selectedMySurvey && (
+        <div className="space-y-3">
+          <p className="text-[12px] text-slate-500">
+            From <span className="font-semibold text-[#062444]">My Surveys</span> — charts update as responses come in. Only the survey's owner and the people it is shared with can see them.
+          </p>
+          <SurveyResultsPanel surveyId={selectedMySurvey.id} />
+        </div>
+      )}
     </div>
   );
 }
