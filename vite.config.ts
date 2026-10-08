@@ -77,6 +77,22 @@ function figmaAssetResolver() {
   }
 }
 
+// The public "My Surveys" respondent page (/s/<slug>) is its own HTML entry
+// (survey.html) so respondents on slow mobile data download a small bundle
+// instead of the whole staff app. In production vercel.json rewrites /s/* to
+// it; this makes the dev server do the same.
+function surveyPageDevRewrite() {
+  return {
+    name: 'survey-page-dev-rewrite',
+    configureServer(server: { middlewares: { use: (fn: (req: { url?: string }, res: unknown, next: () => void) => void) => void } }) {
+      server.middlewares.use((req, _res, next) => {
+        if (req.url && /^\/s\/[^/?#]+/.test(req.url)) req.url = '/survey.html';
+        next();
+      });
+    },
+  };
+}
+
 const shortSha = getShortSha();
 
 export default defineConfig({
@@ -85,7 +101,17 @@ export default defineConfig({
     react(),
     tailwindcss(),
     stampServiceWorkerCacheVersion(shortSha),
+    surveyPageDevRewrite(),
   ],
+  build: {
+    rollupOptions: {
+      // "index" keeps the staff app's output file names exactly as before.
+      input: {
+        index: path.resolve(__dirname, 'index.html'),
+        survey: path.resolve(__dirname, 'survey.html'),
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

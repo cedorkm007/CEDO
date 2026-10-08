@@ -6,8 +6,8 @@ owner before the next one starts. Append-only: one entry per finished micro-task
 ## Phase plan
 
 1. Database tables + "My Surveys" menu item + survey list page  (done, committed)
-2. Survey builder (all question types, preview, auto-save)  ← **Phase 2**
-3. Publishing: public URL, QR code, one-question-at-a-time respondent page, saving responses
+2. Survey builder (all question types, preview, auto-save)  (done, committed)
+3. Publishing: public URL, QR code, one-question-at-a-time respondent page, saving responses  ← **Phase 3**
 4. CSV template download and upload with validation
 5. Sharing and roles
 6. Connection to the Research Project Monitoring tool (automatic charts)
@@ -86,4 +86,49 @@ owner before the next one starts. Append-only: one entry per finished micro-task
   full preview walk-through (consent, section intro, required gating, Enter, swipe, Change from
   review, submit), live-mode progress restore after refresh and clearing after submit,
   360px / 820px layouts without sideways scrolling.
+- `npx tsc -b --force` exit 0, `npm run build` exit 0, eslint clean.
+
+## Decisions locked in Phase 3
+
+- The public page is its own HTML entry, `survey.html` (served at `/s/<slug>` by a rewrite in
+  `vercel.json`; the dev server does the same via a small plugin in `vite.config.ts`). The staff
+  app bundle is several MB, so a respondent on slow data must not download it. The public page
+  is ~59 KB gzipped in total (React + the respondent screens + 4 KB of CSS) and the staff app's
+  output file names are unchanged (`index` keeps its name in the multi-entry build).
+- The public page uses plain `fetch()` against the two public functions, not the supabase-js
+  client (the biggest thing it would otherwise download), system fonts, and its own tiny
+  Tailwind stylesheet that scans only the respondent screens.
+- `anon` has no table access. The only way in is `get_public_survey(slug)` and
+  `submit_my_survey_response(...)` (security definer, all checks server-side, one transaction).
+- Slug: 9 chars from a 31-char alphabet (no 0/o/1/i/l), ~44 bits, rejection-sampled from
+  `gen_random_uuid()` bytes. Reopening a survey keeps the same slug (printed QR codes keep working).
+- Closing date and response limit are enforced by the server on every read/submit (and the survey
+  closes itself when the limit is hit). They close the survey LAZILY: the status column changes
+  the next time a respondent or the Publish dialog touches it, so the survey LIST can still say
+  "Open" for a survey past its closing date until then (Phase 7 polish: compute it in the list).
+- Settings UI (thank-you message, one response per device, closing date/time, response limit)
+  was built now because the publish dialog is where they live and the server enforces them in the
+  same function; Phase 7 keeps exports and polish.
+- "One response per device" is browser-based (a random id in localStorage): it discourages repeat
+  answers but cannot stop another phone or a private window.
+- Staff actions that change the survey (settings / publish / close) go through
+  `useSurveyDoc.serverAction`: save pending edits, carry the revision, reload on success, and show
+  the same conflict banner on conflict.
+- Found by tests: appending a plain string to a `text[]` in plpgsql is parsed as an array literal
+  (use `array_append`).
+
+### Phase 3 log
+- Migration `supabase_migration_my_surveys_publishing.sql` (adds functions only; no Phase 1/2
+  function is redefined): `generate_my_survey_slug`, `get_public_survey`,
+  `submit_my_survey_response`, `get_my_survey_publish_info`, `save_my_survey_settings`,
+  `set_my_survey_status`. 59/59 checks pass in an in-process Postgres (readiness problems, slug
+  quality, anon isolation, every bad-answer case, one-per-device, limit, closing date, reopen,
+  survey edited mid-response, Phase 1/2 behaviour untouched), including a second run of the file.
+- Public page: `survey.html`, `src/mysurveys/public/*`.
+- Staff: `builder/PublishDialog.tsx`, `components/LinkAndQr.tsx`, `components/ShareLinkModal.tsx`,
+  `publishApi.ts`; Publish/Share button in the builder; "Get Link / QR" enabled in the list.
+- Verified in a browser against the real SQL (local Postgres shim, anonymous role for the public
+  page): publish, link + QR (QR decoded back to the exact URL with a scanner library), custom
+  thank-you, submit, stored answers, one-per-device, limit closing the survey, closed page,
+  reopen with the same slug, manual close, list "Get Link / QR".
 - `npx tsc -b --force` exit 0, `npm run build` exit 0, eslint clean.

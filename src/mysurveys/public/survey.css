@@ -1,0 +1,15 @@
+/*
+ * Stylesheet for the public survey page only. It scans just the respondent
+ * screens (not the whole project like src/styles/tailwind.css does), so the
+ * CSS a respondent downloads is a few KB. System fonts: no web-font request.
+ */
+@import 'tailwindcss' source(none);
+@source '../respondent/**/*.{ts,tsx}';
+@source './**/*.{ts,tsx}';
+
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+#root { min-height: 100%; }

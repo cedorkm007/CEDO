@@ -7,6 +7,7 @@ import {
 import { SurveyActionsMenu } from "../components/SurveyActionsMenu";
 import { SurveyStatusBadge } from "../components/SurveyStatusBadge";
 import { DeleteSurveyModal } from "../components/DeleteSurveyModal";
+import { ShareLinkModal } from "../components/ShareLinkModal";
 import { SurveyBuilderPage } from "./SurveyBuilderPage";
 
 type StatusFilter = "all" | SurveyStatus;
@@ -39,6 +40,7 @@ export function MySurveysPage() {
   const [error, setError] = useState<string | null>(null);
   const [openSurveyId, setOpenSurveyId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SurveyListItem | null>(null);
+  const [linkTarget, setLinkTarget] = useState<SurveyListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -191,7 +193,7 @@ export function MySurveysPage() {
                   <button onClick={() => setOpenSurveyId(s.id)} className="text-left min-w-0">
                     <p className="text-[14px] font-semibold text-[#062444] break-words">{s.title}</p>
                   </button>
-                  <RowMenu survey={s} onOpen={() => setOpenSurveyId(s.id)} onDuplicate={() => void handleDuplicate(s)} onDelete={() => setDeleteTarget(s)} />
+                  <RowMenu survey={s} onOpen={() => setOpenSurveyId(s.id)} onDuplicate={() => void handleDuplicate(s)} onDelete={() => setDeleteTarget(s)} onGetLink={() => setLinkTarget(s)} />
                 </div>
                 <div className="mt-2 flex items-center gap-2 flex-wrap">
                   <SurveyStatusBadge status={s.status} />
@@ -234,7 +236,7 @@ export function MySurveysPage() {
                       {s.lastEditedByName && <span className="block text-[11px]">by {s.lastEditedByName}</span>}
                     </td>
                     <td className="px-4 py-2.5">
-                      <RowMenu survey={s} onOpen={() => setOpenSurveyId(s.id)} onDuplicate={() => void handleDuplicate(s)} onDelete={() => setDeleteTarget(s)} />
+                      <RowMenu survey={s} onOpen={() => setOpenSurveyId(s.id)} onDuplicate={() => void handleDuplicate(s)} onDelete={() => setDeleteTarget(s)} onGetLink={() => setLinkTarget(s)} />
                     </td>
                   </tr>
                 ))}
@@ -242,6 +244,10 @@ export function MySurveysPage() {
             </table>
           </div>
         </>
+      )}
+
+      {linkTarget && linkTarget.publicSlug && (
+        <ShareLinkModal title={linkTarget.title} slug={linkTarget.publicSlug} status={linkTarget.status} onClose={() => setLinkTarget(null)} />
       )}
 
       {deleteTarget && (
@@ -254,6 +260,6 @@ export function MySurveysPage() {
   );
 }
 
-function RowMenu({ survey, onOpen, onDuplicate, onDelete }: { survey: SurveyListItem; onOpen: () => void; onDuplicate: () => void; onDelete: () => void }) {
-  return <SurveyActionsMenu role={survey.myRole} onOpen={onOpen} onDuplicate={onDuplicate} onDelete={onDelete} />;
+function RowMenu({ survey, onOpen, onDuplicate, onDelete, onGetLink }: { survey: SurveyListItem; onOpen: () => void; onDuplicate: () => void; onDelete: () => void; onGetLink: () => void }) {
+  return <SurveyActionsMenu role={survey.myRole} hasLink={survey.publicSlug !== null} onOpen={onOpen} onDuplicate={onDuplicate} onDelete={onDelete} onGetLink={onGetLink} />;
 }

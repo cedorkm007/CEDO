@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Survey</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#062444" />
+    <!--
+      Entry page for the public "My Surveys" respondent page (/s/<slug>, see
+      vercel.json and vite.config.ts). It is deliberately a SEPARATE entry from
+      index.html: the staff app bundle is several MB, which is far too heavy for
+      a respondent on slow mobile data. This page loads only React, the
+      one-question-at-a-time screens, and a tiny stylesheet -- no Supabase client
+      library, no web fonts.
+    -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/mysurveys/public/main.tsx"></script>
+  </body>
+</html>

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, Check, Eye, Info, Layers, Loader2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, Eye, Globe, Info, Layers, Loader2, X } from "lucide-react";
 import { useSurveyDoc } from "../builder/useSurveyDoc";
 import { QuestionCard } from "../builder/QuestionCard";
 import { SectionCard } from "../builder/SectionCard";
 import { AddQuestionMenu } from "../builder/AddQuestionMenu";
 import { PreviewOverlay } from "../builder/PreviewOverlay";
+import { PublishDialog } from "../builder/PublishDialog";
 import { ConfirmModal } from "../builder/ConfirmModal";
 import { fieldClass } from "../builder/cardParts";
 import { SurveyStatusBadge } from "../components/SurveyStatusBadge";
@@ -38,6 +39,7 @@ export function SurveyBuilderPage({ surveyId, onBack }: { surveyId: string; onBa
   const [activeId, setActiveId] = useState<string | null>(null);
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -182,10 +184,18 @@ export function SurveyBuilderPage({ surveyId, onBack }: { surveyId: string; onBa
         </span>
         <button
           onClick={() => setPreviewing(true)}
-          className="flex items-center gap-1.5 bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-3.5 py-2 hover:bg-[#0a3a6b]"
+          className="flex items-center gap-1.5 border border-[#e6ecf5] text-[#062444] text-[12.5px] font-semibold rounded-lg px-3.5 py-2 hover:bg-[#f7f9fc]"
         >
           <Eye size={14} /> Preview
         </button>
+        {(canEdit || doc.status !== "draft") && (
+          <button
+            onClick={() => setPublishing(true)}
+            className="flex items-center gap-1.5 bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-3.5 py-2 hover:bg-[#0a3a6b]"
+          >
+            <Globe size={14} /> {doc.status === "draft" ? "Publish" : "Share"}
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -210,6 +220,11 @@ export function SurveyBuilderPage({ surveyId, onBack }: { surveyId: string; onBa
             <div className="flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-[13px] font-medium text-sky-800">
               <span className="flex items-center gap-2"><Info size={14} /> {survey.remoteNotice}</span>
               <button onClick={survey.dismissRemoteNotice} aria-label="Dismiss" className="text-sky-500 hover:text-sky-700"><X size={15} /></button>
+            </div>
+          )}
+          {canEdit && doc.status === "open" && (
+            <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-[13px] text-green-800">
+              <Globe size={14} className="shrink-0" /> This survey is live. Changes you make here appear for new respondents right away; questions that already have answers are saved as new versions.
             </div>
           )}
           {!canEdit && (
@@ -344,6 +359,10 @@ export function SurveyBuilderPage({ surveyId, onBack }: { surveyId: string; onBa
           onClose={() => setPreviewing(false)}
           survey={{ title: doc.title, description: doc.description, consentEnabled: doc.consentEnabled, consentText: doc.consentText, items: doc.items }}
         />
+      )}
+
+      {publishing && (
+        <PublishDialog surveyId={surveyId} doc={doc} serverAction={survey.serverAction} onClose={() => setPublishing(false)} />
       )}
 
       {pending?.kind === "delete-question" && pendingQuestion && (

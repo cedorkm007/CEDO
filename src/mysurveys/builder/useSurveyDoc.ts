@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchSurveyRevision, loadSurveyDoc, saveSurveyDoc, type IdRemap } from "../surveyDocApi";
+import type { ActionResult } from "../publishApi";
 import type { SurveyDoc } from "../surveyTypes";
 
 export type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
@@ -161,6 +162,25 @@ export function useSurveyDoc(surveyId: string) {
     await runSave();
   }, [conflict, runSave, setState]);
 
+  /**
+   * Run a staff action that changes the survey on the server (save settings,
+   * publish, close). Pending edits are saved first, the action carries the
+   * revision this client last saw (so it can't overwrite someone else's work),
+   * and on success the survey is reloaded so status/revision stay in step.
+   */
+  const serverAction = useCallback(async (fn: (revision: number) => Promise<ActionResult>): Promise<ActionResult> => {
+    const clean = await flush();
+    if (!clean) return { ok: false, conflict: false, error: "Your latest edits could not be saved yet. Resolve that first, then try again." };
+    const res = await fn(baseRevision.current);
+    if (res.ok) {
+      await reload();
+    } else if (res.conflict) {
+      setConflict({ editedByName: res.editedByName, updatedAt: res.updatedAt, revision: res.revision });
+      setState("conflict");
+    }
+    return res;
+  }, [flush, reload, setState]);
+
   // Pick up other people's edits while there is nothing of mine waiting to be saved.
   useEffect(() => {
     const id = window.setInterval(async () => {
@@ -191,7 +211,7 @@ export function useSurveyDoc(surveyId: string) {
 
   return {
     doc, loading, loadFailed, canEdit, saveState, saveError, conflict, remoteNotice,
-    update, flush, reload, loadTheirVersion, keepMyVersion,
+    update, flush, reload, serverAction, loadTheirVersion, keepMyVersion,
     dismissRemoteNotice: () => setRemoteNotice(null),
     retrySave: () => { void runSave(); },
   };

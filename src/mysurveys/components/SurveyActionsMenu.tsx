@@ -7,10 +7,12 @@ interface SurveyActionsMenuProps {
   onOpen: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  // Share / Get Link & QR / View Responses are wired in later phases; until
-  // then they are shown (so the final layout is visible) but disabled.
+  /** True once the survey has been published (it has a public link). */
+  hasLink: boolean;
+  onGetLink: () => void;
+  // Share / View Responses are wired in later phases; until then they are
+  // shown (so the final layout is visible) but disabled.
   onShare?: () => void;
-  onGetLink?: () => void;
   onViewResponses?: () => void;
 }
 
@@ -20,7 +22,7 @@ interface SurveyActionsMenuProps {
  * primitive depends on CSS variables this project never defines.
  * Role-aware: only the owner sees Share and Delete.
  */
-export function SurveyActionsMenu({ role, onOpen, onDuplicate, onDelete, onShare, onGetLink, onViewResponses }: SurveyActionsMenuProps) {
+export function SurveyActionsMenu({ role, hasLink, onOpen, onDuplicate, onDelete, onShare, onGetLink, onViewResponses }: SurveyActionsMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -67,8 +69,8 @@ export function SurveyActionsMenu({ role, onOpen, onDuplicate, onDelete, onShare
               <Share2 size={14} /> Share {!onShare && <span className="ml-auto text-[10px] font-semibold text-slate-300">Soon</span>}
             </button>
           )}
-          <button role="menuitem" onClick={() => onGetLink && pick(onGetLink)} disabled={!onGetLink} className={itemClass}>
-            <QrCode size={14} /> Get Link / QR {!onGetLink && <span className="ml-auto text-[10px] font-semibold text-slate-300">Soon</span>}
+          <button role="menuitem" onClick={() => pick(onGetLink)} disabled={!hasLink} className={itemClass}>
+            <QrCode size={14} /> Get Link / QR {!hasLink && <span className="ml-auto text-[10px] font-semibold text-slate-300">Not published</span>}
           </button>
           <button role="menuitem" onClick={() => onViewResponses && pick(onViewResponses)} disabled={!onViewResponses} className={itemClass}>
             <BarChart3 size={14} /> View Responses {!onViewResponses && <span className="ml-auto text-[10px] font-semibold text-slate-300">Soon</span>}
