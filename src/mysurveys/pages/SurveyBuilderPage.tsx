@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, Check, Eye, Globe, Info, Layers, Loader2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, Eye, Globe, Info, Layers, Loader2, Users, X } from "lucide-react";
 import { useSurveyDoc } from "../builder/useSurveyDoc";
 import { QuestionCard } from "../builder/QuestionCard";
 import { SectionCard } from "../builder/SectionCard";
@@ -7,6 +7,7 @@ import { AddQuestionMenu } from "../builder/AddQuestionMenu";
 import { PreviewOverlay } from "../builder/PreviewOverlay";
 import { PublishDialog } from "../builder/PublishDialog";
 import { ConfirmModal } from "../builder/ConfirmModal";
+import { ShareDialog } from "../components/ShareDialog";
 import { fieldClass } from "../builder/cardParts";
 import { SurveyStatusBadge } from "../components/SurveyStatusBadge";
 import {
@@ -40,6 +41,7 @@ export function SurveyBuilderPage({ surveyId, onBack }: { surveyId: string; onBa
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -144,6 +146,15 @@ export function SurveyBuilderPage({ surveyId, onBack }: { surveyId: string; onBa
   if (survey.loading) {
     return <div className="fixed inset-0 z-[100] bg-[#f7f9fc] flex items-center justify-center text-slate-400">Loading…</div>;
   }
+  if (survey.accessLost) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-[#f7f9fc] flex flex-col items-center justify-center gap-4 text-slate-500 p-6 text-center">
+        <p className="text-[15px] font-bold text-[#062444]">You no longer have access to this survey</p>
+        <p className="max-w-sm text-[13px]">The owner removed your access (or the survey was deleted). Any changes you hadn't saved could not be kept.</p>
+        <button onClick={onBack} className="flex items-center gap-1.5 border border-[#e6ecf5] bg-white text-[#062444] text-[12.5px] font-semibold rounded-lg px-3.5 py-2"><ArrowLeft size={14} /> Back to My Surveys</button>
+      </div>
+    );
+  }
   if (!doc) {
     return (
       <div className="fixed inset-0 z-[100] bg-[#f7f9fc] flex flex-col items-center justify-center gap-4 text-slate-500 p-6 text-center">
@@ -183,17 +194,25 @@ export function SurveyBuilderPage({ surveyId, onBack }: { surveyId: string; onBa
           <SurveyStatusBadge status={doc.status} /> {doc.role}
         </span>
         <button
-          onClick={() => setPreviewing(true)}
-          className="flex items-center gap-1.5 border border-[#e6ecf5] text-[#062444] text-[12.5px] font-semibold rounded-lg px-3.5 py-2 hover:bg-[#f7f9fc]"
+          onClick={() => setPreviewing(true)} aria-label="Preview"
+          className="flex items-center gap-1.5 border border-[#e6ecf5] text-[#062444] text-[12.5px] font-semibold rounded-lg px-2.5 sm:px-3.5 py-2 hover:bg-[#f7f9fc]"
         >
-          <Eye size={14} /> Preview
+          <Eye size={14} /> <span className="hidden sm:inline">Preview</span>
         </button>
+        {doc.role === "owner" && (
+          <button
+            onClick={() => setSharing(true)} aria-label="Share with colleagues"
+            className="flex items-center gap-1.5 border border-[#e6ecf5] text-[#062444] text-[12.5px] font-semibold rounded-lg px-2.5 sm:px-3.5 py-2 hover:bg-[#f7f9fc]"
+          >
+            <Users size={14} /> <span className="hidden sm:inline">Share</span>
+          </button>
+        )}
         {(canEdit || doc.status !== "draft") && (
           <button
-            onClick={() => setPublishing(true)}
-            className="flex items-center gap-1.5 bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-3.5 py-2 hover:bg-[#0a3a6b]"
+            onClick={() => setPublishing(true)} aria-label={doc.status === "draft" ? "Publish" : "Link and QR code"}
+            className="flex items-center gap-1.5 bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-2.5 sm:px-3.5 py-2 hover:bg-[#0a3a6b]"
           >
-            <Globe size={14} /> {doc.status === "draft" ? "Publish" : "Share"}
+            <Globe size={14} /> <span className="hidden sm:inline">{doc.status === "draft" ? "Publish" : "Link & QR"}</span>
           </button>
         )}
       </div>
@@ -359,6 +378,10 @@ export function SurveyBuilderPage({ surveyId, onBack }: { surveyId: string; onBa
           onClose={() => setPreviewing(false)}
           survey={{ title: doc.title, description: doc.description, consentEnabled: doc.consentEnabled, consentText: doc.consentText, items: doc.items }}
         />
+      )}
+
+      {sharing && doc.role === "owner" && (
+        <ShareDialog surveyId={surveyId} surveyTitle={doc.title} onClose={() => setSharing(false)} />
       )}
 
       {publishing && (

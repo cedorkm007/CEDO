@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MoreVertical, FolderOpen, Copy, Share2, QrCode, BarChart3, Trash2 } from "lucide-react";
+import { MoreVertical, FolderOpen, Copy, Share2, QrCode, BarChart3, Trash2, LogOut } from "lucide-react";
 import type { SurveyRole } from "../mySurveysApi";
 
 interface SurveyActionsMenuProps {
@@ -10,9 +10,12 @@ interface SurveyActionsMenuProps {
   /** True once the survey has been published (it has a public link). */
   hasLink: boolean;
   onGetLink: () => void;
-  // Share / View Responses are wired in later phases; until then they are
-  // shown (so the final layout is visible) but disabled.
-  onShare?: () => void;
+  /** Owner only. */
+  onShare: () => void;
+  /** Editors and viewers: remove themselves from the survey. */
+  onLeave: () => void;
+  // View Responses is wired in a later phase; until then it is shown (so the
+  // final layout is visible) but disabled.
   onViewResponses?: () => void;
 }
 
@@ -22,7 +25,7 @@ interface SurveyActionsMenuProps {
  * primitive depends on CSS variables this project never defines.
  * Role-aware: only the owner sees Share and Delete.
  */
-export function SurveyActionsMenu({ role, hasLink, onOpen, onDuplicate, onDelete, onShare, onGetLink, onViewResponses }: SurveyActionsMenuProps) {
+export function SurveyActionsMenu({ role, hasLink, onOpen, onDuplicate, onDelete, onShare, onLeave, onGetLink, onViewResponses }: SurveyActionsMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -65,8 +68,8 @@ export function SurveyActionsMenu({ role, hasLink, onOpen, onDuplicate, onDelete
             <Copy size={14} /> Duplicate
           </button>
           {role === "owner" && (
-            <button role="menuitem" onClick={() => onShare && pick(onShare)} disabled={!onShare} className={itemClass}>
-              <Share2 size={14} /> Share {!onShare && <span className="ml-auto text-[10px] font-semibold text-slate-300">Soon</span>}
+            <button role="menuitem" onClick={() => pick(onShare)} className={itemClass}>
+              <Share2 size={14} /> Share
             </button>
           )}
           <button role="menuitem" onClick={() => pick(onGetLink)} disabled={!hasLink} className={itemClass}>
@@ -75,6 +78,14 @@ export function SurveyActionsMenu({ role, hasLink, onOpen, onDuplicate, onDelete
           <button role="menuitem" onClick={() => onViewResponses && pick(onViewResponses)} disabled={!onViewResponses} className={itemClass}>
             <BarChart3 size={14} /> View Responses {!onViewResponses && <span className="ml-auto text-[10px] font-semibold text-slate-300">Soon</span>}
           </button>
+          {role !== "owner" && (
+            <>
+              <div className="my-1 border-t border-[#f0f3f8]" />
+              <button role="menuitem" onClick={() => pick(onLeave)} className="w-full flex items-center gap-2 whitespace-nowrap px-3 py-2 text-left text-red-600 hover:bg-red-50">
+                <LogOut size={14} /> Remove from my list
+              </button>
+            </>
+          )}
           {role === "owner" && (
             <>
               <div className="my-1 border-t border-[#f0f3f8]" />

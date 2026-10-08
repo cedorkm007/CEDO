@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchSurveyRevision, loadSurveyDoc, saveSurveyDoc, type IdRemap } from "../surveyDocApi";
+import { fetchSurveyPulse, loadSurveyDoc, saveSurveyDoc, type IdRemap } from "../surveyDocApi";
 import type { ActionResult } from "../publishApi";
 import type { SurveyDoc } from "../surveyTypes";
 
@@ -38,7 +38,9 @@ function applyRemap(doc: SurveyDoc, remap: IdRemap): SurveyDoc {
  * - Every save carries the revision this client last saw. If someone else saved
  *   in between, the server refuses and we surface a conflict (nothing is
  *   overwritten); the person chooses to load theirs or keep theirs-over-mine.
- * - While idle, polls the revision so other people's edits show up without a refresh.
+ * - While idle, polls so other people's edits (and changes to this person's own
+ *   access) show up without a refresh. If the person is demoted or removed while
+ *   editing, the refused save is detected and the survey is re-read instead of retried.
  * - Unsaved edits are flushed when leaving, and the browser warns on tab close.
  */
 export function useSurveyDoc(surveyId: string) {
@@ -49,6 +51,7 @@ export function useSurveyDoc(surveyId: string) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictInfo | null>(null);
   const [remoteNotice, setRemoteNotice] = useState<string | null>(null);
+  const [accessLost, setAccessLost] = useState(false);
 
   const docRef = useRef<SurveyDoc | null>(null);
   const stateRef = useRef<SaveState>("saved");
@@ -92,6 +95,22 @@ export function useSurveyDoc(surveyId: string) {
     return () => { cancelled = true; };
   }, [reload]);
 
+  /**
+   * The server refused a save because this person's access changed (demoted to
+   * viewer, or removed). Re-read what they can now see: if nothing, they have lost
+   * access; otherwise load the survey as it is for them now (read-only for a viewer).
+   */
+  const handleAccessChange = useCallback(async (): Promise<void> => {
+    if (timer.current) window.clearTimeout(timer.current);
+    const fresh = await loadSurveyDoc(surveyId);
+    if (!fresh) { setAccessLost(true); return; }
+    const before = docRef.current?.role;
+    adopt(fresh);
+    setRemoteNotice(fresh.role === "viewer" && before !== "viewer"
+      ? "You now have view-only access to this survey, so your latest changes could not be saved."
+      : "Your access to this survey changed, so your latest changes could not be saved. The current version has been loaded.");
+  }, [surveyId, adopt]);
+
   const runSave = useCallback(async (): Promise<void> => {
     if (saving.current) { again.current = true; return; }
     if (editSeq.current === savedSeq.current || !docRef.current) { if (stateRef.current !== "conflict") setState("saved"); return; }
@@ -120,12 +139,14 @@ export function useSurveyDoc(surveyId: string) {
     } else if (res.conflict) {
       setConflict({ editedByName: res.editedByName, updatedAt: res.updatedAt, revision: res.revision });
       setState("conflict");
+    } else if (/permission/i.test(res.error)) {
+      await handleAccessChange(); // retrying can never succeed: find out what changed instead
     } else {
       setSaveError(res.error);
       setState("error");
       timer.current = window.setTimeout(() => { void runSave(); }, ERROR_RETRY_MS);
     }
-  }, [surveyId, setState]);
+  }, [surveyId, setState, handleAccessChange]);
 
   /** Apply an edit to the document and schedule an auto-save. */
   const update = useCallback((fn: (d: SurveyDoc) => SurveyDoc) => {
@@ -185,12 +206,19 @@ export function useSurveyDoc(surveyId: string) {
   useEffect(() => {
     const id = window.setInterval(async () => {
       if (stateRef.current !== "saved" || saving.current || !docRef.current) return;
-      const rev = await fetchSurveyRevision(surveyId);
-      if (rev === null || rev <= baseRevision.current) return;
+      const pulse = await fetchSurveyPulse(surveyId);
+      if (pulse.kind === "error") return;
+      if (pulse.kind === "no_access") { setAccessLost(true); return; }
+      const roleChanged = pulse.role !== docRef.current?.role;
+      if (pulse.revision <= baseRevision.current && !roleChanged) return;
       if (stateRef.current !== "saved" || saving.current) return;
       if (await reload()) {
-        const who = docRef.current?.lastEditedByName;
-        setRemoteNotice(who ? `Updated with changes saved by ${who}.` : "Updated with changes saved by someone else.");
+        if (roleChanged) {
+          setRemoteNotice(pulse.role === "viewer" ? "You now have view-only access to this survey." : "Your access to this survey was changed.");
+        } else {
+          const who = docRef.current?.lastEditedByName;
+          setRemoteNotice(who ? `Updated with changes saved by ${who}.` : "Updated with changes saved by someone else.");
+        }
       }
     }, POLL_MS);
     return () => window.clearInterval(id);
@@ -210,7 +238,7 @@ export function useSurveyDoc(surveyId: string) {
   }, [runSave]);
 
   return {
-    doc, loading, loadFailed, canEdit, saveState, saveError, conflict, remoteNotice,
+    doc, loading, loadFailed, canEdit, saveState, saveError, conflict, remoteNotice, accessLost,
     update, flush, reload, serverAction, loadTheirVersion, keepMyVersion,
     dismissRemoteNotice: () => setRemoteNotice(null),
     retrySave: () => { void runSave(); },

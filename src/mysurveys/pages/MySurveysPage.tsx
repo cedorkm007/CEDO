@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus, FileUp, Search, ClipboardList, X, Users } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import {
   fetchSurveyList, createSurvey, duplicateSurvey, deleteSurvey,
   type SurveyListItem, type SurveyScope, type SurveyStatus,
@@ -9,6 +10,9 @@ import { SurveyStatusBadge } from "../components/SurveyStatusBadge";
 import { DeleteSurveyModal } from "../components/DeleteSurveyModal";
 import { ShareLinkModal } from "../components/ShareLinkModal";
 import { CsvImportModal } from "../components/CsvImportModal";
+import { ShareDialog } from "../components/ShareDialog";
+import { ConfirmModal } from "../builder/ConfirmModal";
+import { removeShare } from "../shareApi";
 import { SurveyBuilderPage } from "./SurveyBuilderPage";
 
 type StatusFilter = "all" | SurveyStatus;
@@ -28,9 +32,8 @@ function formatDateTime(iso: string): string {
  * database (RLS + my_survey_role() in supabase_migration_my_surveys_core.sql),
  * not by this UI: the buttons here only mirror those permissions.
  *
- * List, filter, create, create from a CSV template, duplicate, delete, and
- * Get Link/QR. Share and View Responses are visible but disabled until their
- * own phases.
+ * List, filter, create, create from a CSV template, duplicate, delete, share,
+ * and Get Link/QR. View Responses is visible but disabled until its own phase.
  */
 export function MySurveysPage() {
   const [tab, setTab] = useState<SurveyScope>("mine");
@@ -43,6 +46,8 @@ export function MySurveysPage() {
   const [deleteTarget, setDeleteTarget] = useState<SurveyListItem | null>(null);
   const [linkTarget, setLinkTarget] = useState<SurveyListItem | null>(null);
   const [importingCsv, setImportingCsv] = useState(false);
+  const [shareTarget, setShareTarget] = useState<SurveyListItem | null>(null);
+  const [leaveTarget, setLeaveTarget] = useState<SurveyListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -72,6 +77,16 @@ export function MySurveysPage() {
     setError(null);
     // The copy is owned by the person who duplicated it, so it lives under "My Surveys".
     if (tab === "mine") await load("mine"); else setTab("mine");
+  }
+
+  async function handleLeave() {
+    if (!leaveTarget) return;
+    const { data } = await supabase.auth.getUser();
+    const res = data.user ? await removeShare(leaveTarget.id, data.user.id) : { ok: false, error: "Not signed in." };
+    if (!res.ok) setError(res.error ?? "Couldn't remove the survey from your list.");
+    else setError(null);
+    setLeaveTarget(null);
+    await load(tab);
   }
 
   async function handleDelete() {
@@ -195,7 +210,7 @@ export function MySurveysPage() {
                   <button onClick={() => setOpenSurveyId(s.id)} className="text-left min-w-0">
                     <p className="text-[14px] font-semibold text-[#062444] break-words">{s.title}</p>
                   </button>
-                  <RowMenu survey={s} onOpen={() => setOpenSurveyId(s.id)} onDuplicate={() => void handleDuplicate(s)} onDelete={() => setDeleteTarget(s)} onGetLink={() => setLinkTarget(s)} />
+                  <RowMenu survey={s} onOpen={() => setOpenSurveyId(s.id)} onDuplicate={() => void handleDuplicate(s)} onDelete={() => setDeleteTarget(s)} onGetLink={() => setLinkTarget(s)} onShare={() => setShareTarget(s)} onLeave={() => setLeaveTarget(s)} />
                 </div>
                 <div className="mt-2 flex items-center gap-2 flex-wrap">
                   <SurveyStatusBadge status={s.status} />
@@ -238,7 +253,7 @@ export function MySurveysPage() {
                       {s.lastEditedByName && <span className="block text-[11px]">by {s.lastEditedByName}</span>}
                     </td>
                     <td className="px-4 py-2.5">
-                      <RowMenu survey={s} onOpen={() => setOpenSurveyId(s.id)} onDuplicate={() => void handleDuplicate(s)} onDelete={() => setDeleteTarget(s)} onGetLink={() => setLinkTarget(s)} />
+                      <RowMenu survey={s} onOpen={() => setOpenSurveyId(s.id)} onDuplicate={() => void handleDuplicate(s)} onDelete={() => setDeleteTarget(s)} onGetLink={() => setLinkTarget(s)} onShare={() => setShareTarget(s)} onLeave={() => setLeaveTarget(s)} />
                     </td>
                   </tr>
                 ))}
@@ -252,6 +267,20 @@ export function MySurveysPage() {
         <CsvImportModal
           onClose={() => setImportingCsv(false)}
           onCreated={id => { setImportingCsv(false); setTab("mine"); setOpenSurveyId(id); }}
+        />
+      )}
+
+      {shareTarget && (
+        <ShareDialog surveyId={shareTarget.id} surveyTitle={shareTarget.title} onClose={() => setShareTarget(null)} />
+      )}
+
+      {leaveTarget && (
+        <ConfirmModal
+          title={`Remove "${leaveTarget.title}" from your list?`}
+          message={`You will no longer be able to open it. ${leaveTarget.ownerName} still owns it and can share it with you again.`}
+          confirmLabel="Remove"
+          onCancel={() => setLeaveTarget(null)}
+          onConfirm={() => void handleLeave()}
         />
       )}
 
@@ -269,6 +298,6 @@ export function MySurveysPage() {
   );
 }
 
-function RowMenu({ survey, onOpen, onDuplicate, onDelete, onGetLink }: { survey: SurveyListItem; onOpen: () => void; onDuplicate: () => void; onDelete: () => void; onGetLink: () => void }) {
-  return <SurveyActionsMenu role={survey.myRole} hasLink={survey.publicSlug !== null} onOpen={onOpen} onDuplicate={onDuplicate} onDelete={onDelete} onGetLink={onGetLink} />;
+function RowMenu({ survey, onOpen, onDuplicate, onDelete, onGetLink, onShare, onLeave }: { survey: SurveyListItem; onOpen: () => void; onDuplicate: () => void; onDelete: () => void; onGetLink: () => void; onShare: () => void; onLeave: () => void }) {
+  return <SurveyActionsMenu role={survey.myRole} hasLink={survey.publicSlug !== null} onOpen={onOpen} onDuplicate={onDuplicate} onDelete={onDelete} onGetLink={onGetLink} onShare={onShare} onLeave={onLeave} />;
 }

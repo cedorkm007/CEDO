@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import type { SurveyDoc, SurveyItem } from "./surveyTypes";
+import type { SurveyDoc, SurveyItem, SurveyRole } from "./surveyTypes";
 
 /** What gets saved. Everything else on SurveyDoc (revision, role, …) is server-owned. */
 export interface SaveableDoc {
@@ -68,9 +68,20 @@ export async function saveSurveyDoc(surveyId: string, expectedRevision: number, 
   return { ok: true, revision: r.revision as number, updatedAt: r.updatedAt as string, editedByName: (r.editedByName as string | null) ?? "", remap };
 }
 
-/** Cheap "has anyone else saved?" check used for polling. */
-export async function fetchSurveyRevision(surveyId: string): Promise<number | null> {
-  const { data, error } = await supabase.from("my_surveys").select("revision").eq("id", surveyId).maybeSingle();
-  if (error || !data) return null;
-  return data.revision as number;
+export type SurveyPulse =
+  | { kind: "ok"; revision: number; role: SurveyRole }
+  | { kind: "no_access" }
+  | { kind: "error" };
+
+/**
+ * Cheap check used for polling: has anyone else saved (revision), has my role
+ * changed, or have I lost access altogether (the server returns nothing when
+ * the caller is no longer the owner or a member).
+ */
+export async function fetchSurveyPulse(surveyId: string): Promise<SurveyPulse> {
+  const { data, error } = await supabase.rpc("get_my_survey_publish_info", { p_survey_id: surveyId });
+  if (error) return { kind: "error" };
+  if (!data) return { kind: "no_access" };
+  const d = data as { revision: number; role: SurveyRole | null };
+  return { kind: "ok", revision: d.revision, role: d.role ?? "viewer" };
 }

@@ -8,8 +8,8 @@ owner before the next one starts. Append-only: one entry per finished micro-task
 1. Database tables + "My Surveys" menu item + survey list page  (done, committed)
 2. Survey builder (all question types, preview, auto-save)  (done, committed)
 3. Publishing: public URL, QR code, one-question-at-a-time respondent page, saving responses  (done, committed)
-4. CSV template download and upload with validation  ← **Phase 4**
-5. Sharing and roles
+4. CSV template download and upload with validation  (done, committed)
+5. Sharing and roles  ← **Phase 5**
 6. Connection to the Research Project Monitoring tool (automatic charts)
 7. Exports, closing dates, response limits, polish
 
@@ -171,4 +171,46 @@ owner before the next one starts. Append-only: one entry per finished micro-task
   no Create button), an Excel-style semicolon + Windows-1252 file with accents / quoted commas,
   title edit, create, builder opens on the new Draft, Publish shows no readiness problems,
   phone-width layout without sideways scrolling.
+- `npx tsc -b --force` exit 0, `npm run build` exit 0, eslint clean.
+
+## Decisions locked in Phase 5
+
+- The permission model was built in Phase 1 (RLS + `my_survey_role()`), so Phase 5 adds only the
+  functions the Share dialog needs, each of which checks the caller's role itself (security
+  definer): `search_staff_for_survey_share` (owner), `list_my_survey_access` (any member),
+  `set_my_survey_share` (owner), `remove_my_survey_share` (owner removes anyone; anyone else may
+  remove only themself = "Remove from my list"). `granted_by` is stamped server-side.
+- Staff search needs 2+ characters (no directory dump), matches first/last/full name, email and
+  username, treats `%` and `_` literally, never returns the owner, caps at 15, and tells the owner
+  who already has access.
+- Roles are exactly as specced: owner (delete + sharing), editor (edit questions/settings,
+  publish/close, view responses), viewer (view survey + responses). Roles can only be Editor or
+  Viewer when granted; ownership cannot be transferred or granted.
+- Sharing only controls which STAFF can open the survey. The public link (Phase 3) is separate.
+- If a person's access changes while they have the builder open: the refused save is NOT retried
+  (it can never succeed). The hook re-reads the survey -- a demoted editor gets it read-only with
+  a notice; a removed person gets a "no longer have access" screen. The 10s poll now also notices
+  a role change or lost access (it uses `get_my_survey_publish_info`, which returns revision + role,
+  and nothing when access is gone), so an idle collaborator finds out without having to edit.
+- No in-app notification when something is shared: the existing notification system is built around
+  task/deliverable tracking (src/app/App.tsx), not a generic feed, so hooking into it would be a
+  new feature. The survey simply appears under "Shared with me".
+- Builder top bar: "Share" (people, owner only) is new; the public-link button is now "Link & QR"
+  once published (it used to say "Share"). All three are icon-only below the `sm` breakpoint.
+- Simultaneous editing (Phase 2's revision check) is now exercised with real shared users in the
+  tests: the second editor's stale save gets a conflict naming the first, and nothing is overwritten.
+
+### Phase 5 log
+- Migration `supabase_migration_my_surveys_sharing.sql`: 4 functions. 46/46 checks pass in an
+  in-process Postgres (search rules and wildcard safety, add/change/duplicate/self/unknown/invalid
+  role, who-can-do-what for owner/editor/viewer/stranger/anon, direct table writes still blocked by
+  policy, two editors conflicting, demoted editor refused with a permission message, removal and
+  leaving, responses hidden from removed people, owner delete cascades), incl. a second run.
+- UI: `components/ShareDialog.tsx`, `shareApi.ts`; list menu "Share" (owner) / "Remove from my
+  list" (everyone else); builder "Share" button; access-lost screen; hook handling.
+- Verified in a browser against the real SQL, acting as the owner and as a collaborator: search by
+  name, add as Editor/Viewer, change role, remove, "Already Editor", 1-letter search makes no
+  call, Shared-with-me menu for an editor (no Share/Delete), builder as editor (no Share button),
+  demotion while typing (one refused save, read-only + notice, earlier edit intact), removal while
+  open (access-lost screen within one poll), leave-survey confirmation, 360px layout.
 - `npx tsc -b --force` exit 0, `npm run build` exit 0, eslint clean.
