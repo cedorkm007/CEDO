@@ -8,6 +8,7 @@ import { SurveyActionsMenu } from "../components/SurveyActionsMenu";
 import { SurveyStatusBadge } from "../components/SurveyStatusBadge";
 import { DeleteSurveyModal } from "../components/DeleteSurveyModal";
 import { ShareLinkModal } from "../components/ShareLinkModal";
+import { CsvImportModal } from "../components/CsvImportModal";
 import { SurveyBuilderPage } from "./SurveyBuilderPage";
 
 type StatusFilter = "all" | SurveyStatus;
@@ -27,9 +28,9 @@ function formatDateTime(iso: string): string {
  * database (RLS + my_survey_role() in supabase_migration_my_surveys_core.sql),
  * not by this UI: the buttons here only mirror those permissions.
  *
- * Phase 1: list, filter, create, duplicate, delete. Share, Get Link/QR,
- * View Responses and "Create from Template (CSV)" are visible but disabled
- * until their own phases.
+ * List, filter, create, create from a CSV template, duplicate, delete, and
+ * Get Link/QR. Share and View Responses are visible but disabled until their
+ * own phases.
  */
 export function MySurveysPage() {
   const [tab, setTab] = useState<SurveyScope>("mine");
@@ -41,6 +42,7 @@ export function MySurveysPage() {
   const [openSurveyId, setOpenSurveyId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SurveyListItem | null>(null);
   const [linkTarget, setLinkTarget] = useState<SurveyListItem | null>(null);
+  const [importingCsv, setImportingCsv] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -110,8 +112,8 @@ export function MySurveysPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
-            disabled title="Coming in a later phase"
-            className="flex items-center gap-1.5 border border-[#e6ecf5] text-slate-300 text-[12.5px] font-semibold rounded-lg px-3.5 py-2 cursor-not-allowed"
+            onClick={() => setImportingCsv(true)}
+            className="flex items-center gap-1.5 border border-[#e6ecf5] text-[#062444] text-[12.5px] font-semibold rounded-lg px-3.5 py-2 hover:bg-[#f7f9fc]"
           >
             <FileUp size={15} /> Create from Template (CSV)
           </button>
@@ -244,6 +246,13 @@ export function MySurveysPage() {
             </table>
           </div>
         </>
+      )}
+
+      {importingCsv && (
+        <CsvImportModal
+          onClose={() => setImportingCsv(false)}
+          onCreated={id => { setImportingCsv(false); setTab("mine"); setOpenSurveyId(id); }}
+        />
       )}
 
       {linkTarget && linkTarget.publicSlug && (

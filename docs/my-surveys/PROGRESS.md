@@ -7,8 +7,8 @@ owner before the next one starts. Append-only: one entry per finished micro-task
 
 1. Database tables + "My Surveys" menu item + survey list page  (done, committed)
 2. Survey builder (all question types, preview, auto-save)  (done, committed)
-3. Publishing: public URL, QR code, one-question-at-a-time respondent page, saving responses  ← **Phase 3**
-4. CSV template download and upload with validation
+3. Publishing: public URL, QR code, one-question-at-a-time respondent page, saving responses  (done, committed)
+4. CSV template download and upload with validation  ← **Phase 4**
 5. Sharing and roles
 6. Connection to the Research Project Monitoring tool (automatic charts)
 7. Exports, closing dates, response limits, polish
@@ -131,4 +131,44 @@ owner before the next one starts. Append-only: one entry per finished micro-task
   page): publish, link + QR (QR decoded back to the exact URL with a scanner library), custom
   thank-you, submit, stored answers, one-per-device, limit closing the survey, closed page,
   reopen with the same slug, manual close, list "Get Link / QR".
+- `npx tsc -b --force` exit 0, `npm run build` exit 0, eslint clean.
+
+## Decisions locked in Phase 4
+
+- Parsing and validation happen in the browser (`src/mysurveys/csv/`) so people get row-by-row
+  messages before anything exists; creating is ONE server call, `create_my_survey_from_doc`,
+  which makes a Draft and fills it through `save_my_survey` in a single transaction (the server
+  re-validates everything). A failure rolls the whole thing back -- no half-made survey.
+- Row numbers are SPREADSHEET row numbers: row 1 is the header, blank and `#` rows still count.
+  That is why the template keeps its column names in row 1 and puts its instructions in `#` rows
+  at the BOTTOM (ignored on upload) instead of the top: "Row 4" is the third question the person
+  typed, matching what they see in Excel / Google Sheets.
+- Every row is checked and ALL problems are reported together; if there is any error nothing is
+  created. Warnings (ignored columns, options on a text question, repeated question text, a
+  section name that comes back later) are shown in the preview and never block creation.
+- Real-world files handled: UTF-8 with/without BOM, UTF-16 ("Unicode Text"), Windows-1252
+  (Excel's plain CSV, with a notice), CRLF/LF/CR, commas / doubled quotes / line breaks inside
+  quoted cells, `;` and tab separators (chosen by which one yields the recognised column names).
+- Header matching is forgiving (case, spaces, "required (yes/no)", any column order, unknown
+  extra columns ignored with a warning); `question_type` is forgiving about case/spaces/hyphens
+  but strict about the name (a typo is an error with a did-you-mean suggestion).
+- Section rule: a section header is created each time the `section` value changes; a blank value
+  stays in the current section. The template downloaded from the app uploads cleanly as-is.
+- The existing `src/sead/csvUtils.ts` is untouched (its parser comma-only and drops blank lines,
+  which would break row numbers); only its `downloadCsv` (adds the BOM Excel needs) is reused.
+
+### Phase 4 log
+- Migration `supabase_migration_my_surveys_csv_import.sql`: `create_my_survey_from_doc`.
+  11/11 checks pass in an in-process Postgres (draft owned by the caller, round trip, privacy,
+  anon denied, invalid document rejected AND rolled back, server re-validation, item limit,
+  publishable afterwards), including a second run of the file.
+- CSV engine: `csv/csvText.ts`, `csv/surveyCsv.ts` -- 59/59 unit checks (template round trip, spec
+  example error "Row 4: unknown question_type 'mutiple_choice'", row numbering, quoting, UTF-8,
+  Windows-1252, UTF-16, semicolons, header variants, every field rule, limits).
+- UI: `components/CsvImportModal.tsx`, `csvImportApi.ts`; the list page's button is now live.
+- Verified in a browser against the real SQL (local Postgres shim): template download (BOM, file
+  name, spec rows), uploading that template, a file with 5 mistakes (rows listed, nothing created,
+  no Create button), an Excel-style semicolon + Windows-1252 file with accents / quoted commas,
+  title edit, create, builder opens on the new Draft, Publish shows no readiness problems,
+  phone-width layout without sideways scrolling.
 - `npx tsc -b --force` exit 0, `npm run build` exit 0, eslint clean.
