@@ -45,7 +45,7 @@ export function CountBars({ items, base }: { items: { label: string; count: numb
 
 export function CountPie({ items, base }: { items: { label: string; count: number }[]; base: number }) {
   const data = items.filter(i => i.count > 0);
-  if (data.length === 0) return <p className="text-[13px] text-slate-400">No answers to chart yet.</p>;
+  if (data.length === 0) return <p className="text-[13px] text-slate-500">No answers to chart yet.</p>;
   return (
     <div className="h-[260px]" role="img" aria-label="Pie chart of the answers">
       <ResponsiveContainer width="100%" height="100%">
@@ -70,7 +70,7 @@ export function CountColumns({ items, color = "#0088cc", height = 220, label = "
   /** Label every column (scales have few, fixed values); otherwise crowded labels are thinned out. */
   everyLabel?: boolean;
 }) {
-  if (items.length === 0) return <p className="text-[13px] text-slate-400">Nothing to chart yet.</p>;
+  if (items.length === 0) return <p className="text-[13px] text-slate-500">Nothing to chart yet.</p>;
   return (
     <div style={{ height }} role="img" aria-label={`${label} chart`}>
       <ResponsiveContainer width="100%" height="100%">
@@ -95,7 +95,7 @@ export function TextWordCloud({ texts }: { texts: string[] }) {
     return layoutWordCloud(words, 14, 44);
   }, [texts]);
 
-  if (placed.length === 0) return <p className="text-[13px] text-slate-400">No words to show yet.</p>;
+  if (placed.length === 0) return <p className="text-[13px] text-slate-500">No words to show yet.</p>;
   return (
     <div
       className="relative mx-auto w-full max-w-[720px] rounded-xl bg-white"
@@ -123,7 +123,7 @@ export function TextWordCloud({ texts }: { texts: string[] }) {
 export function StatTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl bg-[#f8fafd] p-3 text-center">
-      <p className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
       <p className="text-lg font-extrabold text-[#062444]">{value}</p>
     </div>
   );

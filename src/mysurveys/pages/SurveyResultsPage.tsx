@@ -16,7 +16,7 @@ export function SurveyResultsPage({ surveyId, title, onBack }: { surveyId: strin
         </button>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[14px] font-bold text-[#062444]">{title || "Untitled survey"}</p>
-          <p className="text-[11.5px] text-slate-400">Responses</p>
+          <p className="text-[11.5px] text-slate-500">Responses</p>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">

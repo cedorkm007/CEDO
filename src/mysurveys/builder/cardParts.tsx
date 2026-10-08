@@ -21,7 +21,7 @@ export function DragHandle({ drag }: { drag: DragProps }) {
   );
 }
 
-const iconBtn = "p-2 rounded-lg text-slate-400 hover:bg-[#f0f3f8] hover:text-[#062444] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400";
+const iconBtn = "p-2 rounded-lg text-slate-500 hover:bg-[#f0f3f8] hover:text-[#062444] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-500";
 
 export function CardActions({ canMoveUp, canMoveDown, onMove, onDuplicate, onDelete, deleteLabel }: {
   canMoveUp: boolean;

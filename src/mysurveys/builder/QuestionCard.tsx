@@ -77,13 +77,13 @@ export function QuestionCard({
         {!readOnly && <DragHandle drag={drag} />}
         <button type="button" onClick={onActivate} className="flex-1 min-w-0 text-left" aria-label={`Edit question ${number}`}>
           <p className="text-[13.5px] font-semibold text-[#062444] break-words">
-            <span className="text-slate-400 mr-1.5">{number}.</span>
-            {q.text.trim() || <span className="italic font-normal text-slate-400">Untitled question</span>}
+            <span className="text-slate-500 mr-1.5">{number}.</span>
+            {q.text.trim() || <span className="italic font-normal text-slate-500">Untitled question</span>}
             {q.required && <span className="text-red-500 ml-1" aria-label="required">*</span>}
           </p>
-          <p className="mt-1 flex items-center gap-2 flex-wrap text-[11.5px] text-slate-400">
+          <p className="mt-1 flex items-center gap-2 flex-wrap text-[11.5px] text-slate-500">
             <span className="inline-flex items-center gap-1"><TypeIcon size={12} /> {QUESTION_TYPE_LABELS[q.type]}</span>
-            {q.version > 1 && <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-500">v{q.version}</span>}
+            {q.version > 1 && <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">v{q.version}</span>}
             {q.hasResponses && <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold text-sky-700">has responses</span>}
             {problems.length > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">Needs attention</span>}
           </p>
@@ -95,9 +95,9 @@ export function QuestionCard({
   return (
     <div className={`bg-white rounded-2xl border-2 border-[#0088cc] shadow-sm p-4 ${dragging ? "opacity-40" : ""}`}>
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-wide text-[#0088cc]">
+        <div className="flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-wide text-[#00709f]">
           {!readOnly && <DragHandle drag={drag} />} Question {number}
-          {q.version > 1 && <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold normal-case tracking-normal text-slate-500">v{q.version}</span>}
+          {q.version > 1 && <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold normal-case tracking-normal text-slate-600">v{q.version}</span>}
         </div>
       </div>
 
@@ -129,7 +129,7 @@ export function QuestionCard({
 
       <div className="mt-3">
         {(q.type === "short_answer" || q.type === "paragraph" || q.type === "date" || q.type === "time") && (
-          <p className="rounded-lg border border-dashed border-[#d5dfec] bg-[#f9fbfe] px-3 py-2.5 text-[12.5px] text-slate-400">
+          <p className="rounded-lg border border-dashed border-[#d5dfec] bg-[#f9fbfe] px-3 py-2.5 text-[12.5px] text-slate-500">
             {q.type === "short_answer" ? "Respondents type a short answer" : q.type === "paragraph" ? "Respondents type a longer answer" : q.type === "date" ? "Respondents pick a date" : "Respondents pick a time"}
           </p>
         )}
@@ -138,7 +138,7 @@ export function QuestionCard({
           <div className="space-y-2">
             {q.options.map((o, i) => (
               <div key={o.id} className="flex items-center gap-1.5">
-                <span className="w-6 shrink-0 text-center text-[11.5px] font-semibold text-slate-400" aria-hidden="true">
+                <span className="w-6 shrink-0 text-center text-[11.5px] font-semibold text-slate-500" aria-hidden="true">
                   {q.type === "dropdown" ? `${i + 1}.` : q.type === "checkboxes" ? "☐" : "○"}
                 </span>
                 <input
@@ -150,15 +150,15 @@ export function QuestionCard({
                 />
                 {!readOnly && (
                   <>
-                    <button type="button" onClick={() => moveOption(i, -1)} disabled={i === 0} aria-label={`Move option ${i + 1} up`} className="p-1.5 rounded-md text-slate-400 hover:bg-[#f0f3f8] disabled:opacity-30"><ArrowUp size={14} /></button>
-                    <button type="button" onClick={() => moveOption(i, 1)} disabled={i === q.options.length - 1} aria-label={`Move option ${i + 1} down`} className="p-1.5 rounded-md text-slate-400 hover:bg-[#f0f3f8] disabled:opacity-30"><ArrowDown size={14} /></button>
-                    <button type="button" onClick={() => set({ options: q.options.filter(x => x.id !== o.id) })} aria-label={`Remove option ${i + 1}`} className="p-1.5 rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"><X size={14} /></button>
+                    <button type="button" onClick={() => moveOption(i, -1)} disabled={i === 0} aria-label={`Move option ${i + 1} up`} className="p-1.5 rounded-md text-slate-500 hover:bg-[#f0f3f8] disabled:opacity-30"><ArrowUp size={14} /></button>
+                    <button type="button" onClick={() => moveOption(i, 1)} disabled={i === q.options.length - 1} aria-label={`Move option ${i + 1} down`} className="p-1.5 rounded-md text-slate-500 hover:bg-[#f0f3f8] disabled:opacity-30"><ArrowDown size={14} /></button>
+                    <button type="button" onClick={() => set({ options: q.options.filter(x => x.id !== o.id) })} aria-label={`Remove option ${i + 1}`} className="p-1.5 rounded-md text-slate-500 hover:bg-red-50 hover:text-red-600"><X size={14} /></button>
                   </>
                 )}
               </div>
             ))}
             {!readOnly && (
-              <button type="button" onClick={() => addOptionAfter(null)} className="ml-7 flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
+              <button type="button" onClick={() => addOptionAfter(null)} className="ml-7 flex items-center gap-1 text-[12.5px] font-semibold text-[#00709f] hover:underline">
                 <Plus size={13} /> Add option
               </button>
             )}

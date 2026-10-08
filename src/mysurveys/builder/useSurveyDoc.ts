@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchSurveyPulse, loadSurveyDoc, saveSurveyDoc, type IdRemap } from "../surveyDocApi";
+import { fetchSurveyPulse, loadSurveyDoc, saveSurveyDoc, type IdRemap, type SurveyPulse } from "../surveyDocApi";
 import type { ActionResult } from "../publishApi";
-import type { SurveyDoc } from "../surveyTypes";
+import type { SurveyDoc, SurveyStatus } from "../surveyTypes";
 
 export type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
 
@@ -52,6 +52,7 @@ export function useSurveyDoc(surveyId: string) {
   const [conflict, setConflict] = useState<ConflictInfo | null>(null);
   const [remoteNotice, setRemoteNotice] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
+  const [effective, setEffective] = useState<{ status: SurveyStatus; autoClosedWhy: string | null } | null>(null);
 
   const docRef = useRef<SurveyDoc | null>(null);
   const stateRef = useRef<SaveState>("saved");
@@ -76,6 +77,15 @@ export function useSurveyDoc(surveyId: string) {
     setConflict(null);
   }, [setState]);
 
+  /** The survey's true status: Open past its closing date / at its response limit is really Closed. */
+  const applyPulse = useCallback((pulse: Extract<SurveyPulse, { kind: "ok" }>) => {
+    const autoClosed = pulse.status === "open" && (pulse.limitReached || pulse.closesAtPassed);
+    setEffective({
+      status: autoClosed ? "closed" : pulse.status,
+      autoClosedWhy: autoClosed ? (pulse.limitReached ? "its response limit was reached" : "its closing date passed") : null,
+    });
+  }, []);
+
   const reload = useCallback(async (): Promise<boolean> => {
     const fresh = await loadSurveyDoc(surveyId);
     if (!fresh) return false;
@@ -91,9 +101,10 @@ export function useSurveyDoc(surveyId: string) {
       if (cancelled) return;
       setLoadFailed(!ok);
       setLoading(false);
+      if (ok) { const p = await fetchSurveyPulse(surveyId); if (!cancelled && p.kind === "ok") applyPulse(p); }
     })();
     return () => { cancelled = true; };
-  }, [reload]);
+  }, [reload, surveyId, applyPulse]);
 
   /**
    * The server refused a save because this person's access changed (demoted to
@@ -209,6 +220,7 @@ export function useSurveyDoc(surveyId: string) {
       const pulse = await fetchSurveyPulse(surveyId);
       if (pulse.kind === "error") return;
       if (pulse.kind === "no_access") { setAccessLost(true); return; }
+      applyPulse(pulse);
       const roleChanged = pulse.role !== docRef.current?.role;
       if (pulse.revision <= baseRevision.current && !roleChanged) return;
       if (stateRef.current !== "saved" || saving.current) return;
@@ -222,7 +234,7 @@ export function useSurveyDoc(surveyId: string) {
       }
     }, POLL_MS);
     return () => window.clearInterval(id);
-  }, [surveyId, reload]);
+  }, [surveyId, reload, applyPulse]);
 
   // Warn before closing the tab with unsaved edits; flush on leaving the page.
   useEffect(() => {
@@ -238,7 +250,7 @@ export function useSurveyDoc(surveyId: string) {
   }, [runSave]);
 
   return {
-    doc, loading, loadFailed, canEdit, saveState, saveError, conflict, remoteNotice, accessLost,
+    doc, loading, loadFailed, canEdit, saveState, saveError, conflict, remoteNotice, accessLost, effectiveStatus: effective?.status ?? null, autoClosedWhy: effective?.autoClosedWhy ?? null,
     update, flush, reload, serverAction, loadTheirVersion, keepMyVersion,
     dismissRemoteNotice: () => setRemoteNotice(null),
     retrySave: () => { void runSave(); },

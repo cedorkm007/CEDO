@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import type { SurveyDoc, SurveyItem, SurveyRole } from "./surveyTypes";
+import type { SurveyDoc, SurveyItem, SurveyRole, SurveyStatus } from "./surveyTypes";
 
 /** What gets saved. Everything else on SurveyDoc (revision, role, …) is server-owned. */
 export interface SaveableDoc {
@@ -69,19 +69,21 @@ export async function saveSurveyDoc(surveyId: string, expectedRevision: number, 
 }
 
 export type SurveyPulse =
-  | { kind: "ok"; revision: number; role: SurveyRole }
+  | { kind: "ok"; revision: number; role: SurveyRole; status: SurveyStatus; closesAtPassed: boolean; limitReached: boolean }
   | { kind: "no_access" }
   | { kind: "error" };
 
 /**
  * Cheap check used for polling: has anyone else saved (revision), has my role
- * changed, or have I lost access altogether (the server returns nothing when
- * the caller is no longer the owner or a member).
+ * changed, have I lost access altogether (the server returns nothing when the
+ * caller is no longer the owner or a member), and what is the survey's TRUE
+ * status (a survey past its closing date / at its limit is closed even if nobody
+ * has visited it yet to flip the stored status).
  */
 export async function fetchSurveyPulse(surveyId: string): Promise<SurveyPulse> {
   const { data, error } = await supabase.rpc("get_my_survey_publish_info", { p_survey_id: surveyId });
   if (error) return { kind: "error" };
   if (!data) return { kind: "no_access" };
-  const d = data as { revision: number; role: SurveyRole | null };
-  return { kind: "ok", revision: d.revision, role: d.role ?? "viewer" };
+  const d = data as { revision: number; role: SurveyRole | null; status: SurveyStatus; closesAtPassed: boolean; limitReached: boolean };
+  return { kind: "ok", revision: d.revision, role: d.role ?? "viewer", status: d.status, closesAtPassed: Boolean(d.closesAtPassed), limitReached: Boolean(d.limitReached) };
 }

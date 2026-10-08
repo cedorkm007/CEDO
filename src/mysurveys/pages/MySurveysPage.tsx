@@ -23,6 +23,17 @@ const TABS: { key: SurveyScope; label: string }[] = [
   { key: "shared", label: "Shared with me" },
 ];
 
+/** "Closes Oct 15, 5:00 PM" for an open survey with an automatic closing date. */
+function closingNote(s: SurveyListItem): string | null {
+  if (s.status !== "open" || !s.closesAt) return null;
+  return `Closes ${new Date(s.closesAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
+}
+
+/** "42" or "42 / 100" when there is a response limit. */
+function responsesText(s: SurveyListItem): string {
+  return s.responseLimit ? `${s.responseCount} / ${s.responseLimit}` : String(s.responseCount);
+}
+
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
@@ -134,7 +145,7 @@ export function MySurveysPage() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-[#062444]">My Surveys</h1>
-          <p className="text-[13px] text-slate-500">Build surveys, share them with colleagues, and collect responses through a link or QR code.</p>
+          <p className="text-[13px] text-slate-600">Build surveys, share them with colleagues, and collect responses through a link or QR code.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
@@ -158,7 +169,7 @@ export function MySurveysPage() {
             key={t.key} role="tab" aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
             className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
-              tab === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+              tab === t.key ? "border-primary text-foreground" : "border-transparent text-slate-600 hover:text-foreground"
             }`}
           >
             {t.key === "shared" ? <Users size={14} /> : <ClipboardList size={14} />} {t.label}
@@ -168,7 +179,7 @@ export function MySurveysPage() {
 
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <label htmlFor="survey-search" className="sr-only">Search surveys</label>
           <input
             id="survey-search" value={search} onChange={e => setSearch(e.target.value)}
@@ -189,9 +200,9 @@ export function MySurveysPage() {
       </div>
 
       {loading ? (
-        <p className="text-center text-slate-400 py-14">Loading…</p>
+        <p className="text-center text-slate-500 py-14">Loading…</p>
       ) : surveys.length === 0 ? (
-        <div className="text-center py-14 text-slate-400 bg-[#f7f9fc] rounded-2xl">
+        <div className="text-center py-14 text-slate-500 bg-[#f7f9fc] rounded-2xl">
           <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-30" />
           {tab === "mine" ? (
             <>
@@ -206,7 +217,7 @@ export function MySurveysPage() {
           )}
         </div>
       ) : visible.length === 0 ? (
-        <div className="text-center py-14 text-slate-400 bg-[#f7f9fc] rounded-2xl">
+        <div className="text-center py-14 text-slate-500 bg-[#f7f9fc] rounded-2xl">
           <Search className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="text-[13.5px] font-medium">{hasFilters ? "No surveys match your search or filter." : "No surveys."}</p>
         </div>
@@ -225,9 +236,10 @@ export function MySurveysPage() {
                 </div>
                 <div className="mt-2 flex items-center gap-2 flex-wrap">
                   <SurveyStatusBadge status={s.status} />
-                  <span className="text-[12px] text-slate-500">{s.responseCount} response{s.responseCount === 1 ? "" : "s"}</span>
+                  <span className="text-[12px] text-slate-500">{responsesText(s)} response{s.responseCount === 1 && !s.responseLimit ? "" : "s"}</span>
+                  {closingNote(s) && <span className="text-[11.5px] text-slate-500">{closingNote(s)}</span>}
                 </div>
-                <p className="mt-2 text-[11.5px] text-slate-400">
+                <p className="mt-2 text-[11.5px] text-slate-500">
                   Owner: {s.ownerName}<br />
                   Modified {formatDateTime(s.updatedAt)}{s.lastEditedByName ? ` by ${s.lastEditedByName}` : ""}
                 </p>
@@ -239,7 +251,7 @@ export function MySurveysPage() {
           <div className="hidden lg:block bg-white rounded-2xl border border-[#e6ecf5]">
             <table className="w-full text-[12.5px]">
               <thead>
-                <tr className="bg-[#f8fafd] text-left text-slate-400 text-[11px] font-bold uppercase tracking-wide">
+                <tr className="bg-[#f8fafd] text-left text-slate-500 text-[11px] font-bold uppercase tracking-wide">
                   <th className="px-4 py-3 rounded-tl-2xl">Title</th>
                   <th className="px-4 py-3">Owner</th>
                   <th className="px-4 py-3">Status</th>
@@ -256,10 +268,13 @@ export function MySurveysPage() {
                         <ClipboardList size={15} className="shrink-0" /> <span className="truncate">{s.title}</span>
                       </button>
                     </td>
-                    <td className="px-4 py-2.5 text-slate-500">{s.ownerName}{tab === "shared" && <span className="ml-1.5 text-[10.5px] font-bold uppercase text-slate-400">· {s.myRole}</span>}</td>
-                    <td className="px-4 py-2.5"><SurveyStatusBadge status={s.status} /></td>
-                    <td className="px-4 py-2.5 text-right text-slate-600 tabular-nums">{s.responseCount}</td>
-                    <td className="px-4 py-2.5 text-slate-400">
+                    <td className="px-4 py-2.5 text-slate-500">{s.ownerName}{tab === "shared" && <span className="ml-1.5 text-[10.5px] font-bold uppercase text-slate-500">· {s.myRole}</span>}</td>
+                    <td className="px-4 py-2.5">
+                      <SurveyStatusBadge status={s.status} />
+                      {closingNote(s) && <span className="mt-0.5 block text-[11px] text-slate-500">{closingNote(s)}</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-slate-600 tabular-nums">{responsesText(s)}</td>
+                    <td className="px-4 py-2.5 text-slate-500">
                       {formatDateTime(s.updatedAt)}
                       {s.lastEditedByName && <span className="block text-[11px]">by {s.lastEditedByName}</span>}
                     </td>

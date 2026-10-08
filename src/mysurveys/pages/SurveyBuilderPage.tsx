@@ -150,7 +150,7 @@ export function SurveyBuilderPage({ surveyId, onBack, onViewResponses }: { surve
 
   // ── Loading / missing ──
   if (survey.loading) {
-    return <div className="fixed inset-0 z-[100] bg-[#f7f9fc] flex items-center justify-center text-slate-400">Loading…</div>;
+    return <div className="fixed inset-0 z-[100] bg-[#f7f9fc] flex items-center justify-center text-slate-500">Loading…</div>;
   }
   if (survey.accessLost) {
     return (
@@ -170,6 +170,9 @@ export function SurveyBuilderPage({ surveyId, onBack, onViewResponses }: { surve
     );
   }
 
+  // The stored status can still say Open for a survey whose closing date passed or whose limit was
+  // reached (it closes the next time someone visits it); show what respondents actually get.
+  const liveStatus = survey.effectiveStatus ?? doc.status;
   const status = survey.saveState;
   const statusPill =
     status === "saving" ? <span className="flex items-center gap-1.5 text-slate-500"><Loader2 size={13} className="animate-spin" /> Saving…</span>
@@ -196,8 +199,8 @@ export function SurveyBuilderPage({ surveyId, onBack, onViewResponses }: { surve
           <p className="truncate text-[14px] font-bold text-[#062444]">{doc.title || "Untitled survey"}</p>
           <p className="text-[11.5px]" role="status" aria-live="polite">{statusPill}</p>
         </div>
-        <span className="hidden sm:flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-          <SurveyStatusBadge status={doc.status} /> {doc.role}
+        <span className="hidden sm:flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+          <SurveyStatusBadge status={liveStatus} /> {doc.role}
         </span>
         <button
           onClick={() => setPreviewing(true)} aria-label="Preview"
@@ -255,7 +258,12 @@ export function SurveyBuilderPage({ surveyId, onBack, onViewResponses }: { surve
               <button onClick={survey.dismissRemoteNotice} aria-label="Dismiss" className="text-sky-500 hover:text-sky-700"><X size={15} /></button>
             </div>
           )}
-          {canEdit && doc.status === "open" && (
+          {canEdit && survey.autoClosedWhy && (
+            <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[13px] text-amber-900">
+              <Info size={14} className="shrink-0" /> This survey closed automatically because {survey.autoClosedWhy}. Respondents now see “This survey is no longer accepting responses”. Open Publish to change its settings and reopen it.
+            </div>
+          )}
+          {canEdit && liveStatus === "open" && (
             <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-[13px] text-green-800">
               <Globe size={14} className="shrink-0" /> This survey is live. Changes you make here appear for new respondents right away; questions that already have answers are saved as new versions.
             </div>
@@ -282,7 +290,7 @@ export function SurveyBuilderPage({ surveyId, onBack, onViewResponses }: { surve
               placeholder="Description (optional) — shown on the first screen"
               className={`${fieldClass} mt-3 resize-y`}
             />
-            <p className="mt-3 text-[11.5px] text-slate-400">
+            <p className="mt-3 text-[11.5px] text-slate-500">
               {doc.lastEditedByName ? <>Last edited by <span className="font-semibold text-slate-500">{doc.lastEditedByName}</span>, </> : "Last edited "}
               {formatDateTime(doc.updatedAt)} · {doc.responseCount} response{doc.responseCount === 1 ? "" : "s"}
             </p>
@@ -314,14 +322,14 @@ export function SurveyBuilderPage({ surveyId, onBack, onViewResponses }: { surve
                   onChange={e => update(d => ({ ...d, consentText: e.target.value }))}
                   className={`${fieldClass} mt-3 resize-y leading-relaxed`}
                 />
-                <p className="mt-1.5 text-[11.5px] text-slate-400">This is a starting template, not legal advice — edit it to match your study and have it reviewed by your data protection officer.</p>
+                <p className="mt-1.5 text-[11.5px] text-slate-500">This is a starting template, not legal advice — edit it to match your study and have it reviewed by your data protection officer.</p>
               </>
             )}
           </div>
 
           {/* Items */}
           {items.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 bg-white rounded-2xl border border-dashed border-[#d5dfec]">
+            <div className="text-center py-12 text-slate-500 bg-white rounded-2xl border border-dashed border-[#d5dfec]">
               <Layers className="w-10 h-10 mx-auto mb-2 opacity-30" />
               <p className="text-[13.5px] font-medium">This survey has no questions yet.</p>
               {canEdit && <p className="text-[12.5px]">Use “Add question” below to get started.</p>}
@@ -381,7 +389,7 @@ export function SurveyBuilderPage({ surveyId, onBack, onViewResponses }: { surve
               >
                 <Layers size={15} /> Add section
               </button>
-              <span className="ml-auto hidden sm:block text-[11.5px] text-slate-400">New items are added below the one you're editing.</span>
+              <span className="ml-auto hidden sm:block text-[11.5px] text-slate-500">New items are added below the one you're editing.</span>
             </div>
           </div>
         )}

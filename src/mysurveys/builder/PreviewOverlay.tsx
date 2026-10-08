@@ -26,7 +26,7 @@ export function PreviewOverlay({ survey, onClose }: { survey: RunnerSurvey; onCl
     <div className="fixed inset-0 z-[110] flex flex-col bg-[#1c2733]" role="dialog" aria-modal="true" aria-label="Survey preview">
       <div className="flex shrink-0 items-center gap-3 bg-white px-4 py-2.5 border-b border-[#e6ecf5]">
         <span className="text-[13.5px] font-bold text-[#062444]">Preview</span>
-        <span className="hidden sm:block text-[12px] text-slate-400">This is exactly what respondents see. Nothing you enter here is saved.</span>
+        <span className="hidden sm:block text-[12px] text-slate-500">This is exactly what respondents see. Nothing you enter here is saved.</span>
         <div className="flex-1" />
         <div className="flex overflow-hidden rounded-lg border border-[#e6ecf5]" role="group" aria-label="Preview size">
           <button onClick={() => setDevice("phone")} aria-pressed={device === "phone"} className={tab(device === "phone")}><Smartphone size={14} /> Phone</button>
@@ -40,7 +40,7 @@ export function PreviewOverlay({ survey, onClose }: { survey: RunnerSurvey; onCl
             device === "phone" ? "w-[390px] max-w-full rounded-[28px] border-[8px] border-slate-900" : "w-full max-w-5xl rounded-xl"
           }`}
         >
-          <SurveyRunner survey={survey} mode="preview" className="w-full" />
+          <SurveyRunner survey={survey} mode="preview" className="w-full" asMain={false} />
         </div>
       </div>
     </div>

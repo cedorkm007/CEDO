@@ -94,7 +94,7 @@ export function ShareDialog({ surveyId, surveyTitle, onClose }: { surveyId: stri
             <h3 id="share-title" className="text-[15px] font-bold text-[#062444]">Share with colleagues</h3>
             <p className="truncate text-[12.5px] text-slate-500">{surveyTitle || "Untitled survey"}</p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-slate-400 hover:bg-[#f0f3f8]"><X size={16} /></button>
+          <button onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-slate-500 hover:bg-[#f0f3f8]"><X size={16} /></button>
         </div>
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4 sm:px-6">
@@ -103,7 +103,7 @@ export function ShareDialog({ surveyId, surveyTitle, onClose }: { surveyId: stri
             <label htmlFor="share-search" className="mb-1.5 block text-[12px] font-semibold text-slate-600">Add people by name or email</label>
             <div className="flex gap-2">
               <div className="relative min-w-0 flex-1">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
                   id="share-search" value={query} onChange={e => setQuery(e.target.value)} autoComplete="off"
                   placeholder="Start typing a name or email…" className={`${fieldClass} pl-8`}
@@ -122,9 +122,9 @@ export function ShareDialog({ surveyId, surveyTitle, onClose }: { surveyId: stri
             {query.trim().length >= 2 && (
               <ul className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-[#e6ecf5]" aria-label="Search results">
                 {searching && results === null ? (
-                  <li className="flex items-center gap-2 px-3 py-2.5 text-[12.5px] text-slate-400"><Loader2 size={13} className="animate-spin" /> Searching…</li>
+                  <li className="flex items-center gap-2 px-3 py-2.5 text-[12.5px] text-slate-500"><Loader2 size={13} className="animate-spin" /> Searching…</li>
                 ) : results && results.length === 0 ? (
-                  <li className="px-3 py-2.5 text-[12.5px] text-slate-400">No staff match “{query.trim()}”.</li>
+                  <li className="px-3 py-2.5 text-[12.5px] text-slate-500">No staff match “{query.trim()}”.</li>
                 ) : (
                   (results ?? []).map(m => (
                     <li key={m.id} className="flex items-center gap-3 border-b border-[#f0f3f8] px-3 py-2 last:border-b-0">
@@ -134,7 +134,7 @@ export function ShareDialog({ surveyId, surveyTitle, onClose }: { surveyId: stri
                         <span className="block truncate text-[11.5px] text-slate-500">{m.email}</span>
                       </span>
                       {m.accessRole ? (
-                        <span className="shrink-0 text-[11.5px] font-semibold text-slate-400">Already {ROLE_LABELS[m.accessRole]}</span>
+                        <span className="shrink-0 text-[11.5px] font-semibold text-slate-500">Already {ROLE_LABELS[m.accessRole]}</span>
                       ) : (
                         <button
                           onClick={() => void add(m)} disabled={busyId !== null}
@@ -162,7 +162,7 @@ export function ShareDialog({ surveyId, surveyTitle, onClose }: { surveyId: stri
             {loadError ? (
               <p className="text-[12.5px] text-red-600">{loadError}</p>
             ) : !people ? (
-              <p className="flex items-center gap-2 text-[12.5px] text-slate-400"><Loader2 size={13} className="animate-spin" /> Loading…</p>
+              <p className="flex items-center gap-2 text-[12.5px] text-slate-500"><Loader2 size={13} className="animate-spin" /> Loading…</p>
             ) : (
               <ul className="rounded-xl border border-[#e6ecf5]">
                 {people.map(p => (
@@ -187,7 +187,7 @@ export function ShareDialog({ surveyId, surveyTitle, onClose }: { surveyId: stri
                         </select>
                         <button
                           onClick={() => void remove(p)} disabled={busyId === p.userId} aria-label={`Remove access for ${p.name}`} title="Remove access"
-                          className="shrink-0 rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                          className="shrink-0 rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
                         >
                           {busyId === p.userId ? <Loader2 size={15} className="animate-spin" /> : <X size={15} />}
                         </button>
@@ -195,7 +195,7 @@ export function ShareDialog({ surveyId, surveyTitle, onClose }: { surveyId: stri
                     )}
                   </li>
                 ))}
-                {people.length === 1 && <li className="px-3 py-2.5 text-[12.5px] text-slate-400">Only you can open this survey so far.</li>}
+                {people.length === 1 && <li className="px-3 py-2.5 text-[12.5px] text-slate-500">Only you can open this survey so far.</li>}
               </ul>
             )}
           </div>

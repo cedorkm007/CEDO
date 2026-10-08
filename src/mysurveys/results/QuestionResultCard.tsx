@@ -28,7 +28,7 @@ function QuestionBody({ versions }: { versions: ResultQuestion[] }) {
   const values = useMemo(() => combineValues(versions), [versions]);
   const texts = useMemo(() => combineTexts(versions), [versions]);
 
-  if (answered === 0) return <p className="text-[13px] text-slate-400">No responses to this question yet.</p>;
+  if (answered === 0) return <p className="text-[13px] text-slate-500">No responses to this question yet.</p>;
 
   switch (latest.type) {
     case "multiple_choice":
@@ -46,7 +46,7 @@ function QuestionBody({ versions }: { versions: ResultQuestion[] }) {
     case "checkboxes":
       return (
         <div className="space-y-2">
-          <p className="text-[11.5px] text-slate-400">People could tick several options, so percentages are out of the {answered} people who answered.</p>
+          <p className="text-[11.5px] text-slate-500">People could tick several options, so percentages are out of the {answered} people who answered.</p>
           <CountBars items={options} base={answered} />
         </div>
       );
@@ -66,9 +66,9 @@ function QuestionBody({ versions }: { versions: ResultQuestion[] }) {
             <StatTile label="Median" value={stats.median !== null ? stats.median.toFixed(1).replace(/\.0$/, "") : "—"} />
           </div>
           {latest.type === "linear_scale" && (latest.scaleMinLabel || latest.scaleMaxLabel) && (
-            <p className="text-[11px] text-slate-400">Scale {lo}–{hi}: “{latest.scaleMinLabel || lo}” to “{latest.scaleMaxLabel || hi}”</p>
+            <p className="text-[11px] text-slate-500">Scale {lo}–{hi}: “{latest.scaleMinLabel || lo}” to “{latest.scaleMaxLabel || hi}”</p>
           )}
-          {latest.type === "rating" && <p className="text-[11px] text-slate-400">Star rating out of {hi}</p>}
+          {latest.type === "rating" && <p className="text-[11px] text-slate-500">Star rating out of {hi}</p>}
           <CountColumns items={columns} label="Answers" everyLabel />
         </div>
       );
@@ -77,7 +77,7 @@ function QuestionBody({ versions }: { versions: ResultQuestion[] }) {
     case "date":
       return (
         <div className="space-y-2">
-          <p className="text-[11.5px] text-slate-400">How many people gave each date, in date order.</p>
+          <p className="text-[11.5px] text-slate-500">How many people gave each date, in date order.</p>
           <CountColumns items={values.map(v => ({ label: formatDay(v.value), count: v.count }))} label="Answers per date" />
         </div>
       );
@@ -87,7 +87,7 @@ function QuestionBody({ versions }: { versions: ResultQuestion[] }) {
       for (const v of values) { const h = parseInt(v.value.slice(0, 2), 10); if (h >= 0 && h < 24) byHour[h] += v.count; }
       return (
         <div className="space-y-2">
-          <p className="text-[11.5px] text-slate-400">How many people gave a time in each hour of the day.</p>
+          <p className="text-[11.5px] text-slate-500">How many people gave a time in each hour of the day.</p>
           <CountColumns items={byHour.map((count, h) => ({ label: `${String(h).padStart(2, "0")}:00`, count }))} label="Answers per hour" />
         </div>
       );
@@ -100,7 +100,7 @@ function QuestionBody({ versions }: { versions: ResultQuestion[] }) {
       return (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11.5px] text-slate-400">
+            <p className="text-[11.5px] text-slate-500">
               {total > texts.length ? `Showing the latest ${texts.length} of ${total} answers` : `${total} answer${total === 1 ? "" : "s"}`}, newest first.
             </p>
             <div className="flex gap-1" role="group" aria-label="Show as">
@@ -116,7 +116,7 @@ function QuestionBody({ versions }: { versions: ResultQuestion[] }) {
                 {texts.slice(0, shown).map((t, i) => (
                   <li key={i} className="rounded-lg border border-[#e6ecf5] bg-white px-3 py-1.5 text-[13px] text-[#062444]">
                     <span className="whitespace-pre-line break-words">{t.text}</span>
-                    <span className="mt-0.5 block text-[10.5px] text-slate-400">
+                    <span className="mt-0.5 block text-[10.5px] text-slate-500">
                       {new Date(t.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                       {showVersion && <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-px font-semibold text-slate-500">v{t.version}</span>}
                     </span>
@@ -124,7 +124,7 @@ function QuestionBody({ versions }: { versions: ResultQuestion[] }) {
                 ))}
               </ul>
               {texts.length > shown && (
-                <button onClick={() => setShown(s => s + 30)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">Show more ({texts.length - shown} more)</button>
+                <button onClick={() => setShown(s => s + 30)} className="text-[12.5px] font-semibold text-[#00709f] hover:underline">Show more ({texts.length - shown} more)</button>
               )}
             </>
           )}
@@ -153,13 +153,13 @@ export function QuestionResultCard({ group, number }: { group: QuestionGroup; nu
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="break-words text-[14.5px] font-semibold leading-relaxed text-[#062444]">
-            <span className="mr-1.5 text-slate-400">{number}.</span>{latest.text.trim() || "Untitled question"}
+            <span className="mr-1.5 text-slate-500">{number}.</span>{latest.text.trim() || "Untitled question"}
           </h3>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-slate-500">
             <span className="inline-flex items-center gap-1"><TypeIcon size={12} /> {QUESTION_TYPE_LABELS[latest.type]}</span>
             <span>{totalAnswered} answered</span>
             {group.multiVersion && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">{group.versions.length} versions</span>}
-            {group.removed && <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-500">Removed from the survey</span>}
+            {group.removed && <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">Removed from the survey</span>}
           </p>
         </div>
       </div>
@@ -184,7 +184,7 @@ export function QuestionResultCard({ group, number }: { group: QuestionGroup; nu
           </div>
           <ul className="mt-2 space-y-0.5 text-[11.5px] text-slate-500">
             {group.versions.map(v => (
-              <li key={v.version} className="break-words"><span className="font-semibold text-slate-600">v{v.version}:</span> {v.text.trim() || "Untitled question"} <span className="text-slate-400">· {QUESTION_TYPE_LABELS[v.type]}</span></li>
+              <li key={v.version} className="break-words"><span className="font-semibold text-slate-600">v{v.version}:</span> {v.text.trim() || "Untitled question"} <span className="text-slate-500">· {QUESTION_TYPE_LABELS[v.type]}</span></li>
             ))}
           </ul>
         </div>

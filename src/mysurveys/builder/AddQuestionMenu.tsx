@@ -35,7 +35,7 @@ export function AddQuestionMenu({ onPick, primary }: { onPick: (type: QuestionTy
                 onClick={() => { setOpen(false); onPick(t); }}
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[#062444] hover:bg-[#f7f9fc]"
               >
-                <Icon size={14} className="text-slate-400" /> {QUESTION_TYPE_LABELS[t]}
+                <Icon size={14} className="text-slate-500" /> {QUESTION_TYPE_LABELS[t]}
               </button>
             );
           })}

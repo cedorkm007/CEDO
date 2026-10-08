@@ -48,7 +48,7 @@ export function LinkAndQr({ slug, closed }: { slug: string; closed?: boolean }) 
         </p>
       )}
       <div>
-        <label htmlFor="survey-public-link" className="block text-[11.5px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Survey link</label>
+        <label htmlFor="survey-public-link" className="block text-[11.5px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">Survey link</label>
         <div className="flex gap-2">
           <input
             id="survey-public-link" readOnly value={url} onFocus={e => e.target.select()}
@@ -61,7 +61,7 @@ export function LinkAndQr({ slug, closed }: { slug: string; closed?: boolean }) 
             {copied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy link</>}
           </button>
         </div>
-        <a href={url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-[#0088cc] hover:underline">
+        <a href={url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-[#00709f] hover:underline">
           <ExternalLink size={12} /> Open the survey page
         </a>
       </div>

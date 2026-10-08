@@ -10,8 +10,8 @@ owner before the next one starts. Append-only: one entry per finished micro-task
 3. Publishing: public URL, QR code, one-question-at-a-time respondent page, saving responses  (done, committed)
 4. CSV template download and upload with validation  (done, committed)
 5. Sharing and roles  (done, committed)
-6. Connection to the Research Project Monitoring tool (automatic charts)  ← **Phase 6**
-7. Exports, closing dates, response limits, polish
+6. Connection to the Research Project Monitoring tool (automatic charts)  (done, committed)
+7. Exports, closing dates, response limits, polish  ← **Phase 7 (final)**
 
 ## Decisions locked in Phase 1
 
@@ -266,3 +266,72 @@ owner before the next one starts. Append-only: one entry per finished micro-task
   NOT verifiable here: the realtime push itself (needs the migration on the live project); the
   polling safety net was verified.
 - `npx tsc -b --force` exit 0, `npm run build` exit 0, eslint clean on `src/mysurveys`.
+
+## Decisions locked in Phase 7
+
+- Export = CSV or Excel (.xlsx), built into the shared results panel, so it exists in BOTH My Surveys > View
+  Responses and Research Project Monitoring > Survey Results with no extra wiring. One row per response, one
+  column per question VERSION ("Q3 (v1). old wording", "Q3 (v2). new wording"; removed questions tagged
+  "[removed]"); each response has a value only in the version it answered. The Excel file also has a
+  "Questions" sheet describing every column. Device ids are never exported.
+- Paged on the server (`get_my_survey_export_page`, max 1000 rows per call) so large surveys never travel in
+  one request; the browser builds the file. 1,204 responses page correctly; 5,000 rows x 20 columns build an
+  .xlsx in well under a second.
+- Anonymous respondents write the free text, so exports are hardened against spreadsheet formula injection:
+  CSV text starting with = + - @ (tab / CR) gets a leading apostrophe (plain numbers and phone numbers like
+  +639171234567 are left alone), and the .xlsx stores text as inline strings, never formulas.
+- The .xlsx writer is ~120 lines on top of jszip (already a project dependency), imported only when someone
+  clicks Excel. No new dependency; nothing reaches the public respondent bundle.
+- Automatic closing no longer looks like an edit: the guard trigger skips revision / updated_at /
+  last_edited_by when there is no signed-in staff user (the public page closing a survey at its limit). Before,
+  an editor with unsaved work got a "someone else saved" conflict naming nobody who had saved.
+  (This redefines the Phase 1 function my_surveys_guard_update(); re-run the Phase 7 migration if Phase 1 is
+  ever re-run.)
+- The survey LIST (list_my_surveys_with_state, with a fallback to the old list if the migration is missing) and
+  the builder now show the TRUE status: a survey past its closing date or at its response limit reads Closed even
+  before anyone has visited it to flip the stored status. The list also shows "Closes Oct 15, 5:00 PM" and
+  "42 / 100" for limits; the builder shows why it closed.
+- Accessibility pass with the axe-core engine (WCAG 2 A/AA + best practices) on the real screens: every
+  respondent screen, the list, builder, Publish, Share, Preview, CSV import and results pages now report no
+  violations in My Surveys code. Fixed: light-grey text (now slate-500/600), small link blue (#0088cc ->
+  #00709f), grey badge contrast, a heading level, a duplicate main landmark inside the Preview, a labelled
+  region role on the consent box. One finding is NOT mine and was left alone: the app-wide floating chat
+  button has no accessible name.
+- Added: a no-JavaScript message on the public page, and docs/my-surveys/USER_GUIDE.md for staff.
+
+### Phase 7 log
+- Migration `supabase_migration_my_surveys_export_and_polish.sql`: 28/28 checks pass in an in-process Postgres
+  (stamps for staff edits vs automatic close, no false conflict, true list status for closing date / limit /
+  draft / shared, export columns in survey order, answers by type, versions as separate columns, paging with
+  no row lost or repeated, negative offset, 1000 cap, no device id leaked, editor/viewer allowed,
+  stranger/anon/removed denied), incl. a second run.
+- Export engine: 32/32 checks (column naming + versions + removed, consent column, local timestamps, typed
+  numbers, CSV escaping and formula neutralising, non-ASCII, file names; .xlsx read back with TWO independent
+  readers -- exceljs and SheetJS -- values, bold frozen header, real numbers, text kept as text, 40k-character
+  cells cut to Excel's limit, unique sheet names).
+- Verified in a browser (local Postgres shim, 42 responses + a reworded question): list shows Closed / "Closes
+  Oct 11" / "0 / 100", builder shows the Closed badge and banner, Excel and CSV both download from View
+  Responses (names, BOM, 43 rows, v1/v2 columns, frozen header, Questions sheet), the Export button is also
+  inside Research Project Monitoring, axe audits above.
+- `npx tsc -b --force` exit 0, `npm run build` exit 0, eslint clean.
+
+## Final audit against the original specification
+
+| # | Requirement | Status |
+|---|---|---|
+| 1 | "My Surveys" in the staff menu, same group/icon style as My Presentations | Done (Phase 1) |
+| 2 | List: My Surveys / Shared with me; New Survey; Create from Template (CSV); title, owner, status, responses, last modified; Open, Duplicate, Share, Get Link/QR, View Responses, Delete (confirmed) | Done (1, 3-6) |
+| 3 | Builder: title, description, sections; 9 question types; required, help text, drag-and-drop reorder, duplicate, delete; consent statement; auto-save; Preview | Done (2) |
+| 4 | CSV template: download with headers, one example per type, instructions; validate every row, errors by row number, create nothing on error; preview then Draft; UTF-8, quoted commas, Excel/Google Sheets files | Done (4) |
+| 5 | Publish -> Open, hard-to-guess URL, QR, Copy link, Download QR (PNG); no login; open/close manually, closing date/time, response limit, one per device, custom message; friendly closed page | Done (3, 7) |
+| 6 | One question per screen; Next/Back/Submit; Next disabled with a friendly message; swipe; Enter; progress "Question 3 of 12"; section intro; review screen with tap-to-change; progress saved in the browser and cleared on submit; custom thank-you | Done (2, 3) -- see note 1 |
+| 7 | Mobile-first; 44px+ targets, 16px+ text, whole-row options, centered card, reduced-motion, screen-reader and keyboard accessible, fast on slow data; tested at phone / tablet / desktop | Done; public page ~58 KB gzipped; axe audit clean |
+| 8 | Share dialog (search by name/email); Owner/Editor/Viewer; change or remove any time; Shared with me; concurrent edits warn instead of overwriting; "Last edited by"; permissions enforced by the server on every request | Done (1, 2, 5) |
+| 9 | Connection to Research Project Monitoring: each survey its own dataset, charts per question type, live updates, access = owner + shared only, export CSV/Excel from both places, versions marked | Done (6, 7) |
+| 10 | Tables for surveys, sections, questions, options, shares, responses, answers; answers link to question + response with submission time | Done (1) |
+| 11 | Seven phases, files + zip + test steps each | Done |
+
+Notes: (1) The last question's button reads "Review & submit" and the review screen holds the final "Submit",
+so the review screen the spec asks for comes before the submission. (2) Live push (realtime) of new responses
+into open charts could only be verified through its 30-second polling fallback until the Phase 6 migration is
+live on the project.

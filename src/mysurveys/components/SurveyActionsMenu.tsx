@@ -53,7 +53,7 @@ export function SurveyActionsMenu({ role, hasLink, onOpen, onDuplicate, onDelete
       <button
         onClick={() => setOpen(o => !o)}
         aria-label="More actions" aria-haspopup="menu" aria-expanded={open}
-        className="p-1.5 rounded-md text-slate-400 hover:bg-[#f0f3f8] hover:text-[#062444]"
+        className="p-1.5 rounded-md text-slate-500 hover:bg-[#f0f3f8] hover:text-[#062444]"
       >
         <MoreVertical size={16} />
       </button>

@@ -68,10 +68,10 @@ export function CsvImportModal({ onClose, onCreated }: { onClose: () => void; on
       <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl">
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#f0f3f8] px-5 py-4 sm:px-6">
           <div className="min-w-0">
-            <h3 id="csv-import-title" className="text-[15px] font-bold text-[#062444]">Create from Template (CSV)</h3>
+            <h2 id="csv-import-title" className="text-[15px] font-bold text-[#062444]">Create from Template (CSV)</h2>
             <p className="text-[12.5px] text-slate-500">Build a survey in a spreadsheet, then upload it here.</p>
           </div>
-          <button onClick={onClose} disabled={creating} aria-label="Close" className="rounded-md p-1.5 text-slate-400 hover:bg-[#f0f3f8] disabled:opacity-40"><X size={16} /></button>
+          <button onClick={onClose} disabled={creating} aria-label="Close" className="rounded-md p-1.5 text-slate-500 hover:bg-[#f0f3f8] disabled:opacity-40"><X size={16} /></button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
@@ -81,7 +81,7 @@ export function CsvImportModal({ onClose, onCreated }: { onClose: () => void; on
               <ol className="list-decimal space-y-1.5 pl-5 text-[13px] text-[#062444]">
                 <li>
                   Download the template and open it in Excel or Google Sheets.{" "}
-                  <button onClick={() => downloadCsv(TEMPLATE_FILE_NAME, buildTemplateCsv())} className="inline-flex items-center gap-1 font-semibold text-[#0088cc] hover:underline">
+                  <button onClick={() => downloadCsv(TEMPLATE_FILE_NAME, buildTemplateCsv())} className="inline-flex items-center gap-1 font-semibold text-[#00709f] hover:underline">
                     <Download size={13} /> Download Template
                   </button>
                 </li>
@@ -101,7 +101,7 @@ export function CsvImportModal({ onClose, onCreated }: { onClose: () => void; on
                 onDrop={e => { e.preventDefault(); setDragging(false); void handleFile(e.dataTransfer.files?.[0]); }}
                 className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors focus-within:ring-2 focus-within:ring-[#0088cc]/40 ${dragging ? "border-[#0088cc] bg-[#f0f8ff]" : "border-[#d5dfec] hover:border-[#0088cc]/50"}`}
               >
-                {reading ? <Loader2 size={26} className="animate-spin text-slate-400" /> : <FileSpreadsheet size={26} className="text-slate-400" />}
+                {reading ? <Loader2 size={26} className="animate-spin text-slate-500" /> : <FileSpreadsheet size={26} className="text-slate-500" />}
                 <span className="text-[13.5px] font-semibold text-[#062444]">{reading ? "Checking your file…" : "Choose your CSV file"}</span>
                 <span className="text-[12px] text-slate-500">or drag it here · every row is checked before anything is created</span>
                 <input
@@ -213,13 +213,13 @@ function PreviewList({ items }: { items: SurveyItem[] }) {
         return (
           <div key={item.id} className="rounded-lg px-3 py-2 hover:bg-[#f7f9fc]">
             <p className="break-words text-[13px] font-semibold text-[#062444]">
-              <span className="mr-1.5 text-slate-400">{n}.</span>{item.text}{item.required && <span className="ml-1 text-red-500" aria-label="required">*</span>}
+              <span className="mr-1.5 text-slate-500">{n}.</span>{item.text}{item.required && <span className="ml-1 text-red-500" aria-label="required">*</span>}
             </p>
             <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11.5px] text-slate-500">
               <span className="inline-flex items-center gap-1"><Icon size={11} /> {QUESTION_TYPE_LABELS[item.type]}</span>
               {detail && <span className="break-words">{detail}</span>}
             </p>
-            {item.helpText && <p className="mt-0.5 text-[11.5px] italic text-slate-400">{item.helpText}</p>}
+            {item.helpText && <p className="mt-0.5 text-[11.5px] italic text-slate-500">{item.helpText}</p>}
           </div>
         );
       })}

@@ -20,7 +20,7 @@ export function ShareLinkModal({ title, slug, status, onClose }: { title: string
             <h3 id="share-link-title" className="text-[15px] font-bold text-[#062444]">Survey link &amp; QR code</h3>
             <p className="truncate text-[12.5px] text-slate-500">{title}</p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-slate-400 hover:bg-[#f0f3f8]"><X size={16} /></button>
+          <button onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-slate-500 hover:bg-[#f0f3f8]"><X size={16} /></button>
         </div>
         <LinkAndQr slug={slug} closed={status === "closed"} />
       </div>

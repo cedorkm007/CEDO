@@ -60,7 +60,7 @@ const primaryBtn =
 const secondaryBtn =
   "min-h-[48px] rounded-xl border-2 border-[#c9d5e6] bg-white px-6 text-[16px] font-semibold text-[#062444] transition-colors hover:bg-[#f4f7fb] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0088cc]/40";
 
-export function SurveyRunner({ survey, mode, storageKey, thankYouMessage, onSubmit, className = "" }: {
+export function SurveyRunner({ survey, mode, storageKey, thankYouMessage, onSubmit, className = "", asMain = true }: {
   survey: RunnerSurvey;
   /** "preview" never saves anything and says so on the last screen. */
   mode: "preview" | "live";
@@ -69,6 +69,8 @@ export function SurveyRunner({ survey, mode, storageKey, thankYouMessage, onSubm
   thankYouMessage?: string;
   onSubmit?: (answers: RunnerAnswers, consentGiven: boolean) => Promise<{ ok: boolean; error?: string }>;
   className?: string;
+  /** The public page is the whole document, so the questions are its <main>. Inside the staff app (the builder's Preview) there already is one, so that passes false. */
+  asMain?: boolean;
 }) {
   const steps = useMemo<Step[]>(() => {
     const out: Step[] = [{ kind: "welcome" }];
@@ -211,6 +213,7 @@ export function SurveyRunner({ survey, mode, storageKey, thankYouMessage, onSubm
     : "";
 
   const animation = direction === "forward" ? "svr-forward" : "svr-back";
+  const Main = asMain ? "main" : "div";
 
   return (
     <div className={`@container flex min-h-full flex-col bg-[#f4f7fb] text-[#062444] ${className}`}>
@@ -230,7 +233,7 @@ export function SurveyRunner({ survey, mode, storageKey, thankYouMessage, onSubm
         </div>
       </header>
 
-      <main className="flex flex-1 items-start justify-center px-4 py-5 @lg:items-center @lg:py-8" onKeyDown={onKeyDown} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <Main className="flex flex-1 items-start justify-center px-4 py-5 @lg:items-center @lg:py-8" onKeyDown={onKeyDown} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {done ? (
           <section key="done" className={`${animation} w-full max-w-xl rounded-2xl border border-[#dbe4f0] bg-white p-6 text-center shadow-sm @lg:p-10`}>
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-3xl text-green-700" aria-hidden="true">✓</div>
@@ -261,7 +264,7 @@ export function SurveyRunner({ survey, mode, storageKey, thankYouMessage, onSubm
                 {survey.consentEnabled && (
                   <div className="mt-5">
                     <p className="mb-2 text-[16px] font-semibold">Data privacy consent</p>
-                    <div tabIndex={0} aria-label="Data privacy consent statement" className="max-h-56 overflow-y-auto whitespace-pre-line rounded-xl border-2 border-[#dbe4f0] bg-[#f9fbfe] p-4 text-[15px] leading-relaxed text-slate-700">
+                    <div tabIndex={0} role="region" aria-label="Data privacy consent statement" className="max-h-56 overflow-y-auto whitespace-pre-line rounded-xl border-2 border-[#dbe4f0] bg-[#f9fbfe] p-4 text-[15px] leading-relaxed text-slate-700">
                       {survey.consentText || "(No consent statement written yet.)"}
                     </div>
                     <label className={`mt-3 flex min-h-[52px] cursor-pointer items-center gap-3.5 rounded-xl border-2 px-4 py-3 text-[16px] ${consent ? "border-[#0088cc] bg-[#eaf5fc]" : "border-[#c9d5e6]"}`}>
@@ -275,7 +278,7 @@ export function SurveyRunner({ survey, mode, storageKey, thankYouMessage, onSubm
 
             {step.kind === "section" && (
               <>
-                <p className="text-[14px] font-semibold uppercase tracking-wide text-[#0088cc]">New section</p>
+                <p className="text-[14px] font-semibold uppercase tracking-wide text-[#00709f]">New section</p>
                 <h2 ref={headingRef} tabIndex={-1} className="mt-1 break-words text-[26px] font-bold leading-snug outline-none">{step.section.title || "Untitled section"}</h2>
                 {step.section.description && <p className="mt-3 whitespace-pre-line text-[16px] leading-relaxed text-slate-700">{step.section.description}</p>}
               </>
@@ -285,7 +288,7 @@ export function SurveyRunner({ survey, mode, storageKey, thankYouMessage, onSubm
               <fieldset className="min-w-0">
                 <legend className="w-full">
                   <h2 ref={headingRef} tabIndex={-1} id={`ql-${step.question.id}`} className="break-words text-[21px] font-semibold leading-snug outline-none">
-                    {step.question.text.trim() || <span className="italic text-slate-400">Untitled question</span>}
+                    {step.question.text.trim() || <span className="italic text-slate-500">Untitled question</span>}
                     {step.question.required && (<><span aria-hidden="true" className="text-red-600"> *</span><span className="sr-only"> (required)</span></>)}
                   </h2>
                 </legend>
@@ -315,11 +318,11 @@ export function SurveyRunner({ survey, mode, storageKey, thankYouMessage, onSubm
                         >
                           <span className="min-w-0">
                             <span className="block break-words text-[14px] text-slate-600">{s.number}. {s.question.text.trim() || "Untitled question"}</span>
-                            <span className={`mt-0.5 block break-words text-[16px] font-semibold ${summary ? "" : "italic text-slate-400"}`}>
+                            <span className={`mt-0.5 block break-words text-[16px] font-semibold ${summary ? "" : "italic text-slate-500"}`}>
                               {summary || (missing ? "Required — tap to answer" : "Not answered")}
                             </span>
                           </span>
-                          <span className="shrink-0 text-[16px] font-semibold text-[#0088cc]">Change</span>
+                          <span className="shrink-0 text-[16px] font-semibold text-[#00709f]">Change</span>
                         </button>
                       </li>
                     );
@@ -346,7 +349,7 @@ export function SurveyRunner({ survey, mode, storageKey, thankYouMessage, onSubm
             </div>
           </section>
         )}
-      </main>
+      </Main>
     </div>
   );
 }

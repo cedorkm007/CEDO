@@ -156,13 +156,13 @@ export function PublishDialog({ surveyId, doc, serverAction, onClose }: {
             <h3 id="publish-title" className="text-[15px] font-bold text-[#062444]">{canEdit ? "Publish & share" : "Survey link"}</h3>
             <p className="truncate text-[12.5px] text-slate-500">{doc.title || "Untitled survey"}</p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-slate-400 hover:bg-[#f0f3f8]"><X size={16} /></button>
+          <button onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-slate-500 hover:bg-[#f0f3f8]"><X size={16} /></button>
         </div>
 
         {loadFailed ? (
           <p className="py-8 text-center text-[13px] text-slate-500">Couldn't load the publishing details. Close this window and try again.</p>
         ) : !info || !effective ? (
-          <p className="flex items-center justify-center gap-2 py-8 text-[13px] text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</p>
+          <p className="flex items-center justify-center gap-2 py-8 text-[13px] text-slate-500"><Loader2 size={14} className="animate-spin" /> Loading…</p>
         ) : (
           <div className="space-y-5">
             <div className="flex items-center gap-2 flex-wrap">
