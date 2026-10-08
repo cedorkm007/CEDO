@@ -5,8 +5,8 @@ owner before the next one starts. Append-only: one entry per finished micro-task
 
 ## Phase plan
 
-1. Database tables + "My Surveys" menu item + survey list page  ← **Phase 1**
-2. Survey builder (all question types, preview, auto-save)
+1. Database tables + "My Surveys" menu item + survey list page  (done, committed)
+2. Survey builder (all question types, preview, auto-save)  ← **Phase 2**
 3. Publishing: public URL, QR code, one-question-at-a-time respondent page, saving responses
 4. CSV template download and upload with validation
 5. Sharing and roles
@@ -49,3 +49,41 @@ owner before the next one starts. Append-only: one entry per finished micro-task
   not applied yet): menu item, create, rename, delete confirmation, shared tab, viewer menu
   and read-only title, layouts at 360 / 487 / 768 / 1024 / 1280px with no horizontal overflow.
 - `npx tsc -b --force` exit 0; eslint clean on the new files.
+
+## Decisions locked in Phase 2
+
+- One ordered list of "items": a section header starts a section and every question after it
+  belongs to it until the next header (Google-Forms model). Position is the single source of
+  truth; the server derives `section_id` from it on every save.
+- The whole survey is saved atomically through `save_my_survey()` (one transaction), not
+  row-by-row from the browser. It loads through `get_my_survey_doc()` (one round trip).
+- Edit conflicts: every save carries the revision the client last saw. If someone else saved
+  since, the server writes nothing and returns {conflict}; the builder shows who/when and
+  offers "Load their version" or "Keep my version". The survey row is locked during a save.
+  While idle the builder polls the revision (10s) and refreshes silently.
+- Versioning: a question with answers is never rewritten. Changing its wording, type, scale
+  or set of options archives it and creates version + 1 (same `question_key`); changing only
+  required / help text / order does not. Deleting an answered question archives it. A new
+  version has no answers, so further edits to it are in place (typing never piles up versions).
+- UI identity of a card is `questionKey`, not the row id (the id changes when a question is
+  versioned; keying on it collapsed the card and dropped focus mid-typing -- found in testing).
+- The Preview renders `SurveyRunner`, the same component the public page will use in Phase 3,
+  so Preview = what respondents see. The runner uses plain React only (no icon/chart libraries).
+- Respondent text uses explicit px sizes (the project root font size is 15px, so Tailwind
+  `text-base` rendered 15px, under the 16px requirement). The runner uses container-query
+  breakpoints (`@lg:`) so a phone-width screen gets phone styling even inside the Preview frame.
+- The last question's button reads "Review & submit"; the review screen holds the final "Submit".
+
+### Phase 2 log
+- Migration `supabase_migration_my_surveys_builder.sql`: `get_my_survey_doc`, `save_my_survey`.
+  40/40 checks pass in an in-process Postgres (ordering, sections, conflicts, permissions,
+  versioning, archiving, duplicate-after-save), including a second run of the file.
+- Builder: `src/mysurveys/builder/*` (auto-save hook, question/section cards, add menu,
+  preview overlay, confirm modal); `pages/SurveyBuilderPage.tsx` replaces the Phase 1 stand-in.
+- Respondent screens: `src/mysurveys/respondent/SurveyRunner.tsx`, `QuestionField.tsx`.
+- Verified in a browser against the real SQL (local Postgres shim): create/reword/add questions,
+  one save + one version while typing, both conflict choices, drag-and-drop, viewer read-only,
+  full preview walk-through (consent, section intro, required gating, Enter, swipe, Change from
+  review, submit), live-mode progress restore after refresh and clearing after submit,
+  360px / 820px layouts without sideways scrolling.
+- `npx tsc -b --force` exit 0, `npm run build` exit 0, eslint clean.

@@ -18,17 +18,6 @@ export interface SurveyListItem {
   updatedAt: string;
 }
 
-export interface SurveyHeader {
-  id: string;
-  ownerId: string;
-  title: string;
-  status: SurveyStatus;
-  revision: number;
-  lastEditedByName: string;
-  updatedAt: string;
-  myRole: SurveyRole;
-}
-
 export type SurveyScope = "mine" | "shared";
 
 function rowToListItem(r: Record<string, unknown>): SurveyListItem {
@@ -80,35 +69,5 @@ export async function deleteSurvey(id: string): Promise<{ ok: boolean; error?: s
   const { data, error } = await supabase.from("my_surveys").delete().eq("id", id).select("id");
   if (error) return { ok: false, error: error.message };
   if (!data || data.length === 0) return { ok: false, error: "Only the owner can delete this survey." };
-  return { ok: true };
-}
-
-export async function fetchSurveyHeader(id: string): Promise<SurveyHeader | null> {
-  const { data, error } = await supabase.from("my_surveys")
-    .select("id, owner_id, title, status, revision, last_edited_by, updated_at").eq("id", id).maybeSingle();
-  if (error || !data) return null;
-  const [{ data: role }, { data: editor }] = await Promise.all([
-    supabase.rpc("my_survey_role", { p_survey_id: id }),
-    data.last_edited_by
-      ? supabase.from("users").select("first_name, last_name").eq("id", data.last_edited_by).maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
-  const lastEditedByName = editor ? `${editor.first_name ?? ""} ${editor.last_name ?? ""}`.trim() : "";
-  return {
-    id: data.id as string,
-    ownerId: data.owner_id as string,
-    title: data.title as string,
-    status: data.status as SurveyStatus,
-    revision: data.revision as number,
-    lastEditedByName,
-    updatedAt: data.updated_at as string,
-    myRole: ((role as SurveyRole | null) ?? "viewer"),
-  };
-}
-
-export async function renameSurvey(id: string, title: string): Promise<{ ok: boolean; error?: string }> {
-  const { data, error } = await supabase.from("my_surveys").update({ title }).eq("id", id).select("id");
-  if (error) return { ok: false, error: error.message };
-  if (!data || data.length === 0) return { ok: false, error: "You don't have permission to edit this survey." };
   return { ok: true };
 }
