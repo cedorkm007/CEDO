@@ -36,7 +36,7 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
   {
     key: "scholars_formation",
     label: "Scholars' Formation Tools",
-    description: "Tag scholars with leadership positions across School-based, Community-based, and VIP organizations.",
+    description: "Tag scholars with leadership positions across School-based, Community-based, and VIP organizations, and open Formation Activities (which also needs Scholar Management Tools).",
   },
   {
     key: "forms_management",

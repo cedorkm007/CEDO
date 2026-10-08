@@ -3511,7 +3511,7 @@ export default function App() {
             <ScanningToolsTab/>
           )}
           {page==="formationTools" && currentUser.tags.includes("scholars_formation") && (
-            <FormationToolsTab/>
+            <FormationToolsTab canManageActivities={currentUser.tags.includes("scholar_management")}/>
           )}
           {page==="formsManagement" && currentUser.tags.includes("forms_management") && (
             <FormsManagementTab/>

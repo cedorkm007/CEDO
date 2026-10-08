@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { School, Building2, Shield, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { School, Building2, Shield, ChevronLeft, ChevronRight, Search, Users2, CalendarDays, Lock } from "lucide-react";
 import { fetchDistinctSchools } from "../formationApi";
 import { PositionSlotsEditor } from "../components/PositionSlotsEditor";
 import { MembersListEditor } from "../components/MembersListEditor";
 import { CLUSTERS, namedBarangaysInCluster, NUMBERED_BARANGAYS, type ClusterCode } from "@/lib/cdoBarangays";
 import { VIP_DEPARTMENTS } from "@/lib/formationLabels";
 import { useUrlState } from "@/app/useUrlState";
+import { FormationActivitiesTab } from "./FormationActivitiesTab";
 
 const ADVOCACY_SUGGESTIONS = [
   "Committee on External Affairs", "Committee on Advocacy Programs", "Advocacy for Education", "Advocacy for Environment",
@@ -13,6 +14,7 @@ const ADVOCACY_SUGGESTIONS = [
   "Committee on Communication and Management", "Committee on Volunteer Development",
 ];
 
+type Area = "organizations" | "activities";
 type Section = "school" | "community" | "vip";
 type CommunityView = { level: "clusters" } | { level: "cluster"; cluster: ClusterCode } | { level: "barangay"; cluster: ClusterCode; barangay: string };
 type VipView = { level: "top" } | { level: "department"; key: string; label: string };
@@ -202,14 +204,34 @@ function VipSection() {
 }
 
 /**
- * Tags scholars with leadership positions across three structures.
- * Gated by the 'scholars_formation' tag, assigned per-account from
- * it.admin1's Staff Accounts page.
+ * Scholars' Formation Tools. Two areas:
+ *  - Scholar Organizations: tags scholars with leadership positions across
+ *    three structures (School-based, Community-based, Volunteer Iskolar-Leaders
+ *    Program) -- the three sub-tabs this page used to show directly.
+ *  - Formation Activities: the same screen as Scholar Management Tools >
+ *    Formation Activities (FormationActivitiesTab, unchanged), reachable from
+ *    here too.
+ *
+ * The page is gated by the 'scholars_formation' tag, assigned per-account from
+ * it.admin1's Staff Accounts page. Formation Activities, however, reads and
+ * writes tables the DATABASE protects with the 'scholar_management' tag
+ * (public.is_sead_staff() -- see supabase_migration_fix_tag_gate_round2.sql), so
+ * a formation-only account would see it empty or refused. `canManageActivities`
+ * (does this account also hold scholar_management) lets us say so plainly
+ * instead of showing a broken screen; widening the database rules is a separate,
+ * deliberate decision and is not done here.
  */
-export function FormationToolsTab() {
+export function FormationToolsTab({ canManageActivities = true }: { canManageActivities?: boolean }) {
+  // "formationArea" is new; "formationView" keeps its old meaning (which organization
+  // type), so existing bookmarks like ?formationView=community still open the right place.
+  const [area, setArea] = useUrlState<Area>("formationArea", "organizations", ["organizations", "activities"]);
   const [section, setSection] = useUrlState<Section>("formationView", "school", ["school", "community", "vip"]);
 
-  const TABS: { key: Section; label: string; icon: React.ReactNode }[] = [
+  const AREAS: { key: Area; label: string; icon: React.ReactNode }[] = [
+    { key: "organizations", label: "Scholar Organizations", icon: <Users2 size={14} /> },
+    { key: "activities", label: "Formation Activities", icon: <CalendarDays size={14} /> },
+  ];
+  const SECTIONS: { key: Section; label: string; icon: React.ReactNode }[] = [
     { key: "school", label: "School-based Organization", icon: <School size={14} /> },
     { key: "community", label: "Community-based Organization", icon: <Building2 size={14} /> },
     { key: "vip", label: "Volunteer Iskolar-Leaders Program", icon: <Shield size={14} /> },
@@ -218,22 +240,52 @@ export function FormationToolsTab() {
   return (
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Scholars' Formation Tools</h1>
-      <p className="text-sm text-muted-foreground mb-5">Tag scholars with leadership positions in each organizational structure.</p>
+      <p className="text-sm text-muted-foreground mb-5">Manage scholar organizations and formation activities.</p>
 
       <div className="flex w-full gap-1 border-b border-border mb-5">
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setSection(t.key)}
+        {AREAS.map(t => (
+          <button key={t.key} onClick={() => setArea(t.key)}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
-              section === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+              area === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}>
             {t.icon} {t.label}
           </button>
         ))}
       </div>
 
-      {section === "school" && <SchoolSection />}
-      {section === "community" && <CommunitySection />}
-      {section === "vip" && <VipSection />}
+      {area === "organizations" && (
+        <>
+          <div className="flex flex-wrap gap-2 mb-5" role="group" aria-label="Organization type">
+            {SECTIONS.map(t => (
+              <button key={t.key} onClick={() => setSection(t.key)} aria-pressed={section === t.key}
+                className={`flex items-center gap-2 rounded-lg border px-3.5 py-2 text-[12.5px] font-semibold transition-colors ${
+                  section === t.key ? "bg-[#062444] border-[#062444] text-white" : "bg-white border-[#e6ecf5] text-[#062444] hover:bg-[#f7f9fc]"
+                }`}>
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+
+          {section === "school" && <SchoolSection />}
+          {section === "community" && <CommunitySection />}
+          {section === "vip" && <VipSection />}
+        </>
+      )}
+
+      {area === "activities" && (
+        canManageActivities ? (
+          <FormationActivitiesTab />
+        ) : (
+          <div className="rounded-2xl border border-[#e6ecf5] bg-[#f7f9fc] px-6 py-10 text-center">
+            <Lock className="mx-auto mb-3 h-8 w-8 text-slate-400" />
+            <p className="text-[14px] font-bold text-[#062444]">Formation Activities needs one more permission</p>
+            <p className="mx-auto mt-1 max-w-md text-[13px] text-slate-600">
+              This screen works with scholar attendance and activity records that are protected by the “Scholar Management Tools”
+              permission. Ask the IT administrator to add that tag to your account, and Formation Activities will load here.
+            </p>
+          </div>
+        )
+      )}
     </div>
   );
 }
