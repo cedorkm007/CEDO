@@ -8,11 +8,14 @@ import {
 } from "../portalLogic";
 import { periodLabel } from "../gradeSaveLogic";
 import { downloadGradeTemplate } from "../templateDownload";
-import { ScholarGradeEntryModal } from "./ScholarGradeEntryModal";
+import { SubmitGradesDialog } from "./SubmitGradesDialog";
+import { submitReadiness } from "../submissionLogic";
+import { periodTitle } from "@/lib/academicPeriods";
 import { BulkGradeUploadModal } from "./BulkGradeUploadModal";
 import { ScholarsSummary } from "./ScholarsSummary";
 import { ScholarsTable } from "./ScholarsTable";
 import { ProgressBar, fieldClass, focusRing, linkButton } from "./portalParts";
+import { countStandings, STANDING_LABEL, type StandingResult } from "@/lib/standing";
 import type { SchoolData } from "../useSchoolData";
 import type { SchoolScholarRow } from "../types";
 
@@ -35,22 +38,26 @@ function Notice({ tone, children, role }: { tone: "amber" | "red"; children: Rea
  * CSV upload, view toggle), year-level cards with progress that drill down through programs to a table — or one
  * "Table view" of every scholar with filters — plus guidance for every empty state. All data comes from useSchoolData.
  */
-export function ScholarsDrilldownPanel({ data, onGoToGradingSystem }: { data: SchoolData; onGoToGradingSystem: () => void }) {
-  const { rows, counts, period, periodRecord, editable, gradingReady, configLoaded, config, letters, periods, loading } = data;
+export function ScholarsDrilldownPanel({ data, onGoToGradingSystem, onOpenScholar }: {
+  data: SchoolData; onGoToGradingSystem: () => void;
+  /** Opens the grade-entry window for a scholar (the window lives in the workspace so the Corrections tab can open it too). */
+  onOpenScholar: (scholar: SchoolScholarRow) => void;
+}) {
+  const { rows, counts, period, periodRecord, editable, gradingReady, configLoaded, periods, loading } = data;
   const [view, setView] = useUrlState<ViewMode>("scholarsView", "browse", VIEW_VALUES);
   const [drill, setDrill] = useState<Drill>({ level: "yearLevels" });
   const [search, setSearch] = useState("");
   const [yearFilter, setYearFilter] = useState("");
   const [programFilter, setProgramFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<ScholarStatus | "">("");
-  const [viewingScholar, setViewingScholar] = useState<SchoolScholarRow | null>(null);
+  const [standingFilter, setStandingFilter] = useState<StandingResult | "">("");
+  const [submitting, setSubmitting] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [toolbarError, setToolbarError] = useState("");
 
   const searching = search.trim() !== "";
   const hasOpenPeriod = periods.some(p => canSchoolEdit(p.status));
-  const canEnter = editable && gradingReady;
 
   const yearCards = useMemo(() => groupProgress(rows, s => yearLevelOf(s), sortYearLevels), [rows]);
   const programCards = useMemo(() => {
@@ -67,7 +74,10 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem }: { data: Sc
     () => Array.from(new Set(rows.filter(r => !yearFilter || yearLevelOf(r.scholar) === yearFilter).map(r => programOf(r.scholar)))).sort((a, b) => a.localeCompare(b)),
     [rows, yearFilter],
   );
-  const tableRows = useMemo(() => filterRows(rows, { yearLevel: yearFilter, program: programFilter, status: statusFilter }), [rows, yearFilter, programFilter, statusFilter]);
+  const tableRows = useMemo(() => filterRows(rows, { yearLevel: yearFilter, program: programFilter, status: statusFilter, standing: standingFilter }), [rows, yearFilter, programFilter, statusFilter, standingFilter]);
+  // Scholarship standing only appears once the school has saved a retention requirement (Grading System tab).
+  const hasRequirement = data.config?.retentionThreshold != null;
+  const standingCounts = useMemo(() => (hasRequirement ? countStandings(rows.map(r => r.standing)) : null), [rows, hasRequirement]);
   const searchRows = useMemo(() => filterRows(rows, { search }), [rows, search]);
 
   async function handleDownloadTemplate() {
@@ -78,9 +88,8 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem }: { data: Sc
     if (!result.ok) setToolbarError(`Couldn't prepare the template: ${result.error}`);
   }
 
-  function openScholar(s: SchoolScholarRow) {
-    setViewingScholar(s);
-  }
+  const openScholar = onOpenScholar;
+  const readiness = submitReadiness({ counts, editable, gradingReady, locked: data.locked, hasPeriod: !!periodRecord });
 
   const emptyGuidance = (
     <>
@@ -135,7 +144,13 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem }: { data: Sc
         </Notice>
       )}
 
-      <ScholarsSummary counts={counts} loading={loading || data.gradesLoading} />
+      <ScholarsSummary counts={counts} loading={loading || data.gradesLoading} readiness={readiness} submission={data.submission} onSubmit={() => setSubmitting(true)} standing={standingCounts} />
+      {gradingReady && !hasRequirement && (
+        <p className="text-[14px] text-slate-700 mb-4">
+          Scholarship standing is off. Save a <strong>retention requirement</strong> in the{" "}
+          <button onClick={onGoToGradingSystem} className={linkButton}>Grading System tab</button> to see which scholars are at risk.
+        </p>
+      )}
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-end gap-3 mb-5">
@@ -180,7 +195,7 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem }: { data: Sc
       ) : searching ? (
         <section aria-label="Search results">
           <p className="text-[14.5px] text-slate-800 mb-2" aria-live="polite">{searchRows.length} scholar{searchRows.length === 1 ? "" : "s"} found for “{search.trim()}”</p>
-          <ScholarsTable rows={searchRows} editable={editable} gradingReady={gradingReady} onOpen={openScholar}
+          <ScholarsTable rows={searchRows} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar}
             empty={<p>No scholars match “{search.trim()}”. Check the spelling, or try the Scholar ID.</p>} />
         </section>
       ) : view === "table" ? (
@@ -208,12 +223,21 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem }: { data: Sc
                 {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
               </select>
             </div>
-            {(yearFilter || programFilter || statusFilter) && (
-              <button onClick={() => { setYearFilter(""); setProgramFilter(""); setStatusFilter(""); }} className={`text-[14px] pb-2 ${linkButton}`}>Clear filters</button>
+            {hasRequirement && (
+              <div>
+                <label htmlFor="filter-standing" className="block text-[14px] font-semibold text-[#062444] mb-1">Standing</label>
+                <select id="filter-standing" value={standingFilter} onChange={e => setStandingFilter(e.target.value as StandingResult | "")} className={fieldClass}>
+                  <option value="">All</option>
+                  {(["good", "at_risk", "below", "no_gwa"] as StandingResult[]).map(k => <option key={k} value={k}>{STANDING_LABEL[k]}</option>)}
+                </select>
+              </div>
+            )}
+            {(yearFilter || programFilter || statusFilter || standingFilter) && (
+              <button onClick={() => { setYearFilter(""); setProgramFilter(""); setStatusFilter(""); setStandingFilter(""); }} className={`text-[14px] pb-2 ${linkButton}`}>Clear filters</button>
             )}
             <p className="text-[14px] text-slate-800 pb-2 sm:ml-auto" aria-live="polite">Showing {tableRows.length} of {rows.length} scholars</p>
           </div>
-          <ScholarsTable rows={tableRows} editable={editable} gradingReady={gradingReady} onOpen={openScholar}
+          <ScholarsTable rows={tableRows} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar}
             empty={<p>No scholars match these filters. Try clearing one of them.</p>} />
         </section>
       ) : (
@@ -271,15 +295,15 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem }: { data: Sc
           )}
 
           {drill.level === "scholars" && (
-            <ScholarsTable rows={scholarsInScope} editable={editable} gradingReady={gradingReady} onOpen={openScholar}
+            <ScholarsTable rows={scholarsInScope} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar}
               empty={<p>No scholars in {drill.yearLevel} — {drill.program}.</p>} />
           )}
         </section>
       )}
 
-      {viewingScholar && (
-        <ScholarGradeEntryModal scholar={viewingScholar} period={period} canEdit={canEnter} config={config} letterGrades={letters}
-          onClose={() => setViewingScholar(null)} onSaved={data.reloadGrades} />
+      {submitting && periodRecord && (
+        <SubmitGradesDialog periodId={periodRecord.id} periodTitle={periodTitle(period)} scholarCount={counts.total}
+          onClose={() => setSubmitting(false)} onSubmitted={() => { data.reloadSubmission(); data.reloadGrades(); }} />
       )}
       {showBulkUpload && (
         <BulkGradeUploadModal scholars={data.scholars} schoolId={data.schoolId} periods={periods} initialKey={data.selectedKey}

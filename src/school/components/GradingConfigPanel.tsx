@@ -2,9 +2,17 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2, Save, Info } from "lucide-react";
 import { fetchGradingConfig, fetchLetterGrades, saveGradingConfig, saveLetterGrades } from "../schoolApi";
 import { fieldClass, focusRing } from "./portalParts";
+import { atRiskExplanation, retentionSentence } from "@/lib/standing";
 import type { GradingConfig, LetterGrade } from "../types";
 
-const DEFAULT_CONFIG: GradingConfig = { scaleMin: 1, scaleMax: 5, direction: "lower_is_better", usesLetterGrades: false };
+const DEFAULT_CONFIG: GradingConfig = { scaleMin: 1, scaleMax: 5, direction: "lower_is_better", usesLetterGrades: false, retentionThreshold: null };
+
+/** The number typed in the retention box: null when blank, NaN when it is not a number. */
+function parseThreshold(text: string): number | null {
+  const t = text.trim();
+  if (t === "") return null;
+  return /^[0-9]+([.][0-9]+)?$/.test(t) ? Number(t) : Number.NaN;
+}
 
 /**
  * Editable anytime — scale bounds + direction, plus an optional letter-grade -> numeric conversion table for schools that grade with letters.
@@ -15,6 +23,7 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
   const [config, setConfig] = useState<GradingConfig>(DEFAULT_CONFIG);
   const [letters, setLetters] = useState<LetterGrade[]>([]);
   const [alreadySaved, setAlreadySaved] = useState(true);
+  const [retentionText, setRetentionText] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -22,7 +31,7 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
 
   useEffect(() => {
     Promise.all([fetchGradingConfig(), fetchLetterGrades(schoolId)]).then(([c, l]) => {
-      if (c) setConfig(c);
+      if (c) { setConfig(c); setRetentionText(c.retentionThreshold == null ? "" : String(c.retentionThreshold)); }
       setAlreadySaved(c !== null);
       setLetters(l.length > 0 ? l : [{ letter: "", numericValue: null }]);
       setLoading(false);
@@ -39,8 +48,13 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
     setError("");
     setSaved(false);
     if (!(config.scaleMax > config.scaleMin)) { setError("The scale maximum must be higher than the minimum."); return; }
+    const threshold = parseThreshold(retentionText);
+    if (threshold !== null && (Number.isNaN(threshold) || threshold < config.scaleMin || threshold > config.scaleMax)) {
+      setError(`The retention requirement must be a number on your grading scale (${config.scaleMin} to ${config.scaleMax}), or left blank.`);
+      return;
+    }
     setSaving(true);
-    const result = await saveGradingConfig(config);
+    const result = await saveGradingConfig({ ...config, retentionThreshold: threshold });
     if (!result.ok) { setSaving(false); setError(result.error || "Couldn't save the grading system."); return; }
     if (config.usesLetterGrades) {
       const letterResult = await saveLetterGrades(letters.filter(l => l.letter.trim()));
@@ -92,6 +106,20 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
           </label>
         </div>
       </fieldset>
+
+      <div className="mb-5">
+        <label htmlFor="retention" className="block text-[14px] font-semibold text-[#062444] mb-1">Retention requirement (optional)</label>
+        <input id="retention" inputMode="decimal" value={retentionText} onChange={e => setRetentionText(e.target.value)} aria-describedby="retention-help"
+          placeholder={config.direction === "lower_is_better" ? "e.g. 2.50" : "e.g. 85"} className={`${fieldClass} w-32`} />
+        <div id="retention-help" className="text-[14px] text-slate-700 mt-1.5 space-y-0.5">
+          <p>The GWA a scholar must keep on your scale to keep the scholarship. CEDO uses it to show who is in good standing, at risk, or below the requirement.</p>
+          {(() => {
+            const t = parseThreshold(retentionText);
+            if (t === null || Number.isNaN(t)) return <p>{retentionSentence(config, null)}</p>;
+            return (<><p className="font-semibold text-[#062444]">{retentionSentence(config, t)}</p><p>{atRiskExplanation({ ...config, retentionThreshold: t })}</p></>);
+          })()}
+        </div>
+      </div>
 
       <label className="flex items-start gap-2 text-[14.5px] font-semibold text-[#062444] mb-4 cursor-pointer">
         <input type="checkbox" className="h-4 w-4 mt-1 accent-[#062444]" checked={config.usesLetterGrades} onChange={e => setConfig(c => ({ ...c, usesLetterGrades: e.target.checked }))} />

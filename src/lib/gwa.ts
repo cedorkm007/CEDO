@@ -14,6 +14,7 @@ export interface GradingConfig {
   scaleMax: number;
   direction: "lower_is_better" | "higher_is_better";
   usesLetterGrades: boolean;
+  retentionThreshold?: number | null;
 }
 
 export interface LetterGrade {

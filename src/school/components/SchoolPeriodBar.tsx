@@ -1,7 +1,7 @@
 import { CalendarDays } from "lucide-react";
 import { PeriodSelect } from "@/app/components/PeriodSelect";
 import { deadlineSummary, statusLabel, termLabel, normalizeTerm } from "@/lib/academicPeriods";
-import { periodProgressLabel } from "../portalLogic";
+import { periodStatusLabel } from "../submissionLogic";
 import { linkButton } from "./portalParts";
 import type { SchoolData } from "../useSchoolData";
 
@@ -15,7 +15,7 @@ export function SchoolPeriodBar({ data }: { data: SchoolData }) {
   const { period, periodRecord, options, selectedKey, currentKey, selectPeriod, counts, editable } = data;
   const term = normalizeTerm(period.semester);
   const deadline = periodRecord ? deadlineSummary(periodRecord.deadline, new Date()) : null;
-  const progress = periodProgressLabel(counts);
+  const progress = periodStatusLabel(data.submission, counts);
 
   return (
     <div className="bg-[#f7f9fc] border-b border-[#e6ecf5] px-4 md:px-8 py-3" role="region" aria-label="Grading period">

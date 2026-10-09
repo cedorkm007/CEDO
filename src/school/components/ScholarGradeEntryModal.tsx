@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Plus, Trash2, Save, CheckCircle2, AlertTriangle } from "lucide-react";
+import { X, Plus, Trash2, Save, CheckCircle2, AlertTriangle, Lock } from "lucide-react";
 import { fetchScholarGradesChecked, upsertGrade, deleteGradeRows } from "../schoolApi";
 import { validateEntryRows, findUnconfirmed, savedMessage, periodLabel, type SavedRow } from "../gradeSaveLogic";
 import { gwaDetail, formatGwa, needsUnits, type LetterGrade } from "@/lib/gwa";
 import { validateGradeValue } from "../bulkGradeLogic";
 import { gradeInputHint } from "../portalLogic";
+import { canEditRow, NOT_LOCKED, type GradeLockInfo } from "../submissionLogic";
+import { formatWhen } from "@/lib/gradeEvidence";
 import { focusRing } from "./portalParts";
+import { CorrectionRequestDialog } from "./CorrectionRequestDialog";
+import { SchoolDocumentsSection, SchoolHistorySection } from "./SchoolEvidenceSections";
 import type { GradingConfig, SchoolScholarRow, SchoolSubjectGrade } from "../types";
 import type { GradingPeriod } from "@/sead/scholarsGradesMonitoringApi";
 
@@ -44,11 +48,18 @@ const inputClass = `border border-[#062444]/30 rounded-lg px-2 py-1.5 text-[14px
  * came back (see findUnconfirmed in ../gradeSaveLogic.ts), then shows "Saved: 1.75 · 1st Semester 2026-2027".
  * The modal stays open afterwards so the school sees what is actually stored; `onSaved` lets the scholar table behind it refresh.
  *
+ * Phase 6: once the period is submitted the grades are LOCKED (`lock.locked`). A saved subject can then only be changed after
+ * CEDO approves a correction request for it (`lock.approvedGradeIds`) — once; every other row is read-only, with a
+ * "Request correction" button. Below the table: the scholar's change history and the supporting documents (grade slip).
+ * The database enforces all of this; the screen just says so up front.
+ *
  * The period is the one chosen in the Scholars tab. When it is not Open (`canEdit` false) the grades are shown read-only —
  * the database refuses a school's changes to a Closed or Archived period as well, this just says so up front.
  */
-export function ScholarGradeEntryModal({ scholar, period, canEdit, config, letterGrades, onClose, onSaved }: {
-  scholar: SchoolScholarRow; period: GradingPeriod; canEdit: boolean; config: GradingConfig | null; letterGrades: LetterGrade[]; onClose: () => void; onSaved?: () => void;
+export function ScholarGradeEntryModal({ scholar, period, canEdit, config, letterGrades, lock = NOT_LOCKED, schoolId, periodId, submittedAt, onClose, onSaved, onRequestsChanged }: {
+  scholar: SchoolScholarRow; period: GradingPeriod; canEdit: boolean; config: GradingConfig | null; letterGrades: LetterGrade[];
+  lock?: GradeLockInfo; schoolId: string; periodId: string | null; submittedAt?: string | null;
+  onClose: () => void; onSaved?: () => void; onRequestsChanged?: () => void;
 }) {
   const [rows, setRows] = useState<EditableRow[]>([]);
   const [removedIds, setRemovedIds] = useState<string[]>([]);
@@ -56,6 +67,8 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [savedNote, setSavedNote] = useState("");
+  const [correcting, setCorrecting] = useState<EditableRow | null>(null);
+  const [evidenceVersion, setEvidenceVersion] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -65,6 +78,10 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
       setLoading(false);
     })();
   }, [scholar.scholarIdNumber, period]);
+
+  const locked = lock.locked;
+  const rowEditable = (r: EditableRow) => canEdit && canEditRow(r, lock);
+  const anyEditable = canEdit && (!locked || rows.some(r => lock.approvedGradeIds.has(r.id)));
 
   function addRow() {
     setSavedNote("");
@@ -156,7 +173,7 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
       setRows(toEditable(fresh.rows));
       setRemovedIds([]);
     }
-    if (saved.length > 0 || removedCount > 0) onSaved?.();
+    if (saved.length > 0 || removedCount > 0) { onSaved?.(); onRequestsChanged?.(); setEvidenceVersion(v => v + 1); }
     setSaving(false);
 
     if (failure) { setError(failure); return; }
@@ -172,9 +189,12 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
     setSavedNote(savedMessage(saved, removedCount, period));
   }
 
+  const cols = locked ? "sm:grid-cols-[6rem_1fr_4.5rem_5rem_6.5rem_12rem]" : "sm:grid-cols-[6rem_1fr_4.5rem_5rem_9.5rem_1.5rem]";
+
   return (
+    <>
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8" onClick={onClose}>
-      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-5 py-4 rounded-t-2xl shrink-0">
           <div>
             <h3 className="text-white font-bold text-[14.5px]">{displayName(scholar)}</h3>
@@ -188,6 +208,15 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
             <p className="text-[14px] text-slate-700 text-center py-6">Loading…</p>
           ) : (
             <>
+              {locked && (
+                <p className="flex items-start gap-2 text-[14px] text-amber-950 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 mb-3">
+                  <Lock size={15} className="shrink-0 mt-0.5" aria-hidden="true" />
+                  <span>
+                    These grades were submitted{submittedAt ? ` on ${formatWhen(submittedAt)}` : ""} and are locked. To change a subject, use <strong>Request correction</strong> beside it;
+                    CEDO has to approve it first.
+                  </span>
+                </p>
+              )}
               {!canEdit && (
                 <p className="text-[14px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
                   Read-only — {periodLabel(period) || "this period"} is not Open, so grades can't be added or changed.
@@ -198,36 +227,52 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
               )}
 
               {rows.length > 0 && (
-                <div className="hidden sm:grid grid-cols-[6rem_1fr_4.5rem_5rem_9.5rem_1.5rem] gap-2 px-0.5 mb-1 text-[13px] font-bold text-slate-800">
-                  <span>Code</span><span>Subject name</span><span>Units</span><span>Grade</span><span>Exclude from GWA</span><span />
+                <div className={`hidden sm:grid ${cols} gap-2 px-0.5 mb-1 text-[13px] font-bold text-slate-800`}>
+                  <span>Code</span><span>Subject name</span><span>Units</span><span>Grade</span><span>{locked ? "Exclude" : "Exclude from GWA"}</span><span>{locked ? "Correction" : ""}</span>
                 </div>
               )}
               <div className="space-y-2 mb-3">
                 {rows.map((r, i) => {
                   const noUnits = r.subject.trim() !== "" && needsUnits({ units: parseUnits(r.unitsText), excludeFromGwa: r.excludeFromGwa });
                   const gradeErr = r.grade.trim() ? gradeProblem(r.grade) : null;
+                  const editable = rowEditable(r);
+                  const approved = lock.approvedGradeIds.has(r.id);
+                  const pending = lock.pendingGradeIds.has(r.id);
                   return (
                     <div key={r.id}>
-                    <div className="grid grid-cols-2 sm:grid-cols-[6rem_1fr_4.5rem_5rem_9.5rem_1.5rem] gap-2 items-center">
-                      <input value={r.subjectCode} onChange={e => updateRow(r.id, "subjectCode", e.target.value)} placeholder="Code" aria-label={`Subject code, row ${i + 1}`} disabled={!canEdit}
+                    <div className={`grid grid-cols-2 ${cols} gap-2 items-center`}>
+                      <input value={r.subjectCode} onChange={e => updateRow(r.id, "subjectCode", e.target.value)} placeholder="Code" aria-label={`Subject code, row ${i + 1}`} disabled={!editable}
                         className={inputClass} />
-                      <input value={r.subject} onChange={e => updateRow(r.id, "subject", e.target.value)} placeholder="Subject name" aria-label={`Subject name, row ${i + 1}`} disabled={!canEdit}
+                      <input value={r.subject} onChange={e => updateRow(r.id, "subject", e.target.value)} placeholder="Subject name" aria-label={`Subject name, row ${i + 1}`} disabled={!editable}
                         className={inputClass} />
-                      <input value={r.unitsText} onChange={e => updateRow(r.id, "unitsText", e.target.value)} placeholder="Units" inputMode="decimal" aria-label={`Units, row ${i + 1}`} disabled={!canEdit}
+                      <input value={r.unitsText} onChange={e => updateRow(r.id, "unitsText", e.target.value)} placeholder="Units" inputMode="decimal" aria-label={`Units, row ${i + 1}`} disabled={!editable}
                         title={noUnits ? "No units yet — counted as 1 unit until you enter them" : undefined}
                         className={`${inputClass} ${noUnits ? "border-amber-400 bg-amber-50" : ""}`} />
-                      <input value={r.grade} onChange={e => updateRow(r.id, "grade", e.target.value)} placeholder="Grade" aria-label={`Grade, row ${i + 1}`} disabled={!canEdit}
+                      <input value={r.grade} onChange={e => updateRow(r.id, "grade", e.target.value)} placeholder="Grade" aria-label={`Grade, row ${i + 1}`} disabled={!editable}
                         aria-invalid={gradeErr ? true : undefined} aria-describedby={gradeErr ? `grade-err-${r.id}` : undefined}
                         className={`${inputClass} ${gradeErr ? "border-red-600 bg-red-50" : ""}`} />
                       <label className="flex items-center gap-1.5 text-[14px] text-slate-800">
-                        <input type="checkbox" checked={r.excludeFromGwa} onChange={e => toggleExclude(r.id, e.target.checked)} disabled={!canEdit}
+                        <input type="checkbox" checked={r.excludeFromGwa} onChange={e => toggleExclude(r.id, e.target.checked)} disabled={!editable}
                           aria-label={`Exclude from GWA, row ${i + 1}`} className="h-4 w-4 accent-[#062444]" />
                         <span className="sm:hidden">Exclude from GWA</span>
                         <span className="hidden sm:inline">Exclude</span>
                       </label>
-                      <button onClick={() => removeRow(r.id)} disabled={!canEdit} aria-label={`Remove row ${i + 1}`} className="text-slate-700 hover:text-red-700 shrink-0 disabled:opacity-30 justify-self-end sm:justify-self-auto">
-                        <Trash2 size={15} />
-                      </button>
+                      {locked && !r.isNew ? (
+                        <div className="col-span-2 sm:col-span-1 text-[14px]">
+                          {approved ? (
+                            <span className="font-semibold text-green-800">Approved — change it, then Save</span>
+                          ) : pending ? (
+                            <span className="text-slate-800">Correction requested — waiting for CEDO</span>
+                          ) : canEdit ? (
+                            <button type="button" onClick={() => setCorrecting(r)} className={`font-semibold text-[#0077b6] hover:underline ${focusRing} rounded`}
+                              aria-label={`Request correction for ${r.subject || `row ${i + 1}`}`}>Request correction</button>
+                          ) : null}
+                        </div>
+                      ) : !locked ? (
+                        <button onClick={() => removeRow(r.id)} disabled={!editable} aria-label={`Remove row ${i + 1}`} className="text-slate-700 hover:text-red-700 shrink-0 disabled:opacity-30 justify-self-end sm:justify-self-auto">
+                          <Trash2 size={15} />
+                        </button>
+                      ) : <span />}
                     </div>
                     {gradeErr && <p id={`grade-err-${r.id}`} className="text-[14px] text-red-800 mt-1">{gradeErr}</p>}
                     </div>
@@ -235,8 +280,8 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
                 })}
               </div>
               {rows.length > 0 && <p className="text-[14px] text-slate-700 mb-2">{allowedHint}. Leave the grade blank until it is available.</p>}
-              {canEdit && (
-                <button onClick={addRow} className="flex items-center gap-1 text-[14px] font-semibold text-[#0077b6] hover:opacity-80">
+              {canEdit && !locked && (
+                <button onClick={addRow} className="flex items-center gap-1 text-[14px] font-semibold text-[#0077b6]">
                   <Plus size={13} /> Add subject
                 </button>
               )}
@@ -262,9 +307,13 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
               {removedIds.length > 0 && (
                 <p className="text-[14px] text-amber-900 mt-3">{removedIds.length} saved subject{removedIds.length === 1 ? "" : "s"} will be deleted when you press Save.</p>
               )}
+
+              <SchoolDocumentsSection schoolId={schoolId} periodId={periodId} scholarIdNumber={scholar.scholarIdNumber}
+                canUpload={canEdit} canRemove={canEdit && !locked} />
+              <SchoolHistorySection scholarIdNumber={scholar.scholarIdNumber} periodId={periodId} refreshKey={evidenceVersion} />
             </>
           )}
-          {error && <p role="alert" className="text-[14px] text-red-700 mt-3">{error}</p>}
+          {error && <p role="alert" className="text-[14px] text-red-800 mt-3">{error}</p>}
           {savedNote && (
             <p role="status" className="flex items-center gap-1.5 text-[14px] font-semibold text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-3">
               <CheckCircle2 size={14} className="shrink-0" /> {savedNote}
@@ -274,12 +323,20 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
 
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-[#f0f3f8] shrink-0">
           <button onClick={onClose} className="px-4 py-2 rounded-lg border border-[#062444]/20 text-[14px] font-semibold text-[#062444]">Close</button>
-          <button onClick={handleSave} disabled={saving || loading || !canEdit}
+          <button onClick={handleSave} disabled={saving || loading || !anyEditable}
             className="flex items-center gap-1.5 bg-gradient-to-br from-[#062444] to-[#0a3a6b] disabled:opacity-60 text-white text-[14px] font-semibold rounded-lg px-4 py-2">
             <Save size={13} /> {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>
     </div>
+
+      {/* Outside the overlay on purpose: a click inside this dialog must not close the grade-entry window behind it. */}
+      {correcting && (
+        <CorrectionRequestDialog gradeId={correcting.id} subject={correcting.subject} currentGrade={correcting.grade}
+          config={config} letters={letterGrades} onClose={() => setCorrecting(null)}
+          onSent={() => { onRequestsChanged?.(); setEvidenceVersion(v => v + 1); setSavedNote(`Correction requested for “${correcting.subject}”. CEDO will review it.`); }} />
+      )}
+    </>
   );
 }

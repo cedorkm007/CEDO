@@ -7,6 +7,7 @@
 // grades" hint, and the change-password rules.
 // ─────────────────────────────────────────────────────────────
 import type { ScholarGradeSummary } from "./gradeSaveLogic";
+import type { StandingResult } from "@/lib/standing";
 import type { GradingConfig, LetterGrade, SchoolScholarRow } from "./types";
 
 // ── Status of one scholar in the selected period ─────────────
@@ -34,6 +35,8 @@ export interface ScholarRowData {
   scholar: SchoolScholarRow;
   summary: ScholarGradeSummary;
   status: ScholarStatus;
+  /** Scholarship standing from the GWA and the school's retention requirement (src/lib/standing.ts). */
+  standing: StandingResult;
 }
 
 export const NO_YEAR_LABEL = "(Not set)";
@@ -128,6 +131,7 @@ export interface RowFilter {
   yearLevel?: string;
   program?: string;
   status?: ScholarStatus | "";
+  standing?: StandingResult | "";
 }
 
 const words = (s: string) => s.toLowerCase().split(/[^a-z0-9ñ-]+/).filter(Boolean);
@@ -146,7 +150,8 @@ export function filterRows(rows: ScholarRowData[], f: RowFilter): ScholarRowData
     matchesSearch(r.scholar, f.search ?? "")
     && (!f.yearLevel || yearLevelOf(r.scholar) === f.yearLevel)
     && (!f.program || programOf(r.scholar) === f.program)
-    && (!f.status || r.status === f.status));
+    && (!f.status || r.status === f.status)
+    && (!f.standing || r.standing === f.standing));
 }
 
 // ── Breadcrumbs: Scholars > 5th Year > BS Education ──────────

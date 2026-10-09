@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { School, Users, Pencil, Check, CalendarRange, AlertTriangle } from "lucide-react";
+import { School, Users, Pencil, Check, CalendarRange, AlertTriangle, FileSignature, Wrench, Download } from "lucide-react";
 import { ScholarsGradesMonitoringSchoolsTab } from "./pages/ScholarsGradesMonitoringSchoolsTab";
 import { ScholarsGradesMonitoringScholarsTab } from "./pages/ScholarsGradesMonitoringScholarsTab";
+import { ScholarsGradesMonitoringCorrectionsTab } from "./pages/ScholarsGradesMonitoringCorrectionsTab";
+import { ScholarsGradesMonitoringCleanupTab } from "./pages/ScholarsGradesMonitoringCleanupTab";
+import { GradesExportDialog } from "./components/GradesExportDialog";
 import { AcademicPeriodsModal } from "./components/AcademicPeriodsModal";
 import { Modal } from "./components/Modal";
 import { PeriodSelect } from "@/app/components/PeriodSelect";
@@ -12,7 +15,7 @@ import {
   findPeriod, deadlineSummary, type AcademicPeriod,
 } from "@/lib/academicPeriods";
 
-type MonitoringSubtab = "schools" | "scholars";
+type MonitoringSubtab = "schools" | "scholars" | "corrections" | "cleanup";
 
 /**
  * Gated by the "scholars_grades_monitoring" tag (src/app/staffToolTags.ts),
@@ -30,6 +33,8 @@ export function ScholarsGradesMonitoringPage() {
   const TABS: { key: MonitoringSubtab; label: string; icon: React.ReactNode }[] = [
     { key: "schools", label: "Schools", icon: <School size={14} /> },
     { key: "scholars", label: "Scholars", icon: <Users size={14} /> },
+    { key: "corrections", label: "Correction requests", icon: <FileSignature size={14} /> },
+    { key: "cleanup", label: "Clean-up", icon: <Wrench size={14} /> },
   ];
   const [tab, setTab] = useState<MonitoringSubtab>("schools");
   const [period, setPeriod] = useState<GradingPeriod>({ schoolYear: "", semester: "" });
@@ -43,6 +48,7 @@ export function ScholarsGradesMonitoringPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [managing, setManaging] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     const [p, result] = await Promise.all([fetchCurrentGradingPeriod(), fetchAcademicPeriods()]);
@@ -100,7 +106,7 @@ export function ScholarsGradesMonitoringPage() {
   return (
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Scholars' Grades Monitoring</h1>
-      <p className="text-sm text-muted-foreground mb-4">Monitor scholars' grade-completion rates by school and program, and drill into individual grades and GWA.</p>
+      <p className="text-sm text-slate-600 mb-4">Monitor scholars' grade-completion rates by school and program, and drill into individual grades and GWA.</p>
 
       <div className="flex flex-wrap items-center gap-3 bg-[#f7f9fc] border border-[#e6ecf5] rounded-xl px-4 py-3 mb-3 text-[13px]">
         <span className="font-bold text-[#062444] uppercase tracking-wide text-[11.5px]">Current Grading Period</span>
@@ -123,10 +129,10 @@ export function ScholarsGradesMonitoringPage() {
               {period.schoolYear || "—"} · {period.semester ? termLabel(normalizeTerm(period.semester) ?? period.semester) : "—"}
               {currentRecord && <span className="ml-2 text-[11.5px] font-bold text-slate-600">({statusLabel(currentRecord.status)})</span>}
             </span>
-            <button onClick={startEditing} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:opacity-80">
+            <button onClick={startEditing} className="flex items-center gap-1 text-[13px] font-semibold text-[#006aa3] hover:underline">
               <Pencil size={12} /> Change
             </button>
-            <button onClick={() => setManaging(true)} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:opacity-80 sm:ml-auto">
+            <button onClick={() => setManaging(true)} className="flex items-center gap-1 text-[13px] font-semibold text-[#006aa3] hover:underline sm:ml-auto">
               <CalendarRange size={13} /> Manage periods
             </button>
           </>
@@ -138,10 +144,14 @@ export function ScholarsGradesMonitoringPage() {
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-5">
         <PeriodSelect label="Viewing period" options={options} value={effectiveKey} onChange={setViewKey} />
         {viewing && effectiveKey !== currentKey && (
-          <button onClick={() => setViewKey(null)} className="text-[12.5px] font-semibold text-[#0088cc] hover:opacity-80">Back to the current period</button>
+          <button onClick={() => setViewKey(null)} className="text-[13px] font-semibold text-[#006aa3] hover:underline">Back to the current period</button>
         )}
         {viewing && <span className="text-[12.5px] text-slate-600">Status: <strong className="text-[#062444]">{statusLabel(viewing.status)}</strong></span>}
         {deadlineText && <span className="text-[12.5px] text-slate-600">{deadlineText}</span>}
+        <button onClick={() => setExporting(true)} disabled={periods.length === 0}
+          className="flex items-center gap-1.5 text-[13.5px] font-semibold text-[#006aa3] hover:underline disabled:opacity-50 sm:ml-auto">
+          <Download size={14} aria-hidden="true" /> Export to Excel
+        </button>
       </div>
 
       <div className="flex w-full gap-1 border-b border-border mb-5">
@@ -149,8 +159,8 @@ export function ScholarsGradesMonitoringPage() {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
-              tab === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+            className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
+              tab === t.key ? "border-primary text-foreground" : "border-transparent text-slate-600 hover:text-foreground"
             }`}
           >
             {t.icon} {t.label}
@@ -158,8 +168,12 @@ export function ScholarsGradesMonitoringPage() {
         ))}
       </div>
 
-      {tab === "schools" && <ScholarsGradesMonitoringSchoolsTab period={viewPeriod} />}
-      {tab === "scholars" && <ScholarsGradesMonitoringScholarsTab period={viewPeriod} />}
+      {tab === "schools" && <ScholarsGradesMonitoringSchoolsTab period={viewPeriod} periodId={viewing?.id ?? null} />}
+      {tab === "scholars" && <ScholarsGradesMonitoringScholarsTab period={viewPeriod} periodId={viewing?.id ?? null} />}
+      {tab === "corrections" && <ScholarsGradesMonitoringCorrectionsTab />}
+      {tab === "cleanup" && <ScholarsGradesMonitoringCleanupTab />}
+
+      {exporting && <GradesExportDialog periods={periods} current={period} viewKey={effectiveKey} onClose={() => setExporting(false)} />}
 
       {confirming && (
         <Modal title="Change the Current Grading Period?" onClose={() => setConfirming(false)}>

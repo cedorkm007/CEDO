@@ -52,6 +52,25 @@ const outHelp = path.join(path.dirname(out), "help.mjs");
 await build({ entryPoints: [path.join(root, "src/school/helpContent.ts")], bundle: true, format: "esm", platform: "node", outfile: outHelp, logLevel: "error" });
 const H = await import(pathToFileURL(outHelp).href);
 
+const outGE = path.join(path.dirname(out), "evidence.mjs");
+await build({ entryPoints: [path.join(root, "src/lib/gradeEvidence.ts")], bundle: true, format: "esm", platform: "node", outfile: outGE, logLevel: "error" });
+const GE = await import(pathToFileURL(outGE).href);
+const outSL = path.join(path.dirname(out), "submission.mjs");
+await build({
+  entryPoints: [path.join(root, "src/school/submissionLogic.ts")],
+  bundle: true, format: "esm", platform: "node", outfile: outSL, logLevel: "error",
+  alias: { "@": path.join(root, "src") },
+});
+const SL = await import(pathToFileURL(outSL).href);
+const bundleLib = async (name, rel) => {
+  const file = path.join(path.dirname(out), `${name}.mjs`);
+  await build({ entryPoints: [path.join(root, rel)], bundle: true, format: "esm", platform: "node", outfile: file, logLevel: "error", alias: { "@": path.join(root, "src") } });
+  return import(pathToFileURL(file).href);
+};
+const ST = await bundleLib("standing", "src/lib/standing.ts");
+const RP = await bundleLib("report", "src/lib/gradesReport.ts");
+const SN = await bundleLib("schoolnames", "src/lib/schoolNames.ts");
+
 let passed = 0;
 function test(name, fn) {
   try { fn(); passed++; console.log("  ok   " + name); }
@@ -543,6 +562,275 @@ test("no School Portal screen still uses the old low-contrast helper greys or li
     if (/SchoolLoginPage/.test(f)) continue; // the sign-in page is outside this redesign
     const src = fs.readFileSync(f, "utf8");
     assert.equal(/text-slate-400|text-slate-500|#0088cc/.test(src), false, path.relative(root, f) + " still uses text-slate-400/500 or #0088cc");
+  }
+});
+
+console.log("Submission, audit trail and documents (Phase 6)");
+const aud = (o = {}) => ({ id: 1, changedAt: "2026-10-09T06:30:00Z", action: "update", source: "manual", actorType: "school", actorLabel: "Capitol University", scholarIdNumber: "007", schoolYear: "2026-2027", semester: "1st Semester",
+  oldSubjectCode: "M1", newSubjectCode: "M1", oldSubject: "Math", newSubject: "Math", oldGrade: "1.5", newGrade: "1.25", oldUnits: 3, newUnits: 3, oldExclude: false, newExclude: false, ...o });
+test("audit wording: a new subject, a grade change, a unit/exclude change, a rename and a removal", () => {
+  assert.equal(GE.describeAuditEntry(aud({ action: "insert", oldGrade: null, oldUnits: null, oldExclude: null, oldSubject: null, oldSubjectCode: null, newGrade: "1.75", newUnits: 3 })), "Added “Math” — grade 1.75, 3 units");
+  assert.equal(GE.describeAuditEntry(aud({ action: "insert", oldGrade: null, oldUnits: null, oldExclude: null, oldSubject: null, oldSubjectCode: null, newGrade: "", newUnits: null, newExclude: true })), "Added “Math” — grade no grade, excluded from GWA");
+  assert.equal(GE.describeAuditEntry(aud()), "Math: grade 1.5 → 1.25");
+  assert.equal(GE.describeAuditEntry(aud({ oldGrade: "1.25", newUnits: 4, newExclude: true })), "Math: units 3 → 4; now excluded from GWA");
+  assert.equal(GE.describeAuditEntry(aud({ oldGrade: "1.25", oldSubject: "Math 1", newSubject: "Math" })), "Math: renamed “Math 1” → “Math”");
+  assert.equal(GE.describeAuditEntry(aud({ action: "delete", newSubject: null, newGrade: null, newUnits: null, newExclude: null, newSubjectCode: null })), "Removed “Math” (was 1.5)");
+});
+test("who made a change: the label, or a sensible fallback", () => {
+  assert.equal(GE.actorName({ actorType: "school", actorLabel: "Capitol University" }), "Capitol University");
+  assert.equal(GE.actorName({ actorType: "staff", actorLabel: null }), "CEDO staff");
+  assert.equal(GE.actorName({ actorType: "system", actorLabel: null }), "System");
+  assert.deepEqual(Object.values(GE.SOURCE_LABEL), ["Manual entry", "CSV upload", "CEDO staff", "Approved correction", "System"]);
+});
+test("dates are shown in Philippine time, and sizes in KB / MB", () => {
+  assert.equal(GE.formatWhen("2026-10-09T06:30:00Z"), "Oct 9, 2026, 2:30 PM");
+  assert.equal(GE.formatDay("2026-10-09T23:30:00Z"), "Oct 10, 2026");
+  assert.equal(GE.formatWhen(null), "—");
+  assert.equal(GE.fileSizeLabel(500), "500 B");
+  assert.equal(GE.fileSizeLabel(2048), "2 KB");
+  assert.equal(GE.fileSizeLabel(5 * 1024 * 1024), "5.0 MB");
+});
+test("document rules: PDF/JPG/PNG/WebP only, up to 10 MB, at most 5 per scholar per period", () => {
+  const ok = { name: "slip.pdf", type: "application/pdf", size: 1000 };
+  assert.equal(GE.validateDocumentFile(ok, 0), null);
+  assert.equal(GE.validateDocumentFile({ ...ok, type: "image/png", name: "slip.png" }, 4), null);
+  assert.match(GE.validateDocumentFile({ ...ok, type: "application/zip" }, 0), /Only PDF, JPG, PNG or WebP/);
+  assert.match(GE.validateDocumentFile({ ...ok, size: 11 * 1024 * 1024 }, 0), /at most 10 MB/);
+  assert.match(GE.validateDocumentFile({ ...ok, size: 0 }, 0), /empty/);
+  assert.match(GE.validateDocumentFile(ok, 5), /at most 5 documents/);
+});
+test("storage paths follow the folder layout the database expects and cannot escape it", () => {
+  const p = GE.documentStoragePath("school-1", "period-1", "2409-00123", "Grade Slip (final) 2026.PDF", "abc");
+  assert.equal(p, "school-1/period-1/2409-00123/abc-Grade_Slip_final_2026.pdf");
+  assert.equal(GE.safeFileName("../../etc/passwd"), "passwd");
+  assert.equal(GE.safeFileName(["C:", "Users", "me", "slip.pdf"].join(String.fromCharCode(92))), "slip.pdf"); // a Windows-style path
+  assert.equal(GE.safeFileName("???.png"), "document.png");
+  assert.ok(GE.safeFileName("x".repeat(300) + ".pdf").length <= 75);
+  assert.equal(GE.documentStoragePath("s", "p", "7", "a/b\\c.pdf", "u").split("/").length, 4);
+  assert.equal(GE.DOCUMENT_BUCKET, "grade-documents");
+});
+
+const subm = (status) => ({ id: "s1", periodId: "p1", status, submittedAt: "2026-10-09T06:30:00Z", scholarsTotal: 5, submitCount: 1, reopenedAt: null, reopenNote: null });
+const cnt = (complete, total, graded = complete) => PL.portalCounts(Array.from({ length: total }, (_, i) => mkRow(sch("x" + i, "L", "F", "1st Year", "P"), 2, i < complete ? 2 : 0)));
+test("a submitted period is locked; a reopened one is not", () => {
+  assert.equal(SL.isLocked(subm("submitted")), true);
+  assert.equal(SL.isLocked(subm("reopened")), false);
+  assert.equal(SL.isLocked(null), false);
+});
+test("the period bar status: Submitted once submitted, 'Reopened by CEDO' while changes are pending, else the usual progress", () => {
+  assert.equal(SL.periodStatusLabel(subm("submitted"), cnt(5, 5)), "Submitted");
+  assert.equal(SL.periodStatusLabel(null, cnt(2, 5)), "In progress");
+  assert.equal(SL.periodStatusLabel(subm("reopened"), cnt(2, 5)), "Reopened by CEDO");
+  assert.equal(SL.periodStatusLabel(subm("reopened"), cnt(5, 5)), "Ready to submit");
+});
+test("Submit grades is enabled only when every scholar is complete, the period is Open, the scale is set up and nothing is submitted yet", () => {
+  const base = { counts: cnt(5, 5), editable: true, gradingReady: true, locked: false, hasPeriod: true };
+  assert.deepEqual(SL.submitReadiness(base), { ok: true, reason: null });
+  assert.match(SL.submitReadiness({ ...base, counts: cnt(3, 5) }).reason, /2 scholars are not complete yet/);
+  assert.match(SL.submitReadiness({ ...base, counts: cnt(4, 5) }).reason, /1 scholar is not complete yet/);
+  assert.match(SL.submitReadiness({ ...base, editable: false }).reason, /Open period/);
+  assert.match(SL.submitReadiness({ ...base, gradingReady: false }).reason, /grading scale/);
+  assert.match(SL.submitReadiness({ ...base, locked: true }).reason, /already been submitted/);
+  assert.match(SL.submitReadiness({ ...base, hasPeriod: false }).reason, /period/);
+  assert.match(SL.submitReadiness({ ...base, counts: cnt(0, 0) }).reason, /no scholars/);
+});
+test("a correction request needs a real reason, and a proposed grade must be on the school's scale", () => {
+  const cfg = { scaleMin: 1, scaleMax: 5, direction: "lower_is_better", usesLetterGrades: false };
+  assert.match(SL.validateCorrectionRequest("no", "", cfg, []), /at least 5 characters/);
+  assert.equal(SL.validateCorrectionRequest("The slip shows 1.25", "", cfg, []), null);
+  assert.equal(SL.validateCorrectionRequest("The slip shows 1.25", "1.25", cfg, []), null);
+  assert.match(SL.validateCorrectionRequest("The slip shows 9", "9", cfg, []), /outside your grading scale/);
+});
+test("locked rows: only a row CEDO approved a correction for can be edited; new rows never; everything when not locked", () => {
+  const lock = SL.buildLockInfo(subm("submitted"), [
+    { gradeId: "g1", status: "approved", periodId: "p1" }, { gradeId: "g2", status: "pending", periodId: "p1" },
+    { gradeId: "g3", status: "rejected", periodId: "p1" }, { gradeId: "g4", status: "approved", periodId: "OTHER" },
+  ], "p1");
+  assert.equal(lock.locked, true);
+  assert.equal(SL.canEditRow({ id: "g1" }, lock), true);
+  for (const id of ["g2", "g3", "g4", "g9"]) assert.equal(SL.canEditRow({ id }, lock), false, id);
+  assert.equal(SL.canEditRow({ id: "new-1", isNew: true }, lock), false);
+  assert.equal(lock.pendingGradeIds.has("g2"), true);
+  const open = SL.buildLockInfo(subm("reopened"), [], "p1");
+  assert.equal(SL.canEditRow({ id: "anything" }, open), true);
+  assert.equal(SL.canEditRow({ id: "new-1", isNew: true }, SL.NOT_LOCKED), true);
+});
+test("the Corrections tab badge counts requests that are waiting or approved", () => {
+  assert.equal(SL.openRequestCount([{ status: "pending" }, { status: "approved" }, { status: "rejected" }, { status: "applied" }, { status: "cancelled" }]), 2);
+  assert.deepEqual(Object.keys(SL.CORRECTION_STATUS_LABEL), ["pending", "approved", "rejected", "applied", "cancelled"]);
+});
+test("source guard: no School Portal or staff Phase 6 screen uses text under 13px or the old greys/link blue", () => {
+  const files = ["src/school/components/ScholarsSummary.tsx", "src/school/components/SubmitGradesDialog.tsx", "src/school/components/CorrectionRequestDialog.tsx",
+    "src/school/components/CorrectionsPanel.tsx", "src/school/components/SchoolEvidenceSections.tsx", "src/app/components/GradeEvidence.tsx"];
+  for (const p of files) {
+    const src = fs.readFileSync(path.join(root, p), "utf8");
+    assert.deepEqual([...src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], p);
+    assert.equal(/text-slate-400|text-slate-500|#0088cc/.test(src), false, p);
+  }
+});
+
+// ── Phase 7: scholarship standing, school names, the Excel report, logins ─────────────────
+const lower = { scaleMin: 1, scaleMax: 5, direction: "lower_is_better", retentionThreshold: 2.5 };
+const higher = { scaleMin: 60, scaleMax: 100, direction: "higher_is_better", retentionThreshold: 85 };
+test("standing, lower-is-better scale (GWA 2.50 or better): below / at risk / good, with the margin and the line itself counted correctly", () => {
+  assert.equal(ST.scholarStanding(2.51, lower), "below");
+  assert.equal(ST.scholarStanding(3, lower), "below");
+  assert.equal(ST.scholarStanding(2.5, lower), "at_risk");      // exactly on the requirement still keeps the scholarship, but is risky
+  assert.equal(ST.scholarStanding(2.25, lower), "at_risk");     // the margin itself counts as at risk
+  assert.equal(ST.scholarStanding(2.24, lower), "good");
+  assert.equal(ST.scholarStanding(1.0, lower), "good");
+  assert.equal(ST.scholarStanding(2.1 + 0.4, lower), "at_risk"); // floating point: 2.5000000000000004 is still 2.50
+});
+test("standing, higher-is-better scale (85 or better): mirror image, 3-point margin", () => {
+  assert.equal(ST.scholarStanding(84.99, higher), "below");
+  assert.equal(ST.scholarStanding(85, higher), "at_risk");
+  assert.equal(ST.scholarStanding(88, higher), "at_risk");
+  assert.equal(ST.scholarStanding(88.01, higher), "good");
+  assert.equal(ST.scholarStanding(97, higher), "good");
+});
+test("standing: no GWA yet and no requirement saved are reported as such, never as good/below", () => {
+  assert.equal(ST.scholarStanding(null, lower), "no_gwa");
+  assert.equal(ST.scholarStanding(2, null), "no_requirement");
+  assert.equal(ST.scholarStanding(2, undefined), "no_requirement");
+  assert.equal(ST.scholarStanding(2, { ...lower, retentionThreshold: null }), "no_requirement");
+  assert.equal(ST.scholarStanding(null, { ...lower, retentionThreshold: null }), "no_requirement");
+  assert.equal(ST.isRealStanding("good"), true);
+  assert.equal(ST.isRealStanding("no_gwa"), false);
+});
+test("standing margin: 0.25 on a small scale (range up to 10), 3 points on a large one", () => {
+  assert.equal(ST.standingMargin({ scaleMin: 1, scaleMax: 5 }), 0.25);
+  assert.equal(ST.standingMargin({ scaleMin: 0, scaleMax: 10 }), 0.25);
+  assert.equal(ST.standingMargin({ scaleMin: 0, scaleMax: 11 }), 3);
+  assert.equal(ST.standingMargin({ scaleMin: 60, scaleMax: 100 }), 3);
+});
+test("standing counts, labels and the sentences read back to the school", () => {
+  const c = ST.countStandings(["good", "good", "at_risk", "below", "no_gwa", "no_requirement", "no_requirement"]);
+  assert.deepEqual(c, { good: 2, atRisk: 1, below: 1, noGwa: 1, noRequirement: 2 });
+  assert.deepEqual(Object.keys(ST.STANDING_LABEL).sort(), ["at_risk", "below", "good", "no_gwa", "no_requirement"]);
+  assert.match(ST.retentionSentence(lower, 2.5), /2\.5 or lower \(better\)/);
+  assert.match(ST.retentionSentence(higher, 85), /85 or higher \(better\)/);
+  assert.match(ST.retentionSentence(lower, null), /No retention requirement/);
+  assert.match(ST.atRiskExplanation(lower), /within 0\.25/);
+  assert.match(ST.atRiskExplanation(higher), /within 3 /);
+  assert.equal(ST.atRiskExplanation({ ...lower, retentionThreshold: null }), "");
+});
+
+const schoolList = [
+  { id: "a", name: "Pilgrim Christian College" }, { id: "b", name: "Pilgrim  Christian College of Cagayan" },
+  { id: "c", name: "pilgrim christian college " }, { id: "d", name: "Capitol University" }, { id: "e", name: "The Capitol University" },
+  { id: "f", name: "Xavier University", aliases: ["XU", "Ateneo de Cagayan"] },
+];
+test("school names: matching ignores case and spacing, honours aliases, and suggests likely duplicates", () => {
+  assert.equal(SN.schoolKey("  Pilgrim   Christian College "), "pilgrim christian college");
+  assert.equal(SN.findSchoolByName("PILGRIM CHRISTIAN  COLLEGE", schoolList).id, "a");
+  assert.equal(SN.findSchoolByName("ateneo de cagayan", schoolList).id, "f");
+  assert.equal(SN.findSchoolByName("xu", schoolList).id, "f");
+  assert.equal(SN.findSchoolByName("Nowhere College", schoolList), null);
+  assert.equal(SN.findSchoolByName("   ", schoolList), null);
+  const groups = SN.similarSchoolGroups(schoolList).map(g => g.map(s => s.id).sort().join(""));
+  assert.deepEqual(groups.sort(), ["ac", "de"]);
+});
+
+test("report: completion needs EVERY declared subject graded; GWA is units-weighted; average GWA is the mean of scholars' GWAs", () => {
+  const scholars = [
+    { scholarIdNumber: "1", name: "A", schoolId: "s1", schoolName: "School One", program: "BSIT", yearLevel: "1" },
+    { scholarIdNumber: "2", name: "B", schoolId: "s1", schoolName: "School One", program: "BSIT", yearLevel: "2" },
+    { scholarIdNumber: "3", name: "C", schoolId: "s1", schoolName: "School One", program: "BSN", yearLevel: "1" },
+    { scholarIdNumber: "4", name: "D", schoolId: "s2", schoolName: "School Two", program: "BSIT", yearLevel: "1" },
+  ];
+  const period = { key: "2026-2027|1st Semester", label: "2026-2027 · 1st Semester" };
+  const grades = {
+    "1": [{ grade: "1.0", units: 3 }, { grade: "2.0", units: 1 }],     // weighted (3 + 2) / 4 = 1.25, complete
+    "2": [{ grade: "3.0", units: 3 }, { grade: "", units: 3 }],        // one subject still ungraded -> not complete, GWA from graded only = 3.00
+    "3": [],                                                            // nothing declared
+    "4": [{ grade: "2.0", units: 3 }],
+  };
+  const setups = { s1: { config: { ...lower }, letters: [] }, s2: { config: null, letters: [] } };
+  const rows = RP.buildScholarRows(scholars, [period], (_k, id) => grades[id], id => setups[id]);
+  const by = Object.fromEntries(rows.map(r => [r.scholar.scholarIdNumber, r]));
+  assert.equal(by["1"].completion, "Complete");
+  assert.equal(by["1"].gwa, 1.25);
+  assert.equal(by["1"].standing, "good");
+  assert.equal(by["2"].completion, "Not graded");
+  assert.equal(by["2"].graded, 1);
+  assert.equal(by["2"].standing, "below");
+  assert.equal(by["3"].completion, "Not set up");
+  assert.equal(by["3"].gwa, null);
+  assert.equal(by["3"].standing, "no_gwa");
+  assert.equal(by["4"].standing, "no_requirement");
+
+  const subs = { "s1|2026-2027|1st Semester": { status: "submitted", submittedAt: "2026-10-01T08:00:00Z", pendingRequests: 2 } };
+  const submissionFor = (sid, pk) => subs[`${sid}|${pk}`];
+  const bySchool = RP.aggregateRows(rows, "school", submissionFor);
+  assert.equal(bySchool.length, 2);
+  const one = bySchool.find(g => g.schoolId === "s1");
+  assert.equal(one.scholars, 3);
+  assert.equal(one.complete, 1);
+  assert.equal(one.notGraded, 1);
+  assert.equal(one.notSetUp, 1);
+  assert.equal(one.percentComplete, 33.3);
+  assert.equal(one.averageGwa, (1.25 + 3) / 2);
+  assert.equal(one.good, 1);
+  assert.equal(one.below, 1);
+  assert.equal(one.submission, "Submitted");
+  assert.equal(one.pendingRequests, 2);
+  assert.equal(bySchool.find(g => g.schoolId === "s2").submission, "Not submitted");
+  const byProgram = RP.aggregateRows(rows, "program", submissionFor);
+  assert.equal(byProgram.length, 3);
+  assert.deepEqual(byProgram.filter(g => g.schoolId === "s1").map(g => g.program), ["BSIT", "BSN"]);
+  assert.equal(RP.submissionLabel({ status: "reopened", submittedAt: null, pendingRequests: 0 }), "Reopened by CEDO");
+});
+
+test("report sheets: three sheets, every row as wide as its header, Period column only when several periods are exported", () => {
+  const scholars = [{ scholarIdNumber: "1", name: "A", schoolId: "s1", schoolName: "School One", program: "BSIT", yearLevel: "1" }];
+  const periods = [{ key: "p1", label: "P1" }, { key: "p2", label: "P2" }];
+  const rows = RP.buildScholarRows(scholars, periods, () => [{ grade: "1.5", units: 3 }], () => ({ config: lower, letters: [] }));
+  assert.equal(rows.length, 2);
+  for (const withPeriod of [true, false]) {
+    const sheets = RP.buildReportSheets(rows, RP.aggregateRows(rows, "school", () => undefined), RP.aggregateRows(rows, "program", () => undefined), withPeriod);
+    assert.deepEqual(sheets.map(s => s.name), ["By school", "By program", "Scholars"]);
+    for (const s of sheets) {
+      assert.equal(s.headers.includes("Period"), withPeriod, s.name);
+      for (const r of s.rows) assert.equal(r.length, s.headers.length, s.name);
+    }
+  }
+  const scholarSheet = RP.buildReportSheets(rows, [], [], false)[2];
+  assert.equal(scholarSheet.rows[0][scholarSheet.headers.indexOf("GWA")], 1.5);
+  assert.equal(scholarSheet.rows[0][scholarSheet.headers.indexOf("Standing")], "Good standing");
+});
+
+test("login and IT screens: school signs in by username or email (no school-name sign-in), has Forgot password, IT sets usernames", () => {
+  const login = fs.readFileSync(path.join(root, "src/school/pages/SchoolLoginPage.tsx"), "utf8");
+  assert.match(login, /Username or email/);
+  assert.match(login, /Forgot password\?/);
+  assert.equal(/School name/i.test(login), false);
+  const api = fs.readFileSync(path.join(root, "src/school/schoolApi.ts"), "utf8");
+  assert.match(api, /resolve_school_login_email/);
+  assert.match(api, /request_school_password_reset/);
+  const it = fs.readFileSync(path.join(root, "src/itadmin/schoolAccountsApi.ts"), "utf8");
+  assert.match(it, /set_school_username/);
+  assert.match(it, /mark_school_reset_handled/);
+});
+
+test("staff screens use the shared rules: no second GWA, standing or 'complete' formula in the staff data/export modules", () => {
+  for (const p of ["src/sead/scholarsMonitoringData.ts", "src/sead/gradesExport.ts"]) {
+    const src = fs.readFileSync(path.join(root, p), "utf8");
+    assert.equal(/reduce\(|toFixed\(|\/ *units/i.test(src), false, `${p} must not compute its own averages`);
+  }
+  const data = fs.readFileSync(path.join(root, "src/sead/scholarsMonitoringData.ts"), "utf8");
+  assert.match(data, /gwaDetail\(/);
+  assert.match(data, /scholarStanding\(/);
+  const tab = fs.readFileSync(path.join(root, "src/sead/pages/ScholarsGradesMonitoringScholarsTab.tsx"), "utf8");
+  assert.match(tab, /PAGE_SIZE = 50/);
+  assert.equal(/fetchMonitoringScholars/.test(tab), false, "the Scholars tab must page, not use the 200-row list");
+});
+
+test("source guard: new Phase 7 screens use readable text (13px and up, no pale greys, no pale-blue text links)", () => {
+  const files = ["src/sead/pages/ScholarsGradesMonitoringCleanupTab.tsx", "src/sead/components/GradesExportDialog.tsx", "src/school/pages/SchoolLoginPage.tsx"];
+  for (const p of files) {
+    const src = fs.readFileSync(path.join(root, p), "utf8");
+    assert.deepEqual([...src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], p);
+    assert.equal(/text-slate-400|text-\[#0088cc\]/.test(src), false, p);
   }
 });
 

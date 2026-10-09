@@ -14,6 +14,8 @@ export interface GradingConfig {
   scaleMax: number;
   direction: "lower_is_better" | "higher_is_better";
   usesLetterGrades: boolean;
+  /** The school's retention requirement on its own scale (e.g. 2.5 = "GWA 2.50 or better"); null/undefined = not set. */
+  retentionThreshold?: number | null;
 }
 
 export interface LetterGrade {

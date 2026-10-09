@@ -37,7 +37,7 @@ export async function fetchExportData(
   return { ok: true, data: { title, consentEnabled, questions, responses } };
 }
 
-function downloadBlob(fileName: string, blob: Blob) {
+export function downloadBlob(fileName: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

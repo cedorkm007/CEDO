@@ -4,6 +4,7 @@ import { fetchScholarInformationByIdNumber, bulkUpdateScholars, type BulkScholar
 import { SCHOLARSHIP_STATUSES, type ScholarListItem, type ScholarshipStatus } from "../types";
 import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
+import { SchoolSelect } from "./SchoolSelect";
 
 const CIVIL_STATUS_OPTIONS = ["Single", "Single Parent", "Married", "Widow", "Separated"];
 
@@ -92,7 +93,7 @@ export function EditScholarModal({ scholar, onClose, onSaved }: { scholar: Schol
                 <F label="Email" type="email" value={form.contactEmail ?? ""} onChange={v => set("contactEmail", v)} />
               </div>
               <div className="grid grid-cols-2 gap-3 mb-3">
-                <F label="School" value={form.school ?? ""} onChange={v => set("school", v)} />
+                <SchoolSelect value={form.school ?? ""} onChange={v => set("school", v)} />
                 <F label="Program" value={form.course ?? ""} onChange={v => set("course", v)} />
               </div>
               <div className="grid grid-cols-2 gap-3 mb-3">

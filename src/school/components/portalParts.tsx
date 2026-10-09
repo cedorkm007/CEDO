@@ -1,4 +1,5 @@
-import { CheckCircle2, CircleDashed, AlertTriangle, SendHorizontal } from "lucide-react";
+import { CheckCircle2, CircleDashed, AlertTriangle, SendHorizontal, ShieldCheck, ShieldAlert, ShieldX } from "lucide-react";
+import { STANDING_LABEL, type StandingResult } from "@/lib/standing";
 import { STATUS_LABEL, type ScholarStatus } from "../portalLogic";
 
 /** Visible keyboard focus for every button/link in the School Portal. */
@@ -34,5 +35,22 @@ export function ProgressBar({ percent, label, tone = "blue" }: { percent: number
       className="h-2 w-full rounded-full bg-[#e6ecf5] overflow-hidden">
       <div className={`h-full rounded-full ${tone === "green" || clamped === 100 ? "bg-green-600" : "bg-[#0077b6]"}`} style={{ width: `${clamped}%` }} />
     </div>
+  );
+}
+
+const STANDING_CHIP: Partial<Record<StandingResult, { cls: string; icon: React.ReactNode }>> = {
+  good: { cls: "text-green-900 bg-green-50 border-green-300", icon: <ShieldCheck size={13} aria-hidden="true" /> },
+  at_risk: { cls: "text-amber-900 bg-amber-50 border-amber-300", icon: <ShieldAlert size={13} aria-hidden="true" /> },
+  below: { cls: "text-red-900 bg-red-50 border-red-300", icon: <ShieldX size={13} aria-hidden="true" /> },
+};
+
+/** Scholarship standing as a coloured chip with its text label; "—" when there is no GWA yet / no requirement. */
+export function StandingChip({ standing }: { standing: StandingResult }) {
+  const c = STANDING_CHIP[standing];
+  if (!c) return <span className="text-slate-700" title={STANDING_LABEL[standing]}>—<span className="sr-only"> {STANDING_LABEL[standing]}</span></span>;
+  return (
+    <span className={`inline-flex items-center gap-1 whitespace-nowrap text-[13px] font-bold border rounded-full px-2.5 py-0.5 ${c.cls}`}>
+      {c.icon} {STANDING_LABEL[standing]}
+    </span>
   );
 }

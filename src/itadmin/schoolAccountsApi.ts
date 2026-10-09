@@ -88,3 +88,23 @@ export async function resetSchoolPassword(id: string): Promise<{ ok: boolean; er
   if (data?.error) return { ok: false, error: data.error };
   return { ok: true, name: data?.name };
 }
+
+/** Gives an existing account a username (or changes it). A school signs in with its username or login email, never its school name. IT administrator only — checked by the database. */
+export async function setSchoolUsername(accountId: string, username: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("set_school_username", { p_account_id: accountId, p_username: username });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/** Schools that used "Forgot password?" and are still waiting for a reset, oldest first (account id -> when they asked). */
+export async function fetchResetRequests(): Promise<Map<string, string>> {
+  const { data, error } = await supabase.from("school_password_reset_requests").select("account_id, requested_at").is("handled_at", null).order("requested_at");
+  const out = new Map<string, string>();
+  if (error || !data) return out;
+  for (const r of data) out.set(String(r.account_id), String(r.requested_at));
+  return out;
+}
+
+/** Closes a school's open reset request (call after the password has been reset). */
+export async function markResetHandled(accountId: string): Promise<void> {
+  await supabase.rpc("mark_school_reset_handled", { p_account_id: accountId });
+}

@@ -3,6 +3,7 @@ import { UserPlus, Building2, KeyRound, Trash2, Eye, EyeOff } from "lucide-react
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
 import {
   fetchSchoolsList, createSchoolAccount, fetchSchoolAccountsList, deleteSchoolAccount, resetSchoolPassword,
+  setSchoolUsername, fetchResetRequests, markResetHandled,
   validateSchoolUsername, validateSchoolPassword, SCHOOL_PASSWORD_MIN,
   type SchoolOption, type SchoolAccountListItem,
 } from "./schoolAccountsApi";
@@ -28,13 +29,31 @@ export function SchoolAccountsPage() {
   const [confirmAction, setConfirmAction] = useState<{ id: string; kind: "reset" | "delete" } | null>(null);
   const [rowBusyId, setRowBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Schools that used "Forgot password?" on the sign-in page and are waiting for a reset (account id -> when they asked).
+  const [resetRequests, setResetRequests] = useState<Map<string, string>>(new Map());
+  const [usernameEdit, setUsernameEdit] = useState<{ id: string; value: string; error: string; busy: boolean } | null>(null);
 
   async function loadData() {
     setLoadingAccounts(true);
-    const [schoolList, accountList] = await Promise.all([fetchSchoolsList(), fetchSchoolAccountsList()]);
+    const [schoolList, accountList, requests] = await Promise.all([fetchSchoolsList(), fetchSchoolAccountsList(), fetchResetRequests()]);
     setSchools(schoolList);
     setAccounts(accountList);
+    setResetRequests(requests);
     setLoadingAccounts(false);
+  }
+
+  async function saveUsername() {
+    if (!usernameEdit) return;
+    const value = usernameEdit.value.trim().toLowerCase();
+    const problem = validateSchoolUsername(value);
+    if (problem) { setUsernameEdit({ ...usernameEdit, error: problem }); return; }
+    setUsernameEdit({ ...usernameEdit, busy: true, error: "" });
+    const result = await setSchoolUsername(usernameEdit.id, value);
+    if (!result.ok) { setUsernameEdit({ ...usernameEdit, busy: false, error: result.error || "Couldn't save the username." }); return; }
+    setUsernameEdit(null);
+    setToast(`Username set to "${value}". The school can now sign in with it.`);
+    setTimeout(() => setToast(null), 4000);
+    loadData();
   }
   useEffect(() => { loadData(); }, []);
 
@@ -63,10 +82,14 @@ export function SchoolAccountsPage() {
   async function handleResetPassword(id: string) {
     setRowBusyId(id);
     const result = await resetSchoolPassword(id);
+    if (result.ok) {
+      await markResetHandled(id); // closes the school's "Forgot password?" request, if it made one
+      setResetRequests(prev => { const next = new Map(prev); next.delete(id); return next; });
+    }
     setRowBusyId(null);
     setConfirmAction(null);
-    setToast(result.ok ? `Password reset to 123456 for ${result.name}.` : (result.error || "Failed to reset password."));
-    setTimeout(() => setToast(null), 4000);
+    setToast(result.ok ? `Password reset to 123456 for ${result.name}. Tell the school to change it after signing in (Account menu, Change password).` : (result.error || "Failed to reset password."));
+    setTimeout(() => setToast(null), 6000);
   }
 
   async function handleDelete(id: string) {
@@ -79,8 +102,10 @@ export function SchoolAccountsPage() {
     if (result.ok) loadData();
   }
 
+  // Schools waiting for a password reset come first.
+  const sortedAccounts = [...accounts].sort((a, b) => Number(resetRequests.has(b.id)) - Number(resetRequests.has(a.id)));
   const { paged, search, setSearch, page, setPage, totalPages, filteredCount, pageSize } =
-    usePaginatedList(accounts, { searchKeys: ["schoolName", "username"] });
+    usePaginatedList(sortedAccounts, { searchKeys: ["schoolName", "username"] });
 
   return (
     <div>
@@ -170,8 +195,15 @@ export function SchoolAccountsPage() {
                     <div>
                       <p className="text-sm font-medium text-foreground">{a.schoolName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {a.username ? <>Username: <span className="font-semibold text-foreground">{a.username}</span></> : "Signs in with the school name"}
+                        {a.username
+                          ? <>Username: <span className="font-semibold text-foreground">{a.username}</span></>
+                          : <span className="font-semibold text-destructive">No username yet — this school cannot sign in until you set one.</span>}
                       </p>
+                      {resetRequests.has(a.id) && (
+                        <p className="text-xs font-semibold text-amber-700 mt-0.5">
+                          Asked for a password reset on {new Date(resetRequests.get(a.id)!).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} — use Reset Password below.
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -195,9 +227,25 @@ export function SchoolAccountsPage() {
                       <button onClick={() => setConfirmAction({ id: a.id, kind: "reset" })} style={{ cursor: 'pointer' }} className="flex items-center gap-1 font-semibold text-accent hover:underline hover:opacity-80 transition-opacity">
                         <KeyRound size={12} /> Reset Password
                       </button>
+                      <button onClick={() => setUsernameEdit({ id: a.id, value: a.username ?? "", error: "", busy: false })} style={{ cursor: 'pointer' }} className="flex items-center gap-1 font-semibold text-accent hover:underline hover:opacity-80 transition-opacity">
+                        {a.username ? "Change username" : "Set username"}
+                      </button>
                       <button onClick={() => setConfirmAction({ id: a.id, kind: "delete" })} style={{ cursor: 'pointer' }} className="flex items-center gap-1 font-semibold text-destructive hover:underline hover:opacity-80 transition-opacity">
                         <Trash2 size={12} /> Delete
                       </button>
+                    </div>
+                  )}
+                  {usernameEdit?.id === a.id && (
+                    <div className="mt-2">
+                      <label htmlFor={`username-${a.id}`} className="block text-xs font-semibold text-muted-foreground mb-1">New username</label>
+                      <div className="flex items-center gap-2">
+                        <input id={`username-${a.id}`} value={usernameEdit.value} onChange={e => setUsernameEdit({ ...usernameEdit, value: e.target.value, error: "" })}
+                          autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="e.g. capitol.university"
+                          className="flex-1 border border-border rounded-lg px-3 py-1.5 text-sm bg-input-background outline-none focus:ring-2 focus:ring-accent/50" />
+                        <button onClick={saveUsername} disabled={usernameEdit.busy} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-60">{usernameEdit.busy ? "Saving…" : "Save"}</button>
+                        <button onClick={() => setUsernameEdit(null)} className="text-xs text-muted-foreground hover:underline">Cancel</button>
+                      </div>
+                      {usernameEdit.error && <p role="alert" className="text-xs text-destructive mt-1">{usernameEdit.error}</p>}
                     </div>
                   )}
                 </div>

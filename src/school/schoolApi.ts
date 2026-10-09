@@ -9,18 +9,14 @@ import type { SchoolProfile, GradingConfig, LetterGrade, SchoolScholarRow, Schoo
 import type { GradingPeriod } from "@/sead/scholarsGradesMonitoringApi";
 
 /**
- * Logs a school in with its USERNAME (set by IT when the account was
- * created) or, for accounts that predate usernames, its exact school name
- * (public.schools.name is unique). Supabase Auth itself only understands
- * email + password, so this first resolves the matching login email via the
- * `resolve_school_login_email` RPC (username first, then school name), then
- * signs in with it. Mirrors scholarSignIn() in src/scholar/scholarApi.ts.
- * The RPC's parameter is still called p_school_name so the call shape didn't
- * change when username support was added.
+ * Logs a school in with its USERNAME (set by IT) or its login EMAIL — the school name no longer signs anyone in.
+ * Supabase Auth itself only understands email + password, so this first resolves the matching login email via the
+ * `resolve_school_login_email` RPC, then signs in with it. Mirrors scholarSignIn() in src/scholar/scholarApi.ts.
+ * The RPC's parameter is still called p_school_name so the call shape didn't change when usernames were added.
  */
-export async function schoolSignIn(usernameOrSchoolName: string, password: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { data: email, error: rpcError } = await supabase.rpc("resolve_school_login_email", { p_school_name: usernameOrSchoolName });
-  if (rpcError || !email) return { ok: false, error: "We couldn't find a school account matching that username." };
+export async function schoolSignIn(usernameOrEmail: string, password: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: email, error: rpcError } = await supabase.rpc("resolve_school_login_email", { p_school_name: usernameOrEmail });
+  if (rpcError || !email) return { ok: false, error: "We couldn't find a school account with that username or email." };
 
   const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
   if (authError) return { ok: false, error: "Incorrect username or password." };
@@ -52,6 +48,7 @@ export async function fetchGradingConfig(): Promise<GradingConfig | null> {
     scaleMin: Number(data.scale_min ?? 1), scaleMax: Number(data.scale_max ?? 5),
     direction: (data.direction as GradingConfig["direction"]) ?? "lower_is_better",
     usesLetterGrades: !!data.uses_letter_grades,
+    retentionThreshold: data.retention_threshold == null ? null : Number(data.retention_threshold),
   };
 }
 
@@ -63,7 +60,7 @@ export async function fetchLetterGrades(schoolId: string): Promise<LetterGrade[]
 
 export async function saveGradingConfig(config: GradingConfig): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.rpc("upsert_school_grading_config", {
-    p_scale_min: config.scaleMin, p_scale_max: config.scaleMax, p_direction: config.direction, p_uses_letter_grades: config.usesLetterGrades,
+    p_scale_min: config.scaleMin, p_scale_max: config.scaleMax, p_direction: config.direction, p_uses_letter_grades: config.usesLetterGrades, p_retention_threshold: config.retentionThreshold ?? null,
   });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
@@ -80,6 +77,7 @@ export async function fetchOwnScholars(schoolId: string): Promise<SchoolScholarR
     .from("scholars")
     .select("scholar_id_number, first_name, last_name, middle_name, year_level, course")
     .eq("school_id", schoolId)
+    .neq("status", "Removed") // removed scholars cannot be graded; they are not counted or listed
     .order("last_name");
   if (error || !data) return [];
   return data.map(r => ({
@@ -221,4 +219,10 @@ export async function changeSchoolPassword(currentPassword: string, newPassword:
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+/** "Forgot password": tells the CEDO IT administrator this school cannot sign in. The reply never says whether the login exists, so the form cannot be used to find out which schools have accounts. */
+export async function requestSchoolPasswordReset(login: string): Promise<{ ok: boolean }> {
+  const { error } = await supabase.rpc("request_school_password_reset", { p_login: login.trim() });
+  return { ok: !error };
 }

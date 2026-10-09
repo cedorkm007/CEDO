@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X, UserPlus } from "lucide-react";
 import { createScholarAccount, addRemovedScholar, type NewScholarInput } from "../seadApi";
+import { SchoolSelect } from "./SchoolSelect";
 
 const CIVIL_STATUS_OPTIONS = ["Single", "Single Parent", "Married", "Widow", "Separated"];
 
@@ -64,7 +65,7 @@ export function AddScholarModal({ onClose, onCreated, asRemoved = false }: { onC
               </div>
               <F label="Address" value={form.address} onChange={v => set("address", v)} className="mb-3" />
               <div className="grid grid-cols-2 gap-3 mb-3">
-                <F label="School" value={form.school} onChange={v => set("school", v)} />
+                <SchoolSelect value={form.school} onChange={v => set("school", v)} />
                 <F label="Program" value={form.course} onChange={v => set("course", v)} />
               </div>
               <div className="grid grid-cols-2 gap-3 mb-4">
