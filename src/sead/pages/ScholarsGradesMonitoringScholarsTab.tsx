@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { Modal } from "../components/Modal";
 import { ScholarGradesTable } from "../components/ScholarGradesTable";
@@ -7,13 +7,15 @@ import {
   type MonitoringScholarRow, type LetterGrade,
 } from "../scholarsGradesMonitoringApi";
 import type { StaffGradeRow } from "../components/ScholarGradesTable";
+import { periodKey, periodTitle } from "@/lib/academicPeriods";
+import type { GradingPeriod } from "../scholarsGradesMonitoringApi";
 
 function displayName(row: MonitoringScholarRow): string {
   const mi = row.middleName.trim() ? `${row.middleName.trim()[0]}.` : "";
   return [`${row.lastName},`, row.firstName, mi].filter(Boolean).join(" ");
 }
 
-export function ScholarsGradesMonitoringScholarsTab() {
+export function ScholarsGradesMonitoringScholarsTab({ period }: { period: GradingPeriod }) {
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<MonitoringScholarRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,13 +71,15 @@ export function ScholarsGradesMonitoringScholarsTab() {
         </table>
       </div>
 
-      {viewing && <ScholarGradesModal scholar={viewing} onClose={() => setViewing(null)} />}
+      {viewing && <ScholarGradesModal scholar={viewing} period={period} onClose={() => setViewing(null)} />}
     </div>
   );
 }
 
-function ScholarGradesModal({ scholar, onClose }: { scholar: MonitoringScholarRow; onClose: () => void }) {
+/** Shows the period chosen at the top of the page by default; "Show all periods" lists every semester on record for the scholar. */
+function ScholarGradesModal({ scholar, period, onClose }: { scholar: MonitoringScholarRow; period: GradingPeriod; onClose: () => void }) {
   const [grades, setGrades] = useState<StaffGradeRow[]>([]);
+  const [showAll, setShowAll] = useState(false);
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -91,12 +95,31 @@ function ScholarGradesModal({ scholar, onClose }: { scholar: MonitoringScholarRo
     });
   }, [scholar.scholarIdNumber]);
 
+  const wantedKey = period.schoolYear ? periodKey(period.schoolYear, period.semester) : "";
+  const inPeriod = useMemo(() => grades.filter(g => periodKey(g.schoolYear, g.semester) === wantedKey), [grades, wantedKey]);
+  const shown = showAll || !wantedKey ? grades : inPeriod;
+
   return (
     <Modal title={`${displayName(scholar)} — Grades`} onClose={onClose} elevated>
       {loading ? (
         <p className="text-[13px] text-slate-400 text-center py-8">Loading…</p>
       ) : (
-        <ScholarGradesTable grades={grades} letterGrades={letterGrades} />
+        <>
+          {wantedKey && (
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <p className="text-[12.5px] text-slate-600">{showAll ? "Showing every period on record" : `Showing ${periodTitle(period)}`}</p>
+              <button onClick={() => setShowAll(v => !v)} className="text-[12.5px] font-semibold text-[#0088cc] hover:opacity-80">
+                {showAll ? "Show only the selected period" : "Show all periods"}
+              </button>
+            </div>
+          )}
+          {!showAll && wantedKey && inPeriod.length === 0 && grades.length > 0 && (
+            <p className="text-[12.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+              Nothing is recorded for this scholar in {periodTitle(period)}, but other periods have grades — use "Show all periods".
+            </p>
+          )}
+          <ScholarGradesTable key={showAll ? "all" : wantedKey} grades={shown} letterGrades={letterGrades} />
+        </>
       )}
     </Modal>
   );

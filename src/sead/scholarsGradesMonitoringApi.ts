@@ -120,5 +120,6 @@ export async function fetchScholarGradesForStaff(scholarIdNumber: string) {
     schoolYear: String(r.school_year ?? ""), semester: String(r.semester ?? ""),
     subjectCode: String(r.subject_code ?? ""), subject: String(r.subject ?? ""),
     grade: r.grade == null ? "" : String(r.grade), remarks: String(r.remarks ?? ""),
+    units: r.units == null ? null : Number(r.units), excludeFromGwa: !!r.exclude_from_gwa,
   }));
 }

@@ -53,6 +53,8 @@ export interface SubjectGrade {
   subject: string;
   grade: string;
   remarks: string;
+  units: number | null;
+  excludeFromGwa: boolean;
 }
 
 export interface QuestScore {

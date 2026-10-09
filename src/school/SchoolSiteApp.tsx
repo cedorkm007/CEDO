@@ -31,7 +31,7 @@ export function SchoolSiteApp() {
   }, []);
 
   if (checkingSession) {
-    return <div className="min-h-screen flex items-center justify-center text-slate-400 text-sm">Loading…</div>;
+    return <div className="min-h-screen flex items-center justify-center text-slate-700 text-[15px]">Loading…</div>;
   }
 
   return (

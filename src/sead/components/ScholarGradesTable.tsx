@@ -9,6 +9,8 @@ export interface StaffGradeRow {
   subjectCode: string;
   subject: string;
   grade: string;
+  units?: number | null;
+  excludeFromGwa?: boolean;
 }
 
 /** Grouped-by-School-Year+Semester grades matrix with a computed GWA per group — the staff-side counterpart to the scholar portal's SubjectsGradesPanel, sharing the same computeGwa() logic (src/lib/gwa.ts) so both sides always agree. */
@@ -44,7 +46,7 @@ export function ScholarGradesTable({ grades, letterGrades }: { grades: StaffGrad
                 <ChevronRight size={15} className={`text-[#0088cc] transition-transform ${open ? "rotate-90" : ""}`} />
                 <span className="font-bold text-sm text-[#062444]">{key}</span>
               </span>
-              <span className="text-[12.5px] font-semibold text-slate-500">GWA: <span className="text-[#062444]">{formatGwa(gwa)}</span></span>
+              <span className="text-[12.5px] font-semibold text-slate-500">GWA: <span className="text-[#062444]">{formatGwa(gwa)}</span><span className="font-normal text-slate-600"> (weighted by units)</span></span>
             </button>
             {open && (
               <div className="px-4 pb-4 pt-1 overflow-x-auto">
@@ -53,6 +55,7 @@ export function ScholarGradesTable({ grades, letterGrades }: { grades: StaffGrad
                     <tr>
                       <th className="text-left text-[11.5px] uppercase tracking-wide text-[#0088cc] pb-2 border-b-2 border-[#e6ecf5]">Subject Code</th>
                       <th className="text-left text-[11.5px] uppercase tracking-wide text-[#0088cc] pb-2 border-b-2 border-[#e6ecf5]">Subject Name</th>
+                      <th className="text-left text-[11.5px] uppercase tracking-wide text-[#0088cc] pb-2 border-b-2 border-[#e6ecf5]">Units</th>
                       <th className="text-left text-[11.5px] uppercase tracking-wide text-[#0088cc] pb-2 border-b-2 border-[#e6ecf5]">Grade</th>
                     </tr>
                   </thead>
@@ -60,7 +63,11 @@ export function ScholarGradesTable({ grades, letterGrades }: { grades: StaffGrad
                     {rows.map(r => (
                       <tr key={r.id} className="hover:bg-[#f7f9fc]">
                         <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">{r.subjectCode || "—"}</td>
-                        <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">{r.subject}</td>
+                        <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">
+                          {r.subject}
+                          {r.excludeFromGwa && <span className="ml-2 text-[11px] font-semibold text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">not in GWA</span>}
+                        </td>
+                        <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700" title={r.units == null ? "No units entered — counted as 1 unit in the GWA" : undefined}>{r.units ?? "—"}</td>
                         <td className="py-2.5 border-b border-[#f0f3f8] font-semibold text-[#062444]">{r.grade || "—"}</td>
                       </tr>
                     ))}

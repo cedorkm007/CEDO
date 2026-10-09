@@ -105,6 +105,8 @@ export async function fetchSubjectsAndGrades(scholarIdNumber: string): Promise<S
     subject: String(r.subject ?? ""),
     grade: r.grade == null ? "" : String(r.grade),
     remarks: String(r.remarks ?? ""),
+    units: r.units == null ? null : Number(r.units),
+    excludeFromGwa: !!r.exclude_from_gwa,
   }));
 }
 
@@ -124,6 +126,14 @@ export async function fetchMyLetterGrades(): Promise<{ letter: string; numericVa
   const { data, error } = await supabase.rpc("get_scholar_letter_grades");
   if (error || !data) return [];
   return (data as Record<string, unknown>[]).map(r => ({ letter: String(r.letter), numericValue: r.numeric_value == null ? null : Number(r.numeric_value) }));
+}
+
+/** The Current Grading Period CEDO has set — the default period shown on the Subjects and Grades panel. Blank strings when none is set. */
+export async function fetchCurrentGradingPeriod(): Promise<{ schoolYear: string; semester: string }> {
+  const { data, error } = await supabase.rpc("get_current_grading_period").maybeSingle();
+  if (error || !data) return { schoolYear: "", semester: "" };
+  const row = data as Record<string, unknown>;
+  return { schoolYear: String(row.current_school_year ?? ""), semester: String(row.current_semester ?? "") };
 }
 
 export async function fetchQuestScores(scholarIdNumber: string): Promise<QuestScore[]> {

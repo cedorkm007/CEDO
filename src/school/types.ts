@@ -38,4 +38,8 @@ export interface SchoolSubjectGrade {
   subjectCode: string;
   subject: string;
   grade: string;
+  /** Credit units of the subject; null until the school sets them (counted as 1 unit when GWA is weighted, Phase 4). */
+  units: number | null;
+  /** True for subjects kept out of the GWA (e.g. NSTP, PE). */
+  excludeFromGwa: boolean;
 }
