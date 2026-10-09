@@ -98,9 +98,8 @@ const CREDITS_REQUIRED = 3;
  * Per-category progress toward the 3 credits needed to complete it (for
  * the current grading period — see fetch_scholar_sdp_progress()), mirrors
  * the checkmark/circle badges already shown on the scholar's own Profile.
- * A category that's already capped for this period keeps banking excess
- * as "reserved" instead of discarding it — shown here as a read-only
- * tracker for now; applying it toward a later period isn't wired up yet.
+ * Credit above the requirement isn't capped or banked — the count shows
+ * the real total (6/3, 4/3).
  */
 /** Breaks a two-word category label onto two lines (matches the <br/> already used for these same labels in SDPMonitoringTab's checklist headers) so all three cards wrap the same way instead of "Formation Program" alone staying on one line. */
 function twoLineLabel(label: string) {
@@ -109,12 +108,11 @@ function twoLineLabel(label: string) {
   return <>{label.slice(0, splitAt)}<br />{label.slice(splitAt + 1)}</>;
 }
 
-function CreditProgress({ credits, reserved }: { credits: SDPCreditCounts; reserved: SDPCreditCounts }) {
+function CreditProgress({ credits }: { credits: SDPCreditCounts }) {
   return (
     <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 mb-5">
       {SDP_CATEGORIES.map(c => {
         const count = credits[c.key] ?? 0;
-        const bank = reserved[c.key] ?? 0;
         const complete = count >= CREDITS_REQUIRED;
         return (
           <div key={c.key} className={`rounded-lg sm:rounded-xl border px-1.5 py-1.5 sm:p-3 ${complete ? "bg-green-50 border-green-200" : "bg-[#f7f9fc] border-transparent"}`}>
@@ -128,11 +126,6 @@ function CreditProgress({ credits, reserved }: { credits: SDPCreditCounts; reser
               </div>
               <span className="text-[8.5px] sm:text-[10.5px] font-bold text-slate-500 shrink-0">{count}/{CREDITS_REQUIRED}</span>
             </div>
-            {bank > 0 && (
-              <div className="mt-1 sm:mt-1.5 w-full text-center text-[7.5px] sm:text-[9.5px] font-bold text-amber-700 bg-amber-100 rounded-md px-1 py-0.5">
-                +{bank} reserved
-              </div>
-            )}
           </div>
         );
       })}
@@ -158,7 +151,6 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   const [loading, setLoading] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<SDPActivity | null>(null);
   const [credits, setCredits] = useState<SDPCreditCounts>({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
-  const [reserved, setReserved] = useState<SDPCreditCounts>({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
 
   async function loadAll() {
     setLoading(true);
@@ -167,7 +159,6 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
     ]);
     setActivities(a);
     setCredits(progress.credits);
-    setReserved(progress.reserved);
     setAttendedIds(attended);
     setLoading(false);
   }
@@ -175,7 +166,7 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
 
   return (
     <SectionCard icon={<Lightbulb size={14} />} title="Scholars' Development Program (SDP)">
-      {!loading && <CreditProgress credits={credits} reserved={reserved} />}
+      {!loading && <CreditProgress credits={credits} />}
 
       <div className="flex items-center gap-2 mb-3">
         <h4 className="text-[#062444] font-bold text-sm flex-1">SDP Activities</h4>

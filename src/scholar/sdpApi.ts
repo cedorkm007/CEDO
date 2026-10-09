@@ -125,11 +125,11 @@ const zeroCreditCounts = (): SDPCreditCounts => ({ community_service: 0, communi
 
 /**
  * This scholar's credits per SDP category FOR THE CURRENT GRADING PERIOD
- * (3 needed to complete one) plus any banked "reserved" credit not yet
- * applied — see fetch_scholar_sdp_progress() (supabase_migration_sdp_
- * reserved_credits.sql). Once a category hits the cap for the current
- * period, further credit is banked as reserved instead of discarded, and
- * a scholar can claim it into a later period via claimSDPReservedCredits.
+ * (3 needed to complete one). The count is the real total (can be 4/3, 6/3)
+ * and includes credit carried in automatically from earlier semesters — see
+ * fetch_scholar_sdp_progress() (supabase_migration_sdp_show_total_credits_
+ * over_required.sql). `reserved` is always 0 now; it is kept only so the
+ * RPC's shape didn't have to change.
  */
 export async function fetchScholarSDPProgress(): Promise<{ credits: SDPCreditCounts; reserved: SDPCreditCounts }> {
   const fallback = { credits: zeroCreditCounts(), reserved: zeroCreditCounts() };
