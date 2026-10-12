@@ -258,7 +258,8 @@ export async function fetchSubjectProgressPage(
   };
 }
 
-export type CompletionStatusFilter = "all" | "completed" | "did_not_complete" | "not_attempted";
+/** Survey-type subjects: "not_completed" = did_not_complete + not_attempted; "answered" = completed + did_not_complete (submitted at least one topic). */
+export type CompletionStatusFilter = "all" | "completed" | "did_not_complete" | "not_attempted" | "not_completed" | "answered";
 
 export interface SubjectCompletionRow {
   scholarIdNumber: string;

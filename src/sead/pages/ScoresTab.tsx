@@ -5,6 +5,7 @@ import type { QuestSubject, QuestTopic, ScoreRow } from "../types";
 import { ListPagination } from "@/app/components/PaginatedList";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { useSortState, SortableTh } from "@/app/components/SortableTable";
+import { SurveyCompletionPanel } from "../components/SurveyCompletionPanel";
 
 export function ScoresTab() {
   const [subjects, setSubjects] = useState<QuestSubject[]>([]);
@@ -35,6 +36,10 @@ export function ScoresTab() {
   const [progressPageSize, setProgressPageSize] = useState(10);
   const [progressYearLevel, setProgressYearLevel] = useState("");
   const [progressSchool, setProgressSchool] = useState("");
+  // A survey-type subject is never scored, so Passed / Not Passed does not apply: it gets its own Completed / Not
+  // Completed panel (SurveyCompletionPanel) and the passing-rate queries below are skipped for it.
+  const selectedSubject = subjects.find(s => s.id === subjectId);
+  const isSurveySubject = selectedSubject?.answerDestination === "survey_results";
   // School is free text — debounced on the same 350ms convention already
   // used for free-text filters elsewhere in this project (ScholarsTab.tsx's
   // own name/course/school filters), so a query isn't fired on every
@@ -42,7 +47,7 @@ export function ScoresTab() {
   // immediately on change instead — same reasoning ScholarsTab.tsx itself
   // uses for its own select-vs-text-input filters.
   useEffect(() => {
-    if (!subjectId) return;
+    if (!subjectId || isSurveySubject) return;
     const t = setTimeout(() => {
       setProgressPage(1);
       void loadProgressPage(subjectId, passedFilter, 1, progressPageSize, progressYearLevel, progressSchool);
@@ -103,7 +108,7 @@ export function ScoresTab() {
 
     setPassedFilter("all");
     setProgressPage(1);
-    if (subjectId) {
+    if (subjectId && !isSurveySubject) {
       void loadProgressPage(subjectId, "all", 1);
     } else {
       setProgressRows([]);
@@ -183,8 +188,10 @@ export function ScoresTab() {
         </div>
       </div>
 
-      {subjectId && (() => {
-        const subject = subjects.find(s => s.id === subjectId);
+      {subjectId && isSurveySubject && selectedSubject && <SurveyCompletionPanel subject={selectedSubject} />}
+
+      {subjectId && !isSurveySubject && (() => {
+        const subject = selectedSubject;
         const progressTotalPages = Math.max(1, Math.ceil(progressTotal / progressPageSize));
         const safeProgressPage = Math.min(progressPage, progressTotalPages);
         return (
