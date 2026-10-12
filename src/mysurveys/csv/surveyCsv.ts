@@ -17,7 +17,7 @@ import { decodeCsvBytes, parseCsv } from "./csvText";
 
 export const CSV_COLUMNS = [
   "section", "question_text", "question_type", "required", "options", "help_text",
-  "scale_min", "scale_max", "scale_min_label", "scale_max_label",
+  "scale_min", "scale_max", "scale_min_label", "scale_max_label", "max_selections",
 ] as const;
 type Column = (typeof CSV_COLUMNS)[number];
 
@@ -32,15 +32,15 @@ export const TEMPLATE_FILE_NAME = "my-surveys-template.csv";
 // ── The template file ───────────────────────────────────────
 
 const EXAMPLE_ROWS: string[][] = [
-  ["Section 1", "What is your school?", "short_answer", "yes", "", "", "", "", "", ""],
-  ["Section 1", "How satisfied are you?", "linear_scale", "yes", "", "", "1", "5", "Very poor", "Excellent"],
-  ["Section 1", "Any comments or suggestions?", "paragraph", "no", "", "Optional - write as much as you like", "", "", "", ""],
-  ["Section 2", "Which subjects do you teach?", "checkboxes", "no", "Math|Science|English", "", "", "", "", ""],
-  ["Section 2", "What is your highest educational attainment?", "multiple_choice", "yes", "Bachelor's degree|Master's degree|Doctorate", "Choose one, then press Next", "", "", "", ""],
-  ["Section 2", "Which barangay do you work in?", "dropdown", "yes", "Poblacion|San Isidro|Other", "", "", "", "", ""],
-  ["Section 3", "How would you rate the training?", "rating", "no", "", "", "", "5", "", ""],
-  ["Section 3", "When did you attend the training?", "date", "no", "", "", "", "", "", ""],
-  ["Section 3", "What time did the session start?", "time", "no", "", "", "", "", "", ""],
+  ["Section 1", "What is your school?", "short_answer", "yes", "", "", "", "", "", "", ""],
+  ["Section 1", "How satisfied are you?", "linear_scale", "yes", "", "", "1", "5", "Very poor", "Excellent", ""],
+  ["Section 1", "Any comments or suggestions?", "paragraph", "no", "", "Optional - write as much as you like", "", "", "", "", ""],
+  ["Section 2", "Which subjects do you teach?", "checkboxes", "no", "Math|Science|English", "", "", "", "", "", "2"],
+  ["Section 2", "What is your highest educational attainment?", "multiple_choice", "yes", "Bachelor's degree|Master's degree|Doctorate", "Choose one, then press Next", "", "", "", "", ""],
+  ["Section 2", "Which barangay do you work in?", "dropdown", "yes", "Poblacion|San Isidro|Other", "", "", "", "", "", ""],
+  ["Section 3", "How would you rate the training?", "rating", "no", "", "", "", "5", "", "", ""],
+  ["Section 3", "When did you attend the training?", "date", "no", "", "", "", "", "", "", ""],
+  ["Section 3", "What time did the session start?", "time", "no", "", "", "", "", "", "", ""],
 ];
 
 const INSTRUCTIONS: string[] = [
@@ -50,9 +50,10 @@ const INSTRUCTIONS: string[] = [
   "3. question_type must be one of: short_answer, paragraph, multiple_choice, checkboxes, dropdown, linear_scale, rating, date, time.",
   "4. required: yes or no (blank means no).",
   "5. options: only for multiple_choice, checkboxes and dropdown. Separate the choices with | (at least 2), for example Math|Science|English.",
-  "6. help_text: an optional hint shown under the question.",
-  "7. scale_min / scale_max / scale_min_label / scale_max_label: only for linear_scale (starts at 0 or 1, ends at 2 to 10). For rating, scale_max is the number of stars (3 to 10, default 5).",
-  "8. Save as CSV (UTF-8) and upload it under My Surveys > Create from Template (CSV). Nothing is created unless every row passes the checks.",
+  "6. max_selections: only for checkboxes - the most choices a respondent may pick (a whole number from 1 up to 100). Leave it blank for no limit. It should be lower than the number of options, otherwise it has no effect.",
+  "7. help_text: an optional hint shown under the question.",
+  "8. scale_min / scale_max / scale_min_label / scale_max_label: only for linear_scale (starts at 0 or 1, ends at 2 to 10). For rating, scale_max is the number of stars (3 to 10, default 5).",
+  "9. Save as CSV (UTF-8) and upload it under My Surveys > Create from Template (CSV). Nothing is created unless every row passes the checks.",
 ];
 
 function csvCellOut(value: string): string {
@@ -96,6 +97,10 @@ const HEADER_ALIASES: Record<string, Column> = {
   question: "question_text",
   type: "question_type",
   "required?": "required",
+  max_selection: "max_selections",
+  maximum_selections: "max_selections",
+  max_choices: "max_selections",
+  selection_limit: "max_selections",
 };
 
 function normalizeHeader(raw: string): string {
@@ -258,6 +263,7 @@ export function parseSurveyCsv(bytes: Uint8Array, fileName: string): CsvParseRes
     let scaleMax: number | null = null;
     let minLabel = "";
     let maxLabel = "";
+    let maxSelections: number | null = null;
 
     const optionsRaw = get(row, "options");
     const scaleCells = (["scale_min", "scale_max", "scale_min_label", "scale_max_label"] as Column[]).filter(c => get(row, c) !== "");
@@ -294,6 +300,19 @@ export function parseSurveyCsv(bytes: Uint8Array, fileName: string): CsvParseRes
       err(rowNo, `${col} must be a whole number (found '${raw}').`);
       return "bad";
     };
+
+    if (type === "checkboxes") {
+      const limit = readInt("max_selections");
+      if (limit !== null && limit !== "bad") {
+        if (limit < 1 || limit > 100) err(rowNo, `max_selections must be between 1 and 100 (found ${limit}).`);
+        else {
+          maxSelections = limit;
+          if (options.length >= 2 && limit >= options.length) warn(rowNo, `max_selections (${limit}) is not lower than the number of options (${options.length}), so it has no effect.`);
+        }
+      }
+    } else if (type && get(row, "max_selections") !== "") {
+      warn(rowNo, `max_selections is ignored for ${type} questions (it only applies to checkboxes).`);
+    }
 
     if (type === "linear_scale") {
       const minV = readInt("scale_min");
@@ -346,6 +365,7 @@ export function parseSurveyCsv(bytes: Uint8Array, fileName: string): CsvParseRes
     q.scaleMax = scaleMax;
     q.scaleMinLabel = type === "linear_scale" ? minLabel : "";
     q.scaleMaxLabel = type === "linear_scale" ? maxLabel : "";
+    q.maxSelections = type === "checkboxes" ? maxSelections : null;
     items.push(q);
     questionCount += 1;
   }

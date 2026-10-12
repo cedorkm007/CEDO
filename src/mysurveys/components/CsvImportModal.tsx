@@ -3,7 +3,7 @@ import { AlertTriangle, Download, FileSpreadsheet, Info, Loader2, X } from "luci
 import { downloadCsv } from "@/sead/csvUtils";
 import { buildTemplateCsv, parseSurveyCsv, TEMPLATE_FILE_NAME, type CsvParseResult } from "../csv/surveyCsv";
 import { createSurveyFromCsvDoc } from "../csvImportApi";
-import { QUESTION_TYPE_LABELS, type SurveyItem } from "../surveyTypes";
+import { QUESTION_TYPE_LABELS, selectionLimit, type SurveyItem } from "../surveyTypes";
 import { TYPE_ICONS } from "../builder/typeIcons";
 import { fieldClass } from "../builder/cardParts";
 
@@ -91,7 +91,7 @@ export function CsvImportModal({ onClose, onCreated }: { onClose: () => void; on
 
               <div className="rounded-xl bg-[#f7f9fc] p-3 text-[12.5px] text-slate-600">
                 <p className="font-semibold text-[#062444] mb-1">Columns</p>
-                <p><span className="font-mono text-[12px]">section, question_text, question_type, required, options, help_text, scale_min, scale_max, scale_min_label, scale_max_label</span></p>
+                <p><span className="font-mono text-[12px]">section, question_text, question_type, required, options, help_text, scale_min, scale_max, scale_min_label, scale_max_label, max_selections</span></p>
                 <p className="mt-1.5"><span className="font-semibold">question_type:</span> short_answer, paragraph, multiple_choice, checkboxes, dropdown, linear_scale, rating, date, time. <span className="font-semibold">options:</span> separate choices with | (for example Math|Science|English).</p>
               </div>
 
@@ -206,7 +206,7 @@ function PreviewList({ items }: { items: SurveyItem[] }) {
         n += 1;
         const Icon = TYPE_ICONS[item.type];
         const detail =
-          item.options.length > 0 ? item.options.slice(0, 6).map(o => o.label).join(" · ") + (item.options.length > 6 ? ` · +${item.options.length - 6} more` : "")
+          item.options.length > 0 ? item.options.slice(0, 6).map(o => o.label).join(" · ") + (item.options.length > 6 ? ` · +${item.options.length - 6} more` : "") + (selectionLimit(item) !== null ? ` · choose up to ${selectionLimit(item)}` : "")
           : item.type === "linear_scale" ? `${item.scaleMin} to ${item.scaleMax}${item.scaleMinLabel || item.scaleMaxLabel ? ` (${item.scaleMinLabel || "…"} → ${item.scaleMaxLabel || "…"})` : ""}`
           : item.type === "rating" ? `${item.scaleMax} stars`
           : "";
