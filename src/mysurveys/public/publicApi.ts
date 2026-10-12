@@ -68,6 +68,7 @@ export async function loadPublicSurvey(slug: string): Promise<LoadResult> {
       scaleMax: (raw.scaleMax as number | null) ?? null,
       scaleMinLabel: (raw.scaleMinLabel as string) ?? "",
       scaleMaxLabel: (raw.scaleMaxLabel as string) ?? "",
+      maxSelections: typeof raw.maxSelections === "number" ? raw.maxSelections : null,
       hasResponses: false,
       options: ((raw.options as { id: string; label: string }[]) ?? []).map(o => ({ id: o.id, label: o.label })),
     };

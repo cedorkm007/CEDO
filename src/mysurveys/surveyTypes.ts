@@ -44,6 +44,8 @@ export interface QuestionItem {
   scaleMax: number | null;
   scaleMinLabel: string;
   scaleMaxLabel: string;
+  /** Checkboxes only: the most options a respondent may pick (null = no limit). */
+  maxSelections: number | null;
   /** True when respondents have already answered this exact version. */
   hasResponses: boolean;
   options: OptionItem[];
@@ -107,6 +109,7 @@ export function newQuestion(type: QuestionType): QuestionItem {
     scaleMax: type === "linear_scale" ? 5 : type === "rating" ? 5 : null,
     scaleMinLabel: "",
     scaleMaxLabel: "",
+    maxSelections: null,
     hasResponses: false,
     options: isChoiceType(type) ? [{ id: newId(), label: "Option 1" }] : [],
   };
@@ -114,6 +117,11 @@ export function newQuestion(type: QuestionType): QuestionItem {
 
 export function newSection(): SectionItem {
   return { kind: "section", id: newId(), title: "Untitled section", description: "" };
+}
+
+/** The selection limit of a Checkboxes question, or null when it has none (or is not a Checkboxes question). */
+export function selectionLimit(q: QuestionItem): number | null {
+  return q.type === "checkboxes" && typeof q.maxSelections === "number" && q.maxSelections >= 1 ? q.maxSelections : null;
 }
 
 /** Is there a usable answer for this question? */

@@ -14,6 +14,7 @@ function withType(q: QuestionItem, type: QuestionType): QuestionItem {
   if (type === "linear_scale") { next.scaleMin = q.type === "linear_scale" ? q.scaleMin ?? 1 : 1; next.scaleMax = q.type === "linear_scale" ? q.scaleMax ?? 5 : 5; }
   else if (type === "rating") { next.scaleMin = 1; next.scaleMax = q.type === "rating" ? q.scaleMax ?? 5 : 5; }
   else { next.scaleMin = null; next.scaleMax = null; }
+  if (type !== "checkboxes") next.maxSelections = null;
   if (type !== "linear_scale") { next.scaleMinLabel = ""; next.scaleMaxLabel = ""; }
   return next;
 }
@@ -165,6 +166,33 @@ export function QuestionCard({
           </div>
         )}
 
+        {q.type === "checkboxes" && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-[#f0f3f8] pt-3 text-[12.5px] text-slate-700">
+            <label className="flex items-center gap-2 font-semibold text-[#062444] cursor-pointer min-h-[36px]">
+              <button
+                type="button" role="switch" aria-checked={q.maxSelections !== null} disabled={readOnly}
+                onClick={() => set({ maxSelections: q.maxSelections === null ? Math.max(1, Math.min(2, q.options.length - 1)) : null })}
+                className={`relative h-5 w-9 rounded-full transition-colors disabled:opacity-50 ${q.maxSelections !== null ? "bg-[#0088cc]" : "bg-slate-300"}`}
+              >
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${q.maxSelections !== null ? "left-[18px]" : "left-0.5"}`} />
+              </button>
+              Limit how many options can be selected
+            </label>
+            {q.maxSelections !== null && (
+              <span className="flex items-center gap-2">
+                <label htmlFor={`maxsel-${q.id}`}>Up to</label>
+                <input
+                  id={`maxsel-${q.id}`} type="number" inputMode="numeric" min={1} max={100} step={1} readOnly={readOnly}
+                  value={q.maxSelections}
+                  onChange={e => { const n = parseInt(e.target.value, 10); set({ maxSelections: Number.isNaN(n) ? 1 : Math.min(100, Math.max(1, n)) }); }}
+                  className={`${fieldClass} !w-20`}
+                />
+                <span>option{q.maxSelections === 1 ? "" : "s"}</span>
+              </span>
+            )}
+          </div>
+        )}
+
         {q.type === "linear_scale" && (
           <div className="space-y-2">
             <div className="flex items-center gap-2 flex-wrap text-[12.5px] text-slate-600">
@@ -197,7 +225,7 @@ export function QuestionCard({
 
       {q.hasResponses && (
         <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-800">
-          This question already has responses. Changing its wording, type, scale, or answer options saves it as a new version (v{q.version + 1}); earlier responses stay linked to the version they answered. Changing only “Required” or the help text doesn't.
+          This question already has responses. Changing its wording, type, scale, answer options, or selection limit saves it as a new version (v{q.version + 1}); earlier responses stay linked to the version they answered. Changing only “Required” or the help text doesn't.
         </p>
       )}
       {problems.length > 0 && (

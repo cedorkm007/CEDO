@@ -1,4 +1,4 @@
-import type { QuestionItem, RunnerAnswer } from "../surveyTypes";
+import { selectionLimit, type QuestionItem, type RunnerAnswer } from "../surveyTypes";
 
 /**
  * The answer control for one question, shared by the live respondent page and
@@ -76,21 +76,33 @@ export function QuestionField({ question, answer, onChange, labelId }: {
     case "checkboxes": {
       const multiple = q.type === "checkboxes";
       const selected = answer?.optionIds ?? [];
+      const limit = selectionLimit(q);
+      const atLimit = limit !== null && selected.length >= limit;
       return (
         <div role={multiple ? "group" : "radiogroup"} aria-labelledby={labelId} className="space-y-2.5">
+          {limit !== null && (
+            <p aria-live="polite" className={`text-[15px] ${atLimit ? "font-semibold text-[#8a5a00]" : "text-slate-600"}`}>
+              {atLimit
+                ? `You have chosen ${limit} of ${limit}. Untick one to choose a different option.`
+                : `Choose up to ${limit} option${limit === 1 ? "" : "s"} (${selected.length} of ${limit} chosen).`}
+            </p>
+          )}
           {q.options.map(o => {
             const checked = selected.includes(o.id);
+            const blocked = atLimit && !checked;
             return (
               <label
                 key={o.id}
-                className={`flex min-h-[52px] cursor-pointer items-center gap-3.5 rounded-xl border-2 px-4 py-3 text-[16px] transition-colors ${
-                  checked ? "border-[#0088cc] bg-[#eaf5fc]" : "border-[#c9d5e6] bg-white hover:border-[#0088cc]/50"
+                className={`flex min-h-[52px] items-center gap-3.5 rounded-xl border-2 px-4 py-3 text-[16px] transition-colors ${
+                  blocked ? "cursor-not-allowed border-[#dde4ef] bg-[#f4f6fa] opacity-70" : "cursor-pointer"
+                } ${
+                  checked ? "border-[#0088cc] bg-[#eaf5fc]" : blocked ? "" : "border-[#c9d5e6] bg-white hover:border-[#0088cc]/50"
                 } focus-within:ring-2 focus-within:ring-[#0088cc]/40`}
               >
                 <input
-                  type={multiple ? "checkbox" : "radio"} name={name} checked={checked}
+                  type={multiple ? "checkbox" : "radio"} name={name} checked={checked} disabled={blocked}
                   onChange={() => {
-                    if (multiple) onChange({ optionIds: checked ? selected.filter(id => id !== o.id) : [...selected, o.id] });
+                    if (multiple) onChange({ optionIds: checked ? selected.filter(id => id !== o.id) : limit !== null && selected.length >= limit ? selected : [...selected, o.id] });
                     else onChange({ optionIds: [o.id] });
                   }}
                   className="h-6 w-6 shrink-0 accent-[#062444]"
