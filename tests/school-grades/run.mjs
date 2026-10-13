@@ -196,10 +196,10 @@ const only = r => { assert.equal(r.fileError, undefined, r.fileError); return r.
 
 test("template: pre-filled with the period, every scholar, and their declared subjects", () => {
   const t = B.buildTemplate(SCHOLARS, EXISTING, PERIOD);
-  assert.deepEqual(t.headers, ["school_year", "semester", "scholar_id", "scholar_name", "subject_code", "subject_name", "units", "grade"]);
+  assert.deepEqual(t.headers, ["school_year", "semester", "scholar_id", "scholar_name", "subject_code", "subject_name", "units", "grade", "remarks"]);
   assert.equal(t.rows.length, 4); // Dela Cruz x2 subjects, Reyes x1 blank, Santos x1 blank
-  assert.deepEqual(t.rows[0], ["2026-2027", "1st Semester", "2409-00002", "Dela Cruz, Juan P.", "MATH101", "College Algebra", 3, "1.75"]);
-  assert.deepEqual(t.rows[2], ["2026-2027", "1st Semester", "2409-00003", "Reyes, Ana", "", "", "", ""]);
+  assert.deepEqual(t.rows[0], ["2026-2027", "1st Semester", "2409-00002", "Dela Cruz, Juan P.", "MATH101", "College Algebra", 3, "1.75", ""]);
+  assert.deepEqual(t.rows[2], ["2026-2027", "1st Semester", "2409-00003", "Reyes, Ana", "", "", "", "", ""]);
   assert.equal(t.rows[3][2], "2409-00001");
 });
 test("template round-trips: a freshly downloaded template with grades typed in validates cleanly", () => {
@@ -264,8 +264,8 @@ test("grade must be on the school's scale or a letter in its table; blank is all
   assert.match(g("Z").messages[0], /not on your grading scale.*letter-grade table/);
   assert.match(g(q("1,75")).messages[0], /decimal point/); // quoted, as a spreadsheet writes a value containing a comma
 });
-test("without letter grades turned on, a letter is not accepted", () => {
-  const r = only(parse(csv(line({ grade: "INC" })), { config: { ...CONFIG, usesLetterGrades: false } }))[0];
+test("without letter grades turned on, a letter is not accepted (INC and DRP are the exception, see the renewal tests)", () => {
+  const r = only(parse(csv(line({ grade: "A" })), { config: { ...CONFIG, usesLetterGrades: false } }))[0];
   assert.equal(r.status, "error");
 });
 test("units must be a positive number (blank is allowed)", () => {
@@ -529,8 +529,9 @@ test("breadcrumbs read Scholars > 5th Year > BS Education and each ancestor link
 test("the allowed-grades hint shows the range and the school's letters", () => {
   const cfg = { scaleMin: 1, scaleMax: 5, direction: "lower_is_better", usesLetterGrades: true };
   assert.equal(PL.gradeInputHint(cfg, [{ letter: "INC", numericValue: null }, { letter: "DRP", numericValue: null }]), "Allowed: 1 to 5, or INC, DRP");
-  assert.equal(PL.gradeInputHint({ ...cfg, usesLetterGrades: false }, [{ letter: "INC", numericValue: null }]), "Allowed: 1 to 5");
-  assert.equal(PL.gradeInputHint({ ...cfg, scaleMin: 60, scaleMax: 100 }, []), "Allowed: 60 to 100");
+  assert.equal(PL.gradeInputHint({ ...cfg, usesLetterGrades: false }, [{ letter: "A", numericValue: 1 }]), "Allowed: 1 to 5, or INC, DRP");
+  assert.equal(PL.gradeInputHint({ ...cfg, scaleMin: 60, scaleMax: 100 }, []), "Allowed: 60 to 100, or INC, DRP");
+  assert.equal(PL.gradeInputHint(cfg, [{ letter: "A", numericValue: 1 }, { letter: "inc", numericValue: null }]), "Allowed: 1 to 5, or A, inc, DRP");
   assert.equal(PL.gradeInputHint(null, []), "Set up your grading scale first.");
 });
 test("change-password rules: current required, 8+ characters, different from current, confirmation must match", () => {

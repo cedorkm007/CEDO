@@ -5,9 +5,16 @@ import { fieldClass, focusRing } from "./portalParts";
 import { atRiskExplanation, retentionSentence } from "@/lib/standing";
 import type { GradingConfig, LetterGrade } from "../types";
 
-const DEFAULT_CONFIG: GradingConfig = { scaleMin: 1, scaleMax: 5, direction: "lower_is_better", usesLetterGrades: false, retentionThreshold: null };
+const DEFAULT_CONFIG: GradingConfig = { scaleMin: 1, scaleMax: 5, direction: "lower_is_better", usesLetterGrades: false, retentionThreshold: null, passingMark: null };
 
-/** The number typed in the retention box: null when blank, NaN when it is not a number. */
+/** "3.0 or lower passes; higher than 3.0 is failed." — read back to the school as it types its passing mark. */
+function passingSentence(direction: GradingConfig["direction"], mark: number): string {
+  return direction === "lower_is_better"
+    ? `A grade of ${mark} or lower passes; a grade higher than ${mark} is failed.`
+    : `A grade of ${mark} or higher passes; a grade lower than ${mark} is failed.`;
+}
+
+/** The number typed in the retention / passing-mark box: null when blank, NaN when it is not a number. */
 function parseThreshold(text: string): number | null {
   const t = text.trim();
   if (t === "") return null;
@@ -24,6 +31,7 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
   const [letters, setLetters] = useState<LetterGrade[]>([]);
   const [alreadySaved, setAlreadySaved] = useState(true);
   const [retentionText, setRetentionText] = useState("");
+  const [passingText, setPassingText] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -31,7 +39,11 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
 
   useEffect(() => {
     Promise.all([fetchGradingConfig(), fetchLetterGrades(schoolId)]).then(([c, l]) => {
-      if (c) { setConfig(c); setRetentionText(c.retentionThreshold == null ? "" : String(c.retentionThreshold)); }
+      if (c) {
+        setConfig(c);
+        setRetentionText(c.retentionThreshold == null ? "" : String(c.retentionThreshold));
+        setPassingText(c.passingMark == null ? "" : String(c.passingMark));
+      }
       setAlreadySaved(c !== null);
       setLetters(l.length > 0 ? l : [{ letter: "", numericValue: null }]);
       setLoading(false);
@@ -53,8 +65,13 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
       setError(`The retention requirement must be a number on your grading scale (${config.scaleMin} to ${config.scaleMax}), or left blank.`);
       return;
     }
+    const passing = parseThreshold(passingText);
+    if (passing !== null && (Number.isNaN(passing) || passing < config.scaleMin || passing > config.scaleMax)) {
+      setError(`The passing mark must be a number on your grading scale (${config.scaleMin} to ${config.scaleMax}), or left blank.`);
+      return;
+    }
     setSaving(true);
-    const result = await saveGradingConfig({ ...config, retentionThreshold: threshold });
+    const result = await saveGradingConfig({ ...config, retentionThreshold: threshold, passingMark: passing });
     if (!result.ok) { setSaving(false); setError(result.error || "Couldn't save the grading system."); return; }
     if (config.usesLetterGrades) {
       const letterResult = await saveLetterGrades(letters.filter(l => l.letter.trim()));
@@ -106,6 +123,23 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
           </label>
         </div>
       </fieldset>
+
+      <div className="mb-5">
+        <label htmlFor="passing-mark" className="block text-[14px] font-semibold text-[#062444] mb-1">Passing mark</label>
+        <input id="passing-mark" inputMode="decimal" value={passingText} onChange={e => setPassingText(e.target.value)} aria-describedby="passing-help"
+          placeholder={config.direction === "lower_is_better" ? "e.g. 3.00" : "e.g. 75"} className={`${fieldClass} w-32`} />
+        <div id="passing-help" className="text-[14px] text-slate-700 mt-1.5 space-y-0.5">
+          <p>The lowest grade that still counts as passed, on your own scale. A grade worse than it is a failed subject. CEDO uses this for scholarship renewal.</p>
+          {(() => {
+            const p = parseThreshold(passingText);
+            if (p === null || Number.isNaN(p)) {
+              return <p className="font-semibold text-amber-900">Not set yet — until you set it, failed subjects cannot be shown.</p>;
+            }
+            return <p className="font-semibold text-[#062444]">{passingSentence(config.direction, p)}</p>;
+          })()}
+          <p>DRP counts as a failed subject. INC (incomplete) is not failed — it is tracked separately. Both can always be entered, and subjects excluded from the GWA still count here. If you use letter grades, each letter's number is compared with this mark.</p>
+        </div>
+      </div>
 
       <div className="mb-5">
         <label htmlFor="retention" className="block text-[14px] font-semibold text-[#062444] mb-1">Retention requirement (optional)</label>

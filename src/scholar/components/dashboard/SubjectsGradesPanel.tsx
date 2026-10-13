@@ -4,7 +4,9 @@ import { SectionCard } from "./SectionCard";
 import { fetchMyGradingConfig, fetchMyLetterGrades, fetchCurrentGradingPeriod } from "../../scholarApi";
 import { PeriodSelect } from "@/app/components/PeriodSelect";
 import { ALL_PERIODS_KEY, normalizeTerm, periodKey, periodOptions, termLabel, type AcademicPeriod, type PeriodRef } from "@/lib/academicPeriods";
-import { computeGwa, formatGwa, type LetterGrade } from "@/lib/gwa";
+import { computeGwa, formatGwa, type GradingConfig, type LetterGrade } from "@/lib/gwa";
+import { classifyGrade, countOutcomes, outcomeSummaryText } from "@/lib/subjectOutcome";
+import { OutcomeBadge, outcomeRowClass } from "@/app/components/OutcomeBadge";
 import type { SubjectGrade } from "../../types";
 
 /**
@@ -15,12 +17,14 @@ import type { SubjectGrade } from "../../types";
  */
 export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
+  const [config, setConfig] = useState<GradingConfig | null>(null);
   const [current, setCurrent] = useState<PeriodRef>({ schoolYear: "", semester: "" });
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchMyGradingConfig().then(config => {
-      if (config?.usesLetterGrades) fetchMyLetterGrades().then(setLetterGrades);
+    fetchMyGradingConfig().then(c => {
+      setConfig(c);
+      if (c?.usesLetterGrades) fetchMyLetterGrades().then(setLetterGrades);
     });
     fetchCurrentGradingPeriod().then(setCurrent);
   }, []);
@@ -83,6 +87,7 @@ export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
         {groups.map(([key, rows]) => {
           const open = shownOpenKey === key;
           const gwa = computeGwa(rows, letterGrades);
+          const flagged = outcomeSummaryText(countOutcomes(rows, config, letterGrades));
           return (
             <div key={key} className="border border-[#e6ecf5] rounded-xl mb-3 overflow-hidden">
               <button
@@ -93,10 +98,13 @@ export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
                   <ChevronRight size={15} className={`text-[#0088cc] transition-transform ${open ? "rotate-90" : ""}`} />
                   <span className="font-bold text-sm text-[#062444]">{key}</span>
                 </span>
-                <span className="text-[12px] font-semibold text-slate-500">GWA: <span className="text-[#062444]">{formatGwa(gwa)}</span><span className="font-normal"> (weighted by units)</span></span>
+                <span className="text-[13px] font-semibold text-slate-600">
+                  {flagged && <span className="mr-3 font-bold text-red-800">{flagged}</span>}
+                  GWA: <span className="text-[#062444]">{formatGwa(gwa)}</span><span className="font-normal"> (weighted by units)</span>
+                </span>
               </button>
               {open && (
-                <div className="px-4 pb-4 pt-1 overflow-x-auto">
+                <div className="px-4 pb-4 pt-1 overflow-x-auto" tabIndex={0} role="region" aria-label={`Subjects and grades, ${key}`}>
                   <table className="w-full text-[13.5px] border-collapse">
                     <thead>
                       <tr>
@@ -108,18 +116,21 @@ export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map(r => (
-                        <tr key={r.id} className="hover:bg-[#f7f9fc]">
+                      {rows.map(r => {
+                        const outcome = classifyGrade(r.grade, config, letterGrades);
+                        return (
+                        <tr key={r.id} className={`hover:bg-[#f7f9fc] ${outcomeRowClass(outcome)}`}>
                           <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">{r.subjectCode || "—"}</td>
                           <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">
                             {r.subject}
                             {r.excludeFromGwa && <span className="ml-2 text-[11px] font-semibold text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">not in GWA</span>}
                           </td>
                           <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">{r.units ?? "—"}</td>
-                          <td className="py-2.5 border-b border-[#f0f3f8] font-semibold text-[#062444]">{r.grade || "—"}</td>
-                          <td className="py-2.5 border-b border-[#f0f3f8] text-slate-500">{r.remarks || "—"}</td>
+                          <td className="py-2.5 border-b border-[#f0f3f8] font-semibold text-[#062444]">{r.grade || "—"} <span className="ml-1.5"><OutcomeBadge outcome={outcome} /></span></td>
+                          <td className="py-2.5 border-b border-[#f0f3f8] text-slate-600">{r.remarks || "—"}</td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

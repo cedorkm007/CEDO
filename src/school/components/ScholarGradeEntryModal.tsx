@@ -8,6 +8,8 @@ import { gradeInputHint } from "../portalLogic";
 import { canEditRow, NOT_LOCKED, type GradeLockInfo } from "../submissionLogic";
 import { formatWhen } from "@/lib/gradeEvidence";
 import { focusRing } from "./portalParts";
+import { OutcomeBadge, outcomeRowClass } from "@/app/components/OutcomeBadge";
+import { classifyGrade, countOutcomes, outcomeSummaryText, type SubjectOutcome } from "@/lib/subjectOutcome";
 import { CorrectionRequestDialog } from "./CorrectionRequestDialog";
 import { SchoolDocumentsSection, SchoolHistorySection } from "./SchoolEvidenceSections";
 import type { GradingConfig, SchoolScholarRow, SchoolSubjectGrade } from "../types";
@@ -88,11 +90,11 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
     setRows(prev => [...prev, {
       id: `new-${Date.now()}`, scholarIdNumber: scholar.scholarIdNumber,
       schoolYear: period.schoolYear, semester: period.semester,
-      subjectCode: "", subject: "", grade: "", units: null, excludeFromGwa: false, unitsText: "", isNew: true, dirty: true,
+      subjectCode: "", subject: "", grade: "", units: null, excludeFromGwa: false, remarks: "", unitsText: "", isNew: true, dirty: true,
     }]);
   }
 
-  function updateRow(id: string, field: "subjectCode" | "subject" | "grade" | "unitsText", value: string) {
+  function updateRow(id: string, field: "subjectCode" | "subject" | "grade" | "unitsText" | "remarks", value: string) {
     setSavedNote("");
     setRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value, dirty: true } : r));
   }
@@ -113,6 +115,10 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
   /** What is wrong with the grade typed on this row (outside the school's scale / not one of its letters), or null. */
   const gradeProblem = (grade: string): string | null => (config ? validateGradeValue(grade, config, letterGrades) : null);
   const allowedHint = gradeInputHint(config, letterGrades);
+
+  // Which subjects are failed / INC right now (the shared rule, src/lib/subjectOutcome.ts). Exclude-from-GWA subjects are included on purpose.
+  const outcomeOf = (grade: string): SubjectOutcome => classifyGrade(grade, config, letterGrades);
+  const outcomeCounts = useMemo(() => countOutcomes(rows.filter(r => r.subject.trim()), config, letterGrades), [rows, config, letterGrades]);
 
   // Live preview from what is on screen right now (saved or not), using the shared calculation.
   const preview = useMemo(() => {
@@ -155,7 +161,7 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
       const result = await upsertGrade({
         id: r.isNew ? null : r.id, scholarIdNumber: r.scholarIdNumber, schoolYear: period.schoolYear,
         semester: period.semester, subjectCode: r.subjectCode, subject: r.subject, grade: r.grade,
-        units, excludeFromGwa: r.excludeFromGwa,
+        units, excludeFromGwa: r.excludeFromGwa, remarks: r.remarks,
       });
       if (!result.ok || !result.id) { failure = result.error || "Failed to save."; break; }
       saved.push({ id: result.id, subject: r.subject, grade: r.grade, units, excludeFromGwa: r.excludeFromGwa });
@@ -236,10 +242,11 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
                   const noUnits = r.subject.trim() !== "" && needsUnits({ units: parseUnits(r.unitsText), excludeFromGwa: r.excludeFromGwa });
                   const gradeErr = r.grade.trim() ? gradeProblem(r.grade) : null;
                   const editable = rowEditable(r);
+                  const outcome: SubjectOutcome = r.subject.trim() ? outcomeOf(r.grade) : "ungraded";
                   const approved = lock.approvedGradeIds.has(r.id);
                   const pending = lock.pendingGradeIds.has(r.id);
                   return (
-                    <div key={r.id}>
+                    <div key={r.id} className={`rounded ${outcomeRowClass(outcome)}`}>
                     <div className={`grid grid-cols-2 ${cols} gap-2 items-center`}>
                       <input value={r.subjectCode} onChange={e => updateRow(r.id, "subjectCode", e.target.value)} placeholder="Code" aria-label={`Subject code, row ${i + 1}`} disabled={!editable}
                         className={inputClass} />
@@ -275,6 +282,12 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
                       ) : <span />}
                     </div>
                     {gradeErr && <p id={`grade-err-${r.id}`} className="text-[14px] text-red-800 mt-1">{gradeErr}</p>}
+                    <div className="mt-1 flex flex-wrap items-center gap-2 sm:pl-[6.5rem]">
+                      <label className="sr-only" htmlFor={`remarks-${r.id}`}>Remarks or tag, row {i + 1}</label>
+                      <input id={`remarks-${r.id}`} value={r.remarks} onChange={e => updateRow(r.id, "remarks", e.target.value)} maxLength={200} disabled={!editable}
+                        placeholder="Remarks / tag (optional) — e.g. NSTP, Repeated" className={`${inputClass} min-w-[11rem] flex-1 text-[14px]`} />
+                      <OutcomeBadge outcome={outcome} />
+                    </div>
                     </div>
                   );
                 })}
@@ -301,6 +314,21 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
                       <span>{preview.missingUnits} subject{preview.missingUnits === 1 ? " has" : "s have"} no units yet and {preview.missingUnits === 1 ? "is" : "are"} counted as 1 unit. Enter the units (highlighted) to make the GWA accurate.</span>
                     </p>
                   )}
+                </div>
+              )}
+
+              {rows.some(r => r.subject.trim()) && (
+                <div className="mt-3" aria-live="polite">
+                  {config && config.passingMark == null && outcomeCounts.noPassingMark > 0 ? (
+                    <p className="text-[14px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      Your passing mark is not set, so failed subjects cannot be shown. Set it in the <strong>Grading System</strong> tab. INC and DRP are always flagged.
+                    </p>
+                  ) : outcomeSummaryText(outcomeCounts) ? (
+                    <p className="text-[14px] font-semibold text-red-900 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      Needs attention: {outcomeSummaryText(outcomeCounts)}{config?.passingMark != null ? ` (passing mark ${config.passingMark})` : ""}.
+                      {outcomeCounts.drp > 0 ? " DRP counts as failed." : ""}
+                    </p>
+                  ) : null}
                 </div>
               )}
 

@@ -11,9 +11,13 @@ import {
   periodKey, periodTitle, normalizeTerm, statusLabel,
   type PeriodRef, type PeriodStatus,
 } from "@/lib/academicPeriods";
+import { reservedMark } from "@/lib/subjectOutcome";
 import type { GradingConfig, LetterGrade, SchoolScholarRow, SchoolSubjectGrade } from "./types";
 
-export const TEMPLATE_HEADERS = ["school_year", "semester", "scholar_id", "scholar_name", "subject_code", "subject_name", "units", "grade"] as const;
+/** `remarks` is optional: a file without that column still uploads, and leaves every stored remark as it is. */
+export const TEMPLATE_HEADERS = ["school_year", "semester", "scholar_id", "scholar_name", "subject_code", "subject_name", "units", "grade", "remarks"] as const;
+
+export const MAX_REMARKS_LENGTH = 200;
 
 const HEADER_ALIASES = {
   schoolYear: ["school_year", "school year", "schoolyear", "sy"],
@@ -24,6 +28,7 @@ const HEADER_ALIASES = {
   subjectName: ["subject_name", "subject name", "subject"],
   units: ["units", "unit"],
   grade: ["grade"],
+  remarks: ["remarks", "remark", "tag", "tags"],
 } as const;
 
 export function scholarDisplayName(s: Pick<SchoolScholarRow, "lastName" | "firstName" | "middleName">): string {
@@ -50,9 +55,9 @@ export function buildTemplate(scholars: SchoolScholarRow[], existing: SchoolSubj
     const subjects = byScholar.get(s.scholarIdNumber) ?? [];
     const name = scholarDisplayName(s);
     if (subjects.length === 0) {
-      rows.push([period.schoolYear, term, s.scholarIdNumber, name, "", "", "", ""]);
+      rows.push([period.schoolYear, term, s.scholarIdNumber, name, "", "", "", "", ""]);
     } else {
-      for (const g of subjects) rows.push([period.schoolYear, term, s.scholarIdNumber, name, g.subjectCode, g.subject, g.units ?? "", g.grade]);
+      for (const g of subjects) rows.push([period.schoolYear, term, s.scholarIdNumber, name, g.subjectCode, g.subject, g.units ?? "", g.grade, g.remarks ?? ""]);
     }
   }
   return { headers: [...TEMPLATE_HEADERS], rows };
@@ -63,6 +68,8 @@ export function buildTemplate(scholars: SchoolScholarRow[], existing: SchoolSubj
 export function validateGradeValue(grade: string, config: GradingConfig, letters: LetterGrade[]): string | null {
   const g = grade.trim();
   if (!g) return null;
+  // INC and DRP are reserved marks every school may enter (mirrors _school_grade_error in the Phase 1 renewal migration).
+  if (reservedMark(g)) return null;
   const range = `${config.scaleMin} to ${config.scaleMax}`;
   if (/^\d+(\.\d+)?$/.test(g)) {
     const n = Number(g);
@@ -87,6 +94,8 @@ export interface PayloadRow {
   subject: string;
   grade: string;
   units: number | null;
+  /** Only set when the file has a remarks column; null leaves the stored remark as it is. */
+  remarks: string | null;
 }
 
 export interface PreviewRow {
@@ -165,6 +174,7 @@ export function parseGradeUpload(text: string, ctx: UploadContext): ParseResult 
     subjectName: findColumn(headers, [...HEADER_ALIASES.subjectName]),
     units: findColumn(headers, [...HEADER_ALIASES.units]),
     grade: findColumn(headers, [...HEADER_ALIASES.grade]),
+    remarks: findColumn(headers, [...HEADER_ALIASES.remarks]),
   };
   const missing = ([["school_year", idx.schoolYear], ["semester", idx.semester], ["scholar_id", idx.scholarId], ["subject_name", idx.subjectName]] as const)
     .filter(([, i]) => i === -1).map(([name]) => name);
@@ -189,7 +199,7 @@ export function parseGradeUpload(text: string, ctx: UploadContext): ParseResult 
 
   // Template placeholder rows (a scholar with no subjects yet, nothing typed) are skipped, not reported as errors.
   const entries = dataRows.map((r, i) => ({ r, rowNumber: i + 2 }));
-  const filled = entries.filter(({ r }) => cell(r, idx.subjectCode) || cell(r, idx.subjectName) || cell(r, idx.units) || cell(r, idx.grade));
+  const filled = entries.filter(({ r }) => cell(r, idx.subjectCode) || cell(r, idx.subjectName) || cell(r, idx.units) || cell(r, idx.grade) || (idx.remarks !== -1 && cell(r, idx.remarks)));
   const ignoredBlank = entries.length - filled.length;
   if (filled.length === 0) return fail("Nothing is filled in yet — type subjects and grades into the template (the rows for scholars with no subjects are placeholders), then upload it again.");
 
@@ -229,6 +239,7 @@ export function parseGradeUpload(text: string, ctx: UploadContext): ParseResult 
     const subject = cell(r, idx.subjectName);
     const unitsText = cell(r, idx.units);
     const grade = cell(r, idx.grade);
+    const remarksText = idx.remarks === -1 ? "" : cell(r, idx.remarks);
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -245,6 +256,7 @@ export function parseGradeUpload(text: string, ctx: UploadContext): ParseResult 
 
     const gradeError = validateGradeValue(grade, ctx.config!, ctx.letters);
     if (gradeError) errors.push(gradeError);
+    if (remarksText.length > MAX_REMARKS_LENGTH) errors.push(`Remarks are too long (${remarksText.length} characters; the limit is ${MAX_REMARKS_LENGTH}).`);
 
     if (scholarId && subject) {
       const others = (groups.get(dupKey(scholarId, code, subject)) ?? []).filter(n => n !== rowNumber);
@@ -269,13 +281,14 @@ export function parseGradeUpload(text: string, ctx: UploadContext): ParseResult 
       if (subject !== existing.subject) warnings.push(`Subject name will change from "${existing.subject}" to "${subject}".`);
       const sameCode = code === existing.subjectCode.trim() || (!code && !existing.subjectCode.trim());
       const sameUnits = units === null || units === existing.units;
-      if (sameCode && subject === existing.subject && effectiveGrade.trim() === existing.grade.trim() && sameUnits) action = "unchanged";
+      const sameRemarks = idx.remarks === -1 || remarksText === (existing.remarks ?? "").trim();
+      if (sameCode && subject === existing.subject && effectiveGrade.trim() === existing.grade.trim() && sameUnits && sameRemarks) action = "unchanged";
     }
 
     const status: RowStatus = errors.length > 0 ? "error" : warnings.length > 0 ? "warning" : "valid";
     const payload: PayloadRow | null = status === "error" ? null : {
       id: existing?.id ?? null, scholarIdNumber: scholarId, schoolYear: ctx.period.schoolYear.trim(), semester: term,
-      subjectCode: code, subject, grade: effectiveGrade.trim(), units,
+      subjectCode: code, subject, grade: effectiveGrade.trim(), units, remarks: idx.remarks === -1 ? null : remarksText,
     };
     return {
       rowNumber, status, action, messages: errors.length > 0 ? errors : warnings,

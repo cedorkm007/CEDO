@@ -15,6 +15,8 @@ export interface GradingConfig {
   direction: "lower_is_better" | "higher_is_better";
   usesLetterGrades: boolean;
   retentionThreshold?: number | null;
+  /** The school's passing mark on its own scale; a grade worse than this is failed. null/undefined = not set yet. */
+  passingMark?: number | null;
 }
 
 export interface LetterGrade {

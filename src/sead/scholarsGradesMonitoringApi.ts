@@ -83,6 +83,8 @@ export interface GradingConfig {
   scaleMax: number;
   direction: "lower_is_better" | "higher_is_better";
   usesLetterGrades: boolean;
+  /** The school's passing mark on its own scale; null/undefined = not set. */
+  passingMark?: number | null;
 }
 
 export interface LetterGrade {
@@ -98,6 +100,7 @@ export async function fetchScholarGradingConfigForStaff(scholarIdNumber: string)
     scaleMin: Number(row.scale_min ?? 1), scaleMax: Number(row.scale_max ?? 5),
     direction: (row.direction as GradingConfig["direction"]) ?? "lower_is_better",
     usesLetterGrades: !!row.uses_letter_grades,
+    passingMark: row.passing_mark == null ? null : Number(row.passing_mark),
   };
 }
 

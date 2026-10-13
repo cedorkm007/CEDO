@@ -11,6 +11,7 @@ import { buildLockInfo, type CorrectionRequest, type GradeLockInfo, type Submiss
 import { fetchOwnScholars, fetchCurrentGradingPeriod, fetchGradingConfig, fetchLetterGrades, fetchGradesForScholars } from "./schoolApi";
 import { fetchAcademicPeriods } from "@/lib/academicPeriodsApi";
 import { groupByScholar, summarizeScholarGrades } from "./gradeSaveLogic";
+import { countOutcomes } from "@/lib/subjectOutcome";
 import { portalCounts, scholarStatus, type PortalCounts, type ScholarRowData } from "./portalLogic";
 import { findPeriod, periodKey, periodOptions, periodRefOf, canSchoolEdit, type AcademicPeriod, type PeriodOption } from "@/lib/academicPeriods";
 import { needsUnits, type LetterGrade } from "@/lib/gwa";
@@ -162,8 +163,9 @@ export function useSchoolData(schoolId: string): SchoolData {
   const rows = useMemo<ScholarRowData[]>(() => {
     const byScholar = groupByScholar(gradeRows);
     return scholars.map(scholar => {
-      const summary = summarizeScholarGrades(byScholar.get(scholar.scholarIdNumber) ?? [], letters);
-      return { scholar, summary, status: scholarStatus(summary, locked), standing: scholarStanding(summary.gwa, config) };
+      const scholarRows = byScholar.get(scholar.scholarIdNumber) ?? [];
+      const summary = summarizeScholarGrades(scholarRows, letters);
+      return { scholar, summary, status: scholarStatus(summary, locked), standing: scholarStanding(summary.gwa, config), outcomes: countOutcomes(scholarRows, config, letters) };
     });
   }, [scholars, gradeRows, letters, locked, config]);
   const counts = useMemo(() => portalCounts(rows), [rows]);

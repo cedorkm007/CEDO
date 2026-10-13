@@ -4,6 +4,7 @@ import type { ScholarInformationRow } from "../seadApi";
 import { loadProfileSections, downloadScholarProfile, type ProfileSections } from "../scholarProfileExport";
 import { Modal } from "./Modal";
 import { DocPage, DocSection, DocTable, DocFieldTable } from "./DocPage";
+import { ScholarStatusHistory } from "./ScholarStatusHistory";
 
 /**
  * "Complete details of the scholar" popup — a printed-page-styled
@@ -49,6 +50,10 @@ export function ScholarProfilePreviewModal({
           <DocPage title="COMPREHENSIVE SCHOLAR PROFILE" subtitle={`Generated ${new Date().toLocaleString()}`}>
             <DocSection title="Basic Information">
               <DocFieldTable fields={sections.basicInfo} />
+            </DocSection>
+
+            <DocSection title="Scholarship Status History">
+              <ScholarStatusHistory scholarIdNumber={scholar.scholarIdNumber} />
             </DocSection>
 
             <DocSection title={`SDP — Completed Activities (${sections.sdpCompleted.length})`}>

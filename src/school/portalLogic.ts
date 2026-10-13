@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────
 import type { ScholarGradeSummary } from "./gradeSaveLogic";
 import type { StandingResult } from "@/lib/standing";
+import type { OutcomeCounts } from "@/lib/subjectOutcome";
 import type { GradingConfig, LetterGrade, SchoolScholarRow } from "./types";
 
 // ── Status of one scholar in the selected period ─────────────
@@ -37,6 +38,8 @@ export interface ScholarRowData {
   status: ScholarStatus;
   /** Scholarship standing from the GWA and the school's retention requirement (src/lib/standing.ts). */
   standing: StandingResult;
+  /** Failed / DRP / INC / to-review subjects in the selected period (src/lib/subjectOutcome.ts). */
+  outcomes: OutcomeCounts;
 }
 
 export const NO_YEAR_LABEL = "(Not set)";
@@ -179,7 +182,9 @@ export function gradeInputHint(config: GradingConfig | null, letters: LetterGrad
   if (!config) return "Set up your grading scale first.";
   const range = `${config.scaleMin} to ${config.scaleMax}`;
   const letterList = config.usesLetterGrades ? letters.map(l => l.letter.trim()).filter(Boolean) : [];
-  return letterList.length > 0 ? `Allowed: ${range}, or ${letterList.join(", ")}` : `Allowed: ${range}`;
+  // INC and DRP are reserved marks every school may enter, so they are always listed (once).
+  const accepted = [...letterList, ...["INC", "DRP"].filter(m => !letterList.some(l => l.toUpperCase() === m))];
+  return `Allowed: ${range}, or ${accepted.join(", ")}`;
 }
 
 // ── Change password ──────────────────────────────────────────

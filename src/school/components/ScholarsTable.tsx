@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import { formatGwa } from "@/lib/gwa";
 import { scholarName, programOf, yearLevelOf, type ScholarRowData } from "../portalLogic";
 import { StatusChip, StandingChip, linkButton } from "./portalParts";
+import { OutcomeCountChips } from "@/app/components/OutcomeBadge";
 import type { SchoolScholarRow } from "../types";
 
 const TH = "text-left px-4 py-3 font-bold text-[13px] uppercase tracking-wide text-slate-700 whitespace-nowrap";
@@ -46,7 +47,7 @@ export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, sho
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ scholar: s, summary, status, standing }) => (
+          {rows.map(({ scholar: s, summary, status, standing, outcomes }) => (
             <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f7f9fc]">
               <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{s.scholarIdNumber}</td>
               <td className="px-4 py-3 font-semibold text-[#062444]">{scholarName(s)}</td>
@@ -60,6 +61,7 @@ export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, sho
                     <AlertTriangle size={12} aria-hidden="true" /> {summary.missingUnits} need units
                   </span>
                 )}
+                {outcomes && <span className="ml-2 inline-flex flex-wrap items-center gap-1.5 align-middle"><OutcomeCountChips counts={outcomes} /></span>}
               </td>
               <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{summary.subjects === 0 ? "—" : `${summary.graded} of ${summary.subjects}`}</td>
               <td className="px-4 py-3"><StatusChip status={status} /></td>
