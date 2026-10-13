@@ -3,7 +3,7 @@ import { ArrowLeft, CheckCircle2, Loader2, Paperclip, XCircle } from "lucide-rea
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
 import { DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, termLabelOf } from "@/lib/renewal";
 import {
-  confirmRenewal, decideLateApplication, fetchRenewalDetail, getStaffRenewalDocumentUrl, returnRenewal, type RenewalDetail,
+  confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, getStaffRenewalDocumentUrl, returnRenewal, type RenewalDetail,
 } from "../renewalApi";
 import { ReasonDialog } from "./ReasonDialog";
 
@@ -20,7 +20,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { recordId: string; canAct: boolean; onBack: () => void; onChanged: () => void }) {
   const [detail, setDetail] = useState<RenewalDetail | null>(null);
   const [error, setError] = useState("");
-  const [dialog, setDialog] = useState<"confirm" | "return" | "accept" | "decline" | null>(null);
+  const [dialog, setDialog] = useState<"confirm" | "endorse" | "return" | "accept" | "decline" | null>(null);
   const [fileError, setFileError] = useState("");
 
   const load = useCallback(async () => {
@@ -46,7 +46,7 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
     ...(g?.inc_subjects ?? []).map(x => ({ ...x, tag: x.state === "counted_failed" ? "INC (counted as failed)" : x.state === "decided" ? "INC (decided)" : "INC" })),
     ...(g?.review_subjects ?? []).map(x => ({ ...x, tag: "Needs review" })),
   ];
-  const active = !["renewed", "removed", "reconsidered", "late_declined", "not_required", "returned", "late_pending"].includes(r.stage);
+  const active = !["renewed", "removed", "reconsidered", "late_declined", "not_required", "returned", "late_pending", "endorsed_division_head"].includes(r.stage);
 
   return (
     <div className="space-y-4">
@@ -66,6 +66,7 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
               <button onClick={() => setDialog("decline")} className="rounded-lg border border-red-700 px-4 py-2 text-[14px] font-bold text-red-800 hover:bg-red-50">Decline</button>
             </>}
             {r.stage === "ready_for_confirmation" && <button onClick={() => setDialog("confirm")} className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-4 py-2 text-[14px] font-bold text-white hover:bg-green-900"><CheckCircle2 size={15} aria-hidden="true" /> Confirm renewal</button>}
+            {r.stage === "ready_to_endorse" && <button onClick={() => setDialog("endorse")} className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-4 py-2 text-[14px] font-bold text-white hover:bg-green-900"><CheckCircle2 size={15} aria-hidden="true" /> Endorse to Division Head</button>}
             {(active || r.stage === "ready_for_confirmation") && <button onClick={() => setDialog("return")} className="rounded-lg border border-[#062444]/40 px-4 py-2 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]">Return with comments</button>}
           </div>
         )}
@@ -152,8 +153,13 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
         </ol>
       </Section>
 
+      {dialog === "endorse" && (
+        <ReasonDialog title="Endorse to the Division Head" intro={<>You are endorsing {s.name} for <strong>Probationary</strong> status for {termLabelOf(r.schoolYear, r.term)} (one failed subject; study plan and consultation done). The Division Head decides; the scholar is told it was sent.</>}
+          label="Note for the Division Head" required={false} confirmLabel="Endorse" onCancel={() => setDialog(null)}
+          onConfirm={async note => { const x = await endorseRenewal(r.id, note); if (!x.ok) return x.error; setDialog(null); await after(); return null; }} />
+      )}
       {dialog === "confirm" && (
-        <ReasonDialog title="Confirm this renewal" intro={<>{s.name} will be <strong>{ev.rule_code?.startsWith("B") ? "Renewed as Probationary" : "Renewed"}</strong> for {termLabelOf(r.schoolYear, r.term)} and will be notified.</>}
+        <ReasonDialog title="Confirm this renewal" intro={<>{s.name} will be <strong>Renewed</strong> for {termLabelOf(r.schoolYear, r.term)} and will be notified.</>}
           label="Note (kept in the history)" required={false} confirmLabel="Confirm renewal" onCancel={() => setDialog(null)}
           onConfirm={async note => { const x = await confirmRenewal(r.id, note); if (!x.ok) return x.error; setDialog(null); await after(); return null; }} />
       )}

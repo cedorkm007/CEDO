@@ -97,6 +97,11 @@ export async function confirmRenewal(recordId: string, note: string): Promise<Do
   const { error } = await supabase.rpc("renewal_confirm", { p_record_id: recordId, p_note: note });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+/** A "1 failed subject" case: the evaluator endorses the scholar for Probationary to the Division Head. */
+export async function endorseRenewal(recordId: string, note: string): Promise<Done> {
+  const { error } = await supabase.rpc("renewal_endorse", { p_record_id: recordId, p_note: note });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
 export async function returnRenewal(recordId: string, comment: string): Promise<Done> {
   const { error } = await supabase.rpc("renewal_return", { p_record_id: recordId, p_comment: comment });
   return error ? { ok: false, error: error.message } : { ok: true };

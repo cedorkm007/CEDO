@@ -56,3 +56,11 @@ Website: `src/lib/renewal.ts` (wording), `src/scholar/renewalApi.ts`, `src/sead/
 
 Verification: 123 database checks (`tests/renewal/db/run_p2_tests.mjs`), 39 website checks (`tests/renewal/run.mjs`), Phase 1 checks still pass (64 / 99), `tsc` clean, production build; browser checks of the scholar apply flow, the evaluator board / detail / confirm, an upload through the website's own storage client; axe-core audit of the new screens (headings and dialogs fixed; the remaining findings are existing parts of the portal).
 Not done (later phases): booking and the consultation flow (Phase 3), tracker polish and study-plan form link (4), Division Head / removal decisions (5), push + scheduler + staff notifications (6), reports (7), CSR + QR status (8).
+
+## 2026-10-13 — Owner's answers to the Phase 2 questions ("Approved, next phase")
+1. The Scholar Renewal tool stays gated by its tag, granted by it.admin1 on the Staff Accounts page (the tag list there is the same shared list; nothing else needed).
+2. A "1 failed subject" case is NOT confirmed by the evaluator: when the study plan and consultation are done the evaluator ENDORSES the scholar for Probationary to the Division Head, who approves (Division Head decision is Phase 5). New stages `ready_to_endorse` and `endorsed_division_head` (endorsed cases are left alone by the automatic re-checks); `renewal_endorse()`; `renewal_confirm()` refuses these cases.
+3. Only counseling staff set an INC deadline (`renewal_set_inc_deadline` now requires the consultation tag). The evaluator can still extend a deadline that has passed, as a decision (`renewal_decide_inc`).
+4. Nothing is merged to `main` until Phase 8.
+5. Phase 3 approved.
+Tests: Phase 2 database checks now 129 (new endorse / counseling-only checks).

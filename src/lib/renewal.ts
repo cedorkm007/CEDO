@@ -11,7 +11,7 @@ export type RenewalTerm = (typeof RENEWAL_TERMS)[number];
 /** Every stage a renewal record can be in (must match the check list in supabase_migration_renewal_p2_application.sql). */
 export const RENEWAL_STAGES = [
   "submitted", "late_pending", "late_declined", "sdp_on_hold", "waiting_grades", "review_needed", "ready_for_confirmation",
-  "needs_study_plan_consultation", "needs_consultation_division_head", "needs_inc_letter_consultation",
+  "ready_to_endorse", "endorsed_division_head", "needs_study_plan_consultation", "needs_consultation_division_head", "needs_inc_letter_consultation",
   "inc_waiting_compliance", "inc_deadline_passed", "summer_requirements",
   "returned", "renewed", "removed", "reconsidered", "not_required",
 ] as const;
@@ -27,6 +27,8 @@ export const STAGE_INFO: Record<RenewalStage, { title: string; tone: StageTone; 
   waiting_grades: { title: "Waiting for grades", tone: "warning", short: "Waiting for grades" },
   review_needed: { title: "Needs evaluator review", tone: "warning", short: "Needs review" },
   ready_for_confirmation: { title: "Ready for evaluator confirmation", tone: "success", short: "Ready to confirm" },
+  ready_to_endorse: { title: "Ready to endorse to the Division Head", tone: "success", short: "Ready to endorse" },
+  endorsed_division_head: { title: "Endorsed — waiting for the Division Head", tone: "info", short: "With the Division Head" },
   needs_study_plan_consultation: { title: "Needs study plan and consultation", tone: "info", short: "Study plan + consultation" },
   needs_consultation_division_head: { title: "Needs consultation and Division Head decision", tone: "danger", short: "Consultation + Division Head" },
   needs_inc_letter_consultation: { title: "Needs INC letter and consultation", tone: "info", short: "INC letter + consultation" },
@@ -46,7 +48,7 @@ export function stageTitle(stage: string): string {
 
 /** Stages whose application is still open (the evaluator can return it; the rules may still move it). */
 export const ACTIVE_STAGES: readonly RenewalStage[] = [
-  "submitted", "sdp_on_hold", "waiting_grades", "review_needed", "ready_for_confirmation", "needs_study_plan_consultation",
+  "submitted", "sdp_on_hold", "waiting_grades", "review_needed", "ready_for_confirmation", "ready_to_endorse", "needs_study_plan_consultation",
   "needs_consultation_division_head", "needs_inc_letter_consultation", "inc_waiting_compliance", "inc_deadline_passed", "summer_requirements",
 ];
 export const CLOSED_STAGES: readonly RenewalStage[] = ["renewed", "removed", "reconsidered", "late_declined", "not_required"];
@@ -55,11 +57,11 @@ export const isClosedStage = (stage: string): boolean => (CLOSED_STAGES as reado
 
 /** The groups the evaluator's board filters by (a stage can sit in one group). */
 export const BOARD_GROUPS: { key: string; label: string; stages: readonly RenewalStage[] }[] = [
-  { key: "to_confirm", label: "Ready to confirm", stages: ["ready_for_confirmation"] },
+  { key: "to_confirm", label: "Ready for the evaluator", stages: ["ready_for_confirmation", "ready_to_endorse"] },
   { key: "late", label: "Late — needs acceptance", stages: ["late_pending"] },
   { key: "on_hold", label: "On hold / waiting", stages: ["sdp_on_hold", "waiting_grades", "review_needed"] },
   { key: "consult", label: "Needs documents + consultation", stages: ["needs_study_plan_consultation", "needs_inc_letter_consultation", "summer_requirements", "submitted"] },
-  { key: "dh", label: "Division Head decision", stages: ["needs_consultation_division_head"] },
+  { key: "dh", label: "Division Head decision", stages: ["needs_consultation_division_head", "endorsed_division_head"] },
   { key: "inc", label: "INC", stages: ["inc_waiting_compliance", "inc_deadline_passed"] },
   { key: "returned", label: "Returned", stages: ["returned"] },
   { key: "done", label: "Done", stages: ["renewed", "removed", "reconsidered", "late_declined", "not_required"] },
@@ -181,6 +183,8 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
     case "review_needed": steps.push("The evaluator is reviewing your case. You don't need to do anything right now."); break;
     case "submitted": steps.push("We are checking your SDP and grades."); break;
     case "ready_for_confirmation": steps.push("Waiting for the evaluator to confirm your renewal."); break;
+    case "ready_to_endorse": steps.push("Waiting for the evaluator to review your case and send it to the Division Head for approval."); break;
+    case "endorsed_division_head": steps.push("The evaluator sent your case to the Division Head for approval. We will tell you the result."); break;
     case "needs_study_plan_consultation": upload(); steps.push("Book your face-to-face consultation (online booking opens in the next update — for now please visit the CEDO office)."); break;
     case "needs_consultation_division_head": steps.push("A consultation with CEDO is needed, then the Division Head will decide your case. (Online booking opens in the next update — for now please visit the CEDO office.)"); break;
     case "needs_inc_letter_consultation": upload(); steps.push("Visit the CEDO office for your consultation, where staff will set the days you have to complete your INC."); break;

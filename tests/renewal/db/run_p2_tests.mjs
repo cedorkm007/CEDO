@@ -97,6 +97,9 @@ console.log("\nINC scenarios (10-14)");
 
   const r11 = await recordOf(33, T, S1);
   const item11 = (await q("select * from renewal_inc_items where record_id = $1", [r11.id]))[0];
+  check("only consultation staff may set an INC deadline (not the evaluator, not a scholar)",
+    await fails(EVAL, "select public.renewal_set_inc_deadline($1, $2::date, 10, '')", [item11.id, day(0)], /consultation staff/)
+    && await fails(scholarUid(33), "select public.renewal_set_inc_deadline($1, $2::date, 10, '')", [item11.id, day(0)], /consultation staff/));
   check("11 deadline = consultation date + 30 days", iso(item11.deadline) === day(-5 + 30) && item11.days_given === 30, String(item11.deadline));
   check("11 the case is waiting for INC compliance", r11.stage === "inc_waiting_compliance");
 
@@ -272,7 +275,7 @@ console.log("\nConfirming, returning and the one-failed rule");
   await rpc(scholarUid(2), "select public.renewal_resubmit($1,'Updated my details')", [r2.id]);
   check("the scholar resubmits and the rules run again", (await recordOf(2, T, S1)).stage === "ready_for_confirmation");
 
-  // 1 failed approved -> Renewed as Probationary, which then counts as previous probation (scenario 18)
+  // 1 failed: the evaluator ENDORSES to the Division Head (not confirmed by the evaluator); an approved probation then counts as previous probation (scenario 18)
   const fx = await mkScholar(101, { grades: ["5.0", "1.5"] });
   await apply(101, W1);
   let rf = await recordOf(101, T, S1);
@@ -282,11 +285,20 @@ console.log("\nConfirming, returning and the one-failed rule");
   await q("update renewal_records set consultation_done_at = now() where id = $1", [rf.id]);
   await q("update renewal_documents set status = 'accepted' where record_id = $1", [rf.id]);
   rf = await recordOf(101, T, S1);
-  check("18 study plan + consultation done: ready for the evaluator's approval", rf.stage === "ready_for_confirmation", rf.stage);
-  await rpc(EVAL, "select public.renewal_confirm($1,'Approved')", [rf.id]);
+  check("18 study plan + consultation done: ready to endorse to the Division Head", rf.stage === "ready_to_endorse", rf.stage);
+  check("the evaluator cannot simply confirm a 1-failed case", await fails(EVAL, "select public.renewal_confirm($1,'')", [rf.id], /endorsed to the Division Head/));
+  check("only the evaluator can endorse", await fails(COUNSELOR, "select public.renewal_endorse($1,'')", [rf.id], /Evaluator/) && await fails(fx.uid, "select public.renewal_endorse($1,'')", [rf.id], /Evaluator/));
+  await rpc(EVAL, "select public.renewal_endorse($1,'Plan is sound; recommend Probationary')", [rf.id]);
   rf = await recordOf(101, T, S1);
-  check("7 approved under the 1-failed rule: Renewed with status PROBATIONARY", rf.result === "renewed_probationary" && (await q("select status from scholars where scholar_id_number = $1", [num(101)]))[0].status === "Probationary");
-  check("7 that probation counts as previous probation", (await q("select public.scholar_had_regular_probation($1) r", [num(101)]))[0].r === true);
+  check("endorsed: the case is with the Division Head and the rules leave it alone", rf.stage === "endorsed_division_head");
+  await q("update scholar_subjects_grades set grade = '1.5' where scholar_id_number = $1 and subject_code = 'FX0' and school_year = '2025-2026'", [num(101)]);
+  check("a later grade change does not move an endorsed case", (await recordOf(101, T, S1)).stage === "endorsed_division_head");
+  check("the scholar was told it went to the Division Head", (await q("select count(*)::int n from scholar_notifications where scholar_id_number = $1 and title like '%Division Head%'", [num(101)]))[0].n === 1);
+  check("an endorsed case cannot be endorsed twice", await fails(EVAL, "select public.renewal_endorse($1,'')", [rf.id], /not ready/));
+  // The Division Head's approval is built in a later phase; here it is simulated so the previous-probation rule can be checked next term.
+  await q("select public._renewal_set_status($1,'Probationary',false,'Division Head approved (simulated)')", [num(101)]);
+  check("7 an approved probation counts as previous probation", (await q("select public.scholar_had_regular_probation($1) r", [num(101)]))[0].r === true);
+  await q("update scholar_subjects_grades set grade = '5.0' where scholar_id_number = $1 and subject_code = 'FX0' and school_year = '2025-2026'", [num(101)]);
   // next term: 2nd Semester 2026-2027 judged on 1st Semester 2026-2027, one failed again
   const w4 = (await rpc(EVAL, "select public.renewal_window_save(null,'2026-2027','2nd Semester',$1,$2,true,'')", [day(-1), day(20)]))[0].renewal_window_save;
   await q("insert into academic_periods (school_year, term, status) values ('2026-2027','1st Semester','open') on conflict do nothing");

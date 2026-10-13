@@ -73,7 +73,7 @@ create table if not exists public.renewal_records (
   window_id              uuid references public.renewal_windows(id) on delete set null,
   stage                  text not null check (stage in (
     'submitted', 'late_pending', 'late_declined', 'sdp_on_hold', 'waiting_grades', 'review_needed', 'ready_for_confirmation',
-    'needs_study_plan_consultation', 'needs_consultation_division_head', 'needs_inc_letter_consultation',
+    'ready_to_endorse', 'endorsed_division_head', 'needs_study_plan_consultation', 'needs_consultation_division_head', 'needs_inc_letter_consultation',
     'inc_waiting_compliance', 'inc_deadline_passed', 'summer_requirements',
     'returned', 'renewed', 'removed', 'reconsidered', 'not_required')),
   -- The semester whose grades and SDP are checked for this term (1st Sem <- previous 2nd Sem; 2nd Sem <- same year 1st Sem; Summer <- same year 2nd Sem).
@@ -461,7 +461,7 @@ begin
         then 'Two or more failed subjects: consultation, then the Division Head decides (Removed if approved).'
         else 'One failed subject and the scholar was on probation before: treated like two or more failed subjects — consultation, then the Division Head decides (Removed if approved).' end;
     elsif v_b then v_code := 'B';
-      v_text := 'One failed subject and no previous probation: study plan and consultation, then the evaluator approves (Renewed as Probationary if approved).';
+      v_text := 'One failed subject and no previous probation: study plan and consultation, then the evaluator endorses the scholar for Probationary to the Division Head, who approves (Renewed as Probationary if approved).';
     elsif v_inc_open > 0 then v_code := 'D';
       v_text := 'Has an INC subject: INC letter from the dean, temporary probation and a consultation where staff set the days to comply. Decided after the INC is resolved.';
     else v_code := 'A';
@@ -487,7 +487,7 @@ begin
     v_stage := 'review_needed'; v_code := 'REVIEW'; v_text := 'Needs the evaluator''s manual review: ' || v_reason;
   elsif v_c then v_stage := 'needs_consultation_division_head';
   elsif v_b then
-    v_stage := case when v_docs_complete and v_consult_done and v_inc_open = 0 then 'ready_for_confirmation' else 'needs_study_plan_consultation' end;
+    v_stage := case when v_docs_complete and v_consult_done and v_inc_open = 0 then 'ready_to_endorse' else 'needs_study_plan_consultation' end;
   elsif v_inc_open > 0 then
     v_stage := case when v_inc_open_without_deadline > 0 then 'needs_inc_letter_consultation'
                     when v_inc_overdue > 0 then 'inc_deadline_passed'
@@ -518,7 +518,7 @@ returns boolean
 language sql
 immutable
 as $$
-  select p_stage in ('submitted', 'sdp_on_hold', 'waiting_grades', 'review_needed', 'ready_for_confirmation',
+  select p_stage in ('submitted', 'sdp_on_hold', 'waiting_grades', 'review_needed', 'ready_for_confirmation', 'ready_to_endorse',
     'needs_study_plan_consultation', 'needs_consultation_division_head', 'needs_inc_letter_consultation',
     'inc_waiting_compliance', 'inc_deadline_passed', 'summer_requirements');
 $$;
@@ -563,6 +563,8 @@ as $$
     when 'waiting_grades' then 'Waiting for grades'
     when 'review_needed' then 'Needs evaluator review'
     when 'ready_for_confirmation' then 'Ready for evaluator confirmation'
+    when 'ready_to_endorse' then 'Ready to endorse to the Division Head'
+    when 'endorsed_division_head' then 'Endorsed — waiting for the Division Head'
     when 'needs_study_plan_consultation' then 'Needs study plan and consultation'
     when 'needs_consultation_division_head' then 'Needs consultation and Division Head decision'
     when 'needs_inc_letter_consultation' then 'Needs INC letter and consultation'
@@ -672,6 +674,9 @@ begin
     elsif v_new_stage in ('needs_study_plan_consultation', 'needs_consultation_division_head', 'needs_inc_letter_consultation', 'summer_requirements') then
       perform public._notify_scholar(v_rec.scholar_id_number, 'consultation_needed', 'A consultation is needed for your renewal',
         'Please see what is needed in your Renewal tile. ' || coalesce(v_ev ->> 'rule_text', ''), v_rec.id);
+    elsif v_new_stage = 'ready_to_endorse' then
+      perform public._notify_scholar(v_rec.scholar_id_number, 'progress', 'Your renewal is ready for the evaluator',
+        'Everything needed is in. The evaluator will review your case and send it to the Division Head for approval.', v_rec.id);
     elsif v_new_stage = 'ready_for_confirmation' and v_old_stage <> 'submitted' then
       perform public._notify_scholar(v_rec.scholar_id_number, 'progress', 'Your renewal is ready for the evaluator',
         'Everything needed is in. The evaluator will confirm your renewal for ' || v_term_label || '.', v_rec.id);
@@ -1243,36 +1248,58 @@ set search_path = public
 as $$
 declare
   v_rec public.renewal_records%rowtype;
-  v_ev jsonb;
   v_label text;
-  v_probationary boolean;
 begin
   perform public._renewal_require_evaluator();
   select * into v_rec from public.renewal_records where id = p_record_id for update;
   if not found then raise exception 'That renewal record was not found.'; end if;
+  if v_rec.stage = 'ready_to_endorse' then raise exception 'A case with a failed subject is endorsed to the Division Head, not confirmed by the evaluator.'; end if;
   if v_rec.stage <> 'ready_for_confirmation' then raise exception 'This renewal is not ready for confirmation yet (%).', public._renewal_stage_title(v_rec.stage); end if;
   -- Make sure the answer is still right at this moment.
   perform public._renewal_recheck(p_record_id);
   select * into v_rec from public.renewal_records where id = p_record_id;
   if v_rec.stage <> 'ready_for_confirmation' then raise exception 'Something changed just now: this renewal is now "%".', public._renewal_stage_title(v_rec.stage); end if;
-  v_ev := v_rec.evaluation;
-  v_probationary := (v_ev ->> 'rule_code') like 'B%';
   v_label := public._renewal_term_label(v_rec.school_year, v_rec.term);
 
-  update public.renewal_records set stage = 'renewed', result = case when v_probationary then 'renewed_probationary' else 'renewed' end,
+  update public.renewal_records set stage = 'renewed', result = 'renewed',
     confirmed_at = now(), confirmed_by = auth.uid(), evaluator_comment = nullif(btrim(coalesce(p_note, '')), ''), updated_at = now()
   where id = p_record_id;
-  if v_probationary then
-    perform public._renewal_set_status(v_rec.scholar_id_number, 'Probationary', false, 'Renewed as Probationary for ' || v_label || ' (one failed subject).');
-  end if;
   perform public._renewal_log(p_record_id, 'ready_for_confirmation', 'renewed',
-    case when v_probationary then 'Renewal confirmed — Renewed as Probationary.' else 'Renewal confirmed.' end || case when btrim(coalesce(p_note, '')) <> '' then ' ' || btrim(p_note) else '' end);
+    'Renewal confirmed.' || case when btrim(coalesce(p_note, '')) <> '' then ' ' || btrim(p_note) else '' end);
   perform public._notify_scholar(v_rec.scholar_id_number, 'renewal_confirmed', 'Your renewal is confirmed',
-    'You are renewed for ' || v_label || case when v_probationary then ' (Probationary)' else '' end || '. Your Certificate of Scholarship Renewal will be available here once certificates are switched on.', p_record_id);
+    'You are renewed for ' || v_label || '. Your Certificate of Scholarship Renewal will be available here once certificates are switched on.', p_record_id);
 end;
 $$;
 revoke all on function public.renewal_confirm(uuid, text) from public, anon;
 grant execute on function public.renewal_confirm(uuid, text) to authenticated;
+
+-- A "1 failed subject" case is NOT confirmed by the evaluator: once the study plan and the consultation are done, the evaluator
+-- ENDORSES the scholar for Probationary to the Division Head, who approves (the Division Head's decision is built in a later phase).
+create or replace function public.renewal_endorse(p_record_id uuid, p_note text default '')
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_rec public.renewal_records%rowtype;
+begin
+  perform public._renewal_require_evaluator();
+  select * into v_rec from public.renewal_records where id = p_record_id for update;
+  if not found then raise exception 'That renewal record was not found.'; end if;
+  if v_rec.stage <> 'ready_to_endorse' then raise exception 'This case is not ready to be endorsed yet (%).', public._renewal_stage_title(v_rec.stage); end if;
+  perform public._renewal_recheck(p_record_id);
+  select * into v_rec from public.renewal_records where id = p_record_id;
+  if v_rec.stage <> 'ready_to_endorse' then raise exception 'Something changed just now: this renewal is now "%".', public._renewal_stage_title(v_rec.stage); end if;
+  update public.renewal_records set stage = 'endorsed_division_head', evaluator_comment = nullif(btrim(coalesce(p_note, '')), ''), updated_at = now() where id = p_record_id;
+  perform public._renewal_log(p_record_id, 'ready_to_endorse', 'endorsed_division_head',
+    'Endorsed to the Division Head for Probationary approval.' || case when btrim(coalesce(p_note, '')) <> '' then ' ' || btrim(p_note) else '' end);
+  perform public._notify_scholar(v_rec.scholar_id_number, 'progress', 'Your case was sent to the Division Head',
+    'The evaluator endorsed you for Probationary and sent your case to the Division Head for approval. We will tell you the result.', p_record_id);
+end;
+$$;
+revoke all on function public.renewal_endorse(uuid, text) from public, anon;
+grant execute on function public.renewal_endorse(uuid, text) to authenticated;
 
 create or replace function public.renewal_return(p_record_id uuid, p_comment text)
 returns void
@@ -1358,8 +1385,9 @@ revoke all on function public.renewal_mark_not_required(text, text, text, text) 
 grant execute on function public.renewal_mark_not_required(text, text, text, text) to authenticated;
 
 -- ── 9. INC deadline and the evaluator's decision after it passes ──
--- Used by the Daily Record in the Consultation Tool (next phase) and by the evaluator. Setting a deadline when one exists is an
--- extension and needs a reason; the history of changes is kept.
+-- Used by the Daily Record in the Consultation Tool: ONLY consultation staff set (or change) an INC deadline. (After the deadline
+-- has passed the evaluator can still extend it as a decision, see renewal_decide_inc.) Changing an existing deadline needs a reason;
+-- the history of changes is kept.
 create or replace function public.renewal_set_inc_deadline(p_item_id uuid, p_consultation_date date, p_days_given integer, p_reason text default '')
 returns void
 language plpgsql
@@ -1371,8 +1399,8 @@ declare
   v_new date;
   v_scholar text;
 begin
-  if not (public.is_renewal_evaluator() or public.has_staff_tag('scholar_counseling')) then
-    raise exception 'Only consultation staff or the Scholar Renewal Evaluator can set an INC deadline.';
+  if not public.has_staff_tag('scholar_counseling') then
+    raise exception 'Only consultation staff set the INC deadline (in the Daily Record of the consultation).';
   end if;
   select * into v_item from public.renewal_inc_items where id = p_item_id for update;
   if not found then raise exception 'That INC item was not found.'; end if;
