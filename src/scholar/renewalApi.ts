@@ -20,9 +20,15 @@ export interface MyRenewalRecord {
   id: string; stage: RenewalStage; isLate: boolean; lateReason: string | null; appliedAt: string | null; ruleCode: string | null; ruleText: string | null;
   evaluation: RenewalEvaluation; scholarNote: string; evaluatorComment: string | null; result: string | null; confirmedAt: string | null; noShowFlag: boolean;
 }
+export interface MyBooking { slotId: string; startsAt: string; endsAt: string; staffName: string; canChange: boolean }
+export interface OpenSlot { slotId: string; startsAt: string; endsAt: string; staffName: string }
 export interface MyRenewalWindow {
   window: RenewalWindow; state: WindowState; record: MyRenewalRecord | null;
   documents: RenewalDocument[]; history: RenewalHistoryEntry[]; incItems: RenewalIncItem[];
+  /** The consultation the scholar has booked for this renewal (if any). */
+  booking: MyBooking | null;
+  /** Does this renewal still need a consultation that has not happened? (the database decides) */
+  consultNeeded: boolean;
 }
 export interface MyRenewalOverview { scholar: { scholarIdNumber: string; school: string; program: string; yearLevel: string; status: string }; windows: MyRenewalWindow[] }
 
@@ -57,6 +63,8 @@ export async function fetchMyRenewals(): Promise<{ ok: true; overview: MyRenewal
     record: w.record ? toRecord(w.record as Row) : null,
     documents: ((w.documents ?? []) as Row[]).map(toDocument),
     history: ((w.history ?? []) as Row[]).map(h => ({ at: str(h.at), toStage: str(h.to_stage), actor: str(h.actor), note: str(h.note) })),
+    booking: w.booking ? (() => { const b = w.booking as Row; return { slotId: str(b.slot_id), startsAt: str(b.starts_at), endsAt: str(b.ends_at), staffName: str(b.staff_name), canChange: !!b.can_change }; })() : null,
+    consultNeeded: !!w.consult_needed,
     incItems: ((w.inc_items ?? []) as Row[]).map(i => ({
       id: str(i.id), subjectCode: str(i.subject_code), subject: str(i.subject), state: str(i.state),
       consultationDate: strOrNull(i.consultation_date), daysGiven: i.days_given == null ? null : Number(i.days_given), deadline: strOrNull(i.deadline),
@@ -84,6 +92,26 @@ export async function resubmitRenewal(recordId: string, note: string): Promise<D
 
 export async function flagRenewalProblem(recordId: string, note: string): Promise<Done> {
   const { error } = await supabase.rpc("renewal_flag_problem", { p_record_id: recordId, p_note: note });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+// ── Consultation booking ──
+/** Open 10-minute slots of ALL consultation staff, at least 12 hours from now. */
+export async function fetchOpenSlots(recordId: string): Promise<{ ok: true; slots: OpenSlot[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("renewal_open_slots", { p_record_id: recordId });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, slots: ((data ?? []) as Row[]).map(r => ({ slotId: str(r.slot_id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), staffName: str(r.staff_name) })) };
+}
+export async function bookConsultation(recordId: string, slotId: string): Promise<Done> {
+  const { error } = await supabase.rpc("renewal_book_slot", { p_record_id: recordId, p_slot_id: slotId });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+export async function rescheduleConsultation(recordId: string, newSlotId: string): Promise<Done> {
+  const { error } = await supabase.rpc("renewal_reschedule_slot", { p_record_id: recordId, p_new_slot_id: newSlotId });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+export async function cancelConsultation(recordId: string): Promise<Done> {
+  const { error } = await supabase.rpc("renewal_cancel_booking", { p_record_id: recordId });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 

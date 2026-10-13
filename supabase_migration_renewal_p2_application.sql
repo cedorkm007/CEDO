@@ -1129,7 +1129,9 @@ end;
 $$;
 revoke all on function public._renewal_sweep() from public, anon, authenticated;
 
-create or replace function public.renewal_board(p_school_year text, p_term text)
+-- (dropped first so this file can be run again even after a later phase changed what the board returns; run the phase files in order)
+drop function if exists public.renewal_board(text, text);
+create function public.renewal_board(p_school_year text, p_term text)
 returns table(
   record_id uuid, scholar_id_number text, name text, school text, program text, year_level text, stage text, is_late boolean, late_decision text,
   applied_at timestamptz, rule_code text, failed_count integer, inc_count integer, sdp_complied boolean, sdp_missing text,

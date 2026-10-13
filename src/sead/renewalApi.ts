@@ -38,6 +38,8 @@ export interface BoardRow {
   recordId: string; scholarIdNumber: string; name: string; school: string; program: string; yearLevel: string; stage: RenewalStage; isLate: boolean;
   lateDecision: string | null; appliedAt: string | null; ruleCode: string | null; failedCount: number; incCount: number; sdpComplied: boolean | null; sdpMissing: string | null;
   consultationRequired: boolean; consultationDone: boolean; noShow: boolean; scholarNote: string; updatedAt: string; result: string | null;
+  /** When the scholar's booked consultation starts (null when none is booked). */
+  nextConsultation: string | null; noShowCount: number;
 }
 
 export async function fetchRenewalBoard(schoolYear: string, term: string): Promise<Loaded<BoardRow>> {
@@ -50,6 +52,7 @@ export async function fetchRenewalBoard(schoolYear: string, term: string): Promi
       stage: r.stage as RenewalStage, isLate: !!r.is_late, lateDecision: strOrNull(r.late_decision), appliedAt: strOrNull(r.applied_at), ruleCode: strOrNull(r.rule_code),
       failedCount: num(r.failed_count), incCount: num(r.inc_count), sdpComplied: r.sdp_complied == null ? null : !!r.sdp_complied, sdpMissing: strOrNull(r.sdp_missing),
       consultationRequired: !!r.consultation_required, consultationDone: !!r.consultation_done, noShow: !!r.no_show_flag, scholarNote: str(r.scholar_note), updatedAt: str(r.updated_at), result: strOrNull(r.result),
+      nextConsultation: strOrNull(r.next_consultation), noShowCount: num(r.no_show_count),
     })),
   };
 }
@@ -128,6 +131,8 @@ export interface RenewalDetail {
   documents: DetailDocument[];
   history: { at: string; fromStage: string | null; toStage: string; actor: string; note: string }[];
   incItems: DetailIncItem[];
+  appointments: { startsAt: string | null; action: string; staff: string; actor: string; note: string; at: string }[];
+  nextConsultation: { startsAt: string; staff: string } | null;
   statusHistory: { status: string; previousStatus: string | null; isTemporary: boolean; schoolYear: string | null; term: string | null; changedAt: string; source: string; note: string }[];
 }
 
@@ -157,6 +162,8 @@ export async function fetchRenewalDetail(recordId: string): Promise<{ ok: true; 
           extensions: ((x.extensions ?? []) as Row[]).map(e => ({ oldDeadline: strOrNull(e.old_deadline), newDeadline: str(e.new_deadline), reason: str(e.reason), by: str(e.changed_by_label), at: str(e.changed_at) })),
         };
       }),
+      appointments: ((d.appointments ?? []) as Row[]).map(a => ({ startsAt: strOrNull(a.starts_at), action: str(a.action), staff: str(a.staff), actor: str(a.actor), note: str(a.note), at: str(a.at) })),
+      nextConsultation: d.next_consultation ? (() => { const n = d.next_consultation as Row; return { startsAt: str(n.starts_at), staff: str(n.staff) }; })() : null,
       statusHistory: ((d.status_history ?? []) as Row[]).map(x => ({ status: str(x.status), previousStatus: strOrNull(x.previous_status), isTemporary: !!x.is_temporary, schoolYear: strOrNull(x.school_year), term: strOrNull(x.term), changedAt: str(x.changed_at), source: str(x.source), note: str(x.note) })),
     },
   };

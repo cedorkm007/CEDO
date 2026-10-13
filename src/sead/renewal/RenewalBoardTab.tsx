@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Flag, Loader2, Search, StickyNote } from "lucide-react";
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
-import { BOARD_GROUPS, formatDay } from "@/lib/renewal";
+import { BOARD_GROUPS, formatDay, formatSlot } from "@/lib/renewal";
 import { fetchRenewalBoard, type BoardRow } from "../renewalApi";
 
 /** Applications for one term, grouped by stage, with search. Click a row to open the scholar's renewal. */
@@ -75,8 +75,10 @@ export function RenewalBoardTab({ schoolYear, term, onOpen, refreshKey }: { scho
                       {r.incCount > 0 && <span className="rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 font-bold text-amber-900">{r.incCount} INC</span>}
                       {r.isLate && <span className="inline-flex items-center gap-1 rounded-full border border-slate-400 bg-slate-100 px-2 py-0.5 font-bold text-slate-800"><Flag size={12} aria-hidden="true" /> Late</span>}
                       {r.scholarNote && <span className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 font-bold text-sky-900"><StickyNote size={12} aria-hidden="true" /> Has a note</span>}
-                      {r.noShow && <span className="rounded-full border border-red-300 bg-red-50 px-2 py-0.5 font-bold text-red-800">No-show</span>}
-                      {r.sdpComplied !== false && r.failedCount === 0 && r.incCount === 0 && !r.isLate && !r.scholarNote && <span className="text-slate-700">—</span>}
+                      {r.noShow && <span className="rounded-full border border-red-300 bg-red-50 px-2 py-0.5 font-bold text-red-800">No-show{r.noShowCount > 1 ? ` ×${r.noShowCount}` : ""}</span>}
+                      {r.nextConsultation && <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 font-bold text-sky-900">Consultation {formatSlot(r.nextConsultation)}</span>}
+                      {r.consultationRequired && !r.consultationDone && !r.nextConsultation && <span className="rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 font-bold text-amber-900">Not booked yet</span>}
+                      {r.sdpComplied !== false && r.failedCount === 0 && r.incCount === 0 && !r.isLate && !r.scholarNote && !r.nextConsultation && !(r.consultationRequired && !r.consultationDone) && <span className="text-slate-700">—</span>}
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-slate-800">{formatDay(r.appliedAt)}</td>

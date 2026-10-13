@@ -131,6 +131,57 @@ export function daysLeftText(days: number | null): string {
   return `${days} day${days === 1 ? "" : "s"} left`;
 }
 
+// ── Consultation appointments ──
+/** A scholar can book, change or cancel a consultation only while it is at least this many hours away. */
+export const CONSULT_CHANGE_CUTOFF_HOURS = 12;
+export const SLOT_MINUTES = 10;
+
+/** "Mon, Oct 20 · 9:10 AM" in Philippine time. */
+export function formatSlot(startIso: string | null | undefined): string {
+  if (!startIso) return "—";
+  const d = new Date(startIso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const day = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: MANILA });
+  return `${day} · ${formatTimeOnly(startIso)}`;
+}
+/** "9:10 AM" in Philippine time. */
+export function formatTimeOnly(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: MANILA });
+}
+/** The calendar day (YYYY-MM-DD) a timestamp falls on in Philippine time. */
+export function manilaDay(iso: string): string {
+  return manilaToday(new Date(iso));
+}
+/** Whole hours (can be fractional) from now to a timestamp; negative once it has started. */
+export function hoursUntil(iso: string, now: Date = new Date()): number {
+  return (new Date(iso).getTime() - now.getTime()) / 3600000;
+}
+/** Can a booking that starts at `iso` still be changed or cancelled online? (the 12-hour rule; the database decides, this only words it) */
+export function canChangeBooking(iso: string, now: Date = new Date()): boolean {
+  return hoursUntil(iso, now) >= CONSULT_CHANGE_CUTOFF_HOURS;
+}
+/** Groups slots by Philippine calendar day, days and slots in time order. */
+export function groupSlotsByDay<T extends { startsAt: string }>(slots: T[]): { day: string; slots: T[] }[] {
+  const map = new Map<string, T[]>();
+  for (const s of [...slots].sort((a, b) => a.startsAt.localeCompare(b.startsAt))) {
+    const k = manilaDay(s.startsAt);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k)!.push(s);
+  }
+  return [...map.entries()].map(([day, list]) => ({ day, slots: list }));
+}
+/** A start time typed as a Manila date + "HH:MM" -> an ISO instant (the staff form uses this; Manila has no daylight saving). */
+export function manilaInstant(dateYmd: string, hhmm: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateYmd) || !/^\d{2}:\d{2}$/.test(hhmm)) return null;
+  const d = new Date(`${dateYmd}T${hhmm}:00+08:00`);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+/** How many 10-minute slots a range makes, or null when it is not a whole number of slots. */
+export function slotCount(startIso: string, endIso: string): number | null {
+  const mins = (new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000;
+  return mins > 0 && mins % SLOT_MINUTES === 0 ? mins / SLOT_MINUTES : null;
+}
+
 export type WindowState = "upcoming" | "open" | "late" | "closed";
 export function windowState(opensOn: string, closesOn: string, lateAllowed: boolean, now: Date = new Date()): WindowState {
   const today = manilaToday(now);
@@ -171,8 +222,22 @@ export interface RenewalEvaluation {
 }
 
 /** Plain, encouraging next steps for the scholar, in order. The database decided the case; this only words it. */
-export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | null | undefined, opts: { incDeadlines?: { subject: string; deadline: string | null }[]; evaluatorComment?: string | null } = {}): string[] {
+export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | null | undefined, opts: {
+  incDeadlines?: { subject: string; deadline: string | null }[]; evaluatorComment?: string | null;
+  /** Does the scholar still need a consultation (none held yet)? Default: yes. */
+  consultNeeded?: boolean; booking?: { startsAt: string; staffName: string } | null; isSummer?: boolean; noShow?: boolean;
+} = {}): string[] {
   const steps: string[] = [];
+  const consultNeeded = opts.consultNeeded ?? true;
+  /** Book / keep the face-to-face consultation. */
+  const consult = () => {
+    if (!consultNeeded) { steps.push("Your consultation is done."); return; }
+    if (opts.booking) {
+      steps.push(`Come to your face-to-face consultation on ${formatSlot(opts.booking.startsAt)} with ${opts.booking.staffName}.${opts.isSummer ? " Bring the hard copy of your prospectus." : ""}`);
+    } else {
+      steps.push(`${opts.noShow ? "You missed your consultation, so please book a new time. " : ""}Book your face-to-face consultation below.${opts.isSummer ? " Bring the hard copy of your prospectus." : ""}`);
+    }
+  };
   const missingDocs = (ev?.required_documents ?? []).filter(d => !d.satisfied);
   const upload = () => { for (const d of missingDocs) steps.push(`Upload your ${d.label.toLowerCase().startsWith("inc") ? "INC letter from your dean" : d.label.split(" (")[0].toLowerCase()}.`); };
   switch (stage) {
@@ -185,15 +250,17 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
     case "ready_for_confirmation": steps.push("Waiting for the evaluator to confirm your renewal."); break;
     case "ready_to_endorse": steps.push("Waiting for the evaluator to review your case and send it to the Division Head for approval."); break;
     case "endorsed_division_head": steps.push("The evaluator sent your case to the Division Head for approval. We will tell you the result."); break;
-    case "needs_study_plan_consultation": upload(); steps.push("Book your face-to-face consultation (online booking opens in the next update — for now please visit the CEDO office)."); break;
-    case "needs_consultation_division_head": steps.push("A consultation with CEDO is needed, then the Division Head will decide your case. (Online booking opens in the next update — for now please visit the CEDO office.)"); break;
-    case "needs_inc_letter_consultation": upload(); steps.push("Visit the CEDO office for your consultation, where staff will set the days you have to complete your INC."); break;
+    case "needs_study_plan_consultation": upload(); consult(); break;
+    case "needs_consultation_division_head":
+      if (consultNeeded) { consult(); steps.push("After your consultation, the Division Head will decide your case."); } else steps.push("Your consultation is done. The Division Head will decide your case.");
+      break;
+    case "needs_inc_letter_consultation": upload(); consult(); if (consultNeeded) steps.push("At the consultation, staff will set the days you have to complete your INC."); break;
     case "inc_waiting_compliance":
       for (const i of opts.incDeadlines ?? []) steps.push(`Complete your INC in ${i.subject} by ${formatDay(i.deadline)} — ${daysLeftText(daysUntil(i.deadline))}.`);
       if (!(opts.incDeadlines ?? []).length) steps.push("Complete your INC by the deadline that is set at your consultation.");
       upload(); break;
     case "inc_deadline_passed": steps.push("Your INC deadline has passed. The evaluator will decide what happens next."); break;
-    case "summer_requirements": upload(); steps.push("Bring the hard copy of your prospectus to your face-to-face consultation."); break;
+    case "summer_requirements": upload(); consult(); if (!consultNeeded) steps.push("Waiting for the CEDO office to receive the hard copy of your prospectus."); break;
     case "returned": steps.push(opts.evaluatorComment ? `The evaluator asked: ${opts.evaluatorComment}` : "The evaluator returned your application with comments."); steps.push("Fix what was asked and press “Submit again”."); break;
     case "renewed": steps.push("You are renewed. Your Certificate of Scholarship Renewal will be available here once certificates are switched on."); break;
     case "removed": steps.push("Please contact the CEDO office."); break;

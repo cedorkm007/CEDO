@@ -76,6 +76,12 @@ const SCHOLARS = [
   { n: 30, school: "lower", last: "Summer All Passed No SDP", grades: g("1.5", "2.0"), sdp: [] },
   { n: 31, school: "letters", last: "Summer Incomplete Grades", grades: g("A", "B"), sdp: FULL_SDP },
   { n: 33, school: "lower", last: "INC 30 Days Given", grades: g("INC", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", inc: { consult: -5, days: 30 } } },
+  // Phase 3 scholars: each has a consultation booked with demo.counselor at a different time, so every appointment action can be tried
+  { n: 34, school: "lower", last: "Consult INC Today", grades: g("INC", "1.5"), sdp: FULL_SDP, renewal: { window: "w1" }, booking: { hours: -0.7 } },
+  { n: 35, school: "lower", last: "Consult One Failed Today", grades: g("5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1" }, booking: { hours: -1.2 } },
+  { n: 36, school: "lower", last: "Consult Summer Today", grades: g("1.5", "2.0"), sdp: [], renewal: { window: "w2", prospectus: true }, booking: { hours: -1.7 } },
+  { n: 37, school: "lower", last: "Consult Tomorrow", grades: g("5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1" }, booking: { hours: 30 } },
+  { n: 38, school: "lower", last: "Consult Under 12 Hours", grades: g("5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1" }, booking: { hours: 8 } },
 ];
 export const SCHOLAR_LAST = Object.fromEntries(SCHOLARS.map(s => [s.n, s.last]));
 const SUBJECTS = ["Mathematics", "English", "Science", "History"];
@@ -196,6 +202,25 @@ export async function seedDb(db) {
       const item = (await tx.query("select id from renewal_inc_items where record_id = $1", [inc[s.n]])).rows[0];
       await tx.query("select public.renewal_set_inc_deadline($1, $2::date, $3, '')", [item.id, day(s.renewal.inc.consult), s.renewal.inc.days]);
     });
+  }
+  // ── Phase 3: consultation availability (real function) and the bookings above (inserted directly: some are in the past or under 12 hours away) ──
+  const slotOnDay = (days, hour) => new Date(`${day(days)}T${String(hour).padStart(2, "0")}:00:00+08:00`).toISOString();
+  for (const d of [1, 2, 3, 4, 6]) await as(id("staff:demo.counselor"), async tx => tx.query("select public.counseling_availability_save(null, $1, $2, false)", [slotOnDay(d, 9), slotOnDay(d, 11)]));
+  for (const d of [1, 3]) await as(id("staff:demo.admin"), async tx => tx.query("select public.counseling_availability_save(null, $1, $2, false)", [slotOnDay(d, 13), slotOnDay(d, 14)]));
+  for (const s of SCHOLARS.filter(x => x.booking)) {
+    const rec = (await db.query("select id from renewal_records where scholar_id_number = $1 order by created_at desc limit 1", [sidNum(s.n)])).rows[0].id;
+    const start = new Date(Date.now() + s.booking.hours * 3600000), end = new Date(start.getTime() + 600000);
+    const counselor = id("staff:demo.counselor");
+    const av = (await db.query("insert into counseling_availability (staff_id, starts_at, ends_at) values ($1,$2,$3) returning id", [counselor, start.toISOString(), end.toISOString()])).rows[0].id;
+    await db.query(`insert into counseling_slots (availability_id, staff_id, starts_at, ends_at, state, record_id, scholar_id_number, booked_at, reminded_day_at)
+      values ($1,$2,$3,$4,'booked',$5,$6, now() - interval '2 days', $7)`, [av, counselor, start.toISOString(), end.toISOString(), rec, sidNum(s.n), s.booking.hours > 0 && s.booking.hours < 24 ? null : new Date().toISOString()]);   // a booking within the next day has not had its 1-day reminder yet: the demo scheduler sends it
+    await db.query("insert into counseling_booking_history (record_id, scholar_id_number, slot_starts_at, staff_id, action, actor_label) values ($1,$2,$3,$4,'booked','Scholar')", [rec, sidNum(s.n), start.toISOString(), counselor]);
+    if (s.renewal.prospectus) {
+      const path = `${sidNum(s.n)}/${rec}/prospectus/seed-prospectus.pdf`;
+      await db.query("insert into storage.buckets (id, name, public) values ('renewal-documents','renewal-documents', false) on conflict (id) do nothing");
+      await db.query("insert into storage.objects (bucket_id, name, metadata) values ('renewal-documents', $1, $2::jsonb)", [path, JSON.stringify({ mimetype: "application/pdf", size: 24, base64: Buffer.from("%PDF-1.4 demo prospectus").toString("base64") })]);
+      await db.query("insert into renewal_documents (record_id, scholar_id_number, kind, storage_path, file_name, mime_type, size_bytes) values ($1,$2,'prospectus',$3,'prospectus.pdf','application/pdf',24)", [rec, sidNum(s.n), path]);
+    }
   }
   // Loading the scholars made the status-history trigger record a "System" row dated today for each one; the real database has none until a status changes.
   await db.query("delete from scholar_status_history where source = 'system'");

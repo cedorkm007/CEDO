@@ -317,4 +317,91 @@ test("the Scholar Renewal tool is gated by its own tag, in the same places as th
   assert.match(fs.readFileSync(path.join(root, "src/app/components/Sidebar.tsx"), "utf8"), /user\.tags\.includes\("scholar_renewal_evaluator"\)/);
 });
 
+
+console.log("Appointments: wording and helpers (Phase 3)");
+test("slot times are shown in Philippine time", () => {
+  assert.equal(R.formatTimeOnly("2026-10-20T01:10:00Z"), "9:10 AM");
+  assert.equal(R.formatSlot("2026-10-20T01:10:00Z"), "Tue, Oct 20 · 9:10 AM");
+  assert.equal(R.formatSlot("2026-10-20T17:30:00Z"), "Wed, Oct 21 · 1:30 AM", "late evening UTC is already the next day in Manila");
+  assert.equal(R.formatSlot(null), "—");
+  assert.equal(R.manilaDay("2026-10-20T17:30:00Z"), "2026-10-21");
+});
+test("the 12-hour rule: 13 hours before can still change, 11 hours cannot, exactly 12 can", () => {
+  const now = new Date("2026-10-20T00:00:00Z");
+  assert.equal(R.canChangeBooking("2026-10-20T13:00:00Z", now), true);
+  assert.equal(R.canChangeBooking("2026-10-20T11:00:00Z", now), false);
+  assert.equal(R.canChangeBooking("2026-10-20T12:00:00Z", now), true);
+  assert.equal(R.CONSULT_CHANGE_CUTOFF_HOURS, 12);
+  assert.equal(R.hoursUntil("2026-10-20T11:00:00Z", now), 11);
+});
+test("the 12-hour rule on the website is the same number the database uses", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p3_appointments.sql"), "utf8");
+  assert.ok((sql.match(/interval '12 hours'/g) ?? []).length >= 5);
+  assert.equal(/interval '(1[013]|[2-9]) hours'/.test(sql), false, "no other cutoff hours");
+});
+test("slots are grouped by Philippine day, in time order", () => {
+  const g = R.groupSlotsByDay([{ startsAt: "2026-10-21T01:10:00Z" }, { startsAt: "2026-10-20T01:00:00Z" }, { startsAt: "2026-10-20T16:30:00Z" }, { startsAt: "2026-10-20T01:10:00Z" }]);
+  assert.deepEqual(g.map(d => d.day), ["2026-10-20", "2026-10-21"]);
+  assert.deepEqual(g[0].slots.map(s => s.startsAt), ["2026-10-20T01:00:00Z", "2026-10-20T01:10:00Z"]);
+  assert.equal(g[1].slots.length, 2, "16:30 UTC is 00:30 the next day in Manila");
+});
+test("the staff form builds Manila instants and counts whole 10-minute slots", () => {
+  assert.equal(R.manilaInstant("2026-10-20", "09:00"), "2026-10-20T01:00:00.000Z");
+  assert.equal(R.manilaInstant("2026-10-20", "9:00"), null);
+  assert.equal(R.manilaInstant("", "09:00"), null);
+  assert.equal(R.slotCount("2026-10-20T01:00:00.000Z", "2026-10-20T03:00:00.000Z"), 12);
+  assert.equal(R.slotCount("2026-10-20T01:00:00.000Z", "2026-10-20T01:25:00.000Z"), null);
+  assert.equal(R.slotCount("2026-10-20T03:00:00.000Z", "2026-10-20T01:00:00.000Z"), null);
+});
+test("next steps with a booking, without one, after a no-show, and once the consultation is done", () => {
+  const ev = { required_documents: [], sdp: { applicable: true, complied: true, missing: null }, grades: { reason: "" } };
+  const booked = R.scholarNextSteps("needs_study_plan_consultation", ev, { consultNeeded: true, booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } });
+  assert.match(booked.join(" "), /Come to your face-to-face consultation on Tue, Oct 20 · 9:10 AM with Ms\. Cruz/);
+  assert.match(R.scholarNextSteps("needs_study_plan_consultation", ev, { consultNeeded: true })[0], /Book your face-to-face consultation/);
+  assert.match(R.scholarNextSteps("needs_study_plan_consultation", ev, { consultNeeded: true, noShow: true })[0], /You missed your consultation/);
+  const summer = R.scholarNextSteps("summer_requirements", ev, { consultNeeded: true, isSummer: true, booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } });
+  assert.match(summer.join(" "), /Bring the hard copy of your prospectus/);
+  const done = R.scholarNextSteps("needs_study_plan_consultation", { ...ev, required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: false }] }, { consultNeeded: false });
+  assert.deepEqual(done, ["Upload your study plan.", "Your consultation is done."]);
+  assert.match(R.scholarNextSteps("needs_consultation_division_head", ev, { consultNeeded: false })[0], /Division Head will decide/);
+  assert.match(R.scholarNextSteps("summer_requirements", ev, { consultNeeded: false, isSummer: true }).join(" "), /hard copy/);
+});
+
+console.log("Source guards (Phase 3)");
+const p3files = [
+  "src/sead/appointmentsApi.ts", "src/sead/appointments/AppointmentsTab.tsx", "src/sead/appointments/SlotDetailModal.tsx",
+  "src/scholar/components/dashboard/RenewalPanel.tsx", "src/sead/pages/ProbationMonitoringTab.tsx",
+];
+test("the appointment screens use readable text (13px and up, no pale greys, no pale-blue links)", () => {
+  for (const p of p3files.filter(x => !/ProbationMonitoringTab/.test(x))) {
+    const src = fs.readFileSync(path.join(root, p), "utf8");
+    assert.deepEqual([...src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], p);
+    assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(src), false, p);
+  }
+});
+test("the appointment screens only ask the database (no direct writes to slots, availability or history tables)", () => {
+  const direct = /\.from\("(counseling_slots|counseling_availability|counseling_booking_history)"\)\s*\.(insert|update|delete|upsert)/;
+  for (const p of p3files) assert.equal(direct.test(fs.readFileSync(path.join(root, p), "utf8")), false, p);
+  const scholarApi = fs.readFileSync(path.join(root, "src/scholar/renewalApi.ts"), "utf8");
+  for (const fn of ["renewal_open_slots", "renewal_book_slot", "renewal_reschedule_slot", "renewal_cancel_booking"]) assert.ok(scholarApi.includes(`"${fn}"`), fn);
+  const staffApi = fs.readFileSync(path.join(root, "src/sead/appointmentsApi.ts"), "utf8");
+  for (const fn of ["counseling_availability_save", "counseling_availability_delete", "counseling_my_slots", "counseling_mark_slot", "counseling_save_daily_record", "renewal_extend_inc_deadline"]) assert.ok(staffApi.includes(`"${fn}"`), fn);
+});
+test("the Appointments subtab sits inside the existing Consultation Tool (same tag), and every function the website calls exists in the migration", () => {
+  const page = fs.readFileSync(path.join(root, "src/sead/ScholarCounselingToolPage.tsx"), "utf8");
+  assert.match(page, /key: "appointments"/);
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p3_appointments.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_renewal_p2_application.sql"), "utf8");
+  const called = new Set();
+  for (const p of ["src/sead/appointmentsApi.ts", "src/scholar/renewalApi.ts", "src/sead/renewalApi.ts"]) for (const m of fs.readFileSync(path.join(root, p), "utf8").matchAll(/rpc\("([a-z_]+)"/g)) called.add(m[1]);
+  const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql));
+  assert.deepEqual(missing, []);
+});
+test("the scholar-facing messages never show a time in UTC or the browser's own time zone", () => {
+  const lib = fs.readFileSync(path.join(root, "src/lib/renewal.ts"), "utf8");
+  for (const fn of ["formatSlot", "formatTimeOnly", "formatDay", "formatDateTime"]) {
+    const body = new RegExp(`export function ${fn}[\\s\\S]*?\\n}`).exec(lib)?.[0] ?? "";
+    assert.match(body, /timeZone: (MANILA|"Asia\/Manila")|formatTimeOnly/, fn);
+  }
+});
+
 console.log(`\n${process.exitCode ? "SOME TESTS FAILED" : "All " + passed + " tests passed"}`);

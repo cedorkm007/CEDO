@@ -64,3 +64,14 @@ Not done (later phases): booking and the consultation flow (Phase 3), tracker po
 4. Nothing is merged to `main` until Phase 8.
 5. Phase 3 approved.
 Tests: Phase 2 database checks now 129 (new endorse / counseling-only checks).
+
+## 2026-10-14 — Phase 3 (appointments) built on branch `renewal/phase-3-appointments` (stacked on Phase 2; nothing merged — owner: no merge until Phase 8)
+Database — `supabase_migration_renewal_p3_appointments.sql` (run AFTER the Phase 2 file; additive, safe to run twice):
+- `counseling_availability` (ranges), `counseling_slots` (10-minute slots, one scholar each, one booked slot per renewal enforced by a unique index), `counseling_booking_history`; new columns on `renewal_records` (`no_show_count`) and `scholar_counseling_records` (slot, renewal, days given, hard copy).
+- Scholar: `renewal_open_slots` (all staff, ≥12 h ahead, ≤60 days), `renewal_book_slot`, `renewal_reschedule_slot`, `renewal_cancel_booking` (12-hour rule); `renewal_my_overview` now returns the booking.
+- Staff: `counseling_availability_save/delete` (warn + notify when booked slots would go), `counseling_my_availability`, `counseling_my_slots`, `counseling_mark_slot` (attended / no-show), `counseling_slot_prefill`, `counseling_save_daily_record` (INC days given → deadline; Summer hard copy), `counseling_set_hard_copy`, `renewal_extend_inc_deadline`, `counseling_probation_renewal_info`; `renewal_set_inc_deadline` is counseling-only.
+- Scheduler: `renewal_scheduled_jobs()` (1-day and 1-hour reminders + INC deadline sweep), scheduled every 5 min with pg_cron when the extension is on (guarded). The local demo runs it once a minute.
+- The Phase 2 file now drops `renewal_board` first so it can be re-run after Phase 3 (run the phase files in order).
+Website: Appointments subtab in the Scholar Consultation Tool (`src/sead/appointments/*`, `appointmentsApi.ts`), pre-filled Daily Record (`AddDailyRecordModal` takes `prefill`), Probationary Monitoring renewal column (temporary INC, deadline, Extend, study plans), booking inside the scholar's Renewal tile, appointment info on the evaluator's board / detail.
+Tests: `tests/renewal/db/run_p3_tests.mjs` 88 checks; Phase 2 129; website 49; Phase 1 64 / grades 99; tsc + build clean.
+Walkthrough: `Renewal_Phase3_Walkthrough.txt` (also lists what changed in Phase 2 after the owner's answers).

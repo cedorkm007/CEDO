@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, Loader2, Paperclip, XCircle } from "lucide-react";
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
-import { DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, termLabelOf } from "@/lib/renewal";
+import { DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, termLabelOf } from "@/lib/renewal";
 import {
   confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, getStaffRenewalDocumentUrl, returnRenewal, type RenewalDetail,
 } from "../renewalApi";
@@ -82,6 +82,18 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
         <p className="text-[13.5px] text-slate-600 mt-1">Checked against {basis}. Previous (regular) probation: <strong>{ev.previous_probation ? "Yes" : "No"}</strong>.{r.consultationRequired ? " A face-to-face consultation is required." : ""}</p>
         {(r.consultationRequired || r.consultationDoneAt) && <p className="text-[13.5px] text-slate-600">Consultation done: {r.consultationDoneAt ? formatDay(r.consultationDoneAt) : "not yet"}{r.term === "Summer" ? ` · Prospectus hard copy received: ${r.hardCopyReceivedAt ? formatDay(r.hardCopyReceivedAt) : "not yet"}` : ""}{r.noShow ? " · Flagged: no-show" : ""}</p>}
       </Section>
+
+      {(detail.nextConsultation || detail.appointments.length > 0 || r.consultationRequired) && (
+        <Section title="Consultation appointments">
+          {detail.nextConsultation ? <p><strong>Booked:</strong> {formatSlot(detail.nextConsultation.startsAt)} with {detail.nextConsultation.staff}.</p>
+            : <p>{r.consultationDoneAt ? <>Consultation done on {formatDay(r.consultationDoneAt)}.</> : <>No consultation is booked yet{r.noShow ? " (the scholar missed the last one)" : ""}.</>}</p>}
+          {detail.appointments.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {detail.appointments.map((a, i) => <li key={i}>{formatDateTime(a.at)} — {a.action.replace(/_/g, " ")}{a.startsAt ? ` (slot ${formatSlot(a.startsAt)})` : ""}{a.note ? ` — ${a.note}` : ""} · {a.actor}</li>)}
+            </ul>
+          )}
+        </Section>
+      )}
 
       <Section title="SDP result">
         {ev.sdp && !ev.sdp.applicable && <p>Not checked — Summer has no SDP requirement.</p>}

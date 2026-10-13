@@ -4,6 +4,10 @@ import { fetchProbationMonitoringList, saveProbationNotes, type ProbationRow } f
 import { fetchScholarInformationByIdNumber, type ScholarInformationRow } from "../seadApi";
 import { ScholarProfilePreviewModal } from "../components/ScholarProfilePreviewModal";
 import { CounselingHistoryModal } from "../components/CounselingHistoryModal";
+import { extendIncDeadline, fetchProbationRenewalInfo, type ProbationRenewalInfo } from "../appointmentsApi";
+import { getStaffRenewalDocumentUrl } from "../renewalApi";
+import { ReasonDialog } from "../renewal/ReasonDialog";
+import { daysLeftText, formatDay, manilaToday } from "@/lib/renewal";
 
 /** Debounced auto-save text cell for Study Plan / Academic Contract Update — saves ~800ms after the last keystroke, or immediately on blur. */
 function NoteCell({ value, onSave }: { value: string; onSave: (next: string) => Promise<void> }) {
@@ -50,11 +54,21 @@ export function ProbationMonitoringTab() {
   const [viewingScholar, setViewingScholar] = useState<ScholarInformationRow | null>(null);
   const [viewingInfoId, setViewingInfoId] = useState<string | null>(null);
   const [viewingHistoryFor, setViewingHistoryFor] = useState<{ scholarIdNumber: string; name: string } | null>(null);
+  const [renewalInfo, setRenewalInfo] = useState<Map<string, ProbationRenewalInfo[]>>(new Map());
+  const [extending, setExtending] = useState<{ itemId: string; subject: string; scholar: string; deadline: string | null } | null>(null);
+  const [newDeadline, setNewDeadline] = useState("");
+  const [fileError, setFileError] = useState("");
 
   async function load() {
     setLoading(true);
-    setRows(await fetchProbationMonitoringList(search));
+    const [list, info] = await Promise.all([fetchProbationMonitoringList(search), fetchProbationRenewalInfo()]);
+    setRows(list);
+    if (info.ok) setRenewalInfo(info.byScholar);
     setLoading(false);
+  }
+  async function openStudyPlan(path: string) {
+    const r = await getStaffRenewalDocumentUrl(path);
+    if (r.ok) { setFileError(""); window.open(r.url, "_blank", "noopener"); } else setFileError(r.error);
   }
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
@@ -95,15 +109,16 @@ export function ProbationMonitoringTab() {
               <th className="px-4 py-3 whitespace-nowrap">School</th>
               <th className="px-4 py-3 text-center whitespace-nowrap">Information</th>
               <th className="px-4 py-3 text-center whitespace-nowrap">Consultation History</th>
+              <th className="px-4 py-3 whitespace-nowrap">Renewal (INC deadline · uploaded study plan)</th>
               <th className="px-4 py-3 whitespace-nowrap">Study Plan</th>
               <th className="px-4 py-3 whitespace-nowrap">Academic Contract Update</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">Loading…</td></tr>
+              <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-400">Loading…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">No probationary scholars found.</td></tr>
+              <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-400">No probationary scholars found.</td></tr>
             ) : (
               rows.map(r => (
                 <tr key={r.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
@@ -122,6 +137,24 @@ export function ProbationMonitoringTab() {
                       className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-[#0088cc] hover:underline">
                       <History size={13} /> View
                     </button>
+                  </td>
+                  <td className="px-3 py-2 min-w-[240px] align-top text-[13px] text-slate-800">
+                    {(renewalInfo.get(r.scholarIdNumber) ?? []).length === 0 && <span className="text-slate-700">—</span>}
+                    {(renewalInfo.get(r.scholarIdNumber) ?? []).map(info => (
+                      <div key={info.recordId} className="mb-2 last:mb-0">
+                        <p className="font-semibold text-[#062444]">Renewal {info.termLabel}</p>
+                        {info.temporaryInc && <span className="inline-block rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[13px] font-bold text-amber-900">Temporary — INC</span>}
+                        {info.incItems.map(i => (
+                          <p key={i.itemId} className="mt-0.5">
+                            {i.subject}: {i.deadline ? <>deadline <strong>{formatDay(i.deadline)}</strong> ({daysLeftText(i.daysLeft)})</> : <strong>Deadline: to be set at consultation</strong>}
+                            {i.deadline && <button onClick={() => { setExtending({ itemId: i.itemId, subject: i.subject, scholar: r.name, deadline: i.deadline }); setNewDeadline(""); }} className="ml-2 font-semibold text-[#00709f] hover:underline">Extend</button>}
+                          </p>
+                        ))}
+                        {info.studyPlans.map(d => (
+                          <p key={d.storagePath} className="mt-0.5">Study plan: <button onClick={() => void openStudyPlan(d.storagePath)} className="font-semibold text-[#00709f] hover:underline">{d.fileName}</button></p>
+                        ))}
+                      </div>
+                    ))}
                   </td>
                   <td className="px-2 py-2 min-w-[180px]">
                     <NoteCell value={r.studyPlan} onSave={async next => {
@@ -142,6 +175,24 @@ export function ProbationMonitoringTab() {
         </table>
       </div>
 
+      {fileError && <p role="alert" className="mt-2 text-[13px] text-red-700">{fileError}</p>}
+      {extending && (
+        <ReasonDialog
+          title="Extend the INC deadline"
+          intro={<>{extending.scholar} — {extending.subject}. The current deadline is {formatDay(extending.deadline)}. The scholar is told the new date and your reason is kept in the history.</>}
+          label="Reason" confirmLabel="Extend deadline" extraValid={!!newDeadline && newDeadline > (extending.deadline ?? manilaToday())}
+          onCancel={() => setExtending(null)}
+          onConfirm={async reason => {
+            const x = await extendIncDeadline(extending.itemId, newDeadline, reason);
+            if (!x.ok) return x.error;
+            setExtending(null); await load(); return null;
+          }}
+        >
+          <label className="block text-[14px] font-semibold text-[#062444] mb-3">New deadline (later than the current one)
+            <input type="date" min={extending.deadline ?? manilaToday()} value={newDeadline} onChange={e => setNewDeadline(e.target.value)} className="mt-1 block rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] font-normal bg-white" />
+          </label>
+        </ReasonDialog>
+      )}
       {viewingScholar && <ScholarProfilePreviewModal scholar={viewingScholar} onClose={() => setViewingScholar(null)} />}
       {viewingHistoryFor && (
         <CounselingHistoryModal scholarIdNumber={viewingHistoryFor.scholarIdNumber} scholarName={viewingHistoryFor.name}
