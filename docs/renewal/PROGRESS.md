@@ -34,3 +34,8 @@ App:
 
 Verification: `tsc` and `eslint` clean; `node tests/school-grades/run.mjs` 99/99 (three tests updated for the intended changes: INC/DRP allowed, remarks column, hint wording); `node tests/renewal/run.mjs` 26/26; 64 database checks in a scratch Postgres (`node tests/renewal/db/run_db_tests.mjs`, needs PGlite) including every earlier SQL guard still passing and the backfill preview/apply; production build; browser check of every changed screen with sample data and an axe-core audit (phone width too).
 Not verified against a real Supabase project yet (no staging).
+
+## 2026-10-13 — Local demo replaces the staging project
+The owner found a staging project too much work and asked for local testing instead. Built `localdemo/` + `scripts/localdemo/start.mjs`:
+`npm run demo` builds a private PGlite database from the real migration files (+ `localdemo/schema/tables.json` for tables made by hand), loads hypothetical TEST data (`localdemo/seed.mjs`: 4 schools, 5 staff, 25 scholars matching the Phase 1 scenarios), starts a local Supabase stand-in on 127.0.0.1:54321 and the real website on 127.0.0.1:5173. `npm run demo:reset` starts again from the original data. The launcher overrides `VITE_SUPABASE_URL` (the local `.env.local` points at the real project) and refuses to start for any non-local host.
+Checked by signing in as school, staff and scholar and opening the Phase 1 screens; no request left this computer. Walkthrough: `Renewal_Phase1_Walkthrough_LOCAL.txt`. Not available in the demo: account creation/reset functions, Drive upload, live updates, push.
