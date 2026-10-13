@@ -3,11 +3,12 @@ import { FileText, Eye } from "lucide-react";
 import {
   fetchSubmissionUploadCountsByActivity, fetchSubmissionUploadCountsByYearLevel, fetchSubmissionUploadCountsBySchool,
   fetchSubmissionFiles, fetchSubmissionUploadStatusCounts,
-  type SubmissionUploadActivityCount, type SubmissionUploadGroupCount, type SubmissionFileRow, type SubmissionUploadStatusCounts,
+  type SubmissionUploadActivityCount, type SubmissionUploadGroupCount, type SubmissionFileRow, type SubmissionUploadStatusCounts, type SubmissionUploadStatus,
 } from "../submissionActivitiesApi";
 import { GroupCountBreakdown, type GroupCountRow } from "../components/GroupCountBreakdown";
 import { Modal } from "../components/Modal";
 import { SubmissionFilePreviewModal } from "../components/SubmissionFilePreviewModal";
+import { SubmissionStatusScholarsPanel } from "../components/SubmissionStatusScholarsPanel";
 
 function LoadingPanel({ label }: { label: string }) {
   return <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">{label}</div>;
@@ -23,6 +24,8 @@ function Crumb({ label, onClick, current }: { label: string; onClick?: () => voi
 }
 
 const STATUS_LABELS: Record<string, string> = { accepted: "Accepted", needs_resubmission: "Needs Resubmission", uploaded: "Pending Review" };
+/** The wording on the three totals (the stored status "uploaded" is shown as "Pending" there). */
+const TILE_LABELS: Record<SubmissionUploadStatus, string> = { accepted: "Accepted", needs_resubmission: "Needs Resubmission", uploaded: "Pending" };
 const STATUS_CLASSES: Record<string, string> = {
   accepted: "bg-emerald-50 text-emerald-700", needs_resubmission: "bg-red-50 text-red-700", uploaded: "bg-amber-50 text-amber-700",
 };
@@ -52,6 +55,8 @@ export function SubmissionFileBrowserTab() {
   const [fileRows, setFileRows] = useState<SubmissionFileRow[] | null>(null);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [previewing, setPreviewing] = useState<SubmissionFileRow | null>(null);
+  // Which of the three totals is open (its scholars are listed below, with Year Level / School filters). null = the normal Activity drill-down.
+  const [statusView, setStatusView] = useState<SubmissionUploadStatus | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -132,21 +137,31 @@ export function SubmissionFileBrowserTab() {
       </div>
 
       {!selectedActivity && statusCounts && (statusCounts.accepted + statusCounts.needsResubmission + statusCounts.pending > 0) && (
-        <div className="grid grid-cols-3 gap-2">
+        <div role="group" aria-label="Submission status totals" className="grid grid-cols-3 gap-2">
           {([
             ["accepted", "Accepted", statusCounts.accepted],
             ["needs_resubmission", "Needs Resubmission", statusCounts.needsResubmission],
             ["uploaded", "Pending", statusCounts.pending],
-          ] as const).map(([key, label, count]) => (
-            <div key={key} className={`rounded-xl px-4 py-3 text-center ${STATUS_CLASSES[key]}`}>
-              <p className="text-[20px] font-extrabold">{count.toLocaleString()}</p>
-              <p className="text-[10.5px] font-bold uppercase tracking-wide leading-tight">{label}</p>
-            </div>
-          ))}
+          ] as const).map(([key, label, count]) => {
+            const active = statusView === key;
+            return (
+              <button key={key} type="button" aria-pressed={active} onClick={() => setStatusView(active ? null : key)}
+                title={active ? "Click to close this list" : `Show the scholars with ${label} files`}
+                className={`rounded-xl px-4 py-3 text-center transition ${STATUS_CLASSES[key]} ${active ? "ring-2 ring-offset-1 ring-[#062444]" : "hover:opacity-80"}`}>
+                <p className="text-[20px] font-extrabold">{count.toLocaleString()}</p>
+                <p className="text-[12px] font-bold uppercase tracking-wide leading-tight">{label}</p>
+                <p className="mt-0.5 text-[12px] font-semibold">{active ? "Hide list" : "View scholars"}</p>
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {!selectedActivity && (
+      {!selectedActivity && statusView && (
+        <SubmissionStatusScholarsPanel status={statusView} label={TILE_LABELS[statusView]} />
+      )}
+
+      {!selectedActivity && !statusView && (
         activityRows.length === 0 || activityRows.every(r => r.count === 0)
           ? <EmptyPanel label="No files have been uploaded yet." />
           : <GroupCountBreakdown title="Files per Submission Activity" columnLabel="Activity" rows={activityRows} onSelect={handleSelectActivity} />

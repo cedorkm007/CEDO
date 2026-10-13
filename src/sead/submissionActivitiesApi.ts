@@ -465,6 +465,45 @@ export async function fetchSubmissionUploadStatusCounts(): Promise<SubmissionUpl
   return counts;
 }
 
+/** The stored status behind each tile: Accepted = "accepted", Needs Resubmission = "needs_resubmission", Pending = "uploaded". */
+export type SubmissionUploadStatus = "accepted" | "needs_resubmission" | "uploaded";
+
+export interface SubmissionStatusScholar {
+  scholarId: string;
+  scholarIdNumber: string;
+  firstName: string;
+  lastName: string;
+  /** "No Year Level Set" / "No School Set" when blank — same wording as the other Submission Activities counts. */
+  yearLevel: string;
+  school: string;
+  /** How many of this scholar's files are in the chosen status. */
+  fileCount: number;
+  activityNames: string[];
+}
+
+/**
+ * The scholars behind one of the three status totals (submission_scholars_by_status, supabase_migration_submission_status_scholars_rpc.sql):
+ * one row per scholar with at least one file in that status — the same people the total counts. Read in pages because PostgREST
+ * caps a single response at 1,000 rows.
+ */
+export async function fetchSubmissionScholarsByStatus(status: SubmissionUploadStatus): Promise<{ ok: true; rows: SubmissionStatusScholar[] } | { ok: false; error: string }> {
+  const PAGE = 1000;
+  const rows: SubmissionStatusScholar[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase.rpc("submission_scholars_by_status", { p_status: status }).range(from, from + PAGE - 1);
+    if (error) return { ok: false, error: error.message };
+    const page = (data ?? []) as Record<string, unknown>[];
+    rows.push(...page.map(r => ({
+      scholarId: String(r.scholar_id), scholarIdNumber: String(r.scholar_id_number ?? ""),
+      firstName: String(r.first_name ?? ""), lastName: String(r.last_name ?? ""),
+      yearLevel: String(r.year_level ?? ""), school: String(r.school ?? ""),
+      fileCount: Number(r.file_count ?? 0), activityNames: ((r.activity_names as string[] | null) ?? []).map(String),
+    })));
+    if (page.length < PAGE) break;
+  }
+  return { ok: true, rows };
+}
+
 export async function fetchSubmissionUploadCountsByActivity(): Promise<SubmissionUploadActivityCount[]> {
   const { data, error } = await supabase.rpc("submission_uploads_by_activity");
   if (error || !data) return [];
