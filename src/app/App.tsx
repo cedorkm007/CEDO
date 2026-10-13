@@ -35,6 +35,7 @@ import { ResearchProjectMonitoringTab } from "@/sead/pages/ResearchProjectMonito
 import { FinancialAssistanceToolsPage } from "@/sead/FinancialAssistanceToolsPage";
 import { ScholarCounselingToolPage } from "@/sead/ScholarCounselingToolPage";
 import { ScholarsGradesMonitoringPage } from "@/sead/ScholarsGradesMonitoringPage";
+import { ScholarRenewalPage } from "@/sead/ScholarRenewalPage";
 import { MyResearchPage } from "@/sead/pages/MyResearchPage";
 import { MyPresentationsPage } from "@/presentations/pages/MyPresentationsPage";
 import { MySurveysPage } from "@/mysurveys/pages/MySurveysPage";
@@ -65,7 +66,7 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
-export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "questManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "researchProjectMonitoring" | "myResearch" | "myPresentations" | "mySurveys" | "staffAccounts" | "financialAssistanceTools" | "scholarCounseling" | "scholarsGradesMonitoring" | "scanningTools";
+export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "questManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "researchProjectMonitoring" | "myResearch" | "myPresentations" | "mySurveys" | "staffAccounts" | "financialAssistanceTools" | "scholarCounseling" | "scholarsGradesMonitoring" | "scholarRenewal" | "scanningTools";
 
 /** "Scholar Management Tools" (question bank + scholar accounts) is now gated by
  *  the "scholar_management" tag (see src/app/staffToolTags.ts) instead of a fixed
@@ -86,7 +87,7 @@ export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitorin
 // hand-copied a third time into a different file.
 export const IT_ADMIN_USERNAME = "it.admin1";
 
-const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "questManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "researchProjectMonitoring", "myResearch", "myPresentations", "mySurveys", "staffAccounts", "financialAssistanceTools", "scholarCounseling", "scholarsGradesMonitoring", "scanningTools"];
+const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "questManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "researchProjectMonitoring", "myResearch", "myPresentations", "mySurveys", "staffAccounts", "financialAssistanceTools", "scholarCounseling", "scholarsGradesMonitoring", "scholarRenewal", "scanningTools"];
 
 /**
  * Mirrors the exact gating conditions in the render switch at the bottom
@@ -114,6 +115,7 @@ function isPageAuthorizedFor(page: Page, user: UserProfile): boolean {
     case "financialAssistanceTools": return user.tags.includes("financial_assistance");
     case "scholarCounseling": return user.tags.includes("scholar_counseling");
     case "scholarsGradesMonitoring": return user.tags.includes("scholars_grades_monitoring");
+    case "scholarRenewal": return user.tags.includes("scholar_renewal_evaluator");
     case "scanningTools": return user.hasMonitorAssignment;
     default: return true; // home, profile, tasks, accomplishments, notifications, forms, myResearch, myPresentations, mySurveys — open to any signed-in user
   }
@@ -3533,6 +3535,9 @@ export default function App() {
           )}
           {page==="scholarsGradesMonitoring" && currentUser.tags.includes("scholars_grades_monitoring") && (
             <ScholarsGradesMonitoringPage/>
+          )}
+          {page==="scholarRenewal" && currentUser.tags.includes("scholar_renewal_evaluator") && (
+            <ScholarRenewalPage/>
           )}
           {page==="myResearch" && (
             <MyResearchPage/>

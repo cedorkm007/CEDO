@@ -1,0 +1,106 @@
+import { useState } from "react";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { RENEWAL_TERMS, formatDay, renewalBasis, termLabelOf, windowState } from "@/lib/renewal";
+import { isValidSchoolYear } from "@/lib/academicPeriods";
+import { deleteRenewalWindow, saveRenewalWindow, type RenewalWindowRow } from "../renewalApi";
+import { ModalShell } from "../components/SeadUiShell";
+
+const STATE_TEXT = { upcoming: "Not open yet", open: "Open", late: "Closed — late applications go to the evaluator", closed: "Closed" } as const;
+
+/** Open a renewal window per term (start and end date). Late applications after the end date go to the "Late" list. */
+export function RenewalWindowsTab({ windows, onChanged }: { windows: RenewalWindowRow[]; onChanged: () => Promise<void> }) {
+  const [editing, setEditing] = useState<RenewalWindowRow | "new" | null>(null);
+  const [error, setError] = useState("");
+
+  async function remove(w: RenewalWindowRow) {
+    if (!window.confirm(`Delete the renewal window for ${termLabelOf(w.schoolYear, w.term)}? This only works if nobody has applied.`)) return;
+    const r = await deleteRenewalWindow(w.id);
+    if (!r.ok) { setError(r.error); return; }
+    setError(""); await onChanged();
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div>
+          <h2 className="text-[15px] font-bold text-[#062444]">Renewal windows</h2>
+          <p className="text-[14px] text-slate-700">Scholars apply once per term. Each window has a start and an end date.</p>
+        </div>
+        <button onClick={() => setEditing("new")} className="inline-flex items-center gap-1.5 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e]"><Plus size={15} aria-hidden="true" /> Open a renewal window</button>
+      </div>
+      {error && <p role="alert" className="mb-2 text-[14px] text-red-700">{error}</p>}
+      {windows.length === 0 ? <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">No renewal window yet. Open one so scholars can apply.</p> : (
+        <ul className="space-y-2">
+          {windows.map(w => {
+            const state = windowState(w.opensOn, w.closesOn, w.lateAllowed);
+            const basis = renewalBasis(w.schoolYear, w.term);
+            return (
+              <li key={w.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e6ecf5] bg-white px-4 py-3">
+                <div>
+                  <p className="text-[15px] font-bold text-[#062444]">{termLabelOf(w.schoolYear, w.term)}</p>
+                  <p className="text-[14px] text-slate-700">{formatDay(w.opensOn)} to {formatDay(w.closesOn)} · <strong>{STATE_TEXT[state]}</strong>{!w.lateAllowed && " · late applications refused"}</p>
+                  {basis && <p className="text-[13.5px] text-slate-600">Checks {termLabelOf(basis.schoolYear, basis.term)}</p>}
+                  {w.note && <p className="text-[13.5px] text-slate-700">Note: {w.note}</p>}
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setEditing(w)} className="inline-flex items-center gap-1 text-[14px] font-semibold text-[#00709f] hover:underline"><Pencil size={14} aria-hidden="true" /> Edit</button>
+                  <button onClick={() => void remove(w)} className="inline-flex items-center gap-1 text-[14px] font-semibold text-red-700 hover:underline"><Trash2 size={14} aria-hidden="true" /> Delete</button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {editing && <WindowForm initial={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await onChanged(); }} />}
+    </div>
+  );
+}
+
+function WindowForm({ initial, onClose, onSaved }: { initial: RenewalWindowRow | null; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [schoolYear, setSchoolYear] = useState(initial?.schoolYear ?? "");
+  const [term, setTerm] = useState<string>(initial?.term ?? RENEWAL_TERMS[0]);
+  const [opensOn, setOpensOn] = useState(initial?.opensOn ?? "");
+  const [closesOn, setClosesOn] = useState(initial?.closesOn ?? "");
+  const [lateAllowed, setLateAllowed] = useState(initial?.lateAllowed ?? true);
+  const [note, setNote] = useState(initial?.note ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const basis = isValidSchoolYear(schoolYear) ? renewalBasis(schoolYear.trim(), term) : null;
+  const input = "mt-1 w-full rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] font-normal outline-none focus:border-[#062444] bg-white";
+
+  async function save() {
+    setError("");
+    if (!isValidSchoolYear(schoolYear)) { setError("The school year must look like 2026-2027."); return; }
+    if (!opensOn || !closesOn) { setError("Please choose the opening and closing dates."); return; }
+    setBusy(true);
+    const r = await saveRenewalWindow({ id: initial?.id ?? null, schoolYear, term, opensOn, closesOn, lateAllowed, note });
+    setBusy(false);
+    if (!r.ok) { setError(r.error); return; }
+    await onSaved();
+  }
+
+  return (
+    <ModalShell title={initial ? "Edit renewal window" : "Open a renewal window"} onClose={onClose} wide>
+      <div className="space-y-3">
+        <label className="block text-[14px] font-semibold text-[#062444]">School year (the year being renewed for)
+          <input value={schoolYear} onChange={e => setSchoolYear(e.target.value)} disabled={!!initial} placeholder="e.g. 2026-2027" className={input} />
+        </label>
+        <label className="block text-[14px] font-semibold text-[#062444]">Term
+          <select value={term} onChange={e => setTerm(e.target.value)} disabled={!!initial} className={input}>{RENEWAL_TERMS.map(t => <option key={t} value={t}>{t === "Summer" ? "Summer / Midyear" : t}</option>)}</select>
+        </label>
+        {basis && <p className="text-[13.5px] text-slate-700 rounded-lg bg-[#f7f9fc] border border-[#e6ecf5] px-3 py-2">Scholars' SDP and grades will be checked for <strong>{termLabelOf(basis.schoolYear, basis.term)}</strong>.</p>}
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-[14px] font-semibold text-[#062444]">Opens on<input type="date" value={opensOn} onChange={e => setOpensOn(e.target.value)} className={input} /></label>
+          <label className="block text-[14px] font-semibold text-[#062444]">Closes on<input type="date" value={closesOn} onChange={e => setClosesOn(e.target.value)} className={input} /></label>
+        </div>
+        <label className="flex items-center gap-2 text-[14px] text-slate-800"><input type="checkbox" checked={lateAllowed} onChange={e => setLateAllowed(e.target.checked)} /> Allow late applications after the closing date (the evaluator accepts or declines each one)</label>
+        <label className="block text-[14px] font-semibold text-[#062444]">Message for scholars (optional)<textarea value={note} onChange={e => setNote(e.target.value)} rows={2} maxLength={500} className={input} /></label>
+        {error && <p role="alert" className="text-[14px] text-red-700">{error}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} disabled={busy} className="rounded-lg border border-[#062444]/25 px-4 py-2 text-[14px] font-semibold text-[#062444]">Cancel</button>
+          <button onClick={() => void save()} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white disabled:opacity-60">{busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />} Save window</button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}

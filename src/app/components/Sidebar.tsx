@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3, FlaskConical, Trophy, HandCoins, HeartHandshake, BookOpenCheck, QrCode, MonitorPlay, ClipboardList } from "lucide-react";
+import { User, CheckSquare, Award, FileText, ChevronDown, Users, ClipboardCheck, Lock, GraduationCap, Lightbulb, Users2, Video, BarChart3, FlaskConical, Trophy, HandCoins, HeartHandshake, BookOpenCheck, QrCode, MonitorPlay, ClipboardList, RotateCw } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarSeparator,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
@@ -400,6 +400,13 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
                     <SidebarMenuItem className="min-w-0">
                       <SidebarMenuButton isActive={page === "scholarsGradesMonitoring"} onClick={() => setPage("scholarsGradesMonitoring")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
                         <BookOpenCheck /> <span className="truncate">Scholars' Grades Monitoring</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {user.tags.includes("scholar_renewal_evaluator") && (
+                    <SidebarMenuItem className="min-w-0">
+                      <SidebarMenuButton isActive={page === "scholarRenewal"} onClick={() => setPage("scholarRenewal")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
+                        <RotateCw /> <span className="truncate">Scholar Renewal</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}

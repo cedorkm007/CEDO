@@ -53,7 +53,7 @@ console.log(`
 
  Staff:   ${ACCOUNTS.staff.map(a => a.login).join(", ")}
  Schools: ${ACCOUNTS.schools.map(a => a.login).join(", ")}
- Scholars sign in with their ID: TEST-0001 … TEST-0025 (Scholar portal)
+ Scholars sign in with their ID: TEST-0001 … TEST-0033 (Scholar portal)
 
  Stop with Ctrl+C. Your test changes are kept until you run  npm run demo:reset
 `);

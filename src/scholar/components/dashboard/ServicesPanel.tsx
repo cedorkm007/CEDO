@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Briefcase, RotateCw, MessageSquare, FileText, BadgeCheck, CreditCard, AlertCircle, Info, Construction } from "lucide-react";
 import { SectionCard } from "./SectionCard";
+import { RenewalPanel } from "./RenewalPanel";
 
 const SERVICES = [
   { key: "renewal", label: "Renewal", icon: <RotateCw size={18} /> },
@@ -16,10 +17,16 @@ export function ServicesContent() {
 
   return (
     <>
-      <p className="text-[13px] text-slate-400 italic flex items-center gap-1.5 mb-5">
+      <p className="text-[13px] text-slate-600 italic flex items-center gap-1.5 mb-5">
         <Info size={13} /> Services you can avail from the City Education and Development Office (CEDO).
       </p>
 
+      {selected === "renewal" ? (
+        <div>
+          <button onClick={() => setSelected(null)} className="mb-4 text-[14px] font-semibold text-[#00709f] hover:underline">← Back to services</button>
+          <RenewalPanel />
+        </div>
+      ) : (
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
         {SERVICES.map(s => (
           <button
@@ -32,8 +39,9 @@ export function ServicesContent() {
           </button>
         ))}
       </div>
+      )}
 
-      {selected && (
+      {selected && selected !== "renewal" && (
         <div className="mt-5 flex items-center gap-2.5 bg-[#F3BC00]/10 border border-[#F3BC00]/25 rounded-lg px-4 py-3 text-[13.5px] text-[#7a5c00]">
           <Construction size={16} className="shrink-0" />
           This service is under development — please contact the CEDO office directly for now.

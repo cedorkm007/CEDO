@@ -123,10 +123,12 @@ async function completeFromStructure(db, log) {
   return { created, columnsAdded };
 }
 
-export async function buildDb({ onProgress = () => {} } = {}) {
-  fs.rmSync(path.dirname(DATA_DIR), { recursive: true, force: true });
-  fs.mkdirSync(path.dirname(DATA_DIR), { recursive: true });
-  const db = openDb(DATA_DIR);
+export async function buildDb({ onProgress = () => {}, dataDir = DATA_DIR, writeReport = true } = {}) {
+  if (dataDir === DATA_DIR) {
+    fs.rmSync(path.dirname(DATA_DIR), { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(DATA_DIR), { recursive: true });
+  }
+  const db = openDb(dataDir);
   await db.waitReady;
   const log = [];
 
@@ -167,6 +169,6 @@ export async function buildDb({ onProgress = () => {} } = {}) {
     ...failed.map(f => `${f.file}: ${f.stmt.replace(/\s+/g, " ").slice(0, 110)}\n    -> ${f.error}`),
     "", "── notes ──", ...log,
   ];
-  fs.writeFileSync(REPORT, lines.join("\n"));
+  if (writeReport) fs.writeFileSync(REPORT, lines.join("\n"));
   return { db, ok, failed, added, files };
 }

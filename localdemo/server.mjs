@@ -114,31 +114,98 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
   }
 
   // ── Storage (files kept in the private database, nothing leaves this computer) ──
+  /** Pulls the file out of a multipart/form-data upload (what the website's storage client sends for a File). */
+  function parseMultipart(buf, contentType) {
+    const m = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
+    if (!m) return null;
+    const boundary = Buffer.from(`--${m[1] ?? m[2]}`);
+    const parts = [];
+    let pos = buf.indexOf(boundary);
+    while (pos >= 0) {
+      const next = buf.indexOf(boundary, pos + boundary.length);
+      if (next < 0) break;
+      parts.push(buf.subarray(pos + boundary.length + 2, next - 2));   // skip the CRLF after the boundary and before the next one
+      pos = next;
+    }
+    for (const p of parts) {
+      const split = p.indexOf("\r\n\r\n");
+      if (split < 0) continue;
+      const head = p.subarray(0, split).toString("utf8");
+      if (/name=""/.test(head) || /filename=/.test(head)) {
+        return { data: p.subarray(split + 4), type: (/content-type:\s*([^\r\n]+)/i.exec(head) ?? [])[1] ?? "application/octet-stream" };
+      }
+    }
+    return null;
+  }
+
+  /** Files are kept inside the private database (never on disk elsewhere). Access rules run as the caller, so the real storage policies apply. */
   async function handleStorage(req, res, url) {
-    const m = /^\/storage\/v1\/object\/(?:(public|sign|authenticated)\/)?([^/]+)\/(.+)$/.exec(url.pathname);
-    if (!m) return json(res, 404, { statusCode: "404", error: "not_found", message: "Not found" });
-    const [, , bucket, objectPath] = m;
+    const who = caller(req);
+    const asCaller = fn => rest.withRole({ role: who.role, claims: who.claims }, fn);
+    const none = (status, message) => json(res, status, { statusCode: String(status), error: message, message });
+    const p = url.pathname.replace(/^\/storage\/v1/, "");
+
+    // Remove files: DELETE /object/<bucket> with { prefixes: [...] }
+    let m = /^\/object\/([^/]+)$/.exec(p);
+    if (m && req.method === "DELETE") {
+      const body = JSON.parse((await readBody(req)).toString("utf8") || "{}");
+      const removed = await asCaller(async tx => {
+        const out = [];
+        for (const name of body.prefixes ?? []) out.push(...(await tx.query("delete from storage.objects where bucket_id = $1 and name = $2 returning name", [m[1], name])).rows);
+        return out;
+      }).catch(e => ({ error: e }));
+      if (removed.error) return none(403, String(removed.error.message));
+      return json(res, 200, removed.map(r => ({ name: r.name })));
+    }
+    // Signed link: POST /object/sign/<bucket>/<path>
+    m = /^\/object\/sign\/([^/]+)\/(.+)$/.exec(p);
+    if (m && req.method === "POST") {
+      const name = decodeURIComponent(m[2]);
+      const found = await asCaller(async tx => (await tx.query("select 1 from storage.objects where bucket_id = $1 and name = $2", [m[1], name])).rows.length > 0).catch(() => false);
+      if (!found) return none(400, "Object not found");
+      const token = sign({ url: `${m[1]}/${name}`, exp: Math.floor(Date.now() / 1000) + 3600 });
+      return json(res, 200, { signedURL: `/object/sign/${m[1]}/${m[2]}?token=${token}` });
+    }
+    m = /^\/object\/(?:(public|sign|authenticated)\/)?([^/]+)\/(.+)$/.exec(p);
+    if (!m) return none(404, "Not found");
+    const [, mode, bucket, objectPath] = m;
     const name = decodeURIComponent(objectPath);
-    if (req.method === "GET") {
+
+    if (req.method === "GET" || req.method === "HEAD") {
+      let allowed = false;
+      if (mode === "sign") allowed = verify(url.searchParams.get("token"))?.url === `${bucket}/${name}`;
+      else if (mode === "public") allowed = !!(await db.query("select 1 from storage.buckets where id = $1 and public", [bucket])).rows.length;
+      else allowed = await asCaller(async tx => (await tx.query("select 1 from storage.objects where bucket_id = $1 and name = $2", [bucket, name])).rows.length > 0).catch(() => false);
+      if (!allowed) return none(404, "Object not found");
       const row = (await db.query("select metadata from storage.objects where bucket_id = $1 and name = $2", [bucket, name])).rows[0];
-      if (!row) return json(res, 404, { statusCode: "404", error: "not_found", message: "Object not found" });
+      if (!row) return none(404, "Object not found");
       const meta = row.metadata ?? {};
       res.writeHead(200, { "content-type": meta.mimetype ?? "application/octet-stream" });
-      return res.end(Buffer.from(meta.base64 ?? "", "base64"));
+      return res.end(req.method === "HEAD" ? undefined : Buffer.from(meta.base64 ?? "", "base64"));
     }
     if (req.method === "POST" || req.method === "PUT") {
-      const buf = await readBody(req);
-      const type = String(req.headers["content-type"] ?? "application/octet-stream");
-      await db.query("insert into storage.buckets (id, name, public) values ($1, $1, true) on conflict (id) do nothing", [bucket]);
-      await db.query(`insert into storage.objects (bucket_id, name, metadata) values ($1, $2, $3::jsonb)
-        on conflict (bucket_id, name) do update set metadata = excluded.metadata, updated_at = now()`, [bucket, name, JSON.stringify({ mimetype: type, size: buf.length, base64: buf.toString("base64") })]);
+      const raw = await readBody(req);
+      const ct = String(req.headers["content-type"] ?? "application/octet-stream");
+      const file = /multipart\/form-data/i.test(ct) ? parseMultipart(raw, ct) : { data: raw, type: ct };
+      if (!file) return none(400, "Could not read the upload");
+      const bucketRow = (await db.query("select file_size_limit, allowed_mime_types from storage.buckets where id = $1", [bucket])).rows[0];
+      if (!bucketRow) return none(404, "Bucket not found");
+      if (bucketRow.file_size_limit && file.data.length > Number(bucketRow.file_size_limit)) return none(413, "The object exceeded the maximum allowed size");
+      if (bucketRow.allowed_mime_types && !bucketRow.allowed_mime_types.includes(file.type)) return none(415, "mime type " + file.type + " is not supported");
+      try {
+        await asCaller(async tx => {
+          const exists = (await tx.query("select 1 from storage.objects where bucket_id = $1 and name = $2", [bucket, name])).rows.length > 0;
+          if (exists && req.headers["x-upsert"] !== "true") { const e = new Error("The resource already exists"); e.code = "23505"; throw e; }
+          if (exists) await tx.query("delete from storage.objects where bucket_id = $1 and name = $2", [bucket, name]);
+          await tx.query("insert into storage.objects (bucket_id, name, owner, metadata) values ($1, $2, nullif(current_setting('request.jwt.claim.sub', true), '')::uuid, $3::jsonb)",
+            [bucket, name, JSON.stringify({ mimetype: file.type, size: file.data.length, base64: file.data.toString("base64") })]);
+        });
+      } catch (e) {
+        return none(e.code === "23505" ? 409 : 403, e.code === "23505" ? String(e.message) : "new row violates row-level security policy");
+      }
       return json(res, 200, { Key: `${bucket}/${name}`, Id: crypto.randomUUID() });
     }
-    if (req.method === "DELETE") {
-      await db.query("delete from storage.objects where bucket_id = $1 and name = $2", [bucket, name]);
-      return json(res, 200, { message: "Successfully deleted" });
-    }
-    return json(res, 405, { message: "Method not allowed" });
+    return none(405, "Method not allowed");
   }
 
   const server = http.createServer(async (req, res) => {

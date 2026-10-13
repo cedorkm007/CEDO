@@ -11,6 +11,7 @@ import { DashboardHome } from "../components/dashboard/DashboardHome";
 import { CompactNav } from "../components/dashboard/CompactNav";
 import { BottomNav } from "../components/dashboard/BottomNav";
 import { MobilePortalHeader } from "../components/dashboard/MobilePortalHeader";
+import { NotificationBell } from "../components/dashboard/NotificationBell";
 import { ProfilePopupModal } from "../components/dashboard/ProfilePopupModal";
 import { ProfilePanel } from "../components/dashboard/ProfilePanel";
 import { SubjectsGradesPanel } from "../components/dashboard/SubjectsGradesPanel";
@@ -149,9 +150,12 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
           {/* Desktop only — on mobile, Sign Out lives in the profile popup instead */}
           <div className="hidden md:flex items-center justify-between mb-4">
             <p className="text-sm text-slate-500">Scholar Portal</p>
-            <button onClick={handleSignOut} style={{ cursor: 'pointer' }} className="flex items-center gap-1.5 text-sm font-semibold text-[#062444] hover:text-red-600 hover:opacity-80 transition-colors">
-              <LogOut size={15} /> Sign Out
-            </button>
+            <div className="flex items-center gap-4">
+              <NotificationBell tone="light" />
+              <button onClick={handleSignOut} style={{ cursor: 'pointer' }} className="flex items-center gap-1.5 text-sm font-semibold text-[#062444] hover:text-red-600 hover:opacity-80 transition-colors">
+                <LogOut size={15} /> Sign Out
+              </button>
+            </div>
           </div>
 
           {(pendingSurveys.length > 0 || finalizedNotifications.length > 0) && (

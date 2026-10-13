@@ -7,11 +7,12 @@ export const DEMO_PASSWORD = "Demo#2026";
 export const MAIN_PERIOD = { schoolYear: "2025-2026", semester: "2nd Semester" };   // the semester the Phase 1 screens look at
 export const CURRENT_PERIOD = MAIN_PERIOD;   // the portals open on the semester that has the TEST grades
 
+export const seedId = key => id(key);
 const id = key => { const h = crypto.createHash("sha1").update("localdemo:" + key).digest("hex"); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`; };
 
 // ── Schools (one per grading style) ──
 const SCHOOLS = [
-  { key: "lower", name: "TEST – Lower-Is-Better University", username: "demo.school.lower", submitted: false, cfg: { min: 1, max: 5, dir: "lower_is_better", letters: false, passing: 3.0, retention: 2.0 } },
+  { key: "lower", name: "TEST – Lower-Is-Better University", username: "demo.school.lower", submitted: true, cfg: { min: 1, max: 5, dir: "lower_is_better", letters: false, passing: 3.0, retention: 2.0 } },
   { key: "higher", name: "TEST – Higher-Is-Better College", username: "demo.school.higher", submitted: true, cfg: { min: 60, max: 100, dir: "higher_is_better", letters: false, passing: 75, retention: 85 } },
   { key: "letters", name: "TEST – Letter-Grade Institute", username: "demo.school.letters", submitted: false, cfg: { min: 0, max: 4, dir: "higher_is_better", letters: true, passing: 1.0, retention: null },
     letters: [["A", 4], ["B", 3], ["C", 2], ["D", 1], ["F", 0]] },
@@ -20,9 +21,10 @@ const SCHOOLS = [
 
 // ── Staff (one account per role) ──
 const STAFF = [
-  { username: "demo.admin", first: "TEST", last: "Super Admin", role: "super_admin", sead: true, tags: ["scholar_management", "scholars_grades_monitoring", "sdp_monitoring", "scholar_counseling", "sead_division_head"], label: "Super admin (all SEAD tools)" },
+  { username: "demo.admin", first: "TEST", last: "Super Admin", role: "super_admin", sead: true, tags: ["scholar_management", "scholars_grades_monitoring", "sdp_monitoring", "scholar_counseling", "sead_division_head", "scholar_renewal_evaluator"], label: "Super admin (all SEAD tools)" },
   { username: "demo.sead", first: "TEST", last: "SEAD Staff", role: "staff", sead: true, tags: ["scholar_management", "scholars_grades_monitoring", "sdp_monitoring"], label: "SEAD staff (Grades Monitoring, SDP, Scholars)" },
   { username: "demo.counselor", first: "TEST", last: "Counselor", role: "staff", sead: true, tags: ["scholar_counseling"], label: "Scholar counselor" },
+  { username: "demo.evaluator", first: "TEST", last: "Renewal Evaluator", role: "staff", sead: true, tags: ["scholar_renewal_evaluator"], label: "Scholar Renewal Evaluator" },
   { username: "demo.divhead", first: "TEST", last: "Division Head", role: "staff", sead: true, tags: ["sead_division_head"], label: "Division Head" },
   { username: "it.admin1", first: "TEST", last: "IT Admin", role: "staff", sead: false, tags: [], label: "IT admin" },
 ];
@@ -64,9 +66,18 @@ const SCHOLARS = [
   { n: 21, school: "lower", last: "DRP And Failed", grades: g("DRP", "5.0", "1.5"), sdp: FULL_SDP },
   { n: 22, school: "lower", last: "Failed And INC", grades: g("5.0", "INC", "1.5"), sdp: FULL_SDP },
   { n: 23, school: "lower", last: "INC Now Failing", grades: g("5.0", "1.5", "2.0"), sdp: FULL_SDP, remarkFirst: "Was INC, now graded" },
-  { n: 24, school: "lower", last: "Past Temporary Probation Lifted", grades: g("1.5", "2.0"), sdp: FULL_SDP, probation: "temporary-lifted" },
-  { n: 25, school: "lower", last: "INC Then Probationary", grades: g("1.75", "2.0"), sdp: FULL_SDP, status: "Probationary", probation: "temporary-then-regular" },
+  { n: 24, school: "lower", last: "Past Temporary Probation Lifted", grades: g("5.0", "2.0"), sdp: FULL_SDP, probation: "temporary-lifted" },
+  { n: 25, school: "lower", last: "INC Then Probationary", grades: g("5.0", "2.0"), sdp: FULL_SDP, status: "Probationary", probation: "temporary-then-regular" },
+  // Phase 2 scholars
+  { n: 26, school: "lower", last: "INC Deadline Set", grades: g("INC", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", inc: { consult: -2, days: 14 } } },
+  { n: 27, school: "lower", last: "INC To Resolve Failing", grades: g("INC", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", inc: { consult: -2, days: 14 } } },
+  { n: 28, school: "lower", last: "INC Deadline Passed", grades: g("INC", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", inc: { consult: -40, days: 30 } } },
+  { n: 29, school: "lower", last: "Late Application", grades: g(), sdp: [], basis2024: true, renewal: { window: "w3" } },
+  { n: 30, school: "lower", last: "Summer All Passed No SDP", grades: g("1.5", "2.0"), sdp: [] },
+  { n: 31, school: "letters", last: "Summer Incomplete Grades", grades: g("A", "B"), sdp: FULL_SDP },
+  { n: 33, school: "lower", last: "INC 30 Days Given", grades: g("INC", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", inc: { consult: -5, days: 30 } } },
 ];
+export const SCHOLAR_LAST = Object.fromEntries(SCHOLARS.map(s => [s.n, s.last]));
 const SUBJECTS = ["Mathematics", "English", "Science", "History"];
 const REMARKS = { 23: ["Was INC, now graded", null, null], 3: ["Failed the major subject", null, null], 6: ["Dropped in week 3", null, null], 7: ["Missing final project", null, null] };
 const sidNum = n => `TEST-${String(n).padStart(4, "0")}`;
@@ -152,6 +163,39 @@ export async function seedDb(db) {
       await db.query(`insert into scholar_status_history (scholar_id_number, status, previous_status, is_temporary, school_year, term, source, note, changed_at)
         values ($1,'Probationary','Regular',false,'2025-2026','1st Semester','manual','TEST – earlier probation', '2025-12-01')`, [num]);
     }
+  }
+  // ── Phase 2: renewal windows, an earlier semester for the late-application scholar, and a few applications made through the real functions ──
+  const day = n => { const d = new Date(Date.now() + 8 * 3600 * 1000 + n * 86400000); return d.toISOString().slice(0, 10); };   // Manila date, n days from today
+  const windows = { w1: ["2026-2027", "1st Semester", day(-12), day(18)], w2: ["2025-2026", "Summer", day(-12), day(18)], w3: ["2025-2026", "1st Semester", day(-120), day(-100)] };
+  const windowId = {};
+  for (const [k, [sy, term, opens, closes]] of Object.entries(windows)) {
+    windowId[k] = id(`window:${k}`);
+    await db.query("insert into renewal_windows (id, school_year, term, opens_on, closes_on, late_allowed, created_by) values ($1,$2,$3,$4,$5,true,$6)", [windowId[k], sy, term, opens, closes, id("staff:demo.evaluator")]);
+  }
+  // Scholar 29 applies late for 1st Semester 2025-2026, which is judged on 2nd Semester 2024-2025: give them those grades and SDP credits.
+  const lowerId = id("school:lower"), p2425 = id("period:2024-2025:2nd Semester");
+  await db.query("insert into academic_periods (id, school_year, term, status) values ($1,'2024-2025','2nd Semester','closed') on conflict (id) do nothing", [p2425]);
+  await db.query("insert into school_period_submissions (school_id, period_id, status, submitted_at) values ($1,$2,'submitted', now())", [lowerId, p2425]);
+  for (const [i, mark] of ["1.5", "2.0"].entries()) {
+    await db.query(`insert into scholar_subjects_grades (scholar_id_number, school_year, semester, subject, subject_code, grade, remarks, units, recorded_by_school_id, period_id)
+      values ($1,'2024-2025','2nd Semester',$2,$3,$4,'',3,$5,$6)`, [sidNum(29), `TEST – ${SUBJECTS[i]}`, `TST${100 + i}`, mark, lowerId, p2425]);
+  }
+  for (const k of FULL_SDP) await db.query("insert into sdp_attendance (activity_id, scholar_id_number, attended_date, school_year, semester) values ($1,$2,'2025-04-15','2024-2025','2nd Semester')", [actId[k], sidNum(29)]);
+
+  // Run a function as a signed-in person (the database reads who is calling from this setting).
+  const as = async (uid, fn) => db.transaction(async tx => { await tx.query("select set_config('request.jwt.claim.sub', $1, true)", [uid]); return fn(tx); });
+  const inc = {};
+  for (const s of SCHOLARS.filter(x => x.renewal)) {
+    const w = windows[s.renewal.window], sch = SCHOOLS.find(x => x.key === s.school);
+    const rid = await as(id(`scholar:${s.n}`), async tx => (await tx.query("select public.renewal_apply($1, $2, 'BS Test Studies', '2nd Year', '') as r", [windowId[s.renewal.window], sch.name])).rows[0].r);
+    if (s.renewal.inc) inc[s.n] = rid;
+  }
+  // The consultation staff set the days to comply (the Daily Record does this in the next phase).
+  for (const s of SCHOLARS.filter(x => x.renewal?.inc)) {
+    await as(id("staff:demo.counselor"), async tx => {
+      const item = (await tx.query("select id from renewal_inc_items where record_id = $1", [inc[s.n]])).rows[0];
+      await tx.query("select public.renewal_set_inc_deadline($1, $2::date, $3, '')", [item.id, day(s.renewal.inc.consult), s.renewal.inc.days]);
+    });
   }
   // Loading the scholars made the status-history trigger record a "System" row dated today for each one; the real database has none until a status changes.
   await db.query("delete from scholar_status_history where source = 'system'");

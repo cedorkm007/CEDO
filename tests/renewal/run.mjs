@@ -195,4 +195,126 @@ test("the staff, school and scholar grade screens all use the ONE shared outcome
   }
 });
 
+
+const R = await bundle("renewal", "src/lib/renewal.ts");
+console.log("Renewal wording and helpers (Phase 2)");
+test("every stage the database allows has a title, a tone and a short label (and nothing extra)", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p2_application.sql"), "utf8");
+  const block = /stage\s+text not null check \(stage in \(([\s\S]*?)\)\),/.exec(sql)[1];
+  const dbStages = [...block.matchAll(/'([a-z_]+)'/g)].map(m => m[1]).sort();
+  assert.deepEqual([...R.RENEWAL_STAGES].sort(), dbStages);
+  for (const s of R.RENEWAL_STAGES) { assert.ok(R.STAGE_INFO[s].title && R.STAGE_INFO[s].short && R.STAGE_INFO[s].tone, s); assert.equal(R.stageTitle(s), R.STAGE_INFO[s].title); }
+});
+test("the stage titles in the database's own wording function match the website's", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p2_application.sql"), "utf8");
+  for (const s of R.RENEWAL_STAGES) {
+    const m = new RegExp("when '" + s + "' then '([^']+)'").exec(sql);
+    assert.ok(m, "no database title for " + s);
+    assert.equal(m[1], R.STAGE_INFO[s].title, s);
+  }
+});
+test("every stage sits in exactly one board group, so every application is counted once", () => {
+  for (const s of R.RENEWAL_STAGES) assert.equal(R.BOARD_GROUPS.filter(g => g.stages.includes(s)).length, 1, s);
+});
+test("active and closed stages do not overlap, and match the database's active list", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p2_application.sql"), "utf8");
+  const block = /select p_stage in \(([\s\S]*?)\);/.exec(sql)[1];
+  const dbActive = [...block.matchAll(/'([a-z_]+)'/g)].map(m => m[1]).sort();
+  assert.deepEqual([...R.ACTIVE_STAGES].sort(), dbActive);
+  assert.equal(R.ACTIVE_STAGES.some(s => R.CLOSED_STAGES.includes(s)), false);
+});
+test("the semester judged for each term (the owner's table)", () => {
+  assert.deepEqual(R.renewalBasis("2026-2027", "1st Semester"), { schoolYear: "2025-2026", term: "2nd Semester" });
+  assert.deepEqual(R.renewalBasis("2026-2027", "2nd Semester"), { schoolYear: "2026-2027", term: "1st Semester" });
+  assert.deepEqual(R.renewalBasis("2026-2027", "Summer"), { schoolYear: "2026-2027", term: "2nd Semester" });
+  assert.equal(R.renewalBasis("nonsense", "Summer"), null);
+});
+test("a renewal window is upcoming, open, late or closed by Philippine date", () => {
+  const at = iso => new Date(iso);
+  assert.equal(R.windowState("2026-10-01", "2026-10-31", true, at("2026-09-30T10:00:00+08:00")), "upcoming");
+  assert.equal(R.windowState("2026-10-01", "2026-10-31", true, at("2026-10-01T00:30:00+08:00")), "open");
+  assert.equal(R.windowState("2026-10-01", "2026-10-31", true, at("2026-10-31T23:30:00+08:00")), "open");
+  assert.equal(R.windowState("2026-10-01", "2026-10-31", true, at("2026-11-01T00:30:00+08:00")), "late");
+  assert.equal(R.windowState("2026-10-01", "2026-10-31", false, at("2026-11-01T00:30:00+08:00")), "closed");
+  // 11:30 pm in Manila is still that calendar day even though it is already the next day in some other time zones
+  assert.equal(R.manilaToday(at("2026-10-13T23:30:00+08:00")), "2026-10-13");
+  assert.equal(R.manilaToday(at("2026-10-13T16:30:00Z")), "2026-10-14");
+});
+test("days left and the deadline wording (calendar days, Philippine time)", () => {
+  const now = new Date("2026-10-13T09:00:00+08:00");
+  assert.equal(R.daysUntil("2026-10-25", now), 12);
+  assert.equal(R.daysUntil("2026-10-13", now), 0);
+  assert.equal(R.daysUntil("2026-10-03", now), -10);
+  assert.equal(R.daysUntil(null, now), null);
+  assert.equal(R.daysLeftText(null), "Deadline: to be set at consultation");
+  assert.equal(R.daysLeftText(12), "12 days left");
+  assert.equal(R.daysLeftText(1), "1 day left");
+  assert.equal(R.daysLeftText(0), "Due today");
+  assert.equal(R.daysLeftText(-1), "1 day past the deadline");
+  assert.equal(R.daysLeftText(-10), "10 days past the deadline");
+});
+test("the file checks match the database's (type, 10 MB, 3 per kind, not empty)", () => {
+  const f = (type, size = 100) => ({ name: "a.pdf", type, size });
+  assert.equal(R.validateRenewalFile(f("application/pdf"), 0), null);
+  assert.equal(R.validateRenewalFile(f("application/vnd.openxmlformats-officedocument.wordprocessingml.document"), 2), null);
+  assert.match(R.validateRenewalFile(f("application/zip"), 0), /PDF, Word/);
+  assert.match(R.validateRenewalFile(f("application/pdf", 11 * 1024 * 1024), 0), /10 MB/);
+  assert.match(R.validateRenewalFile(f("application/pdf", 0), 0), /empty/);
+  assert.match(R.validateRenewalFile(f("application/pdf"), 3), /at most 3/);
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p2_application.sql"), "utf8");
+  for (const mime of ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]) assert.ok(sql.includes("'" + mime + "'"), mime);
+});
+test("the storage path is the folder the database guard expects, and a hostile file name cannot escape it", () => {
+  const p = R.renewalDocumentPath("TEST-0003", "rec-1", "study_plan", "../../my plan (final).pdf", "uuid-1");
+  assert.ok(p.startsWith("TEST-0003/rec-1/study_plan/uuid-1-"), p);
+  assert.equal(p.split("/").length, 4, p);
+  assert.equal(p.includes(".."), false, p);
+  assert.ok(R.renewalDocumentPath("X", "r", "inc_letter", "ฟ.pdf", "u").endsWith(".pdf"));
+});
+test("plain next steps for the scholar, in order, for the main cases", () => {
+  const ev = (docs = []) => ({ required_documents: docs, sdp: { applicable: true, complied: false, missing: "Formation Program: 2 of 3" }, grades: { reason: "Your school has not submitted its grades for 2nd Semester 2025-2026 yet." } });
+  assert.match(R.scholarNextSteps("sdp_on_hold", ev())[0], /Formation Program: 2 of 3/);
+  assert.match(R.scholarNextSteps("waiting_grades", ev())[0], /has not submitted/);
+  const study = R.scholarNextSteps("needs_study_plan_consultation", ev([{ kind: "study_plan", label: "Study plan", satisfied: false }]));
+  assert.match(study[0], /Upload your study plan/); assert.match(study[1], /consultation/);
+  const inc = R.scholarNextSteps("needs_inc_letter_consultation", ev([{ kind: "inc_letter", label: "INC letter from your dean", satisfied: false }]));
+  assert.match(inc[0], /INC letter from your dean/);
+  const wait = R.scholarNextSteps("inc_waiting_compliance", ev(), { incDeadlines: [{ subject: "Math", deadline: "2026-10-25" }, { subject: "Art", deadline: null }] });
+  assert.match(wait[0], /Complete your INC in Math by .*2026/); assert.match(wait[1], /Deadline: to be set at consultation/);
+  assert.match(R.scholarNextSteps("returned", ev(), { evaluatorComment: "Please fix X" })[0], /Please fix X/);
+  assert.match(R.scholarNextSteps("ready_for_confirmation", ev())[0], /Waiting for the evaluator/);
+  for (const s of R.RENEWAL_STAGES) assert.ok(R.scholarNextSteps(s, ev()).length >= 1, "no next step for " + s);
+});
+
+console.log("Source guards (Phase 2)");
+const p2files = [
+  "src/lib/renewal.ts", "src/app/components/RenewalStageBadge.tsx", "src/scholar/components/dashboard/RenewalPanel.tsx", "src/scholar/components/dashboard/NotificationBell.tsx",
+  "src/sead/ScholarRenewalPage.tsx", "src/sead/renewal/RenewalBoardTab.tsx", "src/sead/renewal/RenewalLateTab.tsx", "src/sead/renewal/RenewalNotAppliedTab.tsx",
+  "src/sead/renewal/RenewalIncTab.tsx", "src/sead/renewal/RenewalWindowsTab.tsx", "src/sead/renewal/RenewalDetailView.tsx", "src/sead/renewal/ReasonDialog.tsx",
+];
+test("the new renewal screens use readable text (13px and up, no pale greys, no pale-blue links)", () => {
+  for (const p of p2files) {
+    const src = fs.readFileSync(path.join(root, p), "utf8");
+    assert.deepEqual([...src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], p);
+    assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(src), false, p + " uses a pale grey or the old link blue");
+  }
+});
+test("the renewal screens only ask the database (no direct writes to renewal tables, no second copy of the rules)", () => {
+  const direct = /\.from\("renewal_(records|history|inc_items|windows)"\)\s*\.(insert|update|delete)/;
+  for (const p of [...p2files, "src/scholar/renewalApi.ts", "src/sead/renewalApi.ts"]) {
+    const src = fs.readFileSync(path.join(root, p), "utf8");
+    assert.equal(direct.test(src), false, p);
+    assert.equal(/failed_effective\s*(>=|>|<|===)\s*[12]/.test(src), false, p + " must not re-implement the failed-subject rule");
+  }
+});
+test("the Scholar Renewal tool is gated by its own tag, in the same places as the other tools", () => {
+  const tags = fs.readFileSync(path.join(root, "src/app/staffToolTags.ts"), "utf8");
+  assert.match(tags, /key: "scholar_renewal_evaluator"/);
+  const app = fs.readFileSync(path.join(root, "src/app/App.tsx"), "utf8");
+  assert.match(app, /case "scholarRenewal": return user\.tags\.includes\("scholar_renewal_evaluator"\)/);
+  assert.match(app, /page==="scholarRenewal" && currentUser\.tags\.includes\("scholar_renewal_evaluator"\)/);
+  assert.match(app, /"scholarRenewal", "scanningTools"\]/, "PAGE_VALUES");
+  assert.match(fs.readFileSync(path.join(root, "src/app/components/Sidebar.tsx"), "utf8"), /user\.tags\.includes\("scholar_renewal_evaluator"\)/);
+});
+
 console.log(`\n${process.exitCode ? "SOME TESTS FAILED" : "All " + passed + " tests passed"}`);
