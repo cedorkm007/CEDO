@@ -63,7 +63,7 @@ export function SignatureUploadPanel({ onReady }: { onReady: (path: string | nul
             <input type="file" accept="image/jpeg,image/png" className="hidden" disabled={processing}
               onChange={e => { const file = e.target.files?.[0]; if (file) void handleFile(file); }} />
           </label>
-          <p className="text-[11.5px] text-slate-400 mt-1">JPG or PNG — the background is made transparent automatically and saved for future approvals.</p>
+          <p className="text-[13px] text-slate-700 mt-1">JPG or PNG — the background is made transparent automatically and saved for future approvals.</p>
           {error && <p className="text-[11.5px] text-red-600 mt-1">{error}</p>}
         </div>
       </div>

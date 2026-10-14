@@ -132,6 +132,7 @@ export interface RenewalDetail {
     lateReason: string | null; confirmedSchool: string | null; confirmedProgram: string | null; confirmedYearLevel: string | null; scholarNote: string; scholarNoteAt: string | null;
     ruleCode: string | null; ruleText: string | null; consultationRequired: boolean; consultationDoneAt: string | null; hardCopyReceivedAt: string | null; noShow: boolean; tempProbation: boolean;
     evaluatorComment: string | null; confirmedAt: string | null; result: string | null; notRequiredReason: string | null;
+    divisionHeadDecision: string | null; divisionHeadDecidedAt: string | null; divisionHeadNote: string | null;
   };
   scholar: { scholarIdNumber: string; name: string; school: string; program: string; yearLevel: string; status: string; contactNo: string };
   evaluation: RenewalEvaluation;
@@ -156,6 +157,7 @@ export async function fetchRenewalDetail(recordId: string): Promise<{ ok: true; 
         confirmedYearLevel: strOrNull(r.confirmed_year_level), scholarNote: str(r.scholar_note), scholarNoteAt: strOrNull(r.scholar_note_at), ruleCode: strOrNull(r.rule_code), ruleText: strOrNull(r.rule_text),
         consultationRequired: !!r.consultation_required, consultationDoneAt: strOrNull(r.consultation_done_at), hardCopyReceivedAt: strOrNull(r.hard_copy_received_at), noShow: !!r.no_show_flag, tempProbation: !!r.temp_probation,
         evaluatorComment: strOrNull(r.evaluator_comment), confirmedAt: strOrNull(r.confirmed_at), result: strOrNull(r.result), notRequiredReason: strOrNull(r.not_required_reason),
+        divisionHeadDecision: strOrNull(r.division_head_decision), divisionHeadDecidedAt: strOrNull(r.division_head_decided_at), divisionHeadNote: strOrNull(r.division_head_note),
       },
       scholar: { scholarIdNumber: str(s.scholar_id_number), name: str(s.name), school: str(s.school), program: str(s.program), yearLevel: str(s.year_level), status: str(s.status), contactNo: str(s.contact_no) },
       evaluation: (d.evaluation ?? {}) as RenewalEvaluation,

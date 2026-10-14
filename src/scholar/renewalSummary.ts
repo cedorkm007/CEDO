@@ -14,7 +14,7 @@ export function buildNextSteps(w: MyRenewalWindow): string[] {
   return scholarNextSteps(r.stage, r.evaluation, {
     incDeadlines: openInc.map(i => ({ subject: i.subject, deadline: i.deadline })), evaluatorComment: r.evaluatorComment,
     consultNeeded: w.consultNeeded || w.booking !== null, consultState: w.booking ? "ok" : w.consultState,
-    booking: w.booking ? { startsAt: w.booking.startsAt, staffName: w.booking.staffName } : null, isSummer: w.window.term === "Summer", noShow: r.noShowFlag,
+    booking: w.booking ? { startsAt: w.booking.startsAt, staffName: w.booking.staffName } : null, isSummer: w.window.term === "Summer", noShow: r.noShowFlag, result: r.result,
   });
 }
 
@@ -29,7 +29,7 @@ export function scholarActsNow(w: MyRenewalWindow): boolean {
   if ((r.evaluation.required_documents ?? []).some(d => !d.satisfied)) return true;
   return w.consultState === "ok" && w.consultNeeded && w.booking === null;
 }
-const FINISHED: readonly RenewalStage[] = ["renewed", "removed", "reconsidered", "late_declined", "not_required"];
+const FINISHED: readonly RenewalStage[] = ["renewed", "removed", "late_declined", "not_required"];
 
 export interface RenewalAttention {
   windowId: string; termLabel: string;

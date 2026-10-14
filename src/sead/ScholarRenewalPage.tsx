@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarClock, CalendarRange, ClipboardList, Clock, Hourglass, UserX } from "lucide-react";
+import { CalendarClock, CalendarRange, ClipboardList, Clock, Hourglass, ShieldCheck, UserX } from "lucide-react";
 import { formatDay, termLabelOf, windowState } from "@/lib/renewal";
 import { fetchRenewalWindows, type RenewalWindowRow } from "./renewalApi";
 import { RenewalBoardTab } from "./renewal/RenewalBoardTab";
@@ -9,19 +9,21 @@ import { RenewalIncTab } from "./renewal/RenewalIncTab";
 import { RenewalWindowsTab } from "./renewal/RenewalWindowsTab";
 import { RenewalDetailView } from "./renewal/RenewalDetailView";
 import { AppointmentsTab } from "./appointments/AppointmentsTab";
+import { RenewalDivisionHeadTab } from "./renewal/RenewalDivisionHeadTab";
 
-type Tab = "applications" | "late" | "notApplied" | "inc" | "calendar" | "windows";
+type Tab = "applications" | "late" | "notApplied" | "inc" | "calendar" | "windows" | "divisionHead";
 
 /**
- * "Scholar Renewal" — the evaluator's tool. Gated by the "scholar_renewal_evaluator" tag (src/app/staffToolTags.ts).
+ * "Scholar Renewal" — the evaluator's tool. Gated by the "scholar_renewal_evaluator" tag (src/app/staffToolTags.ts). The Division Head
+ * (tag "sead_division_head") opens the same page and sees only the "Division Head" tab, where the cases wait for their decision.
  * Applications board by stage, Late and Not applied lists, INC compliance and "deadline passed — decision needed", renewal windows,
  * and a detail page per scholar. The rules are decided by the database; this page shows them and records the evaluator's decisions.
  */
-export function ScholarRenewalPage({ canAct = true }: { canAct?: boolean }) {
+export function ScholarRenewalPage({ canAct = true, isEvaluator = true, isDivisionHead = false }: { canAct?: boolean; isEvaluator?: boolean; isDivisionHead?: boolean }) {
   const [windows, setWindows] = useState<RenewalWindowRow[] | null>(null);
   const [error, setError] = useState("");
   const [windowId, setWindowId] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("applications");
+  const [tab, setTab] = useState<Tab>(isEvaluator ? "applications" : "divisionHead");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -41,26 +43,29 @@ export function ScholarRenewalPage({ canAct = true }: { canAct?: boolean }) {
 
   const bump = useCallback(() => setRefreshKey(k => k + 1), []);
 
-  const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: "applications", label: "Applications", icon: <ClipboardList size={14} aria-hidden="true" /> },
-    { key: "late", label: "Late", icon: <Clock size={14} aria-hidden="true" /> },
-    { key: "notApplied", label: "Not applied", icon: <UserX size={14} aria-hidden="true" /> },
-    { key: "inc", label: "INC", icon: <Hourglass size={14} aria-hidden="true" /> },
-    { key: "calendar", label: "Consultations", icon: <CalendarClock size={14} aria-hidden="true" /> },
-    { key: "windows", label: "Windows", icon: <CalendarRange size={14} aria-hidden="true" /> },
+  const ALL_TABS: { key: Tab; label: string; icon: React.ReactNode; evaluatorOnly?: boolean }[] = [
+    { key: "applications", label: "Applications", icon: <ClipboardList size={14} aria-hidden="true" />, evaluatorOnly: true },
+    { key: "late", label: "Late", icon: <Clock size={14} aria-hidden="true" />, evaluatorOnly: true },
+    { key: "notApplied", label: "Not applied", icon: <UserX size={14} aria-hidden="true" />, evaluatorOnly: true },
+    { key: "inc", label: "INC", icon: <Hourglass size={14} aria-hidden="true" />, evaluatorOnly: true },
+    { key: "calendar", label: "Consultations", icon: <CalendarClock size={14} aria-hidden="true" />, evaluatorOnly: true },
+    { key: "divisionHead", label: "Division Head", icon: <ShieldCheck size={14} aria-hidden="true" /> },
+    { key: "windows", label: "Windows", icon: <CalendarRange size={14} aria-hidden="true" />, evaluatorOnly: true },
   ];
+  const TABS = ALL_TABS.filter(t => isEvaluator || !t.evaluatorOnly);
+  const termBarNeeded = tab !== "divisionHead";
 
   return (
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Scholar Renewal</h1>
-      <p className="text-sm text-slate-700 mb-4">Review renewal applications, accept late ones, track INC subjects, and confirm every renewal.</p>
+      <p className="text-sm text-slate-700 mb-4">{isEvaluator ? "Review renewal applications, accept late ones, track INC subjects, send cases to the Division Head, and confirm every renewal." : "The renewal cases that wait for your decision."}</p>
       {error && <p role="alert" className="mb-3 text-[14px] text-red-700">Couldn't load the renewal windows: {error}</p>}
 
       {detailId ? (
-        <RenewalDetailView recordId={detailId} canAct={canAct} onBack={() => setDetailId(null)} onChanged={bump} />
+        <RenewalDetailView recordId={detailId} canAct={canAct && isEvaluator} onBack={() => setDetailId(null)} onChanged={bump} />
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-[#f7f9fc] border border-[#e6ecf5] rounded-xl px-4 py-3 mb-4 text-[14px]">
+          {termBarNeeded && <div className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-[#f7f9fc] border border-[#e6ecf5] rounded-xl px-4 py-3 mb-4 text-[14px]">
             <label className="font-bold text-[#062444]" htmlFor="renewal-term">Renewal term</label>
             {windows && windows.length > 0 ? (
               <select id="renewal-term" value={current?.id ?? ""} onChange={e => setWindowId(e.target.value)} className="rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] bg-white outline-none focus:border-[#062444]">
@@ -68,7 +73,7 @@ export function ScholarRenewalPage({ canAct = true }: { canAct?: boolean }) {
               </select>
             ) : <span className="text-slate-700">No renewal window yet — open one in the Windows tab.</span>}
             {current && <span className="text-slate-700">{formatDay(current.opensOn)} to {formatDay(current.closesOn)}</span>}
-          </div>
+          </div>}
 
           <div className="flex w-full gap-1 border-b border-border mb-5 overflow-x-auto">
             {TABS.map(t => (
@@ -79,10 +84,11 @@ export function ScholarRenewalPage({ canAct = true }: { canAct?: boolean }) {
             ))}
           </div>
 
+          {tab === "divisionHead" && <RenewalDivisionHeadTab canDecide={isDivisionHead} onOpenRecord={setDetailId} onChanged={bump} refreshKey={refreshKey} />}
           {tab === "calendar" && <AppointmentsTab readOnly onOpenRecord={setDetailId} />}
           {tab === "windows" && <RenewalWindowsTab windows={windows ?? []} onChanged={async () => { await loadWindows(); bump(); }} />}
-          {tab !== "windows" && tab !== "calendar" && !current && <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">Open a renewal window first (Windows tab).</p>}
-          {tab !== "windows" && tab !== "calendar" && current && (
+          {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && !current && <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">Open a renewal window first (Windows tab).</p>}
+          {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && current && (
             <>
               {tab === "applications" && <RenewalBoardTab schoolYear={current.schoolYear} term={current.term} onOpen={setDetailId} refreshKey={refreshKey} />}
               {tab === "late" && <RenewalLateTab schoolYear={current.schoolYear} term={current.term} onOpen={setDetailId} onChanged={bump} refreshKey={refreshKey} />}

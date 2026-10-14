@@ -115,7 +115,7 @@ function isPageAuthorizedFor(page: Page, user: UserProfile): boolean {
     case "financialAssistanceTools": return user.tags.includes("financial_assistance");
     case "scholarCounseling": return user.tags.includes("scholar_counseling");
     case "scholarsGradesMonitoring": return user.tags.includes("scholars_grades_monitoring");
-    case "scholarRenewal": return user.tags.includes("scholar_renewal_evaluator");
+    case "scholarRenewal": return user.tags.includes("scholar_renewal_evaluator") || user.tags.includes("sead_division_head");
     case "scanningTools": return user.hasMonitorAssignment;
     default: return true; // home, profile, tasks, accomplishments, notifications, forms, myResearch, myPresentations, mySurveys — open to any signed-in user
   }
@@ -3536,8 +3536,8 @@ export default function App() {
           {page==="scholarsGradesMonitoring" && currentUser.tags.includes("scholars_grades_monitoring") && (
             <ScholarsGradesMonitoringPage/>
           )}
-          {page==="scholarRenewal" && currentUser.tags.includes("scholar_renewal_evaluator") && (
-            <ScholarRenewalPage/>
+          {page==="scholarRenewal" && (currentUser.tags.includes("scholar_renewal_evaluator") || currentUser.tags.includes("sead_division_head")) && (
+            <ScholarRenewalPage isEvaluator={currentUser.tags.includes("scholar_renewal_evaluator")} isDivisionHead={currentUser.tags.includes("sead_division_head")}/>
           )}
           {page==="myResearch" && (
             <MyResearchPage/>

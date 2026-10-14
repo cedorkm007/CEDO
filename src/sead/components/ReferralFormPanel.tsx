@@ -4,6 +4,8 @@ import { printApprovedReferral } from "../referralPrint";
 import type { ScholarInformationRow } from "../seadApi";
 import { SubjectMatrix } from "./SubjectMatrix";
 import { SignatureUploadPanel } from "./SignatureUploadPanel";
+import { RenewalDecisionPanel } from "../renewal/RenewalDecisionPanel";
+import { fetchRenewalReferralInfo, type RenewalReferralInfo } from "../divisionHeadApi";
 import {
   PREVIOUS_SEMESTER_STATUSES, ENDORSED_FOR_OPTIONS, type PreviousSemesterStatus, type EndorsedFor,
   type SubjectMatrixRow, type StaffOption, type QueuedReferral,
@@ -21,7 +23,7 @@ function defaultPreviousSemesterStatus(status: ScholarInformationRow["status"]):
 }
 
 function fieldLabel(children: React.ReactNode) {
-  return <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-0.5">{children}</p>;
+  return <p className="text-[12px] font-bold uppercase tracking-wide text-slate-600 mb-0.5">{children}</p>;
 }
 function readOnlyField(label: string, value: string) {
   return <div>{fieldLabel(label)}<p className="text-sm text-[#062444] font-medium">{value || "—"}</p></div>;
@@ -44,6 +46,8 @@ export function ReferralFormPanel({
 }) {
   const [loading, setLoading] = useState(mode !== "create");
   const [referral, setReferral] = useState<QueuedReferral | null>(null);
+  // Set when the referral belongs to a scholar renewal: the Division Head then decides through the renewal panel (the database applies the outcome).
+  const [renewalInfo, setRenewalInfo] = useState<RenewalReferralInfo | null>(null);
 
   // "create" mode fields
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
@@ -86,6 +90,7 @@ export function ReferralFormPanel({
       fetchMyStaffName().then(setMyName);
     } else if (referralId) {
       setLoading(true);
+      fetchRenewalReferralInfo(referralId).then(setRenewalInfo);
       fetchReferralById(referralId).then(r => {
         setReferral(r);
         if (r) {
@@ -145,7 +150,7 @@ export function ReferralFormPanel({
     onDone();
   }
 
-  if (loading) return <p className="text-center text-slate-400 py-10">Loading…</p>;
+  if (loading) return <p className="text-center text-slate-600 py-10">Loading…</p>;
 
   const name = mode === "create" && scholar ? [scholar.firstName, scholar.middleName, scholar.lastName].filter(Boolean).join(" ") : referral?.name ?? "";
   const courseYear = mode === "create" && scholar ? `${scholar.course || "—"} / ${scholar.yearLevel || "—"}` : `${referral?.course || "—"} / ${referral?.yearLevel || "—"}`;
@@ -244,14 +249,14 @@ export function ReferralFormPanel({
               {approvedSignatureUrl ? (
                 <img src={approvedSignatureUrl} alt="Approver's signature" className="max-w-full max-h-full object-contain" />
               ) : (
-                <p className="text-[11px] text-slate-400">No signature on file</p>
+                <p className="text-[12px] text-slate-600">No signature on file</p>
               )}
             </div>
             <div>
               <p className="text-sm font-semibold text-[#062444]">{referral.approvedByName || "—"}</p>
               <p className="text-[11.5px] text-slate-500">SEAD Division Head</p>
               {referral.approvedAt && (
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-[12px] text-slate-600 mt-0.5">
                   Approved {new Date(referral.approvedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                 </p>
               )}
@@ -266,7 +271,9 @@ export function ReferralFormPanel({
         </div>
       )}
 
-      {mode === "approve" && <SignatureUploadPanel onReady={setSignaturePath} />}
+      {renewalInfo && <RenewalDecisionPanel info={renewalInfo} canDecide={mode === "approve"} onDone={onDone} />}
+
+      {mode === "approve" && !renewalInfo && <SignatureUploadPanel onReady={setSignaturePath} />}
 
       {error && <p className="text-[13px] text-red-600">{error}</p>}
 
@@ -287,7 +294,7 @@ export function ReferralFormPanel({
         </div>
       )}
 
-      {mode === "approve" && (
+      {mode === "approve" && !renewalInfo && (
         <div className="space-y-3 border-t border-[#e6ecf5] pt-3">
           {showReconsiderInput ? (
             <div className="space-y-2">

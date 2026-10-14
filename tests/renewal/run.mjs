@@ -312,7 +312,7 @@ test("the Scholar Renewal tool is gated by its own tag, in the same places as th
   assert.match(tags, /key: "scholar_renewal_evaluator"/);
   const app = fs.readFileSync(path.join(root, "src/app/App.tsx"), "utf8");
   assert.match(app, /case "scholarRenewal": return user\.tags\.includes\("scholar_renewal_evaluator"\)/);
-  assert.match(app, /page==="scholarRenewal" && currentUser\.tags\.includes\("scholar_renewal_evaluator"\)/);
+  assert.match(app, /page==="scholarRenewal" && \(currentUser\.tags\.includes\("scholar_renewal_evaluator"\)/);
   assert.match(app, /"scholarRenewal", "scanningTools"\]/, "PAGE_VALUES");
   assert.match(fs.readFileSync(path.join(root, "src/app/components/Sidebar.tsx"), "utf8"), /user\.tags\.includes\("scholar_renewal_evaluator"\)/);
 });
@@ -433,7 +433,7 @@ test("the progress tracker for the main cases: where the scholar is, and the ste
   assert.equal(p2[1].state, "problem"); assert.equal(p2[1].note, "On hold: SDP"); assert.equal(p2.length, 4);
   // 4: study plan + consultation: documents is the current step until the plan is uploaded AND approved
   const ev4 = (approved, satisfied = true, done = false) => ({ required_documents: [{ kind: "study_plan", label: "Study plan", satisfied, approved }], consultation_required: true, consultation_done: done, rule_code: "B" });
-  assert.equal(label(R.renewalProgress("needs_study_plan_consultation", ev4(false, false))), "Applied:done | SDP and grades checked:done | Upload your documents:current | Consultation:todo | Evaluator confirmation:todo | Renewed:todo");
+  assert.equal(label(R.renewalProgress("needs_study_plan_consultation", ev4(false, false))), "Applied:done | SDP and grades checked:done | Upload your documents:current | Consultation:todo | Division Head decision:todo | Renewed:todo");
   const waiting = R.renewalProgress("needs_study_plan_consultation", ev4(false));
   assert.equal(waiting[2].state, "current"); assert.equal(waiting[2].note, "Waiting for approval");
   const approved = R.renewalProgress("needs_study_plan_consultation", ev4(true), { hasBooking: false });
@@ -529,6 +529,82 @@ test("the Forms Management section and the scholar link only call database funct
   assert.deepEqual([...section.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), []);
   assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(section), false);
   assert.match(fs.readFileSync(path.join(root, "src/sead/pages/FormsManagementTab.tsx"), "utf8"), /RenewalStudyPlanFormsSection/);
+});
+
+console.log("The Division Head's decisions (Phase 5)");
+test("the scholar is told each outcome in plain words", () => {
+  const ev = { required_documents: [], consultation_required: true, consultation_done: true, rule_code: "C2" };
+  assert.match(R.scholarNextSteps("renewed", ev, { result: "renewed_probationary" })[0], /approved your renewal with Probationary status/);
+  assert.match(R.scholarNextSteps("renewed", ev, { result: "renewed" })[0], /You are renewed/);
+  assert.match(R.scholarNextSteps("renewed", ev, { result: "reconsidered" })[0], /You are renewed/);
+  const rec = R.scholarNextSteps("reconsidered", ev);
+  assert.match(rec[0], /reconsidered your case.*Reconsidered/); assert.match(rec[1], /evaluator to confirm your renewal.*nothing to do/);
+  assert.match(R.scholarNextSteps("removed", ev)[0], /scholarship ends.*contact the CEDO office/);
+  const endorsed = R.scholarNextSteps("endorsed_division_head", ev);
+  assert.match(endorsed[0], /sent your case to the Division Head/); assert.match(endorsed[1], /Nothing to do/);
+});
+test("the tracker shows a reconsidered case waiting for the evaluator, and a removed case as a problem at the decision", () => {
+  const ev = { required_documents: [], consultation_required: true, consultation_done: true, rule_code: "C2" };
+  const label = steps => steps.map(s => `${s.label}:${s.state}`).join(" | ");
+  assert.equal(label(R.renewalProgress("reconsidered", ev)), "Applied:done | SDP and grades checked:done | Consultation:done | Division Head decision:done | Evaluator confirmation:current | Renewed:todo");
+  assert.equal(label(R.renewalProgress("removed", ev)), "Applied:done | SDP and grades checked:done | Consultation:done | Division Head decision:problem");
+  assert.equal(R.renewalProgress("removed", ev).filter(s => s.state === "current").length, 0);
+  assert.equal(R.renewalProgress("reconsidered", ev).filter(s => s.state === "current").length, 1, "exactly one 'you are here'");
+  assert.equal(label(R.renewalProgress("renewed", ev)).endsWith("Renewed:done"), true);
+});
+test("a Reconsidered case is NOT finished: the evaluator still has to confirm it (board group), the scholar still sees it as in progress", () => {
+  assert.ok(R.BOARD_GROUPS.find(g => g.key === "to_confirm").stages.includes("reconsidered"));
+  assert.equal(R.isClosedStage("reconsidered"), false); assert.equal(R.isClosedStage("removed"), true); assert.equal(R.isClosedStage("renewed"), true);
+  const win = (stage) => ({ window: { id: "w", schoolYear: "2026-2027", term: "1st Semester", opensOn: "2026-10-01", closesOn: "2026-11-01" }, state: "open", consultState: "not_needed", consultNeeded: false, booking: null, incItems: [],
+    record: { stage, evaluation: { required_documents: [], consultation_required: true, consultation_done: true }, evaluatorComment: null, noShowFlag: false, result: null } });
+  const a = SUM.renewalAttention([win("reconsidered")]);
+  assert.ok(a && a.actionNeeded === false && /reconsidered your case/.test(a.headline));
+  assert.equal(SUM.renewalAttention([win("removed")]), null);
+});
+test("the Division Head's choices and what each one does are worded for the screen", () => {
+  assert.deepEqual(Object.keys(R.DIVISION_HEAD_OPTION_INFO).sort(), ["approve_probationary", "reconsidered", "removed", "return"]);
+  assert.match(R.DIVISION_HEAD_OPTION_INFO.removed.effect, /login is switched off/);
+  assert.match(R.DIVISION_HEAD_OPTION_INFO.return.effect, /Nothing changes for the scholar/);
+  assert.equal(R.DIVISION_HEAD_DECISION_LABEL.approved_probationary, "Approved — Probationary");
+  assert.deepEqual(Object.keys(R.DIVISION_HEAD_CASE_LABEL).sort(), ["probationary_approval", "removal_decision"]);
+});
+
+console.log("Source guards (Phase 5)");
+const p5files = ["src/sead/divisionHeadApi.ts", "src/sead/renewal/RenewalDecisionPanel.tsx", "src/sead/renewal/RenewalDivisionHeadTab.tsx"];
+test("the Division Head screens use readable text (13px and up, no pale greys, no pale-blue links)", () => {
+  for (const p of p5files) {
+    const src = fs.readFileSync(path.join(root, p), "utf8");
+    assert.deepEqual([...src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], p);
+    assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(src), false, p);
+  }
+});
+test("every database function the Division Head screens call exists in the Phase 5 migration, and none writes a table directly", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p5_approvals.sql"), "utf8");
+  const api = fs.readFileSync(path.join(root, "src/sead/divisionHeadApi.ts"), "utf8");
+  const called = [...api.matchAll(/rpc\("([a-z_]+)"/g)].map(m => m[1]);
+  assert.ok(called.length >= 7, "the API calls its functions");
+  for (const fn of called) assert.ok(sql.includes(`create or replace function public.${fn}(`), fn);
+  assert.equal(/\.from\("(renewal_records|scholars|scholar_counseling_referrals)"\)\s*\.(insert|update|delete|upsert)/.test(api), false);
+});
+test("a renewal-linked referral is decided through the renewal functions, never through the old approve / send-back functions", () => {
+  const panel = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalDecisionPanel.tsx"), "utf8");
+  assert.equal(/approveReferral|requestReferralReconsideration|approve_referral/.test(panel), false);
+  const form = fs.readFileSync(path.join(root, "src/sead/components/ReferralFormPanel.tsx"), "utf8");
+  assert.match(form, /RenewalDecisionPanel/); assert.match(form, /!renewalInfo/);
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p5_approvals.sql"), "utf8");
+  for (const fn of ["approve_referral", "request_referral_reconsideration", "forward_referral_to_division_head"]) assert.ok(sql.includes(`create or replace function public.${fn}(`), fn);
+  assert.match(sql, /belongs to a scholar renewal/);
+});
+test("the Division Head can open the Scholar Renewal tool (sidebar, page access and the page itself), seeing only the Division Head tab", () => {
+  const app = fs.readFileSync(path.join(root, "src/app/App.tsx"), "utf8");
+  assert.match(app, /case "scholarRenewal": return user\.tags\.includes\("scholar_renewal_evaluator"\) \|\| user\.tags\.includes\("sead_division_head"\)/);
+  assert.match(app, /isEvaluator=\{currentUser\.tags\.includes\("scholar_renewal_evaluator"\)\}/);
+  assert.match(fs.readFileSync(path.join(root, "src/app/components/Sidebar.tsx"), "utf8"), /scholar_renewal_evaluator"\) \|\| user\.tags\.includes\("sead_division_head"\)/);
+  const side = fs.readFileSync(path.join(root, "src/app/components/Sidebar.tsx"), "utf8");
+  const any = side.slice(side.indexOf("const hasAnySpecificTool"), side.indexOf("return (", side.indexOf("const hasAnySpecificTool")));
+  assert.ok(any.includes('"scholar_renewal_evaluator"') && any.includes('"sead_division_head"'), "someone with ONLY one of these tags must still get the tools group");
+  const page = fs.readFileSync(path.join(root, "src/sead/ScholarRenewalPage.tsx"), "utf8");
+  assert.match(page, /evaluatorOnly/); assert.match(page, /RenewalDivisionHeadTab/);
 });
 
 console.log("Source guards (Phase 4)");

@@ -162,6 +162,8 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
     || user.tags.includes("research_project_monitoring")
     || user.tags.includes("scholar_counseling")
     || user.tags.includes("scholars_grades_monitoring")
+    || user.tags.includes("scholar_renewal_evaluator")
+    || user.tags.includes("sead_division_head")
     || user.hasMonitorAssignment
     || user.username.toLowerCase() === IT_ADMIN_USERNAME;
 
@@ -403,7 +405,7 @@ export function AppSidebar({ user, page, setPage }: { user: UserProfile; page: P
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
-                  {user.tags.includes("scholar_renewal_evaluator") && (
+                  {(user.tags.includes("scholar_renewal_evaluator") || user.tags.includes("sead_division_head")) && (
                     <SidebarMenuItem className="min-w-0">
                       <SidebarMenuButton isActive={page === "scholarRenewal"} onClick={() => setPage("scholarRenewal")} className="data-[active=true]:bg-sky-100 data-[active=true]:text-sky-900">
                         <RotateCw /> <span className="truncate">Scholar Renewal</span>

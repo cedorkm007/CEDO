@@ -1,11 +1,25 @@
 // localdemo/seed.mjs — the hypothetical data for the local demo. Everything here is invented: names start with "TEST", school names
 // start with "TEST –", and the throwaway logins below exist only inside the private local database.
 import crypto from "node:crypto";
+import zlib from "node:zlib";
 import { hashPassword } from "./jwt.mjs";
 
 export const DEMO_PASSWORD = "Demo#2026";
 export const MAIN_PERIOD = { schoolYear: "2025-2026", semester: "2nd Semester" };   // the semester the Phase 1 screens look at
 export const CURRENT_PERIOD = MAIN_PERIOD;   // the portals open on the semester that has the TEST grades
+
+/** A small handwritten-looking signature (transparent PNG), so the Division Head's stored signature shows up on the Referral Form. */
+function signaturePng() {
+  const w = 180, h = 60, raw = Buffer.alloc((w * 4 + 1) * h);
+  const plot = (x, y) => { for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) { const X = Math.round(x) + dx, Y = Math.round(y) + dy; if (X < 0 || Y < 0 || X >= w || Y >= h) continue; const o = Y * (w * 4 + 1) + 1 + X * 4; raw[o] = 10; raw[o + 1] = 30; raw[o + 2] = 90; raw[o + 3] = 255; } };
+  for (let i = 0; i <= 600; i++) { const p = i / 600; plot(10 + p * 160, 32 + Math.sin(p * 18) * (10 - p * 6) - p * 8); }
+  for (let i = 0; i <= 100; i++) plot(20 + i * 1.4, 50 - i * 0.05);
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = b => { let c = 0xffffffff; for (const x of b) c = crcTable[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
 
 export const seedId = key => id(key);
 const id = key => { const h = crypto.createHash("sha1").update("localdemo:" + key).digest("hex"); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`; };
@@ -86,6 +100,12 @@ const SCHOLARS = [
   // INC letter uploaded, waiting for the evaluator's approval: the scholar cannot book until it is approved
   { n: 40, school: "lower", last: "INC Letter To Approve", grades: g("INC", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", letter: "submitted" } },
   { n: 39, school: "lower", last: "Study Plan To Approve", grades: g("5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", plan: "submitted" } },
+  // Phase 5 scholars: each stands at a different point of the Division Head's decisions
+  { n: 41, school: "lower", last: "Two Failed At Division Head", grades: g("5.0", "5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", consultDone: true } },
+  { n: 42, school: "lower", last: "One Failed Ready To Endorse", grades: g("5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", plan: "accepted", consultDone: true } },
+  { n: 43, school: "lower", last: "One Failed Endorsed", grades: g("5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", plan: "accepted", consultDone: true, endorsed: true } },
+  { n: 44, school: "lower", last: "Two Failed No Consultation", grades: g("5.0", "5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1" } },
+  { n: 45, school: "lower", last: "Reconsidered To Confirm", grades: g("5.0", "5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", consultDone: true, reconsidered: true } },
 ];
 export const SCHOLAR_LAST = Object.fromEntries(SCHOLARS.map(s => [s.n, s.last]));
 const SUBJECTS = ["Mathematics", "English", "Science", "History"];
@@ -237,6 +257,26 @@ export async function seedDb(db) {
     const rec = (await db.query("select id from renewal_records where scholar_id_number = $1 order by created_at desc limit 1", [sidNum(s.n)])).rows[0].id;
     await seedDoc(rec, s.n, "study_plan", s.renewal.plan);
   }
+  // ── Phase 5: the Division Head's stored signature, and cases at each point of the decisions (through the real functions) ──
+  const sigBuf = signaturePng();
+  await db.query("insert into storage.buckets (id, name, public) values ('staff-signatures','staff-signatures', false) on conflict (id) do nothing");
+  for (const who of ["demo.divhead", "demo.admin"]) {
+    const path = `${id("staff:" + who)}/signature.png`;
+    await db.query("insert into storage.objects (bucket_id, name, metadata) values ('staff-signatures', $1, $2::jsonb)", [path, JSON.stringify({ mimetype: "image/png", size: sigBuf.length, base64: sigBuf.toString("base64") })]);
+    await db.query("insert into staff_signatures (staff_id, storage_path) values ($1,$2)", [id("staff:" + who), path]);
+  }
+  const recOf = async n => (await db.query("select id from renewal_records where scholar_id_number = $1 order by created_at desc limit 1", [sidNum(n)])).rows[0].id;
+  for (const s of SCHOLARS.filter(x => x.renewal?.consultDone)) {
+    const rec = await recOf(s.n);
+    await db.query("update renewal_records set consultation_done_at = now() - interval '2 days' where id = $1", [rec]);
+    await db.query("select public._renewal_recheck($1)", [rec]);
+  }
+  for (const s of SCHOLARS.filter(x => x.renewal?.endorsed)) { const rec = await recOf(s.n); await as(id("staff:demo.evaluator"), async tx => tx.query("select public.renewal_endorse($1, 'Study plan approved and consultation done.')", [rec])); }
+  for (const s of SCHOLARS.filter(x => x.renewal?.reconsidered)) {
+    const rec = await recOf(s.n);
+    await as(id("staff:demo.divhead"), async tx => tx.query("select public.renewal_division_head_decide($1, 'reconsidered', $2, '', 'Given one more chance.')", [rec, `${id("staff:demo.divhead")}/signature.png`]));
+  }
+
   // The blank study plan form, as the office would add it in Forms Management (the Renewal tile links to it).
   const formId = id("form:study-plan");
   await db.query("insert into form_materials (id, title, kind, url, description, file_name) values ($1, 'Study Plan Form', 'pdf', '', 'Fill this in and upload it with your renewal.', 'study-plan-form.pdf')", [formId]);
