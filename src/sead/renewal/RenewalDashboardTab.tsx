@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { CalendarClock, FileSpreadsheet, Loader2 } from "lucide-react";
+import { CalendarClock, ChevronDown, FileSpreadsheet, Loader2 } from "lucide-react";
 import { formatDay } from "@/lib/renewal";
-import { lastDays, percentOf, percentText, stageGroupCounts, type DashboardData } from "@/lib/renewalReport";
+import { FILTER_GROUPS, NO_FILTER, describeFilter, isFiltered, lastDays, percentOf, percentText, stageGroupCounts, type DashboardData, type ExportFilter } from "@/lib/renewalReport";
 import { downloadRenewalExcel, fetchRenewalDashboard } from "../renewalReportApi";
 
 /** One number with its words (the words matter as much as the number: nothing relies on colour alone). */
@@ -37,6 +37,24 @@ function Bar({ label, count, max, tone = "bg-[#062444]" }: { label: string; coun
   );
 }
 
+/** A group of tick boxes: nothing ticked means "all". */
+function Choices({ legend, options, picked, onChange }: { legend: string; options: { key: string; label: string }[]; picked: string[]; onChange: (next: string[]) => void }) {
+  if (options.length === 0) return null;
+  return (
+    <fieldset className="min-w-0">
+      <legend className="mb-1 text-[14px] font-bold text-[#062444]">{legend}</legend>
+      <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
+        {options.map(o => (
+          <label key={o.key} className="flex items-start gap-2 text-[14px] text-slate-800">
+            <input type="checkbox" className="mt-1" checked={picked.includes(o.key)} onChange={e => onChange(e.target.checked ? [...picked, o.key] : picked.filter(k => k !== o.key))} />
+            <span>{o.label}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
 /**
  * "Dashboard" tab of Scholar Renewal: how the selected term is going, in numbers the evaluator and the Division Head can read at a glance, and the
  * Excel export of the whole term (summary, every application, who has not applied, by school, INC, consultations). The database makes every number.
@@ -46,6 +64,8 @@ export function RenewalDashboardTab({ schoolYear, term, refreshKey }: { schoolYe
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [filter, setFilter] = useState<ExportFilter>(NO_FILTER);
+  useEffect(() => { setFilter(NO_FILTER); }, [schoolYear, term]);
 
   const load = useCallback(async () => {
     const r = await fetchRenewalDashboard(schoolYear, term);
@@ -56,9 +76,9 @@ export function RenewalDashboardTab({ schoolYear, term, refreshKey }: { schoolYe
   async function exportExcel() {
     if (!data) return;
     setBusy(true); setMessage(""); setError("");
-    const r = await downloadRenewalExcel(schoolYear, term, data);
+    const r = await downloadRenewalExcel(schoolYear, term, data, filter);
     setBusy(false);
-    if (r.ok) setMessage(`Excel file downloaded (${r.rows} scholars). This export was recorded in the export log.`); else setError(r.error);
+    if (r.ok) setMessage(`Excel file downloaded (${r.rows} scholar${r.rows === 1 ? "" : "s"}; ${describeFilter(filter)}). This export was recorded in the export log.`); else setError(r.error);
   }
 
   if (error && !data) return <p role="alert" className="text-[14px] text-red-700">Couldn't load the dashboard: {error}</p>;
@@ -84,9 +104,22 @@ export function RenewalDashboardTab({ schoolYear, term, refreshKey }: { schoolYe
         </div>
         <button type="button" onClick={() => void exportExcel()} disabled={busy}
           className="inline-flex items-center gap-2 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-[14px] font-bold text-green-800 hover:bg-green-100 disabled:opacity-60">
-          {busy ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <FileSpreadsheet size={15} aria-hidden="true" />} Download Excel
+          {busy ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <FileSpreadsheet size={15} aria-hidden="true" />} Download Excel{isFiltered(filter) ? " (filtered)" : ""}
         </button>
       </div>
+      <details className="rounded-xl border border-[#e6ecf5] bg-white">
+        <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-[14px] font-bold text-[#062444]"><ChevronDown size={15} aria-hidden="true" /> Choose what goes into the Excel file <span className="font-normal text-slate-700">— {describeFilter(filter)}</span></summary>
+        <div className="space-y-3 border-t border-[#e6ecf5] px-4 py-3">
+          <p className="text-[14px] text-slate-700">Tick what you want. Nothing ticked means everyone. Only the chosen scholars leave the database, and the export log records the filter.</p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Choices legend="School" options={data.filterOptions.schools.map(x => ({ key: x, label: x }))} picked={filter.schools} onChange={schools => setFilter(f => ({ ...f, schools }))} />
+            <Choices legend="Year level" options={data.filterOptions.yearLevels.map(x => ({ key: x, label: x }))} picked={filter.yearLevels} onChange={yearLevels => setFilter(f => ({ ...f, yearLevels }))} />
+            <Choices legend="Program" options={data.filterOptions.programs.map(x => ({ key: x, label: x }))} picked={filter.programs} onChange={programs => setFilter(f => ({ ...f, programs }))} />
+            <Choices legend="Status" options={FILTER_GROUPS} picked={filter.groups} onChange={groups => setFilter(f => ({ ...f, groups }))} />
+          </div>
+          {isFiltered(filter) && <button type="button" onClick={() => setFilter(NO_FILTER)} className="text-[14px] font-semibold text-[#00709f] hover:underline">Clear the choices</button>}
+        </div>
+      </details>
       {message && <p role="status" className="text-[14px] font-semibold text-green-800">{message}</p>}
       {error && <p role="alert" className="text-[14px] text-red-700">{error}</p>}
 

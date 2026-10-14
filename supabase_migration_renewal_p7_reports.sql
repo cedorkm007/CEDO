@@ -8,7 +8,9 @@
 --   renewal_export_data(school_year, term) the rows behind the Excel file (applications, not applied, INC subjects, consultations).
 --                                          Every export is written to renewal_export_log (who, when, which term, how many rows),
 --                                          because the file contains scholars' names and grades.
--- Who may call them: the evaluator, consultation staff and the Division Head (the same people who can read renewals).
+-- The export can be FILTERED before it is made (by school, year level, program and status); only the chosen rows leave the database, and the
+-- export log says which filter was used.
+-- Who may call them: the evaluator, consultation staff, the Division Head, and the heads of SEAD (a SEAD division admin, or a super admin).
 -- ─────────────────────────────────────────────────────────────
 
 create table if not exists public.renewal_export_log (
@@ -21,7 +23,22 @@ create table if not exists public.renewal_export_log (
   row_count   integer not null default 0,
   at          timestamptz not null default now()
 );
+alter table public.renewal_export_log add column if not exists filter_text text not null default '';
 alter table public.renewal_export_log enable row level security;
+
+-- Who may read the dashboard and make the Excel file.
+create or replace function public.can_view_renewal_reports()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.can_view_renewals() or public.has_staff_tag('sead_division_head')
+    or exists (select 1 from public.users u where u.id = auth.uid() and (u.role = 'super_admin' or (u.role = 'division_admin' and u.division = 'SEAD')));
+$$;
+revoke all on function public.can_view_renewal_reports() from public, anon;
+grant execute on function public.can_view_renewal_reports() to authenticated;
 drop policy if exists "evaluator reads export log" on public.renewal_export_log;
 create policy "evaluator reads export log" on public.renewal_export_log for select using (public.is_renewal_evaluator());
 -- No write policy: rows are written by renewal_export_data().
@@ -38,7 +55,7 @@ declare
   v_win public.renewal_windows%rowtype;
   v_res jsonb;
 begin
-  if not (public.can_view_renewals() or public.has_staff_tag('sead_division_head')) then raise exception 'Not authorized to view renewal reports.'; end if;
+  if not public.can_view_renewal_reports() then raise exception 'Not authorized to view renewal reports.'; end if;
   select * into v_win from public.renewal_windows w where w.school_year = p_school_year and w.term = p_term;
 
   with rec as (
@@ -68,6 +85,12 @@ begin
     'window', case when v_win.id is null then null else jsonb_build_object('opens_on', v_win.opens_on, 'closes_on', v_win.closes_on, 'late_allowed', v_win.late_allowed,
         'days_left', greatest(v_win.closes_on - v_today, 0), 'is_open', v_today between v_win.opens_on and v_win.closes_on) end,
     'generated_at', now(),
+    'filter_options', jsonb_build_object(
+      'schools', coalesce((select jsonb_agg(distinct x.school_name order by x.school_name) from (select school_name from rec union all select school_name from eligible) x where x.school_name is not null), '[]'::jsonb),
+      'year_levels', coalesce((select jsonb_agg(distinct y order by y) from (select coalesce(r.confirmed_year_level, s.year_level) as y from public.renewal_records r join public.scholars s on s.scholar_id_number = r.scholar_id_number where r.school_year = p_school_year and r.term = p_term
+          union all select s.year_level from public.scholars s where s.status not in ('Removed', 'On leave')) q where y is not null and y <> ''), '[]'::jsonb),
+      'programs', coalesce((select jsonb_agg(distinct p order by p) from (select coalesce(r.confirmed_program, s.course) as p from public.renewal_records r join public.scholars s on s.scholar_id_number = r.scholar_id_number where r.school_year = p_school_year and r.term = p_term
+          union all select s.course from public.scholars s where s.status not in ('Removed', 'On leave')) q where p is not null and p <> ''), '[]'::jsonb)),
     'totals', jsonb_build_object(
       'can_renew', (select count(*) from rec where stage <> 'not_required') + (select count(*) from eligible),
       'applied', (select count(*) from rec where stage <> 'not_required'),
@@ -130,7 +153,10 @@ revoke all on function public.renewal_dashboard(text, text) from public, anon;
 grant execute on function public.renewal_dashboard(text, text) to authenticated;
 
 -- The rows behind the Excel file. Records who exported what (the file holds names and grades).
-create or replace function public.renewal_export_data(p_school_year text, p_term text)
+drop function if exists public.renewal_export_data(text, text);
+-- p_schools / p_year_levels / p_programs: only these (null = all). p_stages: only records in these stages; the word 'not_applied' adds the scholars who
+-- have not applied (they have no stage). Null = everything.
+create or replace function public.renewal_export_data(p_school_year text, p_term text, p_schools text[] default null, p_year_levels text[] default null, p_programs text[] default null, p_stages text[] default null)
 returns jsonb
 language plpgsql
 security definer
@@ -142,8 +168,14 @@ declare
   v_inc jsonb;
   v_cons jsonb;
   v_n integer;
+  v_filter text;
 begin
-  if not (public.can_view_renewals() or public.has_staff_tag('sead_division_head')) then raise exception 'Not authorized to export renewal reports.'; end if;
+  if not public.can_view_renewal_reports() then raise exception 'Not authorized to export renewal reports.'; end if;
+  p_schools := nullif(p_schools, '{}'); p_year_levels := nullif(p_year_levels, '{}'); p_programs := nullif(p_programs, '{}'); p_stages := nullif(p_stages, '{}');
+  v_filter := concat_ws(' · ', case when p_schools is not null then 'School: ' || array_to_string(p_schools, ', ') end,
+    case when p_year_levels is not null then 'Year level: ' || array_to_string(p_year_levels, ', ') end,
+    case when p_programs is not null then 'Program: ' || array_to_string(p_programs, ', ') end,
+    case when p_stages is not null then 'Status: ' || array_to_string(p_stages, ', ') end);
 
   select coalesce(jsonb_agg(jsonb_build_object(
       'scholar_id_number', s.scholar_id_number, 'name', btrim(s.last_name || ', ' || s.first_name || ' ' || coalesce(s.middle_name, '')),
@@ -163,13 +195,17 @@ begin
     order by s.last_name, s.first_name), '[]'::jsonb)
   into v_apps
   from public.renewal_records r join public.scholars s on s.scholar_id_number = r.scholar_id_number
-  where r.school_year = p_school_year and r.term = p_term;
+  where r.school_year = p_school_year and r.term = p_term
+    and (p_schools is null or s.school = any (p_schools)) and (p_year_levels is null or coalesce(r.confirmed_year_level, s.year_level) = any (p_year_levels))
+    and (p_programs is null or coalesce(r.confirmed_program, s.course) = any (p_programs)) and (p_stages is null or r.stage = any (p_stages));
 
   select coalesce(jsonb_agg(jsonb_build_object('scholar_id_number', s.scholar_id_number, 'name', btrim(s.last_name || ', ' || s.first_name || ' ' || coalesce(s.middle_name, '')),
       'school', s.school, 'program', s.course, 'year_level', s.year_level, 'scholar_status', s.status) order by s.last_name, s.first_name), '[]'::jsonb)
   into v_not
   from public.scholars s
   where s.status not in ('Removed', 'On leave')
+    and (p_schools is null or s.school = any (p_schools)) and (p_year_levels is null or s.year_level = any (p_year_levels)) and (p_programs is null or s.course = any (p_programs))
+    and (p_stages is null or 'not_applied' = any (p_stages))
     and not exists (select 1 from public.renewal_records r where r.scholar_id_number = s.scholar_id_number and r.school_year = p_school_year and r.term = p_term);
 
   select coalesce(jsonb_agg(jsonb_build_object('scholar_id_number', i.scholar_id_number, 'name', btrim(s.last_name || ', ' || s.first_name), 'school', s.school,
@@ -178,23 +214,27 @@ begin
       'decision', i.decision, 'decision_reason', i.decision_reason) order by i.deadline nulls last, s.last_name), '[]'::jsonb)
   into v_inc
   from public.renewal_inc_items i join public.renewal_records r on r.id = i.record_id join public.scholars s on s.scholar_id_number = i.scholar_id_number
-  where r.school_year = p_school_year and r.term = p_term;
+  where r.school_year = p_school_year and r.term = p_term
+    and (p_schools is null or s.school = any (p_schools)) and (p_year_levels is null or coalesce(r.confirmed_year_level, s.year_level) = any (p_year_levels))
+    and (p_programs is null or coalesce(r.confirmed_program, s.course) = any (p_programs)) and (p_stages is null or r.stage = any (p_stages));
 
   select coalesce(jsonb_agg(jsonb_build_object('scholar_id_number', x.scholar_id_number, 'name', btrim(s.last_name || ', ' || s.first_name), 'starts_at', x.starts_at, 'state', x.state,
       'staff', public._staff_display_name(x.staff_id)) order by x.starts_at), '[]'::jsonb)
   into v_cons
   from public.counseling_slots x join public.renewal_records r on r.id = x.record_id join public.scholars s on s.scholar_id_number = x.scholar_id_number
-  where r.school_year = p_school_year and r.term = p_term and x.state in ('booked', 'attended', 'no_show');
+  where r.school_year = p_school_year and r.term = p_term and x.state in ('booked', 'attended', 'no_show')
+    and (p_schools is null or s.school = any (p_schools)) and (p_year_levels is null or coalesce(r.confirmed_year_level, s.year_level) = any (p_year_levels))
+    and (p_programs is null or coalesce(r.confirmed_program, s.course) = any (p_programs)) and (p_stages is null or r.stage = any (p_stages));
 
   v_n := jsonb_array_length(v_apps) + jsonb_array_length(v_not);
-  insert into public.renewal_export_log (exported_by, by_label, school_year, term, row_count)
-  values ((select u.id from public.users u where u.id = auth.uid()), public._actor_name(), p_school_year, p_term, v_n);
+  insert into public.renewal_export_log (exported_by, by_label, school_year, term, row_count, filter_text)
+  values ((select u.id from public.users u where u.id = auth.uid()), public._actor_name(), p_school_year, p_term, v_n, coalesce(v_filter, ''));
 
-  return jsonb_build_object('applications', v_apps, 'not_applied', v_not, 'inc', v_inc, 'consultations', v_cons, 'exported_at', now());
+  return jsonb_build_object('applications', v_apps, 'not_applied', v_not, 'inc', v_inc, 'consultations', v_cons, 'exported_at', now(), 'filter', coalesce(v_filter, ''));
 end;
 $$;
-revoke all on function public.renewal_export_data(text, text) from public, anon;
-grant execute on function public.renewal_export_data(text, text) to authenticated;
+revoke all on function public.renewal_export_data(text, text, text[], text[], text[], text[]) from public, anon;
+grant execute on function public.renewal_export_data(text, text, text[], text[], text[], text[]) to authenticated;
 
 notify pgrst, 'reload schema';
 

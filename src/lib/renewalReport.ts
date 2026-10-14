@@ -29,6 +29,8 @@ export interface DashboardData {
   consultations: { required: number; done: number; bookedUpcoming: number; attended: number; noShows: number; needBooking: number };
   documents: { waitingReview: number; approved: number; returned: number };
   divisionHead: { waiting: number; sentBack: number; approvedProbationary: number; reconsidered: number; removed: number };
+  /** What the Excel export can be narrowed to (the schools, year levels and programs that exist). */
+  filterOptions: { schools: string[]; yearLevels: string[]; programs: string[] };
 }
 
 /** The database's answer, in the shape the screen and the Excel file use. */
@@ -53,7 +55,38 @@ export function parseDashboard(raw: unknown): DashboardData {
     consultations: { required: n(c.required), done: n(c.done), bookedUpcoming: n(c.booked_upcoming), attended: n(c.attended), noShows: n(c.no_shows), needBooking: n(c.need_booking) },
     documents: { waitingReview: n(doc.waiting_review), approved: n(doc.approved), returned: n(doc.returned) },
     divisionHead: { waiting: n(dh.waiting), sentBack: n(dh.sent_back), approvedProbationary: n(dh.approved_probationary), reconsidered: n(dh.reconsidered), removed: n(dh.removed) },
+    filterOptions: (() => {
+      const o = (d.filter_options ?? {}) as Row;
+      const list = (v: unknown) => ((v ?? []) as unknown[]).map(x => s(x)).filter(x => x !== "");
+      return { schools: list(o.schools), yearLevels: list(o.year_levels), programs: list(o.programs) };
+    })(),
   };
+}
+
+// ── Narrowing the Excel export ──────────────────────────────
+/** What the person ticked before pressing "Download Excel". An empty list means "all". `groups` are the board's group keys plus "not_applied". */
+export interface ExportFilter { schools: string[]; yearLevels: string[]; programs: string[]; groups: string[] }
+export const NO_FILTER: ExportFilter = { schools: [], yearLevels: [], programs: [], groups: [] };
+export const NOT_APPLIED_GROUP = { key: "not_applied", label: "Not applied yet" };
+export const isFiltered = (f: ExportFilter): boolean => f.schools.length + f.yearLevels.length + f.programs.length + f.groups.length > 0;
+
+/** The status groups a person can tick: the board's groups (without the empty ones) and "Not applied yet". */
+export const FILTER_GROUPS: { key: string; label: string }[] = [...BOARD_GROUPS.map(g => ({ key: g.key, label: g.label })), NOT_APPLIED_GROUP];
+
+/** The arguments of renewal_export_data for a filter (null = no narrowing on that field). */
+export function exportFilterArgs(f: ExportFilter): { p_schools: string[] | null; p_year_levels: string[] | null; p_programs: string[] | null; p_stages: string[] | null } {
+  const stages = f.groups.flatMap(key => key === NOT_APPLIED_GROUP.key ? ["not_applied"] : [...(BOARD_GROUPS.find(g => g.key === key)?.stages ?? [])]);
+  const orNull = (a: string[]) => (a.length ? a : null);
+  return { p_schools: orNull(f.schools), p_year_levels: orNull(f.yearLevels), p_programs: orNull(f.programs), p_stages: orNull(stages) };
+}
+
+/** One line saying what the file was narrowed to ("All scholars" when nothing was ticked). */
+export function describeFilter(f: ExportFilter): string {
+  const parts = [
+    f.schools.length ? `School: ${f.schools.join(", ")}` : "", f.yearLevels.length ? `Year level: ${f.yearLevels.join(", ")}` : "", f.programs.length ? `Program: ${f.programs.join(", ")}` : "",
+    f.groups.length ? `Status: ${f.groups.map(k => FILTER_GROUPS.find(g => g.key === k)?.label ?? k).join(", ")}` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "All scholars";
 }
 
 /** The stages grouped the way the evaluator's board groups them (one stage in one group), with how many applications sit in each group. */
@@ -130,17 +163,20 @@ export function safeText(value: unknown): string {
   return s(value);
 }
 
-export function exportFileName(termLabel: string, at = new Date()): string {
+export function exportFileName(termLabel: string, at = new Date(), filtered = false): string {
   const base = termLabel.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "Renewal";
   const day = new Date(at.getTime() + 8 * 3600000).toISOString().slice(0, 10);
-  return `Scholar-Renewal-${base}-${day}.xlsx`;
+  return `Scholar-Renewal-${base}${filtered ? "-filtered" : ""}-${day}.xlsx`;
 }
 
 /** The sheets of the workbook: Summary, Applications, Not applied, By school, INC, Consultations. */
-export function buildReportSheets(dash: DashboardData, data: ExportData): ReportSheet[] {
+export function buildReportSheets(dash: DashboardData, data: ExportData, filter: ExportFilter = NO_FILTER): ReportSheet[] {
   const t = dash.totals;
   const summary: ReportCell[][] = [
     ["Renewal term", dash.termLabel],
+    ["This file contains", describeFilter(filter)],
+    ["Scholars in this file", data.applications.length + data.notApplied.length],
+    ["The numbers below are for the whole term, whatever the filter", ""],
     ["Window opens", dash.window?.opensOn ?? ""], ["Window closes", dash.window?.closesOn ?? ""],
     ["Report made (Philippine time)", manilaDateTime(data.exportedAt)],
     ["", ""],
@@ -192,7 +228,7 @@ export function buildReportSheets(dash: DashboardData, data: ExportData): Report
   const bySchool: ReportSheet = {
     name: "By school",
     headers: ["School", "Applied", "Renewed", "Removed", "Still in progress", "Not applied yet", "Share applied"],
-    rows: dash.bySchool.map((x): ReportCell[] => [safeText(x.school), x.applied, x.renewed, x.removed, x.pending, x.notApplied, percentText(x.applied, x.applied + x.notApplied)]),
+    rows: dash.bySchool.filter(x => filter.schools.length === 0 || filter.schools.includes(x.school)).map((x): ReportCell[] => [safeText(x.school), x.applied, x.renewed, x.removed, x.pending, x.notApplied, percentText(x.applied, x.applied + x.notApplied)]),
   };
   const inc: ReportSheet = {
     name: "INC",

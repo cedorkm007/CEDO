@@ -5,7 +5,7 @@
 // .xlsx writer (loaded only when someone presses the button).
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
-import { buildReportSheets, exportFileName, parseDashboard, parseExportData, type DashboardData } from "@/lib/renewalReport";
+import { buildReportSheets, exportFileName, exportFilterArgs, isFiltered, parseDashboard, parseExportData, type DashboardData, type ExportFilter } from "@/lib/renewalReport";
 
 export async function fetchRenewalDashboard(schoolYear: string, term: string): Promise<{ ok: true; data: DashboardData } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("renewal_dashboard", { p_school_year: schoolYear, p_term: term });
@@ -14,16 +14,16 @@ export async function fetchRenewalDashboard(schoolYear: string, term: string): P
 }
 
 /** Builds the Excel file for a term and downloads it. */
-export async function downloadRenewalExcel(schoolYear: string, term: string, dash: DashboardData): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
-  const { data, error } = await supabase.rpc("renewal_export_data", { p_school_year: schoolYear, p_term: term });
+export async function downloadRenewalExcel(schoolYear: string, term: string, dash: DashboardData, filter: ExportFilter): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("renewal_export_data", { p_school_year: schoolYear, p_term: term, ...exportFilterArgs(filter) });
   if (error || !data) return { ok: false, error: error?.message ?? "Couldn't prepare the export." };
   const parsed = parseExportData(data);
-  const sheets = buildReportSheets(dash, parsed);
+  const sheets = buildReportSheets(dash, parsed, filter);
   const { buildXlsxBytes, XLSX_MIME } = await import("@/mysurveys/results/xlsxWriter");
   const bytes = await buildXlsxBytes(sheets);
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: XLSX_MIME }));
   const a = document.createElement("a");
-  a.href = url; a.download = exportFileName(dash.termLabel);
+  a.href = url; a.download = exportFileName(dash.termLabel, new Date(), isFiltered(filter));
   document.body.appendChild(a); a.click(); a.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
   return { ok: true, rows: parsed.applications.length + parsed.notApplied.length };

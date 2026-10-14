@@ -40,6 +40,7 @@ const STAFF = [
   { username: "demo.counselor", first: "TEST", last: "Counselor", role: "staff", sead: true, tags: ["scholar_counseling"], label: "Scholar counselor" },
   { username: "demo.evaluator", first: "TEST", last: "Renewal Evaluator", role: "staff", sead: true, tags: ["scholar_renewal_evaluator"], label: "Scholar Renewal Evaluator" },
   { username: "demo.divhead", first: "TEST", last: "Division Head", role: "staff", sead: true, tags: ["sead_division_head"], label: "Division Head" },
+  { username: "demo.seadhead", first: "TEST", last: "SEAD Head", role: "division_admin", sead: true, tags: [], label: "Head of SEAD (Scholar Renewal Dashboard and Excel only)" },
   { username: "it.admin1", first: "TEST", last: "IT Admin", role: "staff", sead: false, tags: [], label: "IT admin" },
 ];
 

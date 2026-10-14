@@ -24,7 +24,7 @@ export function ScholarRenewalPage({ canAct = true, isEvaluator = true, isDivisi
   const [windows, setWindows] = useState<RenewalWindowRow[] | null>(null);
   const [error, setError] = useState("");
   const [windowId, setWindowId] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>(isEvaluator ? "applications" : "divisionHead");
+  const [tab, setTab] = useState<Tab>(isEvaluator ? "applications" : isDivisionHead ? "divisionHead" : "dashboard");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -54,13 +54,14 @@ export function ScholarRenewalPage({ canAct = true, isEvaluator = true, isDivisi
     { key: "divisionHead", label: "Division Head", icon: <ShieldCheck size={14} aria-hidden="true" /> },
     { key: "windows", label: "Windows", icon: <CalendarRange size={14} aria-hidden="true" />, evaluatorOnly: true },
   ];
-  const TABS = ALL_TABS.filter(t => isEvaluator || !t.evaluatorOnly);
+  // The heads of SEAD (neither evaluator nor Division Head) see only the Dashboard; the Division Head tab is for the Division Head and the evaluator.
+  const TABS = ALL_TABS.filter(t => (isEvaluator || !t.evaluatorOnly) && (t.key !== "divisionHead" || isEvaluator || isDivisionHead));
   const termBarNeeded = tab !== "divisionHead";   // the dashboard and the lists work on the chosen term
 
   return (
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Scholar Renewal</h1>
-      <p className="text-sm text-slate-700 mb-4">{isEvaluator ? "Review renewal applications, accept late ones, track INC subjects, send cases to the Division Head, and confirm every renewal." : "The renewal cases that wait for your decision, and how each term is going."}</p>
+      <p className="text-sm text-slate-700 mb-4">{isEvaluator ? "Review renewal applications, accept late ones, track INC subjects, send cases to the Division Head, and confirm every renewal." : isDivisionHead ? "The renewal cases that wait for your decision, and how each term is going." : "How each renewal term is going, and the Excel report."}</p>
       {error && <p role="alert" className="mb-3 text-[14px] text-red-700">Couldn't load the renewal windows: {error}</p>}
 
       {detailId ? (

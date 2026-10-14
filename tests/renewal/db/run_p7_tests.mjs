@@ -16,7 +16,7 @@ await seedDb(db);
 const num = n => `TEST-${String(n).padStart(4, "0")}`;
 const scholarUid = n => seedId(`scholar:${n}`);
 const staffUid = name => seedId(`staff:${name}`);
-const EVAL = staffUid("demo.evaluator"), COUNSELOR = staffUid("demo.counselor"), SEAD = staffUid("demo.sead"), DH = staffUid("demo.divhead"), ADMIN = staffUid("demo.admin");
+const EVAL = staffUid("demo.evaluator"), COUNSELOR = staffUid("demo.counselor"), SEAD = staffUid("demo.sead"), DH = staffUid("demo.divhead"), ADMIN = staffUid("demo.admin"), SEADHEAD = staffUid("demo.seadhead");
 const SY = "2026-2027", TERM = "1st Semester";
 
 async function as(uid, fn, role = "authenticated") {
@@ -33,6 +33,14 @@ const dash = async (uid = EVAL, sy = SY, term = TERM) => (await rpc(uid, "select
 const count = async (sql, params = []) => Number((await q(sql, params))[0].n);
 
 console.log("\nWho can read the reports");
+check("the heads of SEAD (a SEAD division admin) and a super admin can read the dashboard and export, without any renewal tag", (await dash(SEADHEAD)).totals.applied > 10 && (await dash(ADMIN)).totals.applied > 10
+  && (await q("select 1 from staff_account_tags where staff_id = $1", [SEADHEAD])).length === 0 && (await rpc(SEADHEAD, "select public.renewal_export_data($1, $2) e", [SY, TERM]))[0].e.applications.length > 10);
+check("a division admin of ANOTHER division cannot", await (async () => {
+  await q("update users set division = 'LITM' where id = $1", [SEADHEAD]);
+  const refused = await fails(SEADHEAD, "select public.renewal_dashboard($1, $2)", [SY, TERM], /Not authorized/);
+  await q("update users set division = 'SEAD' where id = $1", [SEADHEAD]);
+  return refused;
+})());
 check("the evaluator, the consultation staff and the Division Head can", (await dash(EVAL)).term_label === "1st Semester 2026-2027" && (await dash(COUNSELOR)).totals !== undefined && (await dash(DH)).totals !== undefined);
 check("scholars, ordinary SEAD staff and visitors cannot (dashboard or export)", await fails(scholarUid(1), "select public.renewal_dashboard($1, $2)", [SY, TERM], /Not authorized/) && await fails(SEAD, "select public.renewal_dashboard($1, $2)", [SY, TERM], /Not authorized/)
   && await fails(scholarUid(1), "select public.renewal_export_data($1, $2)", [SY, TERM], /Not authorized/) && await fails(SEAD, "select public.renewal_export_data($1, $2)", [SY, TERM], /Not authorized/)
@@ -90,6 +98,7 @@ check("a term with no records and no window gives zeros and no error", await (as
 })());
 
 console.log("\nThe export rows and the export log");
+await q("delete from renewal_export_log");      // count from here (the access checks above exported too)
 const ex = (await rpc(EVAL, "select public.renewal_export_data($1, $2) e", [SY, TERM]))[0].e;
 const nowRecs = await q("select * from renewal_records where school_year = $1 and term = $2", [SY, TERM]);
 check("one row per application and one per scholar who has not applied", ex.applications.length === nowRecs.length && ex.not_applied.length === (await dash()).totals.not_applied);
@@ -114,6 +123,27 @@ check("every export is logged (the Division Head's too); the evaluator can read 
   && (await as(COUNSELOR, async tx => (await tx.query("select count(*)::int n from public.renewal_export_log")).rows[0].n)) === 0
   && (await as(scholarUid(1), async tx => (await tx.query("select count(*)::int n from public.renewal_export_log")).rows[0].n)) === 0);
 check("the log cannot be changed by signed-in users", await (async () => { try { await rpc(EVAL, "delete from public.renewal_export_log"); } catch { /* refused */ } try { await rpc(EVAL, "update public.renewal_export_log set row_count = 0"); } catch { /* refused */ } return (await q("select count(*)::int n from renewal_export_log where row_count > 0"))[0].n === 2; })());
+
+console.log("\nFiltering before the export");
+const opts = (await dash()).filter_options;
+check("the dashboard lists what can be filtered (schools, year levels, programs)", opts.schools.length >= 4 && opts.schools.every(x => typeof x === "string") && opts.year_levels.includes("2nd Year") && opts.programs.includes("BS Test Studies"));
+const lowerName = opts.schools.find(x => /Lower-Is-Better/.test(x)), higherName = opts.schools.find(x => /Higher-Is-Better/.test(x));
+const exLower = (await rpc(EVAL, "select public.renewal_export_data($1, $2, $3::text[]) e", [SY, TERM, [lowerName]]))[0].e;
+const lowerApplied = await count("select count(*) n from renewal_records r join scholars s on s.scholar_id_number = r.scholar_id_number where r.school_year = $1 and r.term = $2 and s.school = $3", [SY, TERM, lowerName]);
+check("one school only: just its applications, its scholars who have not applied, its INC and consultations", exLower.applications.length === lowerApplied && exLower.applications.every(r => r.school === lowerName) && exLower.not_applied.every(r => r.school === lowerName)
+  && exLower.inc.every(r => r.school === lowerName) && exLower.consultations.length > 0 && exLower.filter === `School: ${lowerName}`);
+const exHigher = (await rpc(EVAL, "select public.renewal_export_data($1, $2, $3::text[]) e", [SY, TERM, [higherName]]))[0].e;
+check("another school: nobody of the first school is in it", exHigher.applications.every(r => r.school === higherName) && exHigher.not_applied.length >= 2 && exHigher.inc.length === 0 && exHigher.consultations.length === 0);
+const exStage = (await rpc(EVAL, "select public.renewal_export_data($1, $2, null, null, null, $3::text[]) e", [SY, TERM, ["renewed", "removed"]]))[0].e;
+check("by status: only records in those stages, and nobody who has not applied", exStage.applications.length > 0 && exStage.applications.every(r => ["renewed", "removed"].includes(r.stage)) && exStage.not_applied.length === 0);
+const exNa = (await rpc(EVAL, "select public.renewal_export_data($1, $2, null, null, null, $3::text[]) e", [SY, TERM, ["not_applied"]]))[0].e;
+check("'not_applied' as the status gives only the scholars who have not applied", exNa.applications.length === 0 && exNa.not_applied.length === (await dash()).totals.not_applied);
+const exYear = (await rpc(EVAL, "select public.renewal_export_data($1, $2, null, $3::text[], $4::text[]) e", [SY, TERM, ["2nd Year"], ["BS Test Studies"]]))[0].e;
+check("year level and program filters work together; an empty list means everything", exYear.applications.every(r => r.year_level === "2nd Year" && r.program === "BS Test Studies") && (await rpc(EVAL, "select public.renewal_export_data($1, $2, '{}'::text[]) e", [SY, TERM]))[0].e.applications.length === (await q("select count(*)::int n from renewal_records where school_year = $1 and term = $2", [SY, TERM]))[0].n);
+check("a filter that matches nobody gives empty lists, not an error", (await rpc(EVAL, "select public.renewal_export_data($1, $2, $3::text[]) e", [SY, TERM, ["No such school"]]))[0].e.applications.length === 0);
+const flog = await q("select * from renewal_export_log where filter_text <> '' order by at desc limit 1");
+check("the export log says which filter was used and how many rows left the database", flog.length === 1 && flog[0].filter_text === "School: No such school" && flog[0].row_count === 0
+  && (await q("select 1 from renewal_export_log where filter_text like $1 and row_count = $2", [`School: ${lowerName}`, exLower.applications.length + exLower.not_applied.length])).length === 1);
 
 console.log("\nSafety");
 check("the migration can be run twice", await (async () => { try { await db.exec(fs.readFileSync(new URL("../../../supabase_migration_renewal_p7_reports.sql", import.meta.url), "utf8")); return true; } catch (e) { console.log("   ", e.message); return false; } })());

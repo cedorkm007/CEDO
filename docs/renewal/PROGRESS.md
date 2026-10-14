@@ -136,3 +136,8 @@ Tests: Phase 6 database 49.
 - Website: `src/lib/renewalReport.ts` (pure: parse, stage groups, shares, the six sheets), `src/sead/renewalReportApi.ts`, `src/sead/renewal/RenewalDashboardTab.tsx` (Dashboard tab, Download Excel), page tabs by role. Excel built in the browser with the existing `mysurveys/results/xlsxWriter.ts` (lazy-loaded; text stored as text).
 - Tests: website 94, Phase 7 database 25, Phase 6 49, 5: 69, 4: 32, 3: 112, 2: 129, 1 all, grades 99; tsc + build clean; axe audit clean; no sideways scrolling at phone width. Not opened in real Excel.
 - Walkthrough: `Renewal_Phase7_Walkthrough.txt`.
+
+## 2026-10-14 — Owner's Phase 7 answers ("Approved, next phase")
+1. Nothing missing on the dashboard. 2. Excel keeps names; a FILTER is applied before export: `renewal_export_data(year, term, schools, year_levels, programs, stages)` (null = all; stage word `not_applied` adds scholars who have not applied); only chosen rows leave the database; `renewal_export_log.filter_text`; dashboard JSON carries `filter_options`; UI "Choose what goes into the Excel file". 3. The heads of SEAD may export: new `can_view_renewal_reports()` (renewal readers, Division Head, a SEAD division admin or a super admin); they see only the Dashboard tab (`src/lib/renewalAccess.ts` shared by App/Sidebar). Demo account `demo.seadhead`.
+- IMPORTANT correction: `npx tsc --noEmit -p .` checks NOTHING in this repo (tsconfig.json has `files: []`); the real type check is `npx tsc --noEmit -p tsconfig.app.json` (0 errors now, also for Phases 1-7).
+Tests: website 98, Phase 7 database 35.

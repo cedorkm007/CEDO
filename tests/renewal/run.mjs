@@ -311,10 +311,10 @@ test("the Scholar Renewal tool is gated by its own tag, in the same places as th
   const tags = fs.readFileSync(path.join(root, "src/app/staffToolTags.ts"), "utf8");
   assert.match(tags, /key: "scholar_renewal_evaluator"/);
   const app = fs.readFileSync(path.join(root, "src/app/App.tsx"), "utf8");
-  assert.match(app, /case "scholarRenewal": return user\.tags\.includes\("scholar_renewal_evaluator"\)/);
-  assert.match(app, /page==="scholarRenewal" && \(currentUser\.tags\.includes\("scholar_renewal_evaluator"\)/);
+  assert.match(app, /case "scholarRenewal": return canSeeScholarRenewal\(user\)/);
+  assert.match(app, /page==="scholarRenewal" && canSeeScholarRenewal\(currentUser\)/);
   assert.match(app, /"scholarRenewal", "scanningTools"\]/, "PAGE_VALUES");
-  assert.match(fs.readFileSync(path.join(root, "src/app/components/Sidebar.tsx"), "utf8"), /user\.tags\.includes\("scholar_renewal_evaluator"\)/);
+  assert.match(fs.readFileSync(path.join(root, "src/app/components/Sidebar.tsx"), "utf8"), /canSeeScholarRenewal\(user\)/);
 });
 
 
@@ -718,6 +718,51 @@ await testAsync("the Excel file is a real workbook; every text is stored as TEXT
   assert.match(await zip.file("xl/worksheets/sheet2.xml").async("string"), /<pane ySplit="1"/, "header row frozen");
 });
 
+const AC = await bundle("access", "src/lib/renewalAccess.ts");
+test("the Excel export can be narrowed (school, year level, program, status group) and says what it was narrowed to", () => {
+  assert.equal(RP.isFiltered(RP.NO_FILTER), false); assert.equal(RP.describeFilter(RP.NO_FILTER), "All scholars");
+  assert.deepEqual(RP.exportFilterArgs(RP.NO_FILTER), { p_schools: null, p_year_levels: null, p_programs: null, p_stages: null });
+  const f = { schools: ["TEST – Lower"], yearLevels: ["2nd Year"], programs: [], groups: ["dh", "not_applied"] };
+  const a = RP.exportFilterArgs(f);
+  assert.deepEqual(a.p_schools, ["TEST – Lower"]); assert.equal(a.p_programs, null);
+  assert.deepEqual(a.p_stages, [...R.BOARD_GROUPS.find(g => g.key === "dh").stages, "not_applied"]);
+  assert.equal(RP.describeFilter(f), "School: TEST – Lower · Year level: 2nd Year · Status: Division Head decision, Not applied yet");
+  assert.ok(RP.FILTER_GROUPS.some(g => g.key === "not_applied") && R.BOARD_GROUPS.every(g => RP.FILTER_GROUPS.some(x => x.key === g.key)));
+  assert.match(RP.exportFileName("1st Semester 2026-2027", new Date("2026-10-14T01:00:00Z"), true), /-filtered-2026-10-14\.xlsx$/);
+});
+test("a filtered workbook says so, counts only its own scholars, and lists only the chosen schools in 'By school'", () => {
+  const dash = RP.parseDashboard(rawDash);
+  const f = { schools: ["TEST – Lower"], yearLevels: [], programs: [], groups: [] };
+  const sheets = RP.buildReportSheets(dash, RP.parseExportData(rawExport), f);
+  const sum = sheets[0].rows, find = label => sum.find(r => r[0] === label)?.[1];
+  assert.equal(find("This file contains"), "School: TEST – Lower"); assert.equal(find("Scholars in this file"), 3);
+  assert.deepEqual(sheets[3].rows.map(r => r[0]), ["TEST – Lower"]);
+  assert.equal(RP.buildReportSheets(dash, RP.parseExportData(rawExport))[3].rows.length, 2, "unfiltered: every school");
+  assert.deepEqual(dash.filterOptions, { schools: [], yearLevels: [], programs: [] });
+  assert.deepEqual(RP.parseDashboard({ filter_options: { schools: ["A", "", null], year_levels: ["2nd Year"], programs: ["BS X"] } }).filterOptions, { schools: ["A"], yearLevels: ["2nd Year"], programs: ["BS X"] });
+});
+test("who can open Scholar Renewal: the evaluator, the Division Head, and the heads of SEAD (SEAD division admin or super admin) — nobody else", () => {
+  const u = (role, division, tags = []) => ({ role, division, tags });
+  assert.equal(AC.canSeeScholarRenewal(u("staff", "SEAD", ["scholar_renewal_evaluator"])), true);
+  assert.equal(AC.canSeeScholarRenewal(u("staff", "SEAD", ["sead_division_head"])), true);
+  assert.equal(AC.canSeeScholarRenewal(u("division_admin", "SEAD")), true);
+  assert.equal(AC.canSeeScholarRenewal(u("super_admin", "LITM")), true);
+  assert.equal(AC.canSeeScholarRenewal(u("division_admin", "LITM")), false, "an admin of another division");
+  assert.equal(AC.canSeeScholarRenewal(u("staff", "SEAD", ["scholar_counseling"])), false);
+  assert.equal(AC.isSeadHead(u("division_admin", "SEAD")), true); assert.equal(AC.isSeadHead(u("staff", "SEAD")), false);
+});
+test("the SEAD head sees only the Dashboard; the filter boxes are on the dashboard; the database agrees on who may read", () => {
+  const page = fs.readFileSync(path.join(root, "src/sead/ScholarRenewalPage.tsx"), "utf8");
+  assert.match(page, /t\.key !== "divisionHead" \|\| isEvaluator \|\| isDivisionHead/); assert.match(page, /isDivisionHead \? "divisionHead" : "dashboard"/);
+  const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalDashboardTab.tsx"), "utf8");
+  assert.match(tab, /Choose what goes into the Excel file/); assert.match(tab, /<fieldset/);
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p7_reports.sql"), "utf8");
+  assert.match(sql, /u\.role = 'super_admin' or \(u\.role = 'division_admin' and u\.division = 'SEAD'\)/);
+  assert.equal((sql.match(/can_view_renewal_reports\(\)/g) ?? []).length >= 3, true);
+  const sidebar = fs.readFileSync(path.join(root, "src/app/components/Sidebar.tsx"), "utf8");
+  assert.ok(sidebar.includes("canSeeScholarRenewal(user)"));
+});
+
 console.log("Source guards (Phase 7)");
 test("the dashboard screens use readable text; every database function they call exists in the Phase 7 migration; nothing writes a table directly", () => {
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p7_reports.sql"), "utf8");
@@ -817,12 +862,12 @@ test("a renewal-linked referral is decided through the renewal functions, never 
 });
 test("the Division Head can open the Scholar Renewal tool (sidebar, page access and the page itself), seeing only the Division Head tab", () => {
   const app = fs.readFileSync(path.join(root, "src/app/App.tsx"), "utf8");
-  assert.match(app, /case "scholarRenewal": return user\.tags\.includes\("scholar_renewal_evaluator"\) \|\| user\.tags\.includes\("sead_division_head"\)/);
+  assert.match(app, /case "scholarRenewal": return canSeeScholarRenewal\(user\)/);
   assert.match(app, /isEvaluator=\{currentUser\.tags\.includes\("scholar_renewal_evaluator"\)\}/);
-  assert.match(fs.readFileSync(path.join(root, "src/app/components/Sidebar.tsx"), "utf8"), /scholar_renewal_evaluator"\) \|\| user\.tags\.includes\("sead_division_head"\)/);
+  assert.match(fs.readFileSync(path.join(root, "src/lib/renewalAccess.ts"), "utf8"), /tags\.includes\("scholar_renewal_evaluator"\) \|\| u\.tags\.includes\("sead_division_head"\)/);
   const side = fs.readFileSync(path.join(root, "src/app/components/Sidebar.tsx"), "utf8");
   const any = side.slice(side.indexOf("const hasAnySpecificTool"), side.indexOf("return (", side.indexOf("const hasAnySpecificTool")));
-  assert.ok(any.includes('"scholar_renewal_evaluator"') && any.includes('"sead_division_head"'), "someone with ONLY one of these tags must still get the tools group");
+  assert.ok(any.includes("canSeeScholarRenewal(user)"), "someone with ONLY one of these tags (or a SEAD head) must still get the tools group");
   const page = fs.readFileSync(path.join(root, "src/sead/ScholarRenewalPage.tsx"), "utf8");
   assert.match(page, /evaluatorOnly/); assert.match(page, /RenewalDivisionHeadTab/);
 });
