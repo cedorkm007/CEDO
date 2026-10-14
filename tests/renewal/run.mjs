@@ -280,9 +280,9 @@ test("plain next steps for the scholar, in order, for the main cases", () => {
   const inc = R.scholarNextSteps("needs_inc_letter_consultation", ev([{ kind: "inc_letter", label: "INC letter from your dean", satisfied: false }]));
   assert.match(inc[0], /INC letter from your dean/);
   const wait = R.scholarNextSteps("inc_waiting_compliance", ev(), { incDeadlines: [{ subject: "Math", deadline: "2026-10-25" }, { subject: "Art", deadline: null }] });
-  assert.match(wait[0], /Complete your INC in Math by .*2026/); assert.match(wait[1], /Deadline: to be set at consultation/);
+  assert.match(wait[0], /Complete your INC in Math by .*2026/); assert.match(wait[1], /Deadline: to be set at your consultation/);
   assert.match(R.scholarNextSteps("returned", ev(), { evaluatorComment: "Please fix X" })[0], /Please fix X/);
-  assert.match(R.scholarNextSteps("ready_for_confirmation", ev())[0], /Waiting for the evaluator/);
+  assert.match(R.scholarNextSteps("ready_for_confirmation", ev())[0], /Waiting for evaluator confirmation/);
   for (const s of R.RENEWAL_STAGES) assert.ok(R.scholarNextSteps(s, ev()).length >= 1, "no next step for " + s);
 });
 
@@ -356,11 +356,11 @@ test("the staff form builds Manila instants and counts whole 10-minute slots", (
 test("next steps with a booking, without one, after a no-show, and once the consultation is done", () => {
   const ev = { required_documents: [], sdp: { applicable: true, complied: true, missing: null }, grades: { reason: "" } };
   const booked = R.scholarNextSteps("needs_study_plan_consultation", ev, { consultNeeded: true, booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } });
-  assert.match(booked.join(" "), /Come to your face-to-face consultation on Tue, Oct 20 · 9:10 AM with Ms\. Cruz/);
-  assert.match(R.scholarNextSteps("needs_study_plan_consultation", ev, { consultNeeded: true })[0], /Book your face-to-face consultation/);
+  assert.match(booked.join(" "), /Come to your face-to-face consultation on Oct 20, 9:10 AM, with Ms\. Cruz/);
+  assert.match(R.scholarNextSteps("needs_study_plan_consultation", ev, { consultNeeded: true })[0], /Book your consultation/);
   assert.match(R.scholarNextSteps("needs_study_plan_consultation", ev, { consultNeeded: true, noShow: true })[0], /You missed your consultation/);
   const summer = R.scholarNextSteps("summer_requirements", ev, { consultNeeded: true, isSummer: true, booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } });
-  assert.match(summer.join(" "), /Bring the hard copy of your prospectus/);
+  assert.match(summer.join(" "), /Bring your prospectus hard copy to your consultation/);
   const done = R.scholarNextSteps("needs_study_plan_consultation", { ...ev, required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: false }] }, { consultNeeded: false });
   assert.deepEqual(done, ["Upload your study plan.", "Your consultation is done."]);
   assert.match(R.scholarNextSteps("needs_consultation_division_head", ev, { consultNeeded: false })[0], /Division Head will decide/);
@@ -371,11 +371,11 @@ test("a study plan that is not approved yet: the scholar is told to wait, and th
   const plan = approved => [{ kind: "study_plan", label: "Study plan", satisfied: true, approved }];
   const base = { sdp: { applicable: true, complied: true, missing: null }, grades: { reason: "" } };
   const pending = R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: plan(false) }, { consultState: "study_plan_pending" });
-  assert.deepEqual(pending, ["Wait for the evaluator to approve your study plan. Then you can book your face-to-face consultation."]);
+  assert.deepEqual(pending, ["Wait for the evaluator to approve your study plan. Then you can book your consultation."]);
   const missing = R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: false, approved: false }] }, { consultState: "study_plan_missing" });
-  assert.match(missing[0], /Upload your study plan/); assert.match(missing[1], /After the evaluator approves your study plan, you can book/);
+  assert.match(missing[0], /Upload your study plan/); assert.match(missing[1], /After the evaluator approves your study plan, you can book your consultation/);
   const ok = R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: plan(true) }, { consultState: "ok" });
-  assert.match(ok.join(" "), /Book your face-to-face consultation/);
+  assert.match(ok.join(" "), /Book your consultation/);
   const booked = R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: plan(true) }, { consultState: "ok", booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } });
   assert.match(booked.join(" "), /Come to your face-to-face consultation/);
   assert.deepEqual(R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: plan(true) }, { consultState: "not_needed" }), ["Your consultation is done."]);
@@ -386,9 +386,9 @@ test("the INC letter needs approval too: the same waiting messages, worded for t
   assert.equal(R.consultBlockedBy("study_plan_missing"), "study plan");
   assert.equal(R.consultBlockedBy("ok"), null);
   const pend = R.scholarNextSteps("needs_inc_letter_consultation", ev, { consultState: "inc_letter_pending" });
-  assert.equal(pend[0], "Wait for the evaluator to approve your INC letter. Then you can book your face-to-face consultation.");
+  assert.equal(pend[0], "Wait for the evaluator to approve your INC letter. Then you can book your consultation.");
   const missing = R.scholarNextSteps("needs_inc_letter_consultation", { ...ev, required_documents: [{ kind: "inc_letter", label: "INC letter from your dean", satisfied: false }] }, { consultState: "inc_letter_missing" });
-  assert.match(missing.join(" "), /Upload your INC letter from your dean/); assert.match(missing.join(" "), /After the evaluator approves your INC letter, you can book/);
+  assert.match(missing.join(" "), /Upload the INC letter from your dean/); assert.match(missing.join(" "), /After the evaluator approves your INC letter, you can book/);
 });
 test("the website's consultation states are the ones the database returns", () => {
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p3_appointments.sql"), "utf8");
@@ -396,6 +396,137 @@ test("the website's consultation states are the ones the database returns", () =
   assert.ok(sql.includes("v_kind || '_missing'") && sql.includes("v_kind || '_pending'") && sql.includes("'inc_letter'"));
   const api = fs.readFileSync(path.join(root, "src/scholar/renewalApi.ts"), "utf8");
   for (const s of ["study_plan_missing", "study_plan_pending", "not_needed"]) assert.ok(api.includes(s), s);
+});
+
+const SUM = await bundle("summary", "src/scholar/renewalSummary.ts");
+console.log("Tracker, next steps and tile summaries (Phase 4)");
+const win = (record, extra = {}) => ({ window: { id: "w1", schoolYear: "2026-2027", term: "1st Semester", opensOn: "2026-10-01", closesOn: "2026-10-31", lateAllowed: true, note: "" }, state: "open", record,
+  documents: [], history: [], incItems: [], booking: null, consultNeeded: false, consultState: "not_needed", ...extra });
+const rec = (stage, evaluation = {}, extra = {}) => ({ id: "r1", stage, isLate: false, lateReason: null, appliedAt: null, ruleCode: null, ruleText: null, evaluation, scholarNote: "", evaluatorComment: null, result: null, confirmedAt: null, noShowFlag: false, ...extra });
+test("SDP on hold says exactly what is missing, per category, in the scholar's words (scenario 2)", () => {
+  const steps = R.sdpShortfallSteps({ applicable: true, complied: false, missing: "x", community_service: 3, community_volunteerism: 3, formation_program: 2 });
+  assert.deepEqual(steps, ["Complete Formation Program: 1 more credit."]);
+  assert.deepEqual(R.sdpShortfallSteps({ applicable: true, complied: false, missing: "x", community_service: 1, community_volunteerism: 3, formation_program: 0 }), ["Complete Institutional Volunteerism: 2 more credits.", "Complete Formation Program: 3 more credits."]);
+  const full = R.scholarNextSteps("sdp_on_hold", { sdp: { applicable: true, complied: false, missing: "Formation Program: 2 of 3", community_service: 3, community_volunteerism: 3, formation_program: 2 } });
+  assert.equal(full[0], "Complete Formation Program: 1 more credit.");
+  assert.match(full[1], /check again automatically/);
+});
+test("the example sentences from the owner's list, word for word", () => {
+  const ev = (docs) => ({ required_documents: docs, sdp: { applicable: true, complied: true, missing: null } });
+  assert.deepEqual(R.scholarNextSteps("needs_study_plan_consultation", ev([{ kind: "study_plan", label: "Study plan", satisfied: false, approved: false }]), { consultState: "study_plan_missing" }).slice(0, 1), ["Upload your study plan."]);
+  assert.deepEqual(R.scholarNextSteps("needs_inc_letter_consultation", ev([{ kind: "inc_letter", label: "INC letter from your dean", satisfied: false, approved: false }]), { consultState: "inc_letter_missing" }).slice(0, 1), ["Upload the INC letter from your dean."]);
+  assert.deepEqual(R.scholarNextSteps("summer_requirements", ev([{ kind: "prospectus", label: "Prospectus", satisfied: false }]), { consultState: "ok" }).slice(0, 1), ["Upload your prospectus."]);
+  assert.match(R.scholarNextSteps("summer_requirements", ev([{ kind: "prospectus", label: "Prospectus", satisfied: true }]), { consultState: "ok" }).join(" "), /Book your consultation/);
+  assert.match(R.scholarNextSteps("summer_requirements", ev([{ kind: "prospectus", label: "Prospectus", satisfied: true }]), { consultState: "ok", isSummer: true, booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } })[0], /^Bring your prospectus hard copy to your consultation on Oct 20, 9:10 AM/);
+  const now = new Date();
+  const dl = new Date(now.getTime() + 12 * 86400000).toISOString().slice(0, 10);
+  assert.match(R.scholarNextSteps("inc_waiting_compliance", ev([]), { incDeadlines: [{ subject: "Math", deadline: dl }] })[0], /^Complete your INC in Math by .+: (11|12|13) days left\.$/);
+  assert.equal(R.scholarNextSteps("ready_for_confirmation", ev([]))[0], "Waiting for evaluator confirmation.");
+});
+test("the progress tracker for the main cases: where the scholar is, and the steps their case needs", () => {
+  const label = steps => steps.map(s => s.label + ":" + s.state).join(" | ");
+  // 1: all passed -> waiting for the evaluator
+  const p1 = R.renewalProgress("ready_for_confirmation", { required_documents: [], consultation_required: false });
+  assert.equal(label(p1), "Applied:done | SDP and grades checked:done | Evaluator confirmation:current | Renewed:todo");
+  // 2: SDP on hold -> stuck at the check, nothing after it is guessed
+  const p2 = R.renewalProgress("sdp_on_hold", {});
+  assert.equal(p2[1].state, "problem"); assert.equal(p2[1].note, "On hold: SDP"); assert.equal(p2.length, 4);
+  // 4: study plan + consultation: documents is the current step until the plan is uploaded AND approved
+  const ev4 = (approved, satisfied = true, done = false) => ({ required_documents: [{ kind: "study_plan", label: "Study plan", satisfied, approved }], consultation_required: true, consultation_done: done, rule_code: "B" });
+  assert.equal(label(R.renewalProgress("needs_study_plan_consultation", ev4(false, false))), "Applied:done | SDP and grades checked:done | Upload your documents:current | Consultation:todo | Evaluator confirmation:todo | Renewed:todo");
+  const waiting = R.renewalProgress("needs_study_plan_consultation", ev4(false));
+  assert.equal(waiting[2].state, "current"); assert.equal(waiting[2].note, "Waiting for approval");
+  const approved = R.renewalProgress("needs_study_plan_consultation", ev4(true), { hasBooking: false });
+  assert.equal(approved[2].state, "done"); assert.equal(approved[3].state, "current");
+  assert.equal(R.renewalProgress("needs_study_plan_consultation", ev4(true), { hasBooking: true })[3].label, "Consultation booked");
+  assert.equal(R.renewalProgress("ready_to_endorse", ev4(true, true, true)).find(s => s.key === "decision").state, "current");
+  // 6: 2 failed -> the Division Head decides
+  assert.equal(R.renewalProgress("needs_consultation_division_head", { required_documents: [], consultation_required: true, consultation_done: false, rule_code: "C2" }).find(s => s.key === "decision").label, "Division Head decision");
+  // 10 / 11: INC: letter + consultation, then complete the INC
+  const inc = R.renewalProgress("inc_waiting_compliance", { required_documents: [{ kind: "inc_letter", label: "INC", satisfied: true, approved: true }], consultation_required: true, consultation_done: true, open_inc: 1, rule_code: "D" });
+  assert.equal(inc.find(s => s.key === "inc").state, "current"); assert.equal(inc.find(s => s.key === "decision").state, "todo");
+  const incMissingLetter = R.renewalProgress("inc_waiting_compliance", { required_documents: [{ kind: "inc_letter", label: "INC", satisfied: false, approved: false }], consultation_required: true, consultation_done: true, open_inc: 1 });
+  assert.equal(incMissingLetter.find(s => s.key === "inc").state, "current", "the INC deadline is the current step even if a document is still missing");
+  assert.equal(incMissingLetter.filter(s => s.state === "current").length, 1);
+  assert.equal(R.renewalProgress("inc_deadline_passed", { required_documents: [], consultation_required: true, consultation_done: true, open_inc: 1 }).find(s => s.key === "inc").note, "Deadline passed");
+  // 22 / 24: Summer: prospectus + consultation always
+  const sm = R.renewalProgress("summer_requirements", { required_documents: [{ kind: "prospectus", label: "Prospectus", satisfied: false }], consultation_required: true, consultation_done: false, rule_code: "A+S" });
+  assert.equal(label(sm), "Applied:done | SDP and grades checked:done | Upload your documents:current | Consultation:todo | Evaluator confirmation:todo | Renewed:todo");
+  // renewed, returned, late
+  assert.ok(R.renewalProgress("renewed", { required_documents: [] }).every(s => s.state === "done"));
+  assert.equal(R.renewalProgress("returned", {}).find(s => s.key === "fix").state, "problem");
+  assert.equal(R.renewalProgress("late_pending", {})[0].state, "current");
+  assert.equal(R.renewalProgress("late_declined", {}).length, 1);
+  assert.deepEqual(R.renewalProgress("not_required", {}), []);
+  for (const s of R.RENEWAL_STAGES) assert.doesNotThrow(() => R.renewalProgress(s, { required_documents: [], rule_code: "A" }), s);
+});
+test("exactly one step is 'current' or 'problem' while the application is open", () => {
+  for (const s of R.ACTIVE_STAGES) {
+    const steps = R.renewalProgress(s, { required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: false }], consultation_required: true, consultation_done: false, open_inc: 1, rule_code: "B" });
+    assert.equal(steps.filter(x => x.state === "current" || x.state === "problem").length, 1, s + ": " + steps.map(x => x.key + ":" + x.state).join(","));
+  }
+});
+test("the study plan form is found by its title (the office adds it in Forms Management)", () => {
+  for (const ok of ["Study Plan Form", "study-plan", "Scholar STUDY_PLAN template", "StudyPlan"]) assert.equal(R.isStudyPlanFormTitle(ok), true, ok);
+  for (const no of ["Scholarship Handbook", "Plan of study", "Referral Form"]) assert.equal(R.isStudyPlanFormTitle(no), false, no);
+});
+test("the tile chips and the home banner say the most important thing first", () => {
+  const apply = win(null);
+  assert.match(SUM.renewalAttention([apply]).headline, /Renewal for 1st Semester 2026-2027 is open\. Apply by Oct 31, 2026\./);
+  assert.equal(SUM.renewalAttention([apply]).actionNeeded, true);
+  assert.deepEqual(SUM.renewalTileChip([apply]), { text: "Action needed", tone: "action" });
+  const waiting = win(rec("ready_for_confirmation", { required_documents: [] }));
+  assert.equal(SUM.renewalAttention([waiting]).actionNeeded, false);
+  assert.deepEqual(SUM.renewalTileChip([waiting]), { text: "In progress", tone: "waiting" });
+  const needs = win(rec("needs_study_plan_consultation", { required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: false }] }), { consultState: "study_plan_missing", consultNeeded: false });
+  assert.equal(SUM.renewalAttention([waiting, needs]).actionNeeded, true, "an action beats waiting");
+  assert.equal(SUM.renewalAttention([waiting, needs]).headline, "Upload your study plan.");
+  const bookedAndWaiting = win(rec("needs_study_plan_consultation", { required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: true, approved: true }] }), { booking: { slotId: "s", startsAt: "2026-10-20T01:10:00Z", endsAt: "2026-10-20T01:20:00Z", staffName: "Ms. Cruz", canChange: true }, consultState: "ok", consultNeeded: true });
+  assert.equal(SUM.scholarActsNow(bookedAndWaiting), false, "a booked consultation is not something to do right now");
+  assert.equal(SUM.renewalAttention([bookedAndWaiting]).actionNeeded, false);
+  assert.match(SUM.renewalAttention([bookedAndWaiting]).headline, /^Come to your face-to-face consultation on Oct 20, 9:10 AM/);
+  assert.equal(SUM.scholarActsNow(win(rec("needs_study_plan_consultation", { required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: true, approved: true }] }), { consultState: "ok", consultNeeded: true })), true, "approved plan, nothing booked yet: book");
+  assert.equal(SUM.scholarActsNow(win(rec("needs_study_plan_consultation", { required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: true, approved: false }] }), { consultState: "study_plan_pending" })), false, "waiting for approval is not an action");
+  assert.equal(SUM.scholarActsNow(win(rec("inc_waiting_compliance", { required_documents: [] }))), true, "complete your INC");
+  const done = win(rec("renewed", {}));
+  assert.equal(SUM.renewalAttention([done]), null);
+  assert.deepEqual(SUM.renewalTileChip([done]), { text: "Renewed for 1st Semester 2026-2027", tone: "done" });
+  assert.equal(SUM.renewalAttention([]), null);
+  assert.equal(SUM.renewalTileChip([]), null);
+  const booked = win(rec("needs_study_plan_consultation", { required_documents: [] }), { booking: { slotId: "s", startsAt: "2026-10-20T01:10:00Z", endsAt: "2026-10-20T01:20:00Z", staffName: "Ms. Cruz", canChange: true }, consultState: "ok", consultNeeded: true });
+  assert.deepEqual(SUM.consultationTileChip([booked]), { text: "Booked: Oct 20, 9:10 AM", tone: "done" });
+  assert.deepEqual(SUM.consultationTileChip([win(rec("needs_study_plan_consultation", {}), { consultState: "ok", consultNeeded: true })]), { text: "Book your consultation", tone: "action" });
+  assert.deepEqual(SUM.consultationTileChip([win(rec("needs_study_plan_consultation", {}), { consultState: "study_plan_pending" })]), { text: "Waiting for approval", tone: "waiting" });
+  assert.equal(SUM.consultationTileChip([waiting]), null);
+});
+
+console.log("Source guards (Phase 4)");
+const p4files = [
+  "src/scholar/components/dashboard/RenewalProgressBar.tsx", "src/scholar/components/dashboard/ConsultationPanel.tsx", "src/scholar/components/dashboard/ConsultationSection.tsx",
+  "src/scholar/components/dashboard/RenewalHomeBanner.tsx", "src/scholar/components/dashboard/StudyPlanFormLink.tsx", "src/scholar/components/dashboard/RenewalPanel.tsx", "src/scholar/renewalSummary.ts",
+];
+test("the new scholar screens use readable text (13px and up, no pale greys, no pale-blue links) and never rely on colour alone", () => {
+  for (const p of p4files) {
+    const src = fs.readFileSync(path.join(root, p), "utf8");
+    assert.deepEqual([...src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], p);
+    assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(src), false, p);
+  }
+  const bar = fs.readFileSync(path.join(root, p4files[0]), "utf8");
+  assert.ok(bar.includes("You are here") && bar.includes("sr-only") && bar.includes("aria-current"), "the progress bar has words and a screen-reader label");
+});
+test("the Services screen opens a service from the address bar, the Consultation tile is real, and the home banner opens the Renewal tile", () => {
+  const services = fs.readFileSync(path.join(root, "src/scholar/components/dashboard/ServicesPanel.tsx"), "utf8");
+  assert.match(services, /useUrlState<string>\("service"/); assert.match(services, /<ConsultationPanel \/>/);
+  assert.match(services, /selected === "renewal" || selected === "consultation"/);
+  const page = fs.readFileSync(path.join(root, "src/scholar/pages/ScholarPortalPage.tsx"), "utf8");
+  assert.match(page, /<RenewalHomeBanner/); assert.match(page, /searchParams\.set\("service", "renewal"\)/);
+});
+test("the Renewal tile and the Consultation tile share ONE booking component, and the tracker uses the shared sentence builder (no second copy of the wording)", () => {
+  const renewal = fs.readFileSync(path.join(root, "src/scholar/components/dashboard/RenewalPanel.tsx"), "utf8");
+  const consult = fs.readFileSync(path.join(root, "src/scholar/components/dashboard/ConsultationPanel.tsx"), "utf8");
+  assert.match(renewal, /from "\.\/ConsultationSection"/); assert.match(consult, /from "\.\/ConsultationSection"/);
+  assert.match(renewal, /buildNextSteps/); assert.equal(/scholarNextSteps\(/.test(renewal), false);
+  assert.equal(/export function ConsultationSection/.test(fs.readFileSync(path.join(root, "src/scholar/components/dashboard/ConsultationSection.tsx"), "utf8")), true);
 });
 
 console.log("Source guards (Phase 3)");
@@ -421,7 +552,7 @@ test("the appointment screens only ask the database (no direct writes to slots, 
 test("the Appointments subtab sits inside the existing Consultation Tool (same tag), and every function the website calls exists in the migration", () => {
   const page = fs.readFileSync(path.join(root, "src/sead/ScholarCounselingToolPage.tsx"), "utf8");
   assert.match(page, /key: "appointments"/);
-  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p3_appointments.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_renewal_p2_application.sql"), "utf8");
+  const sql = ["p2_application", "p3_appointments", "p4_tracker"].map(n => fs.readFileSync(path.join(root, "supabase_migration_renewal_" + n + ".sql"), "utf8")).join("\n");
   const called = new Set();
   for (const p of ["src/sead/appointmentsApi.ts", "src/scholar/renewalApi.ts", "src/sead/renewalApi.ts"]) for (const m of fs.readFileSync(path.join(root, p), "utf8").matchAll(/rpc\("([a-z_]+)"/g)) called.add(m[1]);
   const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql));

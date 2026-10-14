@@ -163,3 +163,18 @@ export async function markScholarNotificationsRead(ids?: string[]): Promise<Done
   const { error } = await supabase.rpc("scholar_notifications_mark_read", { p_ids: ids ?? null });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+
+// ── The Consultation tile: the scholar's own appointments (upcoming and past) ──
+export interface MyAppointment { slotId: string; startsAt: string; endsAt: string; staffName: string; state: "booked" | "attended" | "no_show"; recordId: string | null; termLabel: string | null; canChange: boolean }
+
+export async function fetchMyAppointments(): Promise<{ ok: true; rows: MyAppointment[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("consultation_my_appointments");
+  if (error) return { ok: false, error: error.message };
+  return {
+    ok: true,
+    rows: ((data ?? []) as Row[]).map(r => ({
+      slotId: str(r.slot_id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), staffName: str(r.staff_name), state: r.state as MyAppointment["state"],
+      recordId: strOrNull(r.record_id), termLabel: strOrNull(r.term_label), canChange: !!r.can_change,
+    })),
+  };
+}

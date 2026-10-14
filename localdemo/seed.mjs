@@ -237,6 +237,13 @@ export async function seedDb(db) {
     const rec = (await db.query("select id from renewal_records where scholar_id_number = $1 order by created_at desc limit 1", [sidNum(s.n)])).rows[0].id;
     await seedDoc(rec, s.n, "study_plan", s.renewal.plan);
   }
+  // The blank study plan form, as the office would add it in Forms Management (the Renewal tile links to it).
+  const formId = id("form:study-plan");
+  await db.query("insert into form_materials (id, title, kind, url, description, file_name) values ($1, 'Study Plan Form', 'pdf', '', 'Fill this in and upload it with your renewal.', 'study-plan-form.pdf')", [formId]);
+  await db.query("insert into form_material_conditions (material_id, condition_type, all_year_levels) values ($1, 'year_level', true)", [formId]);
+  await db.query("insert into storage.buckets (id, name, public) values ('form-materials','form-materials', false) on conflict (id) do nothing");
+  await db.query("insert into storage.objects (bucket_id, name, metadata) values ('form-materials', $1, $2::jsonb)", [`${formId}/file.pdf`, JSON.stringify({ mimetype: "application/pdf", size: 30, base64: Buffer.from("%PDF-1.4 demo study plan form").toString("base64") })]);
+
   // Loading the scholars made the status-history trigger record a "System" row dated today for each one; the real database has none until a status changes.
   await db.query("delete from scholar_status_history where source = 'system'");
 }

@@ -227,12 +227,40 @@ export function consultBlockedBy(state: ConsultState): "study plan" | "INC lette
   return state === "study_plan_missing" || state === "study_plan_pending" ? "study plan" : state === "inc_letter_missing" || state === "inc_letter_pending" ? "INC letter" : null;
 }
 
+/** "Oct 20, 9:10 AM" in Philippine time (short form used in the next-step sentences). */
+export function formatSlotShort(startIso: string | null | undefined): string {
+  if (!startIso) return "—";
+  const d = new Date(startIso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: MANILA })}, ${formatTimeOnly(startIso)}`;
+}
+
+/** Credits needed in each SDP category in a semester (the database's sdp_category_credit_required()). Used only to word "1 more credit". */
+export const SDP_CREDITS_REQUIRED = 3;
+const SDP_CATEGORIES: { key: "community_service" | "community_volunteerism" | "formation_program"; label: string }[] = [
+  { key: "community_service", label: "Institutional Volunteerism" },
+  { key: "community_volunteerism", label: "Community Volunteerism" },
+  { key: "formation_program", label: "Formation Program" },
+];
+/** "Complete Formation Program: 1 more credit." for each SDP category that is short. */
+export function sdpShortfallSteps(sdp: RenewalEvaluation["sdp"] | undefined): string[] {
+  if (!sdp) return [];
+  const out: string[] = [];
+  for (const c of SDP_CATEGORIES) {
+    const have = sdp[c.key];
+    if (typeof have !== "number") continue;
+    const need = SDP_CREDITS_REQUIRED - have;
+    if (need > 0) out.push(`Complete ${c.label}: ${need} more credit${need === 1 ? "" : "s"}.`);
+  }
+  return out;
+}
+
 /** Plain, encouraging next steps for the scholar, in order. The database decided the case; this only words it. */
 export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | null | undefined, opts: {
   incDeadlines?: { subject: string; deadline: string | null }[]; evaluatorComment?: string | null;
   /** Does the scholar still need a consultation (none held yet)? Default: yes. */
   consultNeeded?: boolean;
-  /** ok = can book; study_plan_missing / study_plan_pending = must wait for the evaluator to approve the study plan; not_needed = none left to hold. */
+  /** ok = can book; *_missing / *_pending = must wait for the evaluator to approve the study plan or INC letter; not_needed = none left to hold. */
   consultState?: ConsultState;
   booking?: { startsAt: string; staffName: string } | null; isSummer?: boolean; noShow?: boolean;
 } = {}): string[] {
@@ -242,24 +270,36 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
   const consult = () => {
     if (!consultNeeded) { steps.push("Your consultation is done."); return; }
     const blocked = opts.consultState ? consultBlockedBy(opts.consultState) : null;
-    if (!opts.booking && blocked && opts.consultState!.endsWith("_pending")) { steps.push(`Wait for the evaluator to approve your ${blocked}. Then you can book your face-to-face consultation.`); return; }
-    if (!opts.booking && blocked) { steps.push(`After the evaluator approves your ${blocked}, you can book your face-to-face consultation.`); return; }
+    if (!opts.booking && blocked && opts.consultState!.endsWith("_pending")) { steps.push(`Wait for the evaluator to approve your ${blocked}. Then you can book your consultation.`); return; }
+    if (!opts.booking && blocked) { steps.push(`After the evaluator approves your ${blocked}, you can book your consultation.`); return; }
     if (opts.booking) {
-      steps.push(`Come to your face-to-face consultation on ${formatSlot(opts.booking.startsAt)} with ${opts.booking.staffName}.${opts.isSummer ? " Bring the hard copy of your prospectus." : ""}`);
+      const when = formatSlotShort(opts.booking.startsAt);
+      steps.push(opts.isSummer
+        ? `Bring your prospectus hard copy to your consultation on ${when}, with ${opts.booking.staffName}.`
+        : `Come to your face-to-face consultation on ${when}, with ${opts.booking.staffName}.`);
     } else {
-      steps.push(`${opts.noShow ? "You missed your consultation, so please book a new time. " : ""}Book your face-to-face consultation below.${opts.isSummer ? " Bring the hard copy of your prospectus." : ""}`);
+      steps.push(`${opts.noShow ? "You missed your consultation, so please book a new time. " : ""}Book your consultation.${opts.isSummer ? " Bring your prospectus hard copy to it." : ""}`);
     }
   };
   const missingDocs = (ev?.required_documents ?? []).filter(d => !d.satisfied);
-  const upload = () => { for (const d of missingDocs) steps.push(`Upload your ${d.label.toLowerCase().startsWith("inc") ? "INC letter from your dean" : d.label.split(" (")[0].toLowerCase()}.`); };
+  const upload = () => {
+    for (const d of missingDocs) {
+      steps.push(d.kind === "inc_letter" ? "Upload the INC letter from your dean." : d.kind === "study_plan" ? "Upload your study plan." : "Upload your prospectus.");
+    }
+  };
   switch (stage) {
     case "late_pending": steps.push("Your late application is waiting for the evaluator to accept it. You don't need to do anything yet."); break;
     case "late_declined": steps.push("Your late application was declined. Please contact the CEDO office if you have questions."); break;
-    case "sdp_on_hold": steps.push(`Complete your SDP credits: ${ev?.sdp?.missing ?? "some credits are missing"}. We will check again automatically when new credits are recorded.`); break;
-    case "waiting_grades": steps.push(ev?.grades?.reason || "We are waiting for your school to submit your grades. We will check again automatically."); break;
+    case "sdp_on_hold": {
+      const lines = sdpShortfallSteps(ev?.sdp);
+      if (lines.length) steps.push(...lines); else steps.push(`Complete your SDP credits: ${ev?.sdp?.missing ?? "some credits are missing"}.`);
+      steps.push("We will check again automatically when new credits are recorded — nothing else to do.");
+      break;
+    }
+    case "waiting_grades": steps.push(ev?.grades?.reason || "We are waiting for your school to submit your grades."); steps.push("We will check again automatically — nothing to do right now."); break;
     case "review_needed": steps.push("The evaluator is reviewing your case. You don't need to do anything right now."); break;
-    case "submitted": steps.push("We are checking your SDP and grades."); break;
-    case "ready_for_confirmation": steps.push("Waiting for the evaluator to confirm your renewal."); break;
+    case "submitted": steps.push("We are checking your SDP and grades. This only takes a moment."); break;
+    case "ready_for_confirmation": steps.push("Waiting for evaluator confirmation."); break;
     case "ready_to_endorse": steps.push("Waiting for the evaluator to review your case and send it to the Division Head for approval."); break;
     case "endorsed_division_head": steps.push("The evaluator sent your case to the Division Head for approval. We will tell you the result."); break;
     case "needs_study_plan_consultation": upload(); consult(); break;
@@ -268,7 +308,11 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
       break;
     case "needs_inc_letter_consultation": upload(); consult(); if (consultNeeded) steps.push("At the consultation, staff will set the days you have to complete your INC."); break;
     case "inc_waiting_compliance":
-      for (const i of opts.incDeadlines ?? []) steps.push(`Complete your INC in ${i.subject} by ${formatDay(i.deadline)} — ${daysLeftText(daysUntil(i.deadline))}.`);
+      for (const i of opts.incDeadlines ?? []) {
+        steps.push(i.deadline
+          ? `Complete your INC in ${i.subject} by ${formatDay(i.deadline)}: ${daysLeftText(daysUntil(i.deadline))}.`
+          : `Complete your INC in ${i.subject}. Deadline: to be set at your consultation.`);
+      }
       if (!(opts.incDeadlines ?? []).length) steps.push("Complete your INC by the deadline that is set at your consultation.");
       upload(); break;
     case "inc_deadline_passed": steps.push("Your INC deadline has passed. The evaluator will decide what happens next."); break;
@@ -280,4 +324,74 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
     case "not_required": steps.push("You do not need to renew this term."); break;
   }
   return steps;
+}
+
+// ── The progress tracker (a row of steps showing where the application is) ──
+export type ProgressState = "done" | "current" | "todo" | "problem";
+export interface ProgressStep { key: string; label: string; state: ProgressState; note?: string }
+
+/**
+ * The steps of one renewal and where the scholar is. Before the system knows the path (SDP and grades not checked yet) only the four basic
+ * steps show; afterwards the steps this scholar's case really needs appear (documents, consultation, INC). The database decided the case;
+ * this only draws it.
+ */
+export function renewalProgress(stage: RenewalStage, ev: RenewalEvaluation | null | undefined, ctx: { consultState?: ConsultState; hasBooking?: boolean; incOpen?: boolean } = {}): ProgressStep[] {
+  const holds: RenewalStage[] = ["sdp_on_hold", "waiting_grades", "review_needed"];
+  const beforeCheck: RenewalStage[] = ["submitted", "late_pending", "late_declined", ...holds];
+  const done = (key: string, label: string): ProgressStep => ({ key, label, state: "done" });
+  if (stage === "late_declined") return [{ key: "applied", label: "Late application declined", state: "problem" }];
+  if (stage === "not_required") return [];
+
+  const steps: ProgressStep[] = [];
+  steps.push(stage === "late_pending" ? { key: "applied", label: "Applied — waiting to be accepted", state: "current" } : done("applied", "Applied"));
+  steps.push(
+    stage === "late_pending" ? { key: "checked", label: "SDP and grades checked", state: "todo" }
+    : stage === "submitted" ? { key: "checked", label: "SDP and grades checked", state: "current" }
+    : holds.includes(stage) ? { key: "checked", label: "SDP and grades checked", state: "problem", note: stage === "sdp_on_hold" ? "On hold: SDP" : stage === "waiting_grades" ? "Waiting for grades" : "Being reviewed" }
+    : done("checked", "SDP and grades checked"));
+
+  const decisionIsDivisionHead = stage === "needs_consultation_division_head" || stage === "endorsed_division_head" || ev?.rule_code?.startsWith("C") === true;
+  const decisionLabel = decisionIsDivisionHead ? "Division Head decision" : "Evaluator confirmation";
+  const terminal = stage === "renewed";
+
+  if (beforeCheck.includes(stage) || stage === "returned") {
+    if (stage === "returned") {
+      return [done("applied", "Applied"), { key: "fix", label: "Fix and submit again", state: "problem", note: "Returned with comments" }, { key: "decision", label: decisionLabel, state: "todo" }, { key: "renewed", label: "Renewed", state: "todo" }];
+    }
+    steps.push({ key: "decision", label: "Evaluator confirmation", state: "todo" }, { key: "renewed", label: "Renewed", state: "todo" });
+    return steps;
+  }
+
+  // The case is known: the steps it needs, in order. A step is done when its work is complete.
+  const docs = ev?.required_documents ?? [];
+  const needsApproval = (k: string) => k === "study_plan" || k === "inc_letter";
+  const docsDone = docs.every(d => d.satisfied && (!needsApproval(d.kind) || d.approved));
+  const consultNeeded = !!ev?.consultation_required;
+  const consultDone = !!ev?.consultation_done;
+  const incOpen = ctx.incOpen ?? (ev?.open_inc ?? 0) > 0;
+
+  const middle: ProgressStep[] = [];
+  if (docs.length > 0) middle.push({ key: "documents", label: "Upload your documents", state: terminal || docsDone ? "done" : "todo", note: docs.some(d => d.satisfied && needsApproval(d.kind) && !d.approved) ? "Waiting for approval" : undefined });
+  if (consultNeeded) middle.push({ key: "consultation", label: ctx.hasBooking && !consultDone ? "Consultation booked" : "Consultation", state: terminal || consultDone ? "done" : "todo" });
+  if (incOpen || stage === "inc_waiting_compliance" || stage === "inc_deadline_passed") middle.push({ key: "inc", label: "Complete your INC", state: terminal ? "done" : stage === "inc_deadline_passed" ? "problem" : "todo", note: stage === "inc_deadline_passed" ? "Deadline passed" : undefined });
+
+  // The first step that is not done is where the scholar is now.
+  if (!terminal && !middle.some(s => s.state === "problem")) {
+    const firstOpen = middle.findIndex(s => s.state === "todo");
+    if (firstOpen >= 0) middle[firstOpen] = { ...middle[firstOpen], state: "current" };
+    // While an INC is open its deadline is the urgent thing, whatever else is still outstanding.
+    if (stage === "inc_waiting_compliance") {
+      for (let i = 0; i < middle.length; i++) if (middle[i].key === "inc") middle[i] = { ...middle[i], state: "current" }; else if (middle[i].state === "current") middle[i] = { ...middle[i], state: "todo" };
+    }
+  }
+  steps.push(...middle);
+  const allMiddleDone = middle.every(s => s.state === "done");
+  steps.push({ key: "decision", label: decisionLabel, state: terminal ? "done" : allMiddleDone && stage !== "inc_waiting_compliance" && stage !== "inc_deadline_passed" ? "current" : "todo" });
+  steps.push({ key: "renewed", label: "Renewed", state: terminal ? "done" : "todo" });
+  return steps;
+}
+
+/** Does a form's title look like the study plan form? (Staff upload it in Forms Management; the Renewal tile links to it.) */
+export function isStudyPlanFormTitle(title: string): boolean {
+  return /study[\s_-]*plan/i.test(title);
 }

@@ -12,6 +12,7 @@ import { CompactNav } from "../components/dashboard/CompactNav";
 import { BottomNav } from "../components/dashboard/BottomNav";
 import { MobilePortalHeader } from "../components/dashboard/MobilePortalHeader";
 import { NotificationBell } from "../components/dashboard/NotificationBell";
+import { RenewalHomeBanner } from "../components/dashboard/RenewalHomeBanner";
 import { ProfilePopupModal } from "../components/dashboard/ProfilePopupModal";
 import { ProfilePanel } from "../components/dashboard/ProfilePanel";
 import { SubjectsGradesPanel } from "../components/dashboard/SubjectsGradesPanel";
@@ -157,6 +158,17 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
               </button>
             </div>
           </div>
+
+          {panel === null && (
+            <RenewalHomeBanner onOpen={() => {
+              // open Forms and Services > Services > Renewal directly
+              const url = new URL(window.location.href);
+              url.searchParams.set("formsTab", "services");
+              url.searchParams.set("service", "renewal");
+              window.history.pushState(window.history.state, "", url.toString());
+              setPanel("services");
+            }} />
+          )}
 
           {(pendingSurveys.length > 0 || finalizedNotifications.length > 0) && (
             <div className="space-y-2 mb-4">
