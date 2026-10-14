@@ -345,8 +345,8 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
     case "returned": steps.push(opts.evaluatorComment ? `The evaluator asked: ${opts.evaluatorComment}` : "The evaluator returned your application with comments."); steps.push("Fix what was asked and press “Submit again”."); break;
     case "renewed":
       steps.push(opts.result === "renewed_probationary"
-        ? "You are renewed with Probationary status. Your Certificate of Scholarship Renewal will be available here once certificates are switched on."
-        : "You are renewed. Your Certificate of Scholarship Renewal will be available here once certificates are switched on.");
+        ? "You are renewed with Probationary status. Your Certificate of Scholarship Renewal is in the green box below."
+        : "You are renewed. Your Certificate of Scholarship Renewal is in the green box below.");
       break;
     case "removed": steps.push("The Division Head decided that your scholarship ends with this renewal. Please contact the CEDO office."); break;
     case "reconsidered": steps.push("The Division Head reconsidered your case. Your status is now Reconsidered."); steps.push("Waiting for the evaluator to confirm your renewal — nothing to do right now."); break;

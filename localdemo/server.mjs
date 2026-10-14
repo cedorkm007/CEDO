@@ -109,8 +109,57 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
     if (who.role !== "authenticated" && who.role !== "service_role") return json(res, 200, { error: "Please sign in first." });
     const notInDemo = () => json(res, 200, { error: "This action is not available in the local demo." });
     switch (name) {
+      case "csr-issue": return await csrIssue(res, who, body);
       default: return notInDemo();
     }
+  }
+
+  // ── The stand-in for the csr-issue edge function: the same steps, with the same PDF builder (bundled from supabase/functions/_shared/csrPdf.ts) ──
+  let csrBuilder = null;
+  async function csrBuilderModule() {
+    if (!csrBuilder) {
+      const { build } = await import("esbuild");
+      const os = await import("node:os"), fsm = await import("node:fs"), pathm = await import("node:path"), { pathToFileURL, fileURLToPath } = await import("node:url");
+      const root = pathm.resolve(pathm.dirname(fileURLToPath(import.meta.url)), "..");
+      const outDir = fsm.mkdtempSync(pathm.join(os.tmpdir(), "csr-demo-"));
+      const outfile = pathm.join(outDir, "csrPdf.mjs");
+      await build({ entryPoints: [pathm.join(root, "supabase/functions/_shared/csrPdf.ts")], bundle: true, format: "esm", platform: "node", outfile, logLevel: "error" });
+      csrBuilder = await import(pathToFileURL(outfile).href);
+    }
+    return csrBuilder;
+  }
+  async function csrIssue(res, who, body) {
+    const answer = (status, payload) => json(res, status, payload);
+    const recordId = String(body.recordId ?? "").trim(), reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : null;
+    if (!recordId) return answer(400, { error: "Missing the renewal." });
+    let prep;
+    try { prep = await rest.withRole({ role: who.role, claims: who.claims }, async tx => (await tx.query("select public.csr_prepare($1, $2) r", [recordId, reason])).rows[0].r); }
+    catch (e) { return answer(400, { error: String(e.message ?? e) }); }
+    const link = (path, scholarId, term, schoolYear, csrNumber, version) => {
+      const fileName = `Certificate of Scholarship Renewal - ${scholarId} - ${term} ${schoolYear}.pdf`.replace(/[\\/:*?"<>|]+/g, " ");
+      const token = sign({ url: `csr-issued/${path}`, exp: Math.floor(Date.now() / 1000) + 3600 });
+      return answer(200, { url: `http://127.0.0.1:${port}/storage/v1/object/sign/csr-issued/${path.split("/").map(encodeURIComponent).join("/")}?token=${token}&download=${encodeURIComponent(fileName)}`, csrNumber, version, fileName });
+    };
+    if (prep.ready) return link(prep.storage_path, prep.scholar_id_number, prep.term, prep.school_year, prep.csr_number, prep.version);
+    const M = await csrBuilderModule();
+    const d = prep.data, set = prep.settings;
+    const picture = async path => {
+      if (!path) return null;
+      const row = (await db.query("select metadata from storage.objects where bucket_id = 'csr-assets' and name = $1", [path])).rows[0];
+      return row?.metadata?.base64 ? new Uint8Array(Buffer.from(row.metadata.base64, "base64")) : null;
+    };
+    const pdf = await M.buildCsrPdf({
+      csrNumber: prep.csr_number, version: prep.version, fullName: M.csrFullName(d.first_name, d.middle_name, d.last_name), scholarIdNumber: d.scholar_id_number, barangay: d.barangay,
+      program: M.csrProgramCode(d.program, d.year_level), school: d.school, term: d.term, schoolYear: d.school_year, issuedAt: new Date(), place: set.place,
+      officer: { name: set.officer_name, title: set.officer_title, signature: await picture(set.officer_signature_path) },
+      mayor: { name: set.mayor_name, title: set.mayor_title, signature: await picture(set.mayor_signature_path), mark: await picture(set.mayor_mark_path) },
+      qrUrl: `http://127.0.0.1:5173/CEDO/id?token=${prep.qr_token}`,
+    });
+    const path = `${d.scholar_id_number}/${prep.csr_number}-v${prep.version}.pdf`;
+    await db.query("delete from storage.objects where bucket_id = 'csr-issued' and name = $1", [path]);
+    await db.query("insert into storage.objects (bucket_id, name, metadata) values ('csr-issued', $1, $2::jsonb)", [path, JSON.stringify({ mimetype: "application/pdf", size: pdf.length, base64: Buffer.from(pdf).toString("base64") })]);
+    try { await db.query("select public.csr_complete($1, $2)", [prep.csr_id, path]); } catch (e) { return answer(500, { error: String(e.message ?? e) }); }
+    return link(path, d.scholar_id_number, d.term, d.school_year, prep.csr_number, prep.version);
   }
 
   // ── Storage (files kept in the private database, nothing leaves this computer) ──
@@ -180,7 +229,9 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
       const row = (await db.query("select metadata from storage.objects where bucket_id = $1 and name = $2", [bucket, name])).rows[0];
       if (!row) return none(404, "Object not found");
       const meta = row.metadata ?? {};
-      res.writeHead(200, { "content-type": meta.mimetype ?? "application/octet-stream" });
+      // The real storage saves the file under the name asked for with ?download=<name> (the study plan form and the certificate use it).
+      const asked = url.searchParams.get("download");
+      res.writeHead(200, { "content-type": meta.mimetype ?? "application/octet-stream", ...(asked ? { "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(asked)}` } : {}) });
       return res.end(req.method === "HEAD" ? undefined : Buffer.from(meta.base64 ?? "", "base64"));
     }
     if (req.method === "POST" || req.method === "PUT") {

@@ -15,7 +15,7 @@ import {
   ClipboardCheck, Plane, MessageCircle, Send, Lock, ClipboardList, RotateCw,
 } from "lucide-react";
 import { PushSettings } from "@/app/components/PushSettings";
-import { canSeeScholarRenewal } from "@/lib/renewalAccess";
+import { canSeeScholarRenewal, isItAdmin, isSeadHead } from "@/lib/renewalAccess";
 import { ReferralFormPanel } from "@/sead/components/ReferralFormPanel";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import { ExportButton } from "@/app/components/ExportButtons";
@@ -3598,7 +3598,7 @@ export default function App() {
             <ScholarsGradesMonitoringPage/>
           )}
           {page==="scholarRenewal" && canSeeScholarRenewal(currentUser) && (
-            <ScholarRenewalPage isEvaluator={currentUser.tags.includes("scholar_renewal_evaluator")} isDivisionHead={currentUser.tags.includes("sead_division_head")}/>
+            <ScholarRenewalPage isEvaluator={currentUser.tags.includes("scholar_renewal_evaluator")} isDivisionHead={currentUser.tags.includes("sead_division_head")} isSeadHead={isSeadHead(currentUser)} isItAdmin={isItAdmin(currentUser)}/>
           )}
           {page==="myResearch" && (
             <MyResearchPage/>

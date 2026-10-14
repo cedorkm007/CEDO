@@ -6,6 +6,7 @@ import {
   confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, getStaffRenewalDocumentUrl, returnRenewal, reviewDocument, type DetailDocument, type RenewalDetail,
 } from "../renewalApi";
 import { ReasonDialog } from "./ReasonDialog";
+import { RenewalCsrSection } from "./RenewalCsrSection";
 import { confirmDivisionHeadDecision, fetchDivisionHeadStatus, sendToDivisionHead, type DivisionHeadStatus } from "../divisionHeadApi";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -100,6 +101,8 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
           )}
         </Section>
       )}
+
+      {r.stage === "renewed" && <RenewalCsrSection recordId={r.id} scholarName={s.name} canAct={canAct} />}
 
       <Section title="The rule that was applied">
         <p><strong>{ev.rule_code ?? r.ruleCode ?? "—"}</strong> — {ev.rule_text ?? r.ruleText ?? "Not decided yet."}</p>

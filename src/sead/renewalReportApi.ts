@@ -5,7 +5,7 @@
 // .xlsx writer (loaded only when someone presses the button).
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
-import { buildReportSheets, exportFileName, exportFilterArgs, isFiltered, parseDashboard, parseExportData, type DashboardData, type ExportFilter } from "@/lib/renewalReport";
+import { attachCsrNumbers, buildReportSheets, exportFileName, exportFilterArgs, isFiltered, parseDashboard, parseExportData, type DashboardData, type ExportFilter } from "@/lib/renewalReport";
 
 export async function fetchRenewalDashboard(schoolYear: string, term: string): Promise<{ ok: true; data: DashboardData } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("renewal_dashboard", { p_school_year: schoolYear, p_term: term });
@@ -17,7 +17,9 @@ export async function fetchRenewalDashboard(schoolYear: string, term: string): P
 export async function downloadRenewalExcel(schoolYear: string, term: string, dash: DashboardData, filter: ExportFilter): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("renewal_export_data", { p_school_year: schoolYear, p_term: term, ...exportFilterArgs(filter) });
   if (error || !data) return { ok: false, error: error?.message ?? "Couldn't prepare the export." };
-  const parsed = parseExportData(data);
+  // The certificate numbers come from a separate call, so the report still works when the certificate file (Phase 8) is not installed.
+  const csr = await supabase.rpc("renewal_export_csr", { p_school_year: schoolYear, p_term: term });
+  const parsed = attachCsrNumbers(parseExportData(data), csr.error ? null : csr.data);
   const sheets = buildReportSheets(dash, parsed, filter);
   const { buildXlsxBytes, XLSX_MIME } = await import("@/mysurveys/results/xlsxWriter");
   const bytes = await buildXlsxBytes(sheets);

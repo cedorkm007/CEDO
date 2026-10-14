@@ -4,6 +4,7 @@ import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
 import { PushSettings } from "@/app/components/PushSettings";
 import { NOTIFICATIONS_CHANGED } from "./NotificationBell";
 import { ConsultationSection } from "./ConsultationSection";
+import { CsrDownload } from "./CsrDownload";
 import { RenewalProgressBar } from "./RenewalProgressBar";
 import { StudyPlanFormLink } from "./StudyPlanFormLink";
 import { buildNextSteps } from "../../renewalSummary";
@@ -283,6 +284,8 @@ function Tracker({ data, overview, onChanged }: { data: MyRenewalWindow; overvie
           </div>
         )}
       </div>
+
+      {record.stage === "renewed" && <CsrDownload recordId={record.id} />}
 
       <ConsultationSection data={data} onChanged={onChanged} />
 

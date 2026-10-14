@@ -125,6 +125,17 @@ export function parseExportData(raw: unknown): ExportData {
   return { applications: list(d.applications), notApplied: list(d.not_applied), inc: list(d.inc), consultations: list(d.consultations), exportedAt: s(d.exported_at) };
 }
 
+/**
+ * Adds the certificate number of each scholar to the application rows (from renewal_export_csr, Phase 8). Scholars without a certificate keep empty cells,
+ * and when the answer is missing altogether (Phase 8 not installed yet) the rows are returned unchanged.
+ */
+export function attachCsrNumbers(data: ExportData, raw: unknown): ExportData {
+  if (!Array.isArray(raw)) return data;
+  const byScholar = new Map<string, Row>();
+  for (const c of raw as Row[]) byScholar.set(s(c.scholar_id_number), c);
+  return { ...data, applications: data.applications.map(r => { const c = byScholar.get(s(r.scholar_id_number)); return c ? { ...r, csr_number: s(c.csr_number), csr_issued_at: c.issued_at } : r; }) };
+}
+
 /** A date or moment as "2026-10-14" in Philippine time (what the office reads), or "" when empty. */
 export function manilaDate(value: unknown): string {
   const v = sOrNull(value);
@@ -211,13 +222,13 @@ export function buildReportSheets(dash: DashboardData, data: ExportData, filter:
     name: "Applications",
     headers: ["Scholar ID", "Name", "School", "Program", "Year level", "Scholarship status now", "Stage", "Rule", "Grades checked", "Failed subjects", "Open INC", "Earlier probation", "SDP",
       "Study plan", "INC letter", "Prospectus", "Consultation required", "Consultation done", "Next consultation", "No-shows", "Applied late", "Late decision", "Division Head decision",
-      "Division Head decided", "Result", "Applied", "Confirmed", "Evaluator's note", "Scholar's note"],
+      "Division Head decided", "Result", "Applied", "Confirmed", "Evaluator's note", "Scholar's note", "CSR number", "CSR made"],
     rows: data.applications.map((r): ReportCell[] => [
       s(r.scholar_id_number), safeText(r.name), safeText(r.school), safeText(r.program), s(r.year_level), s(r.scholar_status),
       s(r.stage) in STAGE_INFO ? STAGE_INFO[s(r.stage) as RenewalStage].title : s(r.stage), s(r.rule_code), s(r.basis), n(r.failed_count), n(r.inc_open), yesNo(r.previous_probation), sdpText(r),
       docStatusText(r.study_plan), docStatusText(r.inc_letter), docStatusText(r.prospectus), yesNo(r.consultation_required), manilaDate(r.consultation_done_at), manilaDateTime(r.next_consultation), n(r.no_shows),
       yesNo(r.late), s(r.late_decision), divisionHeadText(r.division_head_decision), manilaDate(r.division_head_decided_at), resultText(r.result), manilaDate(r.applied_at), manilaDate(r.confirmed_at),
-      safeText(r.evaluator_note || r.not_required_reason), safeText(r.scholar_note),
+      safeText(r.evaluator_note || r.not_required_reason), safeText(r.scholar_note), s(r.csr_number), manilaDate(r.csr_issued_at),
     ]),
   };
   const notApplied: ReportSheet = {

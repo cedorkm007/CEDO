@@ -106,6 +106,7 @@ const SCHOLARS = [
   { n: 42, school: "lower", last: "One Failed Ready To Endorse", grades: g("5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", plan: "accepted", consultDone: true } },
   { n: 43, school: "lower", last: "One Failed Endorsed", grades: g("5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", plan: "accepted", consultDone: true, endorsed: true } },
   { n: 44, school: "lower", last: "Two Failed No Consultation", grades: g("5.0", "5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1" } },
+  { n: 46, school: "lower", last: "Renewed With Certificate", grades: g("1.5", "2.0", "1.75"), sdp: FULL_SDP, renewal: { window: "w1", confirmed: true } },
   { n: 45, school: "lower", last: "Reconsidered To Confirm", grades: g("5.0", "5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", consultDone: true, reconsidered: true } },
 ];
 export const SCHOLAR_LAST = Object.fromEntries(SCHOLARS.map(s => [s.n, s.last]));
@@ -273,6 +274,9 @@ export async function seedDb(db) {
     await db.query("select public._renewal_recheck($1)", [rec]);
   }
   for (const s of SCHOLARS.filter(x => x.renewal?.endorsed)) { const rec = await recOf(s.n); await as(id("staff:demo.evaluator"), async tx => tx.query("select public.renewal_endorse($1, 'Study plan approved and consultation done.')", [rec])); }
+  // Phase 8: certificates are switched ON in the demo (in the real project the office switches them on), and one renewal is already confirmed.
+  await db.query("update csr_settings set enabled = true where id");
+  for (const s of SCHOLARS.filter(x => x.renewal?.confirmed)) { const rec = await recOf(s.n); await as(id("staff:demo.evaluator"), async tx => tx.query("select public.renewal_confirm($1, 'All passed.')", [rec])); }
   for (const s of SCHOLARS.filter(x => x.renewal?.reconsidered)) {
     const rec = await recOf(s.n);
     await as(id("staff:demo.divhead"), async tx => tx.query("select public.renewal_division_head_decide($1, 'reconsidered', $2, '', 'Given one more chance.')", [rec, `${id("staff:demo.divhead")}/signature.png`]));

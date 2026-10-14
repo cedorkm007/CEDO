@@ -753,7 +753,7 @@ test("who can open Scholar Renewal: the evaluator, the Division Head, and the he
 });
 test("the SEAD head sees only the Dashboard; the filter boxes are on the dashboard; the database agrees on who may read", () => {
   const page = fs.readFileSync(path.join(root, "src/sead/ScholarRenewalPage.tsx"), "utf8");
-  assert.match(page, /t\.key !== "divisionHead" \|\| isEvaluator \|\| isDivisionHead/); assert.match(page, /isDivisionHead \? "divisionHead" : "dashboard"/);
+  assert.match(page, /t\.key !== "divisionHead" \|\| isEvaluator \|\| isDivisionHead/); assert.match(page, /isDivisionHead \? "divisionHead" : seesRenewals \? "dashboard" : "certificate"/);
   const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalDashboardTab.tsx"), "utf8");
   assert.match(tab, /Choose what goes into the Excel file/); assert.match(tab, /<fieldset/);
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p7_reports.sql"), "utf8");
@@ -768,8 +768,8 @@ test("the dashboard screens use readable text; every database function they call
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p7_reports.sql"), "utf8");
   const api = fs.readFileSync(path.join(root, "src/sead/renewalReportApi.ts"), "utf8");
   const called = [...api.matchAll(/rpc\("([a-z_]+)"/g)].map(m => m[1]);
-  assert.deepEqual([...new Set(called)].sort(), ["renewal_dashboard", "renewal_export_data"]);
-  for (const fn of called) assert.ok(sql.includes(`create or replace function public.${fn}(`), fn);
+  assert.deepEqual([...new Set(called)].sort(), ["renewal_dashboard", "renewal_export_csr", "renewal_export_data"]);   // the certificate numbers (Phase 8) are asked separately, so this report works without them
+  for (const fn of called.filter(f => f !== "renewal_export_csr")) assert.ok(sql.includes(`create or replace function public.${fn}(`), fn);
   assert.equal(/\.from\("/.test(api), false);
   const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalDashboardTab.tsx"), "utf8");
   assert.deepEqual([...tab.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), []);
@@ -935,6 +935,132 @@ test("the scholar-facing messages never show a time in UTC or the browser's own 
   for (const fn of ["formatSlot", "formatTimeOnly", "formatDay", "formatDateTime"]) {
     const body = new RegExp(`export function ${fn}[\\s\\S]*?\\n}`).exec(lib)?.[0] ?? "";
     assert.match(body, /timeZone: (MANILA|"Asia\/Manila")|formatTimeOnly/, fn);
+  }
+});
+
+// ── Phase 8: the Certificate of Scholarship Renewal ──────────
+console.log("\nPhase 8: the Certificate of Scholarship Renewal (PDF) and the renewal line on the QR page");
+const CSR = await bundle("csrpdf", "supabase/functions/_shared/csrPdf.ts");
+const zlib = await import("node:zlib");
+/** The text drawn on a PDF page: every "<hex> Tj" of every content stream (pdf-lib writes WinAnsi text as hex strings). */
+function pdfText(bytes) {
+  const buf = Buffer.from(bytes), lines = [];
+  let from = 0;
+  for (;;) {
+    const a = buf.indexOf("stream", from, "latin1"); if (a < 0) break;
+    const b = buf.indexOf("endstream", a + 6, "latin1"); if (b < 0) break;
+    let start = a + 6; if (buf[start] === 0x0d) start++; if (buf[start] === 0x0a) start++;
+    let body = buf.subarray(start, b);
+    try { body = zlib.inflateSync(body); } catch { /* not compressed */ }
+    const text = body.toString("latin1");
+    for (const m of text.matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)) lines.push(Buffer.from(m[1], "hex").toString("latin1"));
+    from = b + 9;
+  }
+  return lines;
+}
+const csrBase = {
+  csrNumber: "CSR-2026-1S-00012", version: 1, fullName: CSR.csrFullName("Juan -Test", "Nuñez", "Dela Cruz"), scholarIdNumber: "2108-00001", barangay: "Besigan",
+  program: CSR.csrProgramCode("BSMARE", "5th Year"), school: "PHINMA Cagayan de Oro College", term: "1st Semester", schoolYear: "2026-2027", issuedAt: new Date("2026-07-04T02:00:00Z"),
+  place: "the City of Cagayan de Oro, Philippines", officer: { name: "Ms. Test Officer, LPT", title: "City Education and Development Officer, City Education and Development Office" },
+  mayor: { name: "Hon. Test Mayor", title: "City Mayor" }, qrUrl: "https://example.test/CEDO/id?token=00000000-0000-4000-8000-000000000001",
+};
+test("the name is printed as FIRST M. LAST in capitals, the program as stored plus the year number", () => {
+  assert.equal(CSR.csrFullName("Juan -Test", "Nuñez", "Dela Cruz"), "JUAN -TEST N. DELA CRUZ");
+  assert.equal(CSR.csrFullName("Ana", "", "Reyes"), "ANA REYES"); assert.equal(CSR.csrFullName("  Ana  Marie ", " ", " Reyes "), "ANA MARIE REYES");
+  assert.equal(CSR.csrProgramCode("BSMARE", "5th Year"), "BSMARE-5"); assert.equal(CSR.csrProgramCode("BS Marine Engineering", "1st Year"), "BS MARINE ENGINEERING-1"); assert.equal(CSR.csrProgramCode("BSIT", "Irregular"), "BSIT");
+});
+test("the date line: 4th, 21st, 12th, 2nd, 23rd — in Philippine time", () => {
+  assert.deepEqual([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 24, 30, 31].map(CSR.ordinalDay), ["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd", "24th", "30th", "31st"]);
+  assert.deepEqual(CSR.manilaDateParts(new Date("2026-07-04T02:00:00Z")), { day: 4, month: "July", year: 2026 });
+  assert.deepEqual(CSR.manilaDateParts(new Date("2026-12-31T17:00:00Z")), { day: 1, month: "January", year: 2027 }, "17:00 UTC on Dec 31 is already Jan 1 in Manila");
+});
+test("term wording and the CSR number", () => {
+  assert.deepEqual(CSR.termClassText("1st Semester"), { period: "1ST Semester", cls: "1ST SEMESTER CLASS" });
+  assert.deepEqual(CSR.termClassText("2nd Semester"), { period: "2ND Semester", cls: "2ND SEMESTER CLASS" });
+  assert.deepEqual(CSR.termClassText("Summer"), { period: "Summer", cls: "SUMMER CLASS" });
+  assert.equal(CSR.csrNumberText("2026-2027", "1st Semester", 12), "CSR-2026-1S-00012"); assert.equal(CSR.csrNumberText("2026-2027", "2nd Semester", 3), "CSR-2026-2S-00003"); assert.equal(CSR.csrNumberText("2026-2027", "Summer", 123456), "CSR-2026-SU-123456");
+});
+await testAsync("the certificate is one A4 page that prints the scholar, school, term, number, signatories, date and place", async () => {
+  const bytes = await CSR.buildCsrPdf(csrBase);
+  assert.equal(Buffer.from(bytes.subarray(0, 5)).toString("latin1"), "%PDF-");
+  const { PDFDocument } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes);
+  assert.equal(doc.getPageCount(), 1);
+  const { width, height } = doc.getPage(0).getSize();
+  assert.ok(Math.abs(width - 595.28) < 0.5 && Math.abs(height - 841.89) < 0.5, "A4");
+  assert.match(doc.getTitle() ?? "", /CSR-2026-1S-00012/);
+  const text = pdfText(bytes).join("").replace(/\s+/g, "");   // the body is drawn word by word, so compare without spaces
+  for (const raw of ["JUAN -TEST N. DELA CRUZ", "2108-00001", "BESIGAN", "BSMARE-5", "PHINMA CAGAYAN DE ORO COLLEGE", "1ST Semester", "1ST SEMESTER CLASS", "2026-2027",
+    "CSR-2026-1S-00012", "MS. TEST OFFICER, LPT", "HON. TEST MAYOR", "City Mayor", "4th", "July 2026", "the City of Cagayan de Oro, Philippines"]) assert.ok(text.includes(raw.replace(/\s+/g, "")), "missing on the certificate: " + raw);
+});
+await testAsync("a corrected copy says which copy it is; the original does not", async () => {
+  const one = pdfText(await CSR.buildCsrPdf(csrBase)).join("\n"), two = pdfText(await CSR.buildCsrPdf({ ...csrBase, version: 2 })).join("\n");
+  assert.equal(/Copy 2/.test(one), false); assert.ok(/Copy 2/.test(two));
+});
+await testAsync("very long names, a long school and a Summer term still fit on one page, and odd characters cannot break the file", async () => {
+  const { PDFDocument } = await import("pdf-lib");
+  const long = { ...csrBase, fullName: CSR.csrFullName("Maria Cristina Esperanza Josefina", "Santos", "De Los Reyes-Villanueva Y Fernandez-Montenegro"), school: "Technological University of the Philippines – Cagayan de Oro Extension Campus and Graduate School of Marine Engineering",
+    program: CSR.csrProgramCode("Bachelor of Science in Computer Engineering Major in Embedded Systems", "4th Year"), term: "Summer", barangay: "Barangay Lapasan, Zone 7 Extension" };
+  assert.equal((await PDFDocument.load(await CSR.buildCsrPdf(long))).getPageCount(), 1);
+  const odd = { ...csrBase, fullName: "ZOË “ŇÁMÉ” 日本語 😀", school: "Ünï School ★", barangay: "Bgy. Ñ" };
+  assert.equal((await PDFDocument.load(await CSR.buildCsrPdf(odd))).getPageCount(), 1);
+});
+await testAsync("a signature picture the office uploaded is used; without one the sample picture is used", async () => {
+  const { PDFDocument } = await import("pdf-lib");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  const plain = await CSR.buildCsrPdf(csrBase);
+  const custom = await CSR.buildCsrPdf({ ...csrBase, officer: { ...csrBase.officer, signature: new Uint8Array(png) }, mayor: { ...csrBase.mayor, signature: new Uint8Array(png), mark: new Uint8Array(png) } });
+  assert.equal((await PDFDocument.load(custom)).getPageCount(), 1); assert.notEqual(custom.length, plain.length);
+});
+test("the report adds the certificate number to the Applications sheet (and still works without the Phase 8 answer)", () => {
+  const dash = RP.parseDashboard(rawDash), base = RP.parseExportData(rawExport);
+  const withCsr = RP.attachCsrNumbers(base, [{ scholar_id_number: "TEST-0003", csr_number: "CSR-2026-1S-00001", version: 2, issued_at: "2026-10-14T01:00:00Z" }]);
+  const sheet = RP.buildReportSheets(dash, withCsr)[1], h = sheet.headers;
+  assert.ok(h.includes("CSR number") && h.includes("CSR made"));
+  assert.equal(sheet.rows[0][h.indexOf("CSR number")], "CSR-2026-1S-00001"); assert.equal(sheet.rows[0][h.indexOf("CSR made")], "2026-10-14");
+  assert.equal(sheet.rows[1][h.indexOf("CSR number")], "", "a scholar without a certificate gets an empty cell");
+  for (const row of sheet.rows) assert.equal(row.length, h.length);
+  const unchanged = RP.attachCsrNumbers(base, null);
+  assert.equal(unchanged, base, "no answer (Phase 8 not installed): the rows are returned as they are");
+  assert.equal(RP.buildReportSheets(dash, unchanged)[1].rows[0][h.indexOf("CSR number")], "");
+});
+test("who may open the Certificate tab: the evaluator and the IT admin; the IT admin sees no other tab", () => {
+  const page = fs.readFileSync(path.join(root, "src/sead/ScholarRenewalPage.tsx"), "utf8");
+  assert.match(page, /t\.key === "certificate" \? \(isEvaluator \|\| isItAdmin\)/);
+  assert.match(page, /seesRenewals && \(isEvaluator \|\| !t\.evaluatorOnly\)/);
+  const acc = { tags: [], role: "staff", division: "SEAD" };
+  assert.equal(AC.canSeeScholarRenewal({ ...acc, username: "it.admin1" }), true); assert.equal(AC.isItAdmin({ ...acc, username: "IT.Admin1" }), true);
+  assert.equal(AC.canSeeScholarRenewal({ ...acc, username: "someone" }), false); assert.equal(AC.canSeeScholarRenewal(acc), false);
+});
+test("the certificate screens only ask the database and the csr-issue function; every function they call exists in the Phase 8 file", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p8_csr.sql"), "utf8");
+  const api = fs.readFileSync(path.join(root, "src/lib/csrApi.ts"), "utf8");
+  const called = new Set([...api.matchAll(/rpc\("([a-z_]+)"/g)].map(m => m[1]));
+  assert.deepEqual([...called].sort(), ["csr_for_record", "csr_settings_get", "csr_settings_save"]);
+  for (const fn of called) assert.ok(new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql), fn);
+  assert.match(api, /functions\.invoke\("csr-issue"/);
+  assert.equal(/\.from\("csr_(settings|issued|counters)"\)\s*\.(insert|update|delete|upsert)/.test(api), false);
+  assert.ok(fs.readFileSync(path.join(root, "src/sead/renewalReportApi.ts"), "utf8").includes('"renewal_export_csr"'));
+  assert.ok(/create (or replace )?function public\.renewal_export_csr\(/.test(sql));
+});
+test("the edge function lets the database decide, keeps the original and answers with a short-lived link", () => {
+  const fn = fs.readFileSync(path.join(root, "supabase/functions/csr-issue/index.ts"), "utf8");
+  assert.match(fn, /asCaller\.rpc\("csr_prepare"/); assert.match(fn, /admin\.rpc\("csr_complete"/); assert.match(fn, /createSignedUrl\(path, 300/);
+  assert.match(fn, /if \(!authHeader\)/); assert.match(fn, /prep\.ready/);
+  assert.equal(/admin\.rpc\("csr_prepare"/.test(fn), false, "csr_prepare runs as the caller, never as the service");
+});
+test("the public QR page shows only the status line (and the certificate number), and the new screens use readable text", () => {
+  const page = fs.readFileSync(path.join(root, "src/scholar/pages/ScholarEmergencyInfoPage.tsx"), "utf8");
+  assert.match(page, /renewal\.line/); assert.match(page, /Certificate \{renewal\.csr_number\} — valid/);
+  assert.equal(/renewal\.(stage|result|evaluation|grades|sdp)/.test(page), false);
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p8_csr.sql"), "utf8");
+  const fnBody = /create or replace function public\.get_public_scholar_emergency_info[\s\S]*?\n\$\$;/.exec(sql)?.[0] ?? "";
+  assert.ok(fnBody.includes("'Removed'") && fnBody.includes("'renewal', jsonb_build_object('state', v_state, 'line', v_line, 'csr_number', v_csr)"));
+  assert.equal(/grade|sdp|document|evaluator_comment/i.test(fnBody.replace(/--.*$/gm, "")), false, "nothing about grades, SDP or documents is public");
+  for (const p of ["src/lib/csrApi.ts", "src/scholar/components/dashboard/CsrDownload.tsx", "src/sead/renewal/RenewalCsrSection.tsx", "src/sead/renewal/RenewalCertificateTab.tsx"]) {
+    const src = fs.readFileSync(path.join(root, p), "utf8");
+    assert.deepEqual([...src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], p);
+    assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(src), false, p);
   }
 });
 
