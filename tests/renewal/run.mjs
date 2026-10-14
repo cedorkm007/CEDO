@@ -367,9 +367,29 @@ test("next steps with a booking, without one, after a no-show, and once the cons
   assert.match(R.scholarNextSteps("summer_requirements", ev, { consultNeeded: false, isSummer: true }).join(" "), /hard copy/);
 });
 
+test("a study plan that is not approved yet: the scholar is told to wait, and that booking follows the approval", () => {
+  const plan = approved => [{ kind: "study_plan", label: "Study plan", satisfied: true, approved }];
+  const base = { sdp: { applicable: true, complied: true, missing: null }, grades: { reason: "" } };
+  const pending = R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: plan(false) }, { consultState: "study_plan_pending" });
+  assert.deepEqual(pending, ["Wait for the evaluator to approve your study plan. Then you can book your face-to-face consultation."]);
+  const missing = R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: false, approved: false }] }, { consultState: "study_plan_missing" });
+  assert.match(missing[0], /Upload your study plan/); assert.match(missing[1], /After the evaluator approves your study plan, you can book/);
+  const ok = R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: plan(true) }, { consultState: "ok" });
+  assert.match(ok.join(" "), /Book your face-to-face consultation/);
+  const booked = R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: plan(true) }, { consultState: "ok", booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } });
+  assert.match(booked.join(" "), /Come to your face-to-face consultation/);
+  assert.deepEqual(R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: plan(true) }, { consultState: "not_needed" }), ["Your consultation is done."]);
+});
+test("the website's consultation states are the ones the database returns", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p3_appointments.sql"), "utf8");
+  for (const s of ["not_needed", "study_plan_missing", "study_plan_pending", "ok"]) assert.ok(sql.includes("'" + s + "'"), s);
+  const api = fs.readFileSync(path.join(root, "src/scholar/renewalApi.ts"), "utf8");
+  for (const s of ["study_plan_missing", "study_plan_pending", "not_needed"]) assert.ok(api.includes(s), s);
+});
+
 console.log("Source guards (Phase 3)");
 const p3files = [
-  "src/sead/appointmentsApi.ts", "src/sead/appointments/AppointmentsTab.tsx", "src/sead/appointments/SlotDetailModal.tsx",
+  "src/sead/appointmentsApi.ts", "src/sead/appointments/AppointmentsTab.tsx", "src/sead/appointments/SlotDetailModal.tsx", "src/sead/ScholarRenewalPage.tsx", "src/sead/renewal/RenewalDetailView.tsx",
   "src/scholar/components/dashboard/RenewalPanel.tsx", "src/sead/pages/ProbationMonitoringTab.tsx",
 ];
 test("the appointment screens use readable text (13px and up, no pale greys, no pale-blue links)", () => {
@@ -385,7 +405,7 @@ test("the appointment screens only ask the database (no direct writes to slots, 
   const scholarApi = fs.readFileSync(path.join(root, "src/scholar/renewalApi.ts"), "utf8");
   for (const fn of ["renewal_open_slots", "renewal_book_slot", "renewal_reschedule_slot", "renewal_cancel_booking"]) assert.ok(scholarApi.includes(`"${fn}"`), fn);
   const staffApi = fs.readFileSync(path.join(root, "src/sead/appointmentsApi.ts"), "utf8");
-  for (const fn of ["counseling_availability_save", "counseling_availability_delete", "counseling_my_slots", "counseling_mark_slot", "counseling_save_daily_record", "renewal_extend_inc_deadline"]) assert.ok(staffApi.includes(`"${fn}"`), fn);
+  for (const fn of ["counseling_availability_save", "counseling_availability_delete", "counseling_my_slots", "counseling_mark_slot", "counseling_save_daily_record", "renewal_extend_inc_deadline", "renewal_calendar_staff", "renewal_calendar_slots", "renewal_calendar_availability"]) assert.ok(staffApi.includes(`"${fn}"`), fn);
 });
 test("the Appointments subtab sits inside the existing Consultation Tool (same tag), and every function the website calls exists in the migration", () => {
   const page = fs.readFileSync(path.join(root, "src/sead/ScholarCounselingToolPage.tsx"), "utf8");

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarRange, ClipboardList, Clock, Hourglass, UserX } from "lucide-react";
+import { CalendarClock, CalendarRange, ClipboardList, Clock, Hourglass, UserX } from "lucide-react";
 import { formatDay, termLabelOf, windowState } from "@/lib/renewal";
 import { fetchRenewalWindows, type RenewalWindowRow } from "./renewalApi";
 import { RenewalBoardTab } from "./renewal/RenewalBoardTab";
@@ -8,8 +8,9 @@ import { RenewalNotAppliedTab } from "./renewal/RenewalNotAppliedTab";
 import { RenewalIncTab } from "./renewal/RenewalIncTab";
 import { RenewalWindowsTab } from "./renewal/RenewalWindowsTab";
 import { RenewalDetailView } from "./renewal/RenewalDetailView";
+import { AppointmentsTab } from "./appointments/AppointmentsTab";
 
-type Tab = "applications" | "late" | "notApplied" | "inc" | "windows";
+type Tab = "applications" | "late" | "notApplied" | "inc" | "calendar" | "windows";
 
 /**
  * "Scholar Renewal" — the evaluator's tool. Gated by the "scholar_renewal_evaluator" tag (src/app/staffToolTags.ts).
@@ -45,6 +46,7 @@ export function ScholarRenewalPage({ canAct = true }: { canAct?: boolean }) {
     { key: "late", label: "Late", icon: <Clock size={14} aria-hidden="true" /> },
     { key: "notApplied", label: "Not applied", icon: <UserX size={14} aria-hidden="true" /> },
     { key: "inc", label: "INC", icon: <Hourglass size={14} aria-hidden="true" /> },
+    { key: "calendar", label: "Consultations", icon: <CalendarClock size={14} aria-hidden="true" /> },
     { key: "windows", label: "Windows", icon: <CalendarRange size={14} aria-hidden="true" /> },
   ];
 
@@ -77,9 +79,10 @@ export function ScholarRenewalPage({ canAct = true }: { canAct?: boolean }) {
             ))}
           </div>
 
+          {tab === "calendar" && <AppointmentsTab readOnly onOpenRecord={setDetailId} />}
           {tab === "windows" && <RenewalWindowsTab windows={windows ?? []} onChanged={async () => { await loadWindows(); bump(); }} />}
-          {tab !== "windows" && !current && <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">Open a renewal window first (Windows tab).</p>}
-          {tab !== "windows" && current && (
+          {tab !== "windows" && tab !== "calendar" && !current && <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">Open a renewal window first (Windows tab).</p>}
+          {tab !== "windows" && tab !== "calendar" && current && (
             <>
               {tab === "applications" && <RenewalBoardTab schoolYear={current.schoolYear} term={current.term} onOpen={setDetailId} refreshKey={refreshKey} />}
               {tab === "late" && <RenewalLateTab schoolYear={current.schoolYear} term={current.term} onOpen={setDetailId} onChanged={bump} refreshKey={refreshKey} />}

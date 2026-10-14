@@ -29,6 +29,8 @@ export interface MyRenewalWindow {
   booking: MyBooking | null;
   /** Does this renewal still need a consultation that has not happened? (the database decides) */
   consultNeeded: boolean;
+  /** Why a consultation can (not) be booked yet: ok, study_plan_missing, study_plan_pending (waiting for the evaluator's approval) or not_needed. */
+  consultState: "ok" | "study_plan_missing" | "study_plan_pending" | "not_needed";
 }
 export interface MyRenewalOverview { scholar: { scholarIdNumber: string; school: string; program: string; yearLevel: string; status: string }; windows: MyRenewalWindow[] }
 
@@ -65,6 +67,7 @@ export async function fetchMyRenewals(): Promise<{ ok: true; overview: MyRenewal
     history: ((w.history ?? []) as Row[]).map(h => ({ at: str(h.at), toStage: str(h.to_stage), actor: str(h.actor), note: str(h.note) })),
     booking: w.booking ? (() => { const b = w.booking as Row; return { slotId: str(b.slot_id), startsAt: str(b.starts_at), endsAt: str(b.ends_at), staffName: str(b.staff_name), canChange: !!b.can_change }; })() : null,
     consultNeeded: !!w.consult_needed,
+    consultState: ((w.consult_state as string | null) ?? "not_needed") as MyRenewalWindow["consultState"],
     incItems: ((w.inc_items ?? []) as Row[]).map(i => ({
       id: str(i.id), subjectCode: str(i.subject_code), subject: str(i.subject), state: str(i.state),
       consultationDate: strOrNull(i.consultation_date), daysGiven: i.days_given == null ? null : Number(i.days_given), deadline: strOrNull(i.deadline),

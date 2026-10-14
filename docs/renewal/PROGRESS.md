@@ -75,3 +75,9 @@ Database — `supabase_migration_renewal_p3_appointments.sql` (run AFTER the Pha
 Website: Appointments subtab in the Scholar Consultation Tool (`src/sead/appointments/*`, `appointmentsApi.ts`), pre-filled Daily Record (`AddDailyRecordModal` takes `prefill`), Probationary Monitoring renewal column (temporary INC, deadline, Extend, study plans), booking inside the scholar's Renewal tile, appointment info on the evaluator's board / detail.
 Tests: `tests/renewal/db/run_p3_tests.mjs` 88 checks; Phase 2 129; website 49; Phase 1 64 / grades 99; tsc + build clean.
 Walkthrough: `Renewal_Phase3_Walkthrough.txt` (also lists what changed in Phase 2 after the owner's answers).
+
+## 2026-10-14 — Owner's answers to the Phase 3 questions (applied on `renewal/phase-3-appointments`)
+- Q1: a scholar whose case needs a STUDY PLAN cannot book a consultation until the evaluator APPROVES it. `_renewal_consult_state()` (ok / study_plan_missing / study_plan_pending / not_needed) gates `renewal_open_slots` and `renewal_book_slot`; `renewal_review_document()` (evaluator: approve, or return with a comment) notifies the scholar; `_renewal_evaluate` marks required documents `approved` and a case is not "ready to endorse" until the plan is approved. Website: waiting messages in the Renewal tile, Approve / Return buttons on the evaluator's detail page, "Documents to review" filter on the board. Cases without a study plan (2+ failed, INC only, Summer) book as before.
+- Q2: "60 days" = how far ahead scholars can SEE open times (12 hours to 60 days from now); kept at 60 — explained to the owner.
+- Q3: the evaluator sees every counselor's calendar READ-ONLY: new "Consultations" tab (`renewal_calendar_staff/availability/slots`; `AppointmentsTab readOnly`).
+Tests: Phase 3 database 101, Phase 2 129, website 51. Demo: new TEST-0039 (plan waiting for approval); TEST-0035/37/38 have approved plans.

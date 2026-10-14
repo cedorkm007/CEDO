@@ -13,7 +13,7 @@ const str = (v: unknown) => (v == null ? "" : String(v));
 const strOrNull = (v: unknown) => (v == null ? null : String(v));
 const num = (v: unknown) => (v == null ? 0 : Number(v));
 
-export interface AvailabilityRange { id: string; startsAt: string; endsAt: string; slotCount: number; bookedCount: number }
+export interface AvailabilityRange { id: string; startsAt: string; endsAt: string; slotCount: number; bookedCount: number; staffId?: string; staffName?: string }
 
 export async function fetchMyAvailability(fromIso: string, toIso: string): Promise<{ ok: true; rows: AvailabilityRange[] } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("counseling_my_availability", { p_from: fromIso, p_to: toIso });
@@ -25,6 +25,7 @@ export type SlotState = "open" | "booked" | "attended" | "no_show";
 export interface CalendarSlot {
   slotId: string; availabilityId: string; startsAt: string; endsAt: string; state: SlotState; scholarIdNumber: string | null; scholarName: string | null;
   recordId: string | null; termLabel: string | null; stage: RenewalStage | null; caseSummary: string | null; noShowCount: number; isSummer: boolean; hardCopy: boolean; dailyRecordId: string | null;
+  staffId?: string; staffName?: string;
 }
 
 export async function fetchMySlots(fromIso: string, toIso: string): Promise<{ ok: true; rows: CalendarSlot[] } | { ok: false; error: string }> {
@@ -36,6 +37,33 @@ export async function fetchMySlots(fromIso: string, toIso: string): Promise<{ ok
       slotId: str(r.slot_id), availabilityId: str(r.availability_id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), state: r.state as SlotState,
       scholarIdNumber: strOrNull(r.scholar_id_number), scholarName: strOrNull(r.scholar_name), recordId: strOrNull(r.record_id), termLabel: strOrNull(r.term_label),
       stage: (r.stage ?? null) as RenewalStage | null, caseSummary: strOrNull(r.case_summary), noShowCount: num(r.no_show_count), isSummer: !!r.is_summer, hardCopy: !!r.hard_copy, dailyRecordId: strOrNull(r.daily_record_id),
+    })),
+  };
+}
+
+// ── The evaluator's READ-ONLY view of every consultation staff member's calendar ──
+export interface CalendarStaff { staffId: string; staffName: string }
+
+export async function fetchCalendarStaff(): Promise<{ ok: true; rows: CalendarStaff[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("renewal_calendar_staff");
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, rows: ((data ?? []) as Row[]).map(r => ({ staffId: str(r.staff_id), staffName: str(r.staff_name) })) };
+}
+export async function fetchCalendarAvailability(fromIso: string, toIso: string, staffId: string | null): Promise<{ ok: true; rows: AvailabilityRange[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("renewal_calendar_availability", { p_from: fromIso, p_to: toIso, p_staff: staffId });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, rows: ((data ?? []) as Row[]).map(r => ({ id: str(r.id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), slotCount: num(r.slot_count), bookedCount: num(r.booked_count), staffId: str(r.staff_id), staffName: str(r.staff_name) })) };
+}
+export async function fetchCalendarSlots(fromIso: string, toIso: string, staffId: string | null): Promise<{ ok: true; rows: CalendarSlot[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("renewal_calendar_slots", { p_from: fromIso, p_to: toIso, p_staff: staffId });
+  if (error) return { ok: false, error: error.message };
+  return {
+    ok: true,
+    rows: ((data ?? []) as Row[]).map(r => ({
+      slotId: str(r.slot_id), availabilityId: str(r.availability_id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), state: r.state as SlotState,
+      scholarIdNumber: strOrNull(r.scholar_id_number), scholarName: strOrNull(r.scholar_name), recordId: strOrNull(r.record_id), termLabel: strOrNull(r.term_label),
+      stage: (r.stage ?? null) as RenewalStage | null, caseSummary: strOrNull(r.case_summary), noShowCount: num(r.no_show_count), isSummer: false, hardCopy: false, dailyRecordId: null,
+      staffId: str(r.staff_id), staffName: str(r.staff_name),
     })),
   };
 }

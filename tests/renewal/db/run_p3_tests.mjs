@@ -45,6 +45,14 @@ async function mkSlot({ staff = COUNSELOR, startsInHours, state = "open", record
   return (await q(`insert into counseling_slots (availability_id, staff_id, starts_at, ends_at, state, record_id, scholar_id_number, booked_at)
     values ($1,$2,$3,$4,$5,$6,$7, case when $5 = 'open' then null else now() end) returning *`, [av, staff, start.toISOString(), end.toISOString(), state, record, scholar]))[0];
 }
+/** Uploads a study plan as the scholar and has the evaluator approve it (the scholar cannot book before that). */
+async function approvePlan(n, uid = scholarUid(n)) {
+  const rec = await recordOf(n, T, S1);
+  const doc = (await rpc(uid, `insert into renewal_documents (record_id, scholar_id_number, kind, storage_path, file_name, mime_type, size_bytes)
+    values ($1,$2,'study_plan',$3,'plan.pdf','application/pdf',500) returning id`, [rec.id, num(n), `${num(n)}/${rec.id}/study_plan/${crypto.randomUUID()}-plan.pdf`]))[0];
+  await rpc(EVAL, "select public.renewal_review_document($1,true,'')", [doc.id]);
+  return doc.id;
+}
 const notes = async (n, kind) => (await q("select * from scholar_notifications where scholar_id_number = $1 and kind = $2 order by created_at", [num(n), kind]));
 // a start time on the hour, N days ahead, in Manila time (so the slots line up the way staff would type them)
 const manilaAt = (daysAhead, hour) => { const d = new Date(Date.now() + 8 * 3600 * 1000 + daysAhead * 86400000); return new Date(`${d.toISOString().slice(0, 10)}T${String(hour).padStart(2, "0")}:00:00+08:00`); };
@@ -84,6 +92,31 @@ let rec3, slotA;
   check("a scholar who needs no consultation cannot see or book slots' bookings", await fails(scholarUid(1), "select public.renewal_book_slot($1,$2)", [rec1.id, (await q("select id from counseling_slots where availability_id = $1 limit 1", [rangeId]))[0].id], /do not need/));
   await apply(3, W1);
   rec3 = await recordOf(3, T, S1);
+
+  // Q1 of the owner: a scholar whose case needs a study plan waits for the evaluator's APPROVAL before booking
+  const firstSlot = (await q("select id from counseling_slots where availability_id = $1 order by starts_at limit 1", [rangeId]))[0].id;
+  const stateOf = async () => (await rpc(scholarUid(3), "select public.renewal_my_overview() o"))[0].o.windows.find(w => w.window.term === S1 && w.window.school_year === T).consult_state;
+  check("no study plan yet: cannot see times or book, and is told to upload it first", await stateOf() === "study_plan_missing"
+    && await fails(scholarUid(3), "select * from public.renewal_open_slots($1)", [rec3.id], /upload your study plan first/i)
+    && await fails(scholarUid(3), "select public.renewal_book_slot($1,$2)", [rec3.id, firstSlot], /upload your study plan first/i));
+  const docRow = (await rpc(scholarUid(3), `insert into renewal_documents (record_id, scholar_id_number, kind, storage_path, file_name, mime_type, size_bytes)
+    values ($1,$2,'study_plan',$3,'plan.pdf','application/pdf',500) returning id`, [rec3.id, num(3), `${num(3)}/${rec3.id}/study_plan/${crypto.randomUUID()}-plan.pdf`]))[0];
+  check("plan uploaded but not approved: still cannot book, and is told to wait", await stateOf() === "study_plan_pending"
+    && await fails(scholarUid(3), "select public.renewal_book_slot($1,$2)", [rec3.id, firstSlot], /approved by the evaluator/i)
+    && await fails(scholarUid(3), "select * from public.renewal_open_slots($1)", [rec3.id], /approved by the evaluator/i));
+  check("only the evaluator can review a document", await fails(scholarUid(3), "select public.renewal_review_document($1,true,'')", [docRow.id.toString()], /Evaluator/)
+    && await fails(COUNSELOR, "select public.renewal_review_document($1,true,'')", [docRow.id], /Evaluator/));
+  check("returning a plan needs a comment", await fails(EVAL, "select public.renewal_review_document($1,false,'')", [docRow.id], /tell the scholar what to fix/));
+  await rpc(EVAL, "select public.renewal_review_document($1,false,'Please add a semester schedule')", [docRow.id]);
+  check("a returned plan: the scholar is told why, must upload again, and cannot book", (await notes(3, "study_plan_returned")).some(n => /semester schedule/.test(n.body)) && await stateOf() === "study_plan_missing"
+    && (await q("select status, reviewer_comment from renewal_documents where id = $1", [docRow.id]))[0].status === "returned");
+  const doc2 = (await rpc(scholarUid(3), `insert into renewal_documents (record_id, scholar_id_number, kind, storage_path, file_name, mime_type, size_bytes)
+    values ($1,$2,'study_plan',$3,'plan2.pdf','application/pdf',500) returning id`, [rec3.id, num(3), `${num(3)}/${rec3.id}/study_plan/${crypto.randomUUID()}-plan2.pdf`]))[0];
+  check("a case with an unapproved plan is not ready to endorse", (await recordOf(3, T, S1)).stage === "needs_study_plan_consultation");
+  await rpc(EVAL, "select public.renewal_review_document($1,true,'Good plan')", [doc2.id]);
+  check("approved: the scholar is told they can book, and now can", await stateOf() === "ok" && (await notes(3, "study_plan_approved")).some(n => /book your consultation/.test(n.body)));
+  check("the approved plan is kept and cannot be removed by the scholar", await (async () => { const rows = await as(scholarUid(3), async tx => (await tx.query("delete from renewal_documents where id = $1 returning id", [doc2.id])).rows); return rows.length === 0; })());
+
   const open = await rpc(scholarUid(3), "select * from public.renewal_open_slots($1)", [rec3.id]);
   check("a scholar sees open slots with the staff name", open.length >= 21 && open.every(o => o.staff_name));
   check("slots of ALL counseling staff are offered", new Set(open.map(o => o.staff_name)).size >= 2);
@@ -195,9 +228,7 @@ console.log("\nAttended: the pre-filled Daily Record, days given to comply, the 
   await q("update counseling_slots set state = 'open', record_id = null, scholar_id_number = null where record_id = $1", [r3.id]);
   const slot3 = await mkSlot({ startsInHours: -2, state: "booked", record: r3.id, scholar: num(3) });
   await rpc(COUNSELOR, "select public.counseling_mark_slot($1,'attended')", [slot3.id]);
-  check("attended without the study plan: still needs the study plan", (await recordOf(3, T, S1)).stage === "needs_study_plan_consultation");
-  await rpc(scholarUid(3), `insert into renewal_documents (record_id, scholar_id_number, kind, storage_path, file_name, mime_type, size_bytes) values ($1,$2,'study_plan',$3,'plan.pdf','application/pdf',500)`, [r3.id, num(3), `${num(3)}/${r3.id}/study_plan/${crypto.randomUUID()}-plan.pdf`]);
-  check("study plan uploaded + consultation attended: ready to endorse to the Division Head", (await recordOf(3, T, S1)).stage === "ready_to_endorse");
+  check("study plan approved + consultation attended: ready to endorse to the Division Head", (await recordOf(3, T, S1)).stage === "ready_to_endorse");
   const dr3 = (await rpc(COUNSELOR, "select public.counseling_save_daily_record($1,$2,'Regular',current_date,'Mathematics (5.0)','Plan reviewed','Endorse','Office',null,null) id", [slot3.id, num(3)]))[0].id;
   check("a case without INC needs no days given", !!dr3);
 
@@ -258,6 +289,7 @@ console.log("\nReminders: 1 day and 1 hour before");
   check("and is not repeated", (await notes(6, "reminder_hour")).length === 1);
   // booked less than 24 hours ahead: no "1 day" reminder is sent late
   await apply(20, W1);
+  await approvePlan(20);
   const r20 = await recordOf(20, T, S1);
   const open13 = await mkSlot({ startsInHours: 13 });
   await rpc(scholarUid(20), "select public.renewal_book_slot($1,$2)", [r20.id, open13.id]);
@@ -282,6 +314,24 @@ console.log("\nRow-level security");
   check("a scholar cannot open the staff calendar", await fails(scholarUid(3), "select * from public.counseling_my_slots($1,$2)", [hoursFromNow(0).toISOString(), hoursFromNow(48).toISOString()], /consultation staff/));
   const detail = (await rpc(EVAL, "select public.renewal_record_detail($1) d", [(await recordOf(3, T, S1)).id]))[0].d;
   check("the evaluator's detail shows the appointment history", detail.appointments.length >= 1);
+}
+
+console.log("\nThe evaluator sees the counselors' calendars (read-only)");
+{
+  const staff = await rpc(EVAL, "select * from public.renewal_calendar_staff()");
+  check("the evaluator can list the consultation staff", staff.some(s => s.staff_id === COUNSELOR) && staff.some(s => s.staff_id === ADMIN));
+  const from = hoursFromNow(-100).toISOString(), to = hoursFromNow(24 * 60).toISOString();
+  const all = await rpc(EVAL, "select * from public.renewal_calendar_slots($1,$2,null)", [from, to]);
+  const onlyC = await rpc(EVAL, "select * from public.renewal_calendar_slots($1,$2,$3)", [from, to, COUNSELOR]);
+  check("all staff's slots are visible, with the staff name, the scholar and the case", all.some(s => s.staff_id === ADMIN) && all.some(s => s.staff_id === COUNSELOR) && all.filter(s => s.state === "booked").every(s => s.scholar_name && s.staff_name));
+  check("the evaluator can pick one staff member", onlyC.length > 0 && onlyC.every(s => s.staff_id === COUNSELOR) && onlyC.length < all.length);
+  const av = await rpc(EVAL, "select * from public.renewal_calendar_availability($1,$2,null)", [from, to]);
+  check("the ranges are listed with their slot counts", av.length > 0 && av.every(a => a.slot_count >= 1 && a.staff_name));
+  check("it is READ-ONLY: the evaluator cannot mark, book, add or remove anything", await fails(EVAL, "select public.counseling_mark_slot($1,'attended')", [all.find(s => s.state === "booked").slot_id], /consultation staff/)
+    && await fails(EVAL, "select public.counseling_availability_delete($1,true)", [av[0].id], /consultation staff/)
+    && await fails(EVAL, "select public.counseling_availability_save(null,$1,$2,false)", [manilaAt(30, 9).toISOString(), manilaAt(30, 10).toISOString()], /consultation staff/));
+  check("nobody else can use the evaluator's calendar view", await fails(COUNSELOR, "select * from public.renewal_calendar_slots($1,$2,null)", [from, to], /Evaluator/)
+    && await fails(scholarUid(3), "select * from public.renewal_calendar_staff()", [], /Evaluator/));
 }
 
 console.log("\nSafety: running the Phase 3 migration twice changes nothing");

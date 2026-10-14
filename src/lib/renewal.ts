@@ -216,7 +216,7 @@ export interface RenewalEvaluation {
   };
   previous_probation?: boolean; failed_effective?: number; open_inc?: number;
   rule_code?: string | null; rule_text?: string | null; stage?: RenewalStage; reason?: string;
-  required_documents?: { kind: DocKind; label: string; satisfied: boolean }[];
+  required_documents?: { kind: DocKind; label: string; satisfied: boolean; approved?: boolean }[];
   consultation_required?: boolean; consultation_done?: boolean;
   error?: string;
 }
@@ -225,13 +225,18 @@ export interface RenewalEvaluation {
 export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | null | undefined, opts: {
   incDeadlines?: { subject: string; deadline: string | null }[]; evaluatorComment?: string | null;
   /** Does the scholar still need a consultation (none held yet)? Default: yes. */
-  consultNeeded?: boolean; booking?: { startsAt: string; staffName: string } | null; isSummer?: boolean; noShow?: boolean;
+  consultNeeded?: boolean;
+  /** ok = can book; study_plan_missing / study_plan_pending = must wait for the evaluator to approve the study plan; not_needed = none left to hold. */
+  consultState?: "ok" | "study_plan_missing" | "study_plan_pending" | "not_needed";
+  booking?: { startsAt: string; staffName: string } | null; isSummer?: boolean; noShow?: boolean;
 } = {}): string[] {
   const steps: string[] = [];
-  const consultNeeded = opts.consultNeeded ?? true;
+  const consultNeeded = opts.consultState ? opts.consultState !== "not_needed" || !!opts.booking : (opts.consultNeeded ?? true);
   /** Book / keep the face-to-face consultation. */
   const consult = () => {
     if (!consultNeeded) { steps.push("Your consultation is done."); return; }
+    if (!opts.booking && opts.consultState === "study_plan_pending") { steps.push("Wait for the evaluator to approve your study plan. Then you can book your face-to-face consultation."); return; }
+    if (!opts.booking && opts.consultState === "study_plan_missing") { steps.push("After the evaluator approves your study plan, you can book your face-to-face consultation."); return; }
     if (opts.booking) {
       steps.push(`Come to your face-to-face consultation on ${formatSlot(opts.booking.startsAt)} with ${opts.booking.staffName}.${opts.isSummer ? " Bring the hard copy of your prospectus." : ""}`);
     } else {

@@ -40,6 +40,8 @@ export interface BoardRow {
   consultationRequired: boolean; consultationDone: boolean; noShow: boolean; scholarNote: string; updatedAt: string; result: string | null;
   /** When the scholar's booked consultation starts (null when none is booked). */
   nextConsultation: string | null; noShowCount: number;
+  /** Documents the scholar uploaded that the evaluator has not reviewed yet. */
+  docsToReview: number;
 }
 
 export async function fetchRenewalBoard(schoolYear: string, term: string): Promise<Loaded<BoardRow>> {
@@ -52,7 +54,7 @@ export async function fetchRenewalBoard(schoolYear: string, term: string): Promi
       stage: r.stage as RenewalStage, isLate: !!r.is_late, lateDecision: strOrNull(r.late_decision), appliedAt: strOrNull(r.applied_at), ruleCode: strOrNull(r.rule_code),
       failedCount: num(r.failed_count), incCount: num(r.inc_count), sdpComplied: r.sdp_complied == null ? null : !!r.sdp_complied, sdpMissing: strOrNull(r.sdp_missing),
       consultationRequired: !!r.consultation_required, consultationDone: !!r.consultation_done, noShow: !!r.no_show_flag, scholarNote: str(r.scholar_note), updatedAt: str(r.updated_at), result: strOrNull(r.result),
-      nextConsultation: strOrNull(r.next_consultation), noShowCount: num(r.no_show_count),
+      nextConsultation: strOrNull(r.next_consultation), noShowCount: num(r.no_show_count), docsToReview: num(r.docs_to_review),
     })),
   };
 }
@@ -103,6 +105,11 @@ export async function confirmRenewal(recordId: string, note: string): Promise<Do
 /** A "1 failed subject" case: the evaluator endorses the scholar for Probationary to the Division Head. */
 export async function endorseRenewal(recordId: string, note: string): Promise<Done> {
   const { error } = await supabase.rpc("renewal_endorse", { p_record_id: recordId, p_note: note });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+/** Approve or return one uploaded document. Only the study plan holds anything up: until it is approved the scholar cannot book a consultation. */
+export async function reviewDocument(documentId: string, approve: boolean, comment: string): Promise<Done> {
+  const { error } = await supabase.rpc("renewal_review_document", { p_document_id: documentId, p_approve: approve, p_comment: comment });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 export async function returnRenewal(recordId: string, comment: string): Promise<Done> {

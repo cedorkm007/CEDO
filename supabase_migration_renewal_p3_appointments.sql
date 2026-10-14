@@ -118,21 +118,66 @@ stable
 as $$ select to_char(p_at at time zone 'Asia/Manila', 'FMDy, FMMon FMDD "at" FMHH12:MI AM'); $$;
 revoke all on function public._manila_slot_text(timestamptz) from public, anon, authenticated;
 
--- A scholar may book only while the renewal still needs a consultation that has not happened.
+-- Can the scholar book a consultation for this renewal right now?
+--   not_needed         the renewal needs no consultation, or it already happened
+--   study_plan_missing a study plan is required and has not been uploaded yet
+--   study_plan_pending the study plan is uploaded but the evaluator has not approved it yet
+--   ok                 the scholar may book
+-- A scholar whose case needs a study plan must WAIT FOR THE EVALUATOR'S APPROVAL of it before booking.
+create or replace function public._renewal_consult_state(p_record_id uuid)
+returns text
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  r public.renewal_records%rowtype;
+  v_study jsonb;
+begin
+  select * into r from public.renewal_records where id = p_record_id;
+  if not found or r.consultation_done_at is not null
+     or r.stage not in ('needs_study_plan_consultation', 'needs_consultation_division_head', 'needs_inc_letter_consultation', 'summer_requirements') then
+    return 'not_needed';
+  end if;
+  select d into v_study from jsonb_array_elements(coalesce(r.evaluation -> 'required_documents', '[]'::jsonb)) d where d ->> 'kind' = 'study_plan' limit 1;
+  if v_study is not null then
+    if not coalesce((v_study ->> 'satisfied')::boolean, false) then return 'study_plan_missing'; end if;
+    if not coalesce((v_study ->> 'approved')::boolean, false) then return 'study_plan_pending'; end if;
+  end if;
+  return 'ok';
+end;
+$$;
+revoke all on function public._renewal_consult_state(uuid) from public, anon, authenticated;
+
 create or replace function public._renewal_consult_eligible(p_record_id uuid)
 returns boolean
 language sql
 stable
 security definer
 set search_path = public
-as $$
-  select exists (
-    select 1 from public.renewal_records r
-    where r.id = p_record_id and r.consultation_done_at is null
-      and r.stage in ('needs_study_plan_consultation', 'needs_consultation_division_head', 'needs_inc_letter_consultation', 'summer_requirements')
-  );
-$$;
+as $$ select public._renewal_consult_state(p_record_id) = 'ok'; $$;
 revoke all on function public._renewal_consult_eligible(uuid) from public, anon, authenticated;
+
+-- A friendly refusal for the reasons above.
+create or replace function public._renewal_require_can_book(p_record_id uuid)
+returns void
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v text := public._renewal_consult_state(p_record_id);
+begin
+  if v = 'ok' then return; end if;
+  raise exception '%', case v
+    when 'study_plan_missing' then 'Please upload your study plan first. You can book your consultation after the evaluator approves it.'
+    when 'study_plan_pending' then 'Your study plan has to be approved by the evaluator before you can book your consultation. We will tell you as soon as it is.'
+    else 'You do not need to book a consultation right now.' end;
+end;
+$$;
+revoke all on function public._renewal_require_can_book(uuid) from public, anon, authenticated;
 
 create or replace function public._booking_log(p_record_id uuid, p_scholar text, p_slot_starts timestamptz, p_staff uuid, p_action text, p_note text default '')
 returns void
@@ -615,6 +660,10 @@ declare
 begin
   if v_id is null then raise exception 'Not signed in as a scholar.'; end if;
   if not exists (select 1 from public.renewal_records r where r.id = p_record_id and r.scholar_id_number = v_id) then raise exception 'That application was not found.'; end if;
+  -- someone who already holds a booking may look for another time (to change it); everyone else must be allowed to book
+  if not exists (select 1 from public.counseling_slots b where b.record_id = p_record_id and b.state = 'booked') then
+    perform public._renewal_require_can_book(p_record_id);
+  end if;
   return query
   select x.id, x.starts_at, x.ends_at, public._staff_display_name(x.staff_id)
   from public.counseling_slots x
@@ -640,10 +689,10 @@ begin
   if v_id is null then raise exception 'Not signed in as a scholar.'; end if;
   select * into r from public.renewal_records where id = p_record_id and scholar_id_number = v_id for update;
   if not found then raise exception 'That application was not found.'; end if;
-  if not public._renewal_consult_eligible(r.id) then raise exception 'You do not need to book a consultation right now.'; end if;
   if exists (select 1 from public.counseling_slots x where x.record_id = r.id and x.state = 'booked') then
     raise exception 'You already have a consultation booked. Reschedule it instead.';
   end if;
+  perform public._renewal_require_can_book(r.id);
   select * into s from public.counseling_slots where id = p_slot_id and state = 'open' for update;
   if not found then raise exception 'That time was just taken. Please choose another.'; end if;
   if s.starts_at < now() + interval '12 hours' then raise exception 'You can only book a consultation that starts at least 12 hours from now.'; end if;
@@ -766,7 +815,8 @@ begin
       'history', coalesce((select jsonb_agg(jsonb_build_object('at', h.at, 'to_stage', h.to_stage, 'actor', h.actor_label, 'note', h.note) order by h.at) from public.renewal_history h where h.record_id = v_rec.id), '[]'::jsonb),
       'inc_items', coalesce((select jsonb_agg(to_jsonb(i) order by i.subject) from public.renewal_inc_items i where i.record_id = v_rec.id), '[]'::jsonb),
       'booking', v_booking,
-      'consult_needed', v_rec.id is not null and public._renewal_consult_eligible(v_rec.id)));
+      'consult_needed', v_rec.id is not null and public._renewal_consult_eligible(v_rec.id),
+      'consult_state', case when v_rec.id is null then null else public._renewal_consult_state(v_rec.id) end));
   end loop;
   return jsonb_build_object(
     'scholar', jsonb_build_object('scholar_id_number', v_scholar.scholar_id_number, 'school', v_scholar.school, 'program', v_scholar.course, 'year_level', v_scholar.year_level, 'status', v_scholar.status),
@@ -783,7 +833,7 @@ returns table(
   record_id uuid, scholar_id_number text, name text, school text, program text, year_level text, stage text, is_late boolean, late_decision text,
   applied_at timestamptz, rule_code text, failed_count integer, inc_count integer, sdp_complied boolean, sdp_missing text,
   consultation_required boolean, consultation_done boolean, no_show_flag boolean, scholar_note text, updated_at timestamptz, result text,
-  next_consultation timestamptz, no_show_count integer
+  next_consultation timestamptz, no_show_count integer, docs_to_review integer
 )
 language plpgsql
 security definer
@@ -798,7 +848,8 @@ begin
          coalesce((r.evaluation -> 'failed_effective')::text::integer, 0), coalesce((r.evaluation -> 'open_inc')::text::integer, 0),
          nullif(r.evaluation -> 'sdp' ->> 'complied', '')::boolean, r.evaluation -> 'sdp' ->> 'missing',
          r.consultation_required, r.consultation_done_at is not null, r.no_show_flag, r.scholar_note, r.updated_at, r.result,
-         (select x.starts_at from public.counseling_slots x where x.record_id = r.id and x.state = 'booked'), r.no_show_count
+         (select x.starts_at from public.counseling_slots x where x.record_id = r.id and x.state = 'booked'), r.no_show_count,
+         (select count(*)::integer from public.renewal_documents d where d.record_id = r.id and d.status = 'submitted')
   from public.renewal_records r
   join public.scholars s on s.scholar_id_number = r.scholar_id_number
   where r.school_year = p_school_year and r.term = p_term
@@ -844,6 +895,116 @@ end;
 $$;
 revoke all on function public.renewal_record_detail(uuid) from public, anon;
 grant execute on function public.renewal_record_detail(uuid) to authenticated;
+
+-- ── 7b. The evaluator approves (or returns) the scholar's documents ──
+-- Only the study plan gates anything: until it is approved the scholar cannot book a consultation, and the case cannot be endorsed.
+create or replace function public.renewal_review_document(p_document_id uuid, p_approve boolean, p_comment text default '')
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  d public.renewal_documents%rowtype;
+  r public.renewal_records%rowtype;
+  v_label text;
+begin
+  perform public._renewal_require_evaluator();
+  select * into d from public.renewal_documents where id = p_document_id for update;
+  if not found then raise exception 'That document was not found.'; end if;
+  select * into r from public.renewal_records where id = d.record_id for update;
+  if not (public._renewal_is_active_stage(r.stage) or r.stage = 'returned') then raise exception 'This application is closed, so its documents can no longer be reviewed.'; end if;
+  if not p_approve and char_length(btrim(coalesce(p_comment, ''))) < 5 then raise exception 'Please tell the scholar what to fix (at least 5 characters).'; end if;
+  v_label := case d.kind when 'study_plan' then 'study plan' when 'inc_letter' then 'INC letter' else 'prospectus' end;
+  update public.renewal_documents set status = case when p_approve then 'accepted' else 'returned' end,
+    reviewer_comment = nullif(btrim(coalesce(p_comment, '')), ''), reviewed_by = auth.uid(), reviewed_at = now() where id = d.id;
+  perform public._renewal_log(r.id, r.stage, r.stage, case when p_approve then 'Approved the ' else 'Returned the ' end || v_label || ' (' || d.file_name || ')'
+    || case when btrim(coalesce(p_comment, '')) <> '' then ': ' || btrim(p_comment) else '.' end);
+  if p_approve then
+    perform public._notify_scholar(d.scholar_id_number, case when d.kind = 'study_plan' then 'study_plan_approved' else 'document_approved' end,
+      'Your ' || v_label || ' was approved',
+      case when d.kind = 'study_plan' and public._renewal_consult_state(r.id) = 'ok' then 'You can now book your consultation from your Renewal tile.' else 'Thank you.' end, r.id);
+  else
+    perform public._notify_scholar(d.scholar_id_number, case when d.kind = 'study_plan' then 'study_plan_returned' else 'document_returned' end,
+      'Your ' || v_label || ' was returned', 'The evaluator wrote: ' || btrim(p_comment) || ' Please upload a new one.', r.id);
+  end if;
+  perform public._renewal_recheck(r.id);
+end;
+$$;
+revoke all on function public.renewal_review_document(uuid, boolean, text) from public, anon;
+grant execute on function public.renewal_review_document(uuid, boolean, text) to authenticated;
+
+-- ── 7c. The evaluator can SEE the counselors' calendars (read-only) ──
+create or replace function public.renewal_calendar_staff()
+returns table(staff_id uuid, staff_name text)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_renewal_evaluator() then raise exception 'Only the Scholar Renewal Evaluator can see the consultation calendars.'; end if;
+  return query
+  select u.id, public._staff_display_name(u.id)
+  from public.users u
+  where exists (select 1 from public.staff_account_tags t where t.staff_id = u.id and t.tag_key = 'scholar_counseling')
+     or exists (select 1 from public.counseling_availability a where a.staff_id = u.id)
+  order by 2;
+end;
+$$;
+revoke all on function public.renewal_calendar_staff() from public, anon;
+grant execute on function public.renewal_calendar_staff() to authenticated;
+
+create or replace function public.renewal_calendar_availability(p_from timestamptz, p_to timestamptz, p_staff uuid default null)
+returns table(id uuid, staff_id uuid, staff_name text, starts_at timestamptz, ends_at timestamptz, slot_count integer, booked_count integer)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_renewal_evaluator() then raise exception 'Only the Scholar Renewal Evaluator can see the consultation calendars.'; end if;
+  return query
+  select a.id, a.staff_id, public._staff_display_name(a.staff_id), a.starts_at, a.ends_at,
+         (select count(*)::integer from public.counseling_slots x where x.availability_id = a.id),
+         (select count(*)::integer from public.counseling_slots x where x.availability_id = a.id and x.state <> 'open')
+  from public.counseling_availability a
+  where a.ends_at > p_from and a.starts_at < p_to and (p_staff is null or a.staff_id = p_staff)
+  order by a.starts_at, a.staff_id;
+end;
+$$;
+revoke all on function public.renewal_calendar_availability(timestamptz, timestamptz, uuid) from public, anon;
+grant execute on function public.renewal_calendar_availability(timestamptz, timestamptz, uuid) to authenticated;
+
+create or replace function public.renewal_calendar_slots(p_from timestamptz, p_to timestamptz, p_staff uuid default null)
+returns table(
+  slot_id uuid, availability_id uuid, staff_id uuid, staff_name text, starts_at timestamptz, ends_at timestamptz, state text, scholar_id_number text, scholar_name text,
+  record_id uuid, term_label text, stage text, case_summary text, no_show_count integer
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_renewal_evaluator() then raise exception 'Only the Scholar Renewal Evaluator can see the consultation calendars.'; end if;
+  return query
+  select x.id, x.availability_id, x.staff_id, public._staff_display_name(x.staff_id), x.starts_at, x.ends_at, x.state, x.scholar_id_number,
+         (select btrim(sc.last_name || ', ' || sc.first_name) from public.scholars sc where sc.scholar_id_number = x.scholar_id_number),
+         x.record_id, case when r.id is null then null else r.term || ' ' || r.school_year end, r.stage,
+         case when r.id is null then null else nullif(concat_ws(' · ',
+           case when coalesce((r.evaluation -> 'grades' -> 'counts' ->> 'failed')::integer, 0) > 0 then (r.evaluation -> 'grades' -> 'counts' ->> 'failed') || ' failed' end,
+           case when coalesce((r.evaluation -> 'grades' -> 'counts' ->> 'inc')::integer, 0) > 0 then (r.evaluation -> 'grades' -> 'counts' ->> 'inc') || ' INC' end,
+           case when r.term = 'Summer' then 'Summer renewal' end), '') end,
+         coalesce(r.no_show_count, 0)
+  from public.counseling_slots x
+  left join public.renewal_records r on r.id = x.record_id
+  where x.starts_at >= p_from and x.starts_at < p_to and (p_staff is null or x.staff_id = p_staff)
+  order by x.starts_at, x.staff_id;
+end;
+$$;
+revoke all on function public.renewal_calendar_slots(timestamptz, timestamptz, uuid) from public, anon;
+grant execute on function public.renewal_calendar_slots(timestamptz, timestamptz, uuid) to authenticated;
 
 -- ── 8. The scheduler ────────────────────────────────────────
 -- Sends the 1-day and 1-hour reminders and notices INC deadlines that have passed. Safe to run as often as you like.

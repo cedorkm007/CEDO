@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarPlus, ChevronLeft, ChevronRight, Loader2, Pencil, Trash2 } from "lucide-react";
 import { formatSlot, formatTimeOnly, manilaDay, manilaInstant, manilaToday, slotCount } from "@/lib/renewal";
 import {
-  deleteAvailability, fetchMyAvailability, fetchMySlots, saveAvailability, type AffectedBooking, type AvailabilityRange, type CalendarSlot, type SaveRangeResult,
+  deleteAvailability, fetchCalendarAvailability, fetchCalendarSlots, fetchCalendarStaff, fetchMyAvailability, fetchMySlots, saveAvailability,
+  type AffectedBooking, type AvailabilityRange, type CalendarSlot, type CalendarStaff, type SaveRangeResult,
 } from "../appointmentsApi";
 import { ModalShell } from "../components/SeadUiShell";
 import { SlotDetailModal } from "./SlotDetailModal";
@@ -35,8 +36,10 @@ const STATE_LABEL: Record<string, string> = { open: "Open", booked: "Booked", at
  * see them in a day / week calendar with who booked what, and mark each booked appointment Attended or No-show. Marking Attended opens
  * the pre-filled Daily Record.
  */
-export function AppointmentsTab() {
+export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?: boolean; onOpenRecord?: (recordId: string) => void } = {}) {
   const [view, setView] = useState<View>("week");
+  const [staffList, setStaffList] = useState<CalendarStaff[]>([]);
+  const [staffFilter, setStaffFilter] = useState<string>("");
   const [anchor, setAnchor] = useState(manilaToday());
   const [ranges, setRanges] = useState<AvailabilityRange[]>([]);
   const [slots, setSlots] = useState<CalendarSlot[]>([]);
@@ -54,12 +57,18 @@ export function AppointmentsTab() {
   const load = useCallback(async () => {
     const from = new Date(`${days[0]}T00:00:00+08:00`).toISOString();
     const to = new Date(`${addDays(days[days.length - 1], 1)}T00:00:00+08:00`).toISOString();
-    const [a, s] = await Promise.all([fetchMyAvailability(from, to), fetchMySlots(from, to)]);
+    const [a, s] = readOnly
+      ? await Promise.all([fetchCalendarAvailability(from, to, staffFilter || null), fetchCalendarSlots(from, to, staffFilter || null)])
+      : await Promise.all([fetchMyAvailability(from, to), fetchMySlots(from, to)]);
     if (!a.ok) setError(a.error); else if (!s.ok) setError(s.error);
     else { setRanges(a.rows); setSlots(s.rows); setError(""); }
     setLoading(false);
-  }, [days]);
+  }, [days, readOnly, staffFilter]);
   useEffect(() => { setLoading(true); void load(); }, [load]);
+  useEffect(() => {
+    if (!readOnly) return;
+    void fetchCalendarStaff().then(r => { if (r.ok) setStaffList(r.rows); });
+  }, [readOnly]);
 
   const step = view === "week" ? 7 : 1;
   const today = manilaToday();
@@ -73,7 +82,9 @@ export function AppointmentsTab() {
 
   return (
     <div>
-      <p className="text-[14px] text-slate-700 mb-4">Set when you are available. Each range is split into 10-minute slots, one scholar per slot. Scholars book from all open slots; you mark each appointment Attended or No-show.</p>
+      <p className="text-[14px] text-slate-700 mb-4">{readOnly
+        ? "The consultation staff's calendars, for your information only. Each range is split into 10-minute slots, one scholar per slot. Click a booked slot to open that scholar's renewal."
+        : "Set when you are available. Each range is split into 10-minute slots, one scholar per slot. Scholars book from all open slots; you mark each appointment Attended or No-show."}</p>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <button onClick={() => setAnchor(addDays(anchor, -step))} aria-label="Previous" className="rounded-lg border border-[#062444]/25 p-2 text-[#062444] hover:bg-[#f7f9fc]"><ChevronLeft size={16} aria-hidden="true" /></button>
@@ -85,7 +96,16 @@ export function AppointmentsTab() {
             <button key={v} onClick={() => setView(v)} aria-pressed={view === v} className={`px-3 py-2 text-[14px] font-semibold ${view === v ? "bg-[#062444] text-white" : "bg-white text-[#062444] hover:bg-[#f7f9fc]"}`}>{v === "day" ? "Day" : "Week"}</button>
           ))}
         </div>
-        <button onClick={() => setEditing("new")} className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e]"><CalendarPlus size={15} aria-hidden="true" /> Add availability</button>
+        {readOnly ? (
+          <label className="ml-auto flex items-center gap-2 text-[14px] font-semibold text-[#062444]">Staff
+            <select value={staffFilter} onChange={e => setStaffFilter(e.target.value)} className="rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] font-normal bg-white">
+              <option value="">All consultation staff</option>
+              {staffList.map(s => <option key={s.staffId} value={s.staffId}>{s.staffName}</option>)}
+            </select>
+          </label>
+        ) : (
+          <button onClick={() => setEditing("new")} className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e]"><CalendarPlus size={15} aria-hidden="true" /> Add availability</button>
+        )}
       </div>
 
       {error && <p role="alert" className="mb-3 text-[14px] text-red-700">{error}</p>}
@@ -105,8 +125,8 @@ export function AppointmentsTab() {
                   return (
                     <div key={r.id} className="rounded-lg border border-[#e6ecf5]">
                       <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-2 bg-[#fafcff] rounded-t-lg">
-                        <p className="text-[14px] font-bold text-[#062444]">{formatTimeOnly(r.startsAt)} – {formatTimeOnly(r.endsAt)} <span className="font-normal text-slate-700">· {r.slotCount} slots · {r.bookedCount} booked</span></p>
-                        {!started && (
+                        <p className="text-[14px] font-bold text-[#062444]">{formatTimeOnly(r.startsAt)} – {formatTimeOnly(r.endsAt)} <span className="font-normal text-slate-700">· {r.slotCount} slots · {r.bookedCount} booked{readOnly && r.staffName ? ` · ${r.staffName}` : ""}</span></p>
+                        {!started && !readOnly && (
                           <span className="flex gap-3">
                             <button onClick={() => setEditing(r)} className="inline-flex items-center gap-1 text-[14px] font-semibold text-[#00709f] hover:underline"><Pencil size={13} aria-hidden="true" /> Edit</button>
                             <button onClick={() => void removeRange(r, false)} className="inline-flex items-center gap-1 text-[14px] font-semibold text-red-700 hover:underline"><Trash2 size={13} aria-hidden="true" /> Remove</button>
@@ -116,7 +136,7 @@ export function AppointmentsTab() {
                       <ul className="p-2 grid gap-1.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-1">
                         {(view === "day" ? rs : rs.filter(s => s.state !== "open")).map(s => (
                           <li key={s.slotId}>
-                            <button onClick={() => s.state !== "open" && setSelected(s)} disabled={s.state === "open"}
+                            <button onClick={() => { if (s.state === "open") return; if (readOnly) { if (s.recordId) onOpenRecord?.(s.recordId); } else setSelected(s); }} disabled={s.state === "open"}
                               className={`w-full rounded-md border px-2 py-1.5 text-left text-[14px] ${STATE_STYLE[s.state]} ${s.state === "open" ? "cursor-default" : "hover:shadow-sm"}`}>
                               <span className="font-bold">{formatTimeOnly(s.startsAt)}</span>{" "}
                               {s.state === "open" ? <span className="text-slate-700">Open</span> : <span>· {s.scholarName} <span className="font-semibold">({STATE_LABEL[s.state]})</span></span>}
@@ -135,8 +155,8 @@ export function AppointmentsTab() {
         })}
       </div>
 
-      {editing && <RangeForm initial={editing === "new" ? null : editing} defaultDay={anchor} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await load(); }} />}
-      {selected && <SlotDetailModal slot={selected} onClose={() => setSelected(null)} onChanged={async () => { setSelected(null); await load(); }} />}
+      {editing && !readOnly && <RangeForm initial={editing === "new" ? null : editing} defaultDay={anchor} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await load(); }} />}
+      {selected && !readOnly && <SlotDetailModal slot={selected} onClose={() => setSelected(null)} onChanged={async () => { setSelected(null); await load(); }} />}
       {confirmRemove && (
         <ModalShell title="Scholars have booked this range" onClose={() => setConfirmRemove(null)} wide>
           <p className="text-[14px] text-slate-800">If you remove this range, these scholars lose their booking and are notified so they can book another time:</p>

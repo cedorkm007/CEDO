@@ -236,9 +236,9 @@ function Tracker({ data, overview, onChanged }: { data: MyRenewalWindow; overvie
   const openInc = data.incItems.filter(i => i.state === "open");
   const steps = useMemo(() => scholarNextSteps(record.stage, ev, {
     incDeadlines: openInc.map(i => ({ subject: i.subject, deadline: i.deadline })), evaluatorComment: record.evaluatorComment,
-    consultNeeded: data.consultNeeded || data.booking !== null, booking: data.booking ? { startsAt: data.booking.startsAt, staffName: data.booking.staffName } : null,
+    consultNeeded: data.consultNeeded || data.booking !== null, consultState: data.booking ? "ok" : data.consultState, booking: data.booking ? { startsAt: data.booking.startsAt, staffName: data.booking.staffName } : null,
     isSummer: data.window.term === "Summer", noShow: record.noShowFlag,
-  }), [record.stage, ev, openInc, record.evaluatorComment, data.consultNeeded, data.booking, data.window.term, record.noShowFlag]);
+  }), [record.stage, ev, openInc, record.evaluatorComment, data.consultNeeded, data.consultState, data.booking, data.window.term, record.noShowFlag]);
 
   async function flag() {
     setBusy(true); setMessage(null);
@@ -334,6 +334,18 @@ function ConsultationSection({ data, onChanged }: { data: MyRenewalWindow; onCha
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const booking = data.booking;
+  if (!booking && (data.consultState === "study_plan_missing" || data.consultState === "study_plan_pending")) {
+    return (
+      <div className="rounded-lg border border-[#062444]/15 bg-white px-4 py-3.5" aria-label="Consultation">
+        <h4 className="text-[14px] font-bold text-[#062444] mb-1.5 flex items-center gap-1.5"><CalendarClock size={15} aria-hidden="true" /> Your consultation</h4>
+        <p className="text-[14px] text-slate-800">
+          {data.consultState === "study_plan_missing"
+            ? "A face-to-face consultation is needed. First upload your study plan below; you can book your consultation after the evaluator approves it."
+            : "Your study plan was received. You can book your consultation as soon as the evaluator approves it — we will tell you."}
+        </p>
+      </div>
+    );
+  }
   if (!booking && !data.consultNeeded) return null;
 
   async function cancel() {
@@ -481,7 +493,7 @@ function DocumentsSection({ data, overview, onChanged }: { data: MyRenewalWindow
           return (
             <li key={req.kind} className="rounded-lg border border-[#e6ecf5] px-3.5 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[14px] font-semibold text-[#062444]">{req.label} {req.satisfied ? <span className="text-green-800 font-bold">— uploaded ✓</span> : <span className="text-amber-900 font-bold">— needed</span>}</p>
+                <p className="text-[14px] font-semibold text-[#062444]">{req.label} {!req.satisfied ? <span className="text-amber-900 font-bold">— needed</span> : req.kind === "study_plan" && !req.approved ? <span className="text-sky-900 font-bold">— uploaded, waiting for approval</span> : <span className="text-green-800 font-bold">— {req.kind === "study_plan" ? "approved" : "uploaded"} ✓</span>}</p>
                 {editable && (
                   <>
                     <input ref={el => { refs.current[req.kind] = el; }} type="file" accept={DOC_ACCEPT} className="sr-only" id={`up-${req.kind}`} aria-label={`Upload ${DOC_LABEL[req.kind]}`} onChange={e => void onPick(req.kind, e.target.files?.[0])} />

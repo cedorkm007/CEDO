@@ -3,7 +3,7 @@ import { ArrowLeft, CheckCircle2, Loader2, Paperclip, XCircle } from "lucide-rea
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
 import { DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, termLabelOf } from "@/lib/renewal";
 import {
-  confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, getStaffRenewalDocumentUrl, returnRenewal, type RenewalDetail,
+  confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, getStaffRenewalDocumentUrl, returnRenewal, reviewDocument, type DetailDocument, type RenewalDetail,
 } from "../renewalApi";
 import { ReasonDialog } from "./ReasonDialog";
 
@@ -22,6 +22,7 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<"confirm" | "endorse" | "return" | "accept" | "decline" | null>(null);
   const [fileError, setFileError] = useState("");
+  const [reviewing, setReviewing] = useState<{ doc: DetailDocument; approve: boolean } | null>(null);
 
   const load = useCallback(async () => {
     const r = await fetchRenewalDetail(recordId);
@@ -134,14 +135,24 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
 
       <Section title="Documents">
         {(ev.required_documents ?? []).length === 0 && detail.documents.length === 0 && <p>No documents are needed for this case.</p>}
-        {(ev.required_documents ?? []).map(d => <p key={d.kind}>{d.label}: {d.satisfied ? <strong className="text-green-800">uploaded</strong> : <strong className="text-amber-900">still needed</strong>}</p>)}
+        {(ev.required_documents ?? []).map(d => (
+          <p key={d.kind}>{d.label}: {!d.satisfied ? <strong className="text-amber-900">still needed</strong>
+            : d.kind === "study_plan" ? (d.approved ? <strong className="text-green-800">approved</strong> : <strong className="text-sky-900">uploaded — waiting for your approval (the scholar cannot book a consultation until you approve it)</strong>)
+            : <strong className="text-green-800">uploaded</strong>}</p>
+        ))}
         {detail.documents.length > 0 && (
           <ul className="mt-2 space-y-1">
             {detail.documents.map(d => (
               <li key={d.id} className="flex flex-wrap items-center gap-2">
                 <Paperclip size={14} aria-hidden="true" /> <span className="text-slate-700">{DOC_LABEL[d.kind]}:</span>
                 <button onClick={() => void openFile(d.storagePath)} className="font-semibold text-[#00709f] hover:underline">{d.fileName}</button>
-                <span className="text-slate-600">· {formatDay(d.uploadedAt)} · {d.status}</span>
+                <span className="text-slate-600">· {formatDay(d.uploadedAt)} · {d.status === "accepted" ? "approved" : d.status === "returned" ? "returned" : "waiting for review"}</span>
+                {canAct && d.status === "submitted" && (
+                  <span className="flex gap-2">
+                    <button onClick={() => setReviewing({ doc: d, approve: true })} className="rounded-md bg-green-800 px-2.5 py-1 text-[13px] font-bold text-white hover:bg-green-900">Approve</button>
+                    <button onClick={() => setReviewing({ doc: d, approve: false })} className="rounded-md border border-red-700 px-2.5 py-1 text-[13px] font-bold text-red-800 hover:bg-red-50">Return</button>
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -165,6 +176,16 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
         </ol>
       </Section>
 
+      {reviewing && (
+        <ReasonDialog
+          title={reviewing.approve ? `Approve the ${DOC_LABEL[reviewing.doc.kind].toLowerCase()}` : `Return the ${DOC_LABEL[reviewing.doc.kind].toLowerCase()}`}
+          intro={reviewing.approve
+            ? (reviewing.doc.kind === "study_plan" ? <>{s.name} will be told the study plan is approved and can then book a consultation.</> : <>{s.name} will be told the document was approved.</>)
+            : <>{s.name} will see your comment and must upload a new file.</>}
+          label={reviewing.approve ? "Note (optional)" : "What should the scholar fix?"} required={!reviewing.approve} minLength={5}
+          confirmLabel={reviewing.approve ? "Approve" : "Return to the scholar"} danger={!reviewing.approve} onCancel={() => setReviewing(null)}
+          onConfirm={async c => { const x = await reviewDocument(reviewing.doc.id, reviewing.approve, c); if (!x.ok) return x.error; setReviewing(null); await after(); return null; }} />
+      )}
       {dialog === "endorse" && (
         <ReasonDialog title="Endorse to the Division Head" intro={<>You are endorsing {s.name} for <strong>Probationary</strong> status for {termLabelOf(r.schoolYear, r.term)} (one failed subject; study plan and consultation done). The Division Head decides; the scholar is told it was sent.</>}
           label="Note for the Division Head" required={false} confirmLabel="Endorse" onCancel={() => setDialog(null)}

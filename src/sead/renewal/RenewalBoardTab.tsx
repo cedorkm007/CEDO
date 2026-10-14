@@ -9,6 +9,7 @@ export function RenewalBoardTab({ schoolYear, term, onOpen, refreshKey }: { scho
   const [rows, setRows] = useState<BoardRow[] | null>(null);
   const [error, setError] = useState("");
   const [group, setGroup] = useState<string>("all");
+  const REVIEW = "review_docs";
   const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
@@ -20,13 +21,14 @@ export function RenewalBoardTab({ schoolYear, term, onOpen, refreshKey }: { scho
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: rows?.length ?? 0 };
     for (const g of BOARD_GROUPS) c[g.key] = (rows ?? []).filter(r => (g.stages as readonly string[]).includes(r.stage)).length;
+    c.review_docs = (rows ?? []).filter(r => r.docsToReview > 0).length;
     return c;
   }, [rows]);
 
   const shown = useMemo(() => {
     const g = BOARD_GROUPS.find(x => x.key === group);
     const q = query.trim().toLowerCase();
-    return (rows ?? []).filter(r => (!g || (g.stages as readonly string[]).includes(r.stage)) && (!q || r.name.toLowerCase().includes(q) || r.scholarIdNumber.toLowerCase().includes(q) || r.school.toLowerCase().includes(q)));
+    return (rows ?? []).filter(r => (group === "review_docs" ? r.docsToReview > 0 : !g || (g.stages as readonly string[]).includes(r.stage)) && (!q || r.name.toLowerCase().includes(q) || r.scholarIdNumber.toLowerCase().includes(q) || r.school.toLowerCase().includes(q)));
   }, [rows, group, query]);
 
   if (error) return <p role="alert" className="text-[14px] text-red-700">{error}</p>;
@@ -35,7 +37,7 @@ export function RenewalBoardTab({ schoolYear, term, onOpen, refreshKey }: { scho
   return (
     <div>
       <div className="flex flex-wrap gap-2 mb-3" role="group" aria-label="Filter by stage">
-        {[{ key: "all", label: "All" }, ...BOARD_GROUPS.map(g => ({ key: g.key, label: g.label }))].map(g => (
+        {[{ key: "all", label: "All" }, { key: REVIEW, label: "Documents to review" }, ...BOARD_GROUPS.map(g => ({ key: g.key, label: g.label }))].map(g => (
           <button key={g.key} onClick={() => setGroup(g.key)} aria-pressed={group === g.key}
             className={`rounded-full border px-3 py-1.5 text-[14px] font-semibold ${group === g.key ? "border-[#062444] bg-[#062444] text-white" : "border-[#062444]/25 bg-white text-[#062444] hover:bg-[#f7f9fc]"}`}>
             {g.label} <span className={`ml-1 font-bold ${group === g.key ? "text-[#F3BC00]" : "text-[#006aa3]"}`}>{counts[g.key] ?? 0}</span>
@@ -76,9 +78,10 @@ export function RenewalBoardTab({ schoolYear, term, onOpen, refreshKey }: { scho
                       {r.isLate && <span className="inline-flex items-center gap-1 rounded-full border border-slate-400 bg-slate-100 px-2 py-0.5 font-bold text-slate-800"><Flag size={12} aria-hidden="true" /> Late</span>}
                       {r.scholarNote && <span className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 font-bold text-sky-900"><StickyNote size={12} aria-hidden="true" /> Has a note</span>}
                       {r.noShow && <span className="rounded-full border border-red-300 bg-red-50 px-2 py-0.5 font-bold text-red-800">No-show{r.noShowCount > 1 ? ` ×${r.noShowCount}` : ""}</span>}
+                      {r.docsToReview > 0 && <span className="rounded-full border border-sky-400 bg-sky-50 px-2 py-0.5 font-bold text-sky-900">{r.docsToReview} document{r.docsToReview === 1 ? "" : "s"} to review</span>}
                       {r.nextConsultation && <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 font-bold text-sky-900">Consultation {formatSlot(r.nextConsultation)}</span>}
                       {r.consultationRequired && !r.consultationDone && !r.nextConsultation && <span className="rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 font-bold text-amber-900">Not booked yet</span>}
-                      {r.sdpComplied !== false && r.failedCount === 0 && r.incCount === 0 && !r.isLate && !r.scholarNote && !r.nextConsultation && !(r.consultationRequired && !r.consultationDone) && <span className="text-slate-700">—</span>}
+                      {r.sdpComplied !== false && r.failedCount === 0 && r.incCount === 0 && !r.isLate && !r.scholarNote && !r.nextConsultation && !r.docsToReview && !(r.consultationRequired && !r.consultationDone) && <span className="text-slate-700">—</span>}
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-slate-800">{formatDay(r.appliedAt)}</td>
