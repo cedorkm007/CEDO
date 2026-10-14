@@ -11,8 +11,8 @@
 --      is also queued in push_outbox. The "push-sender" edge function (supabase/functions/push-sender) sends the queue every minute
 --      (a pg_cron job calls it; push_sender_schedule() sets that up once) and reports the result back so dead devices are dropped.
 --      Push is best effort: the bell always has the notification.
---   3. MORE REMINDERS (scheduler). INC deadline reminders at 7 and 2 days, and "the window closes soon" alerts at 3 days and 1 day for
---      scholars who have not applied (or whose application was returned). Sent between 8:00 and 18:00 Philippine time only, each at
+--   3. MORE REMINDERS (scheduler). "Renewal is now open" when a window opens, INC deadline reminders at 7 and 2 days, and "the window
+--      closes soon" alerts at 3 days and 1 day for scholars who have not applied (or whose application was returned). Sent between 8:00 and 18:00 Philippine time only, each at
 --      most once (renewal_notice_log). The 1-day and 1-hour consultation reminders and the INC-deadline-passed check from Phase 3 run
 --      in the same job: renewal_run_scheduled_jobs().
 -- ─────────────────────────────────────────────────────────────
@@ -190,8 +190,11 @@ set search_path = public
 as $$
 begin
   if exists (select 1 from public.push_subscriptions s where s.staff_id = new.user_id) then
+    -- Generic text on purpose: a lock screen never shows a scholar's name or a task title. The full text is in the bell.
     insert into public.push_outbox (owner_kind, staff_id, title, body, url)
-    values ('staff', new.user_id, new.title, new.message, case when new.type = 'renewal' then '/?page=scholarRenewal' else '/?page=notifications' end);
+    values ('staff', new.user_id, case when new.type = 'renewal' then 'Scholar Renewal' else 'CEDO' end,
+            case when new.type = 'renewal' then 'You have a new notification about a renewal case. Open the portal to read it.' else 'You have a new notification. Open the portal to read it.' end,
+            case when new.type = 'renewal' then '/?page=scholarRenewal' else '/?page=notifications' end);
   end if;
   return null;
 end;
@@ -450,11 +453,12 @@ declare
   v_left integer;
   v_inc integer := 0;
   v_win integer := 0;
+  v_open integer := 0;
   v_kind text;
 begin
   -- tidy up: delivered pushes older than a week
   delete from public.push_outbox where created_at < p_now - interval '7 days';
-  if v_hour < 8 or v_hour >= 18 then return jsonb_build_object('inc_reminders', 0, 'window_alerts', 0, 'skipped', 'outside 8:00-18:00'); end if;
+  if v_hour < 8 or v_hour >= 18 then return jsonb_build_object('inc_reminders', 0, 'window_alerts', 0, 'window_open_alerts', 0, 'skipped', 'outside 8:00-18:00'); end if;
 
   -- INC deadline: 7 days and 2 days before
   for i in
@@ -471,6 +475,22 @@ begin
         'Complete your INC in ' || i.subject || ' by ' || to_char(i.deadline, 'FMMonth FMDD, YYYY') || ': ' || v_left || ' days left.', i.record_id);
       v_inc := v_inc + 1;
     end if;
+  end loop;
+
+  -- A window opened (today or yesterday; a window that has been open longer is not announced late): every scholar who can renew is told once
+  for w in select * from public.renewal_windows x where x.opens_on <= v_today and x.opens_on >= v_today - 1 and x.closes_on >= v_today loop
+    for s in
+      select sc.scholar_id_number from public.scholars sc
+      where sc.status not in ('Removed', 'On leave')
+        and not exists (select 1 from public.renewal_records rr where rr.scholar_id_number = sc.scholar_id_number and rr.school_year = w.school_year and rr.term = w.term)
+    loop
+      insert into public.renewal_notice_log (kind, scholar_id_number, ref) values ('window_open', s.scholar_id_number, w.id::text) on conflict do nothing;
+      if found then
+        perform public._notify_scholar(s.scholar_id_number, 'window_open', 'Renewal for ' || public._renewal_term_label(w.school_year, w.term) || ' is now open',
+          'You can apply from your Renewal tile until ' || to_char(w.closes_on, 'FMMonth FMDD, YYYY') || '.', null);
+        v_open := v_open + 1;
+      end if;
+    end loop;
   end loop;
 
   -- The window closes in 3 days / 1 day: scholars who have not applied, or whose application was returned
@@ -492,7 +512,7 @@ begin
       end if;
     end loop;
   end loop;
-  return jsonb_build_object('inc_reminders', v_inc, 'window_alerts', v_win);
+  return jsonb_build_object('inc_reminders', v_inc, 'window_alerts', v_win, 'window_open_alerts', v_open);
 end;
 $$;
 revoke all on function public.renewal_notification_jobs(timestamptz) from public, anon, authenticated;

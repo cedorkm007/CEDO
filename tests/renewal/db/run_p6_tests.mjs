@@ -71,6 +71,8 @@ await q("select public._notify_staff_member($1, 'Renewal thing', 'Something need
 await q("insert into notifications (id, type, user_id, user_name, title, message, \"timestamp\", read, reference_id) values (gen_random_uuid(), 'submission', $1, 'X', 'Task submitted', 'm', now(), false, 'r')", [EVAL]);
 const sob = await q("select * from push_outbox where owner_kind = 'staff' order by created_at");
 check("staff with a device get renewal notifications queued with a link to Scholar Renewal, other notification types with a link to the bell", sob.length === 2 && sob[0].url === "/?page=scholarRenewal" && sob[1].url === "/?page=notifications");
+check("the staff push text is GENERIC: no scholar name, no task title (the bell has the full text)", sob.every(o => !/Something needs you|Task submitted|Renewal thing/.test(o.title + o.body)) && sob[0].title === "Scholar Renewal" && /renewal case/.test(sob[0].body) && sob[1].title === "CEDO" && /new notification/.test(sob[1].body));
+check("the scholar's push keeps the real text (it is about their own case)", ob.find(o => o.title === "Hello scholar").body === "Body text");
 check("push queue rows cannot be read by signed-in users directly", (await as(scholarUid(1), async tx => (await tx.query("select count(*)::int n from public.push_outbox")).rows[0].n)) === 0);
 
 console.log("\nSending: the push-sender function's two calls (service role only)");
@@ -221,8 +223,27 @@ check("a window that has closed or has not opened yet sends nothing", await (asy
   return a === 0 && (await q("select count(*)::int n from scholar_notifications where kind = 'window_closing'"))[0].n === 0;
 })());
 
+await q("delete from scholar_notifications"); await q("delete from renewal_notice_log");
+await q("update renewal_windows set opens_on = $2, closes_on = $3 where id = $1", [W1, today, addDays(today, 20)]);
+await q("select public.renewal_notification_jobs($1)", [atManila(today, 10)]);
+const openNotes = await q("select scholar_id_number, title, body from scholar_notifications where kind = 'window_open'");
+check("a window that opens today: every scholar who can renew and has not applied is told once ('Renewal ... is now open', until when)", openNotes.length > 5 && openNotes.every(n => /1st Semester 2026-2027 is now open/.test(n.title) && /You can apply from your Renewal tile until/.test(n.body))
+  && !openNotes.some(n => [num(1), num(3), num(11), num(12)].includes(n.scholar_id_number)) && openNotes.some(n => n.scholar_id_number === num(14)));
+await q("select public.renewal_notification_jobs($1)", [atManila(today, 16)]);
+check("the same day again: nothing twice; the next day too", (await q("select count(*)::int n from scholar_notifications where kind = 'window_open'"))[0].n === openNotes.length
+  && ((await q("select public.renewal_notification_jobs($1)", [atManila(addDays(today, 1), 10)])), (await q("select count(*)::int n from scholar_notifications where kind = 'window_open'"))[0].n === openNotes.length));
+check("a window that opened more than a day ago is not announced late; nothing outside 8:00-18:00", await (async () => {
+  await q("delete from scholar_notifications"); await q("delete from renewal_notice_log");
+  await q("update renewal_windows set opens_on = $2, closes_on = $3 where id = $1", [W1, addDays(today, -5), addDays(today, 20)]);
+  await q("select public.renewal_notification_jobs($1)", [atManila(today, 10)]);
+  const old = (await q("select count(*)::int n from scholar_notifications where kind = 'window_open'"))[0].n;
+  await q("update renewal_windows set opens_on = $2 where id = $1", [W1, today]);
+  await q("select public.renewal_notification_jobs($1)", [atManila(today, 22)]);
+  return old === 0 && (await q("select count(*)::int n from scholar_notifications where kind = 'window_open'"))[0].n === 0;
+})());
+
 console.log("\nThe scheduler as a whole");
-check("one call runs the Phase 3 reminders and the Phase 6 reminders", await (async () => { const r = (await q("select public.renewal_run_scheduled_jobs() r"))[0].r; return "day_reminders" in r && ("inc_reminders" in r || "skipped" in r); })());
+check("one call runs the Phase 3 reminders and the Phase 6 reminders", await (async () => { const r = (await q("select public.renewal_run_scheduled_jobs() r"))[0].r; return "day_reminders" in r && ("window_open_alerts" in r); })());
 check("nobody signed in can run the scheduler or the helpers", await fails(EVAL, "select public.renewal_run_scheduled_jobs()", [], /permission denied/i) && await fails(EVAL, "select public.renewal_notification_jobs()", [], /permission denied/i) && await fails(EVAL, "select public._notify_staff_member($1,'x','y',null)", [EVAL], /permission denied/i));
 check("old pushes are tidied away by the job (older than a week)", await (async () => { await q("delete from push_outbox"); await q("insert into push_outbox (owner_kind, scholar_id_number, title, created_at) values ('scholar', $1, 'ancient', now() - interval '8 days')", [num(1)]); await q("select public.renewal_notification_jobs()"); return (await q("select 1 from push_outbox where title = 'ancient'")).length === 0; })());
 check("setting up the push-sender schedule says what to do when pg_cron / pg_net are not on", /Switch on the pg_cron and pg_net/.test((await q("select public.push_sender_schedule('https://x.supabase.co/functions/v1/push-sender', 'secret') r"))[0].r) && await fails(EVAL, "select public.push_sender_schedule('https://x', 's')", [], /permission denied/i));

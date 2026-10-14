@@ -125,3 +125,8 @@ Tests: Phase 5 database 69, website 72; Phase 4/3/2/1 still pass.
 - Demo: scheduler stand-in runs `renewal_run_scheduled_jobs()`; a push-sender stand-in claims/reports the queue and prints "[demo push]" lines; demo-only public VAPID key.
 - Tests: website 85, Phase 6 database 44, Phase 5 69, 4: 32, 3: 112, 2: 129, 1 all, grades 99; tsc + build clean; axe audit of the scholar bell panel clean. NOT tested: a real push to a real device (needs real keys/function/HTTPS).
 - Walkthrough `Renewal_Phase6_Walkthrough.txt`; setup steps `Renewal_Phase6_Push_Setup_Steps.txt`.
+
+## 2026-10-14 — Owner's Phase 6 answers ("Approved, next phase")
+1. Staff push text is GENERIC (`_push_enqueue_staff`: "Scholar Renewal / You have a new notification about a renewal case", else "CEDO / You have a new notification"); the bell keeps the full text; the scholar's own push keeps the real text.
+2. New scheduler alert: "Renewal for <term> is now open" (kind `window_open`, once per scholar per window, only for windows that opened today or yesterday, 8:00-18:00 Manila). 3. Staff push for everything the bell shows (unchanged).
+Tests: Phase 6 database 49.
