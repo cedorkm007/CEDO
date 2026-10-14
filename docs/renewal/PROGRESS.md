@@ -130,3 +130,9 @@ Tests: Phase 5 database 69, website 72; Phase 4/3/2/1 still pass.
 1. Staff push text is GENERIC (`_push_enqueue_staff`: "Scholar Renewal / You have a new notification about a renewal case", else "CEDO / You have a new notification"); the bell keeps the full text; the scholar's own push keeps the real text.
 2. New scheduler alert: "Renewal for <term> is now open" (kind `window_open`, once per scholar per window, only for windows that opened today or yesterday, 8:00-18:00 Manila). 3. Staff push for everything the bell shows (unchanged).
 Tests: Phase 6 database 49.
+
+## 2026-10-14 — Phase 7 (dashboard + Excel export) built on branch `renewal/phase-7-reports` (stacked on Phase 6; nothing merged — no merge until Phase 8)
+- Database — `supabase_migration_renewal_p7_reports.sql` (run after Phase 6): `renewal_dashboard(year, term)` (one jsonb: totals, by stage / rule / school, per day, SDP and grades, INC, consultations, documents, Division Head), `renewal_export_data(year, term)` (applications, not applied, INC, consultations; writes `renewal_export_log`), log readable by the evaluator only. Callable by evaluator / consultation staff / Division Head.
+- Website: `src/lib/renewalReport.ts` (pure: parse, stage groups, shares, the six sheets), `src/sead/renewalReportApi.ts`, `src/sead/renewal/RenewalDashboardTab.tsx` (Dashboard tab, Download Excel), page tabs by role. Excel built in the browser with the existing `mysurveys/results/xlsxWriter.ts` (lazy-loaded; text stored as text).
+- Tests: website 94, Phase 7 database 25, Phase 6 49, 5: 69, 4: 32, 3: 112, 2: 129, 1 all, grades 99; tsc + build clean; axe audit clean; no sideways scrolling at phone width. Not opened in real Excel.
+- Walkthrough: `Renewal_Phase7_Walkthrough.txt`.

@@ -626,6 +626,117 @@ test("the function's shared secret check refuses a missing, wrong or unset secre
   assert.equal(PM.secretMatches(null, "abc123"), false); assert.equal(PM.secretMatches("abc123", undefined), false); assert.equal(PM.secretMatches("", ""), false);
 });
 
+console.log("Dashboard and Excel export (Phase 7)");
+const RP = await bundle("report", "src/lib/renewalReport.ts");
+const XW = await bundle("xlsx", "src/mysurveys/results/xlsxWriter.ts");
+const rawDash = {
+  school_year: "2026-2027", term: "1st Semester", term_label: "1st Semester 2026-2027", window: { opens_on: "2026-10-02", closes_on: "2026-11-01", late_allowed: true, days_left: 18, is_open: true },
+  totals: { can_renew: 40, applied: 30, not_applied: 10, not_required: 1, late: 2, late_waiting: 1, late_declined: 0, renewed: 12, renewed_regular: 8, renewed_probationary: 3, renewed_reconsidered: 1, removed: 2, returned: 1, avg_days_to_renew: "4.5" },
+  by_stage: { renewed: 12, ready_for_confirmation: 4, needs_study_plan_consultation: 5, inc_waiting_compliance: 3, removed: 2, division_head_approved: 1, endorsed_division_head: 2, sdp_on_hold: 1 },
+  by_rule: { A: 14, B: 6, C2: 3, D: 4, "C1P": 1 },
+  by_school: [{ school: "TEST – Lower", applied: 25, renewed: 10, removed: 2, pending: 13, not_applied: 5 }, { school: "=EVIL()", applied: 5, renewed: 2, removed: 0, pending: 3, not_applied: 5 }],
+  per_day: [{ day: "2026-10-10", applied: 3, renewed: 0 }, { day: "2026-10-12", applied: 7, renewed: 1 }, { day: "2026-10-14", applied: 5, renewed: 2 }],
+  sdp_and_grades: { sdp_on_hold: 1, waiting_grades: 2, review_needed: 1, with_failed: 8, with_inc: 4 },
+  inc: { open: 4, no_deadline: 1, due_in_7_days: 2, overdue: 1, resolved_passed: 3, failed_or_counted: 1 },
+  consultations: { required: 14, done: 6, booked_upcoming: 3, attended: 6, no_shows: 2, need_booking: 4 },
+  documents: { waiting_review: 3, approved: 5, returned: 1 },
+  division_head: { waiting: 2, sent_back: 1, approved_probationary: 3, reconsidered: 1, removed: 2 },
+};
+const rawExport = {
+  exported_at: "2026-10-14T05:30:00Z",
+  applications: [
+    { scholar_id_number: "TEST-0003", name: "One Failed, TEST T", school: "TEST – Lower", program: "BS Test", year_level: "2nd Year", scholar_status: "Probationary", stage: "renewed", rule_code: "B", basis: "2nd Semester 2025-2026",
+      failed_count: 1, inc_open: 0, previous_probation: false, sdp_applicable: true, sdp_complied: true, study_plan: "accepted", inc_letter: null, prospectus: null, consultation_required: true,
+      consultation_done_at: "2026-10-12T02:00:00Z", next_consultation: null, no_shows: 1, late: false, late_decision: null, division_head_decision: "approved_probationary", division_head_decided_at: "2026-10-13T03:00:00Z",
+      result: "renewed_probationary", applied_at: "2026-10-10T16:30:00Z", confirmed_at: "2026-10-14T01:00:00Z", evaluator_note: "=HYPERLINK(\"http://x\")", scholar_note: "", not_required_reason: null },
+    { scholar_id_number: "TEST-0010", name: "SDP Short, TEST T", school: "TEST – Lower", program: "BS Test", year_level: "2nd Year", scholar_status: "Regular", stage: "sdp_on_hold", rule_code: "SDP_HOLD", basis: "2nd Semester 2025-2026",
+      failed_count: 0, inc_open: 0, previous_probation: false, sdp_applicable: true, sdp_complied: false, sdp_missing: "Formation Program: 2 of 3", study_plan: null, inc_letter: null, prospectus: null, consultation_required: false,
+      consultation_done_at: null, next_consultation: null, no_shows: 0, late: true, late_decision: "accepted", division_head_decision: null, result: null, applied_at: "2026-10-11T01:00:00Z", confirmed_at: null, evaluator_note: null, scholar_note: "Please check" },
+  ],
+  not_applied: [{ scholar_id_number: "TEST-0014", name: "Higher Passed, TEST T", school: "TEST – Higher", program: "BS Test", year_level: "2nd Year", scholar_status: "Regular" }],
+  inc: [{ scholar_id_number: "TEST-0026", name: "INC Deadline Set, TEST", school: "TEST – Lower", subject_code: "TST100", subject: "TEST – Mathematics", state: "open", consultation_date: "2026-10-12", days_given: 14, deadline: "2026-10-26", days_left: 12, decision: null, decision_reason: null }],
+  consultations: [{ scholar_id_number: "TEST-0037", name: "Consult Tomorrow, TEST", starts_at: "2026-10-15T01:10:00Z", state: "booked", staff: "TEST Counselor" }],
+};
+test("the dashboard's numbers are read exactly as the database gives them (numbers stay numbers, missing parts are zero)", () => {
+  const d = RP.parseDashboard(rawDash);
+  assert.equal(d.totals.canRenew, 40); assert.equal(d.totals.avgDaysToRenew, 4.5); assert.equal(d.window.isOpen, true); assert.equal(d.window.daysLeft, 18);
+  assert.equal(d.bySchool.length, 2); assert.equal(d.divisionHead.sentBack, 1); assert.equal(d.consultations.needBooking, 4);
+  const empty = RP.parseDashboard({});
+  assert.equal(empty.totals.applied, 0); assert.equal(empty.window, null); assert.deepEqual(empty.byStage, {}); assert.equal(empty.totals.avgDaysToRenew, null); assert.deepEqual(empty.bySchool, []);
+});
+test("stages are grouped like the board and every application is counted once", () => {
+  const groups = RP.stageGroupCounts(RP.parseDashboard(rawDash).byStage);
+  assert.equal(groups.reduce((a, g) => a + g.count, 0), 12 + 4 + 5 + 3 + 2 + 1 + 2 + 1);
+  assert.equal(groups.find(g => g.key === "to_confirm").count, 4 + 1, "ready to confirm + approved by the Division Head");
+  assert.equal(groups.find(g => g.key === "done").count, 12 + 2); assert.equal(groups.find(g => g.key === "dh").count, 2);
+});
+test("shares are written out without dividing by zero; the per-day chart has no gaps", () => {
+  assert.equal(RP.percentText(30, 40), "30 of 40 (75%)"); assert.equal(RP.percentText(0, 0), "0 of 0"); assert.equal(RP.percentOf(1, 3), 33); assert.equal(RP.percentOf(5, 0), 0);
+  const days = RP.lastDays(RP.parseDashboard(rawDash).perDay, 5);
+  assert.deepEqual(days.map(d => d.day), ["2026-10-10", "2026-10-11", "2026-10-12", "2026-10-13", "2026-10-14"]); assert.equal(days[1].applied, 0); assert.equal(days[4].applied, 5);
+  assert.deepEqual(RP.lastDays([], 5), []);
+});
+test("the workbook has the six sheets, with every application, the scholars who have not applied, INC and consultations", () => {
+  const sheets = RP.buildReportSheets(RP.parseDashboard(rawDash), RP.parseExportData(rawExport));
+  assert.deepEqual(sheets.map(s => s.name), ["Summary", "Applications", "Not applied", "By school", "INC", "Consultations"]);
+  assert.equal(sheets[1].rows.length, 2); assert.equal(sheets[2].rows.length, 1); assert.equal(sheets[4].rows.length, 1); assert.equal(sheets[5].rows.length, 1);
+  for (const s of sheets) for (const row of s.rows) assert.ok(row.length <= s.headers.length || s.name === "Summary", s.name + " row wider than its header");
+  for (const s of sheets.slice(1)) for (const row of s.rows) assert.equal(row.length, s.headers.length, s.name);
+});
+test("a row is written in plain words and in Philippine time", () => {
+  const sheets = RP.buildReportSheets(RP.parseDashboard(rawDash), RP.parseExportData(rawExport));
+  const h = sheets[1].headers, row = sheets[1].rows[0], col = name => row[h.indexOf(name)];
+  assert.equal(col("Stage"), "Renewed"); assert.equal(col("Division Head decision"), "Approved — Probationary"); assert.equal(col("Result"), "Renewed (Probationary)");
+  assert.equal(col("Study plan"), "Approved"); assert.equal(col("SDP"), "Complied"); assert.equal(col("Applied"), "2026-10-11", "16:30 UTC on Oct 10 is already Oct 11 in Manila");
+  assert.equal(col("Consultation done"), "2026-10-12"); assert.equal(col("No-shows"), 1); assert.equal(col("Failed subjects"), 1); assert.equal(col("Earlier probation"), "No");
+  const row2 = sheets[1].rows[1], c2 = name => row2[h.indexOf(name)];
+  assert.equal(c2("SDP"), "Not complied: Formation Program: 2 of 3"); assert.equal(c2("Applied late"), "Yes"); assert.equal(c2("Stage"), "On hold — SDP not complied");
+  assert.equal(sheets[5].rows[0][2], "2026-10-15 09:10", "the consultation slot in Manila time");
+});
+test("the Summary sheet lists the numbers, the stages and the rules; the file name says the term and the day", () => {
+  const sum = RP.buildReportSheets(RP.parseDashboard(rawDash), RP.parseExportData(rawExport))[0].rows;
+  const find = label => sum.find(r => r[0] === label)?.[1];
+  assert.equal(find("Applied"), 30); assert.equal(find("Not applied yet"), 10); assert.equal(find("Renewed"), 12); assert.equal(find("Average days from application to renewal"), 4.5); assert.equal(find("Documents waiting for review"), 3);
+  assert.equal(find("Report made (Philippine time)"), "2026-10-14 13:30"); assert.equal(find("  Renewed — Probationary"), 3);
+  assert.ok(sum.some(r => r[0] === "  Renewed" && r[1] === 12), "a stage row"); assert.ok(sum.some(r => r[0] === "  C2" && r[1] === 3), "a rule row");
+  assert.equal(RP.exportFileName("1st Semester 2026-2027", new Date("2026-10-14T20:00:00Z")), "Scholar-Renewal-1st-Semester-2026-2027-2026-10-15.xlsx");
+});
+async function testAsync(name, fn) { try { await fn(); passed++; console.log(`  ok   ${name}`); } catch (e) { process.exitCode = 1; console.log(`  FAIL ${name}\n       ${String(e.message).split("\n").join("\n       ")}`); } }
+await testAsync("the Excel file is a real workbook; every text is stored as TEXT, so a note starting with = cannot run as a formula", async () => {
+  const sheets = RP.buildReportSheets(RP.parseDashboard(rawDash), RP.parseExportData(rawExport));
+  const bytes = await XW.buildXlsxBytes(sheets.map(s => ({ name: s.name, headers: s.headers, rows: s.rows })));
+  const { default: JSZip } = await import("jszip");
+  const zip = await JSZip.loadAsync(bytes);
+  assert.ok(zip.file("xl/workbook.xml") && zip.file("xl/worksheets/sheet6.xml"));
+  const wb = await zip.file("xl/workbook.xml").async("string");
+  for (const name of ["Summary", "Applications", "Not applied", "By school", "INC", "Consultations"]) assert.ok(wb.includes(`name="${name}"`), name);
+  const apps = await zip.file("xl/worksheets/sheet2.xml").async("string");
+  assert.ok(apps.includes("=HYPERLINK") && apps.includes('t="inlineStr"'));
+  assert.equal(/<f>/.test(apps), false, "no formula cells anywhere");
+  const bySchool = await zip.file("xl/worksheets/sheet4.xml").async("string");
+  assert.ok(bySchool.includes("=EVIL()") && !/<f>/.test(bySchool));
+  assert.match(await zip.file("xl/worksheets/sheet2.xml").async("string"), /<pane ySplit="1"/, "header row frozen");
+});
+
+console.log("Source guards (Phase 7)");
+test("the dashboard screens use readable text; every database function they call exists in the Phase 7 migration; nothing writes a table directly", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p7_reports.sql"), "utf8");
+  const api = fs.readFileSync(path.join(root, "src/sead/renewalReportApi.ts"), "utf8");
+  const called = [...api.matchAll(/rpc\("([a-z_]+)"/g)].map(m => m[1]);
+  assert.deepEqual([...new Set(called)].sort(), ["renewal_dashboard", "renewal_export_data"]);
+  for (const fn of called) assert.ok(sql.includes(`create or replace function public.${fn}(`), fn);
+  assert.equal(/\.from\("/.test(api), false);
+  const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalDashboardTab.tsx"), "utf8");
+  assert.deepEqual([...tab.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), []);
+  assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(tab), false);
+  assert.match(fs.readFileSync(path.join(root, "src/sead/ScholarRenewalPage.tsx"), "utf8"), /RenewalDashboardTab/);
+  assert.match(sql, /insert into public\.renewal_export_log/, "every export is logged");
+});
+test("the Excel writer is loaded only when the button is pressed (it never reaches the main bundle)", () => {
+  const api = fs.readFileSync(path.join(root, "src/sead/renewalReportApi.ts"), "utf8");
+  assert.match(api, /await import\("@\/mysurveys\/results\/xlsxWriter"\)/); assert.equal(/^import .*xlsxWriter/m.test(api), false);
+});
+
 console.log("Source guards (Phase 6)");
 test("every database function the push client and the push-sender call exists in the Phase 6 migration", () => {
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p6_notifications.sql"), "utf8");

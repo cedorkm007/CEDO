@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarClock, CalendarRange, ClipboardList, Clock, Hourglass, ShieldCheck, UserX } from "lucide-react";
+import { BarChart3, CalendarClock, CalendarRange, ClipboardList, Clock, Hourglass, ShieldCheck, UserX } from "lucide-react";
 import { formatDay, termLabelOf, windowState } from "@/lib/renewal";
 import { fetchRenewalWindows, type RenewalWindowRow } from "./renewalApi";
 import { RenewalBoardTab } from "./renewal/RenewalBoardTab";
@@ -10,8 +10,9 @@ import { RenewalWindowsTab } from "./renewal/RenewalWindowsTab";
 import { RenewalDetailView } from "./renewal/RenewalDetailView";
 import { AppointmentsTab } from "./appointments/AppointmentsTab";
 import { RenewalDivisionHeadTab } from "./renewal/RenewalDivisionHeadTab";
+import { RenewalDashboardTab } from "./renewal/RenewalDashboardTab";
 
-type Tab = "applications" | "late" | "notApplied" | "inc" | "calendar" | "windows" | "divisionHead";
+type Tab = "applications" | "late" | "notApplied" | "inc" | "calendar" | "windows" | "divisionHead" | "dashboard";
 
 /**
  * "Scholar Renewal" — the evaluator's tool. Gated by the "scholar_renewal_evaluator" tag (src/app/staffToolTags.ts). The Division Head
@@ -44,6 +45,7 @@ export function ScholarRenewalPage({ canAct = true, isEvaluator = true, isDivisi
   const bump = useCallback(() => setRefreshKey(k => k + 1), []);
 
   const ALL_TABS: { key: Tab; label: string; icon: React.ReactNode; evaluatorOnly?: boolean }[] = [
+    { key: "dashboard", label: "Dashboard", icon: <BarChart3 size={14} aria-hidden="true" /> },
     { key: "applications", label: "Applications", icon: <ClipboardList size={14} aria-hidden="true" />, evaluatorOnly: true },
     { key: "late", label: "Late", icon: <Clock size={14} aria-hidden="true" />, evaluatorOnly: true },
     { key: "notApplied", label: "Not applied", icon: <UserX size={14} aria-hidden="true" />, evaluatorOnly: true },
@@ -53,12 +55,12 @@ export function ScholarRenewalPage({ canAct = true, isEvaluator = true, isDivisi
     { key: "windows", label: "Windows", icon: <CalendarRange size={14} aria-hidden="true" />, evaluatorOnly: true },
   ];
   const TABS = ALL_TABS.filter(t => isEvaluator || !t.evaluatorOnly);
-  const termBarNeeded = tab !== "divisionHead";
+  const termBarNeeded = tab !== "divisionHead";   // the dashboard and the lists work on the chosen term
 
   return (
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Scholar Renewal</h1>
-      <p className="text-sm text-slate-700 mb-4">{isEvaluator ? "Review renewal applications, accept late ones, track INC subjects, send cases to the Division Head, and confirm every renewal." : "The renewal cases that wait for your decision."}</p>
+      <p className="text-sm text-slate-700 mb-4">{isEvaluator ? "Review renewal applications, accept late ones, track INC subjects, send cases to the Division Head, and confirm every renewal." : "The renewal cases that wait for your decision, and how each term is going."}</p>
       {error && <p role="alert" className="mb-3 text-[14px] text-red-700">Couldn't load the renewal windows: {error}</p>}
 
       {detailId ? (
@@ -86,9 +88,10 @@ export function ScholarRenewalPage({ canAct = true, isEvaluator = true, isDivisi
 
           {tab === "divisionHead" && <RenewalDivisionHeadTab canDecide={isDivisionHead} onOpenRecord={setDetailId} onChanged={bump} refreshKey={refreshKey} />}
           {tab === "calendar" && <AppointmentsTab readOnly onOpenRecord={setDetailId} />}
+          {tab === "dashboard" && current && <RenewalDashboardTab schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} />}
           {tab === "windows" && <RenewalWindowsTab windows={windows ?? []} onChanged={async () => { await loadWindows(); bump(); }} />}
           {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && !current && <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">Open a renewal window first (Windows tab).</p>}
-          {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && current && (
+          {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && tab !== "dashboard" && current && (
             <>
               {tab === "applications" && <RenewalBoardTab schoolYear={current.schoolYear} term={current.term} onOpen={setDetailId} refreshKey={refreshKey} />}
               {tab === "late" && <RenewalLateTab schoolYear={current.schoolYear} term={current.term} onOpen={setDetailId} onChanged={bump} refreshKey={refreshKey} />}
