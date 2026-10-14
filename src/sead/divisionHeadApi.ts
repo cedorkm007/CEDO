@@ -77,9 +77,9 @@ export async function sendToDivisionHead(recordId: string, note: string): Promis
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
-/** The evaluator confirms a case the Division Head reconsidered. */
-export async function confirmReconsideredRenewal(recordId: string, note: string): Promise<Done> {
-  const { error } = await supabase.rpc("renewal_confirm_reconsidered", { p_record_id: recordId, p_note: note });
+/** The evaluator confirms a case the Division Head approved (Probationary) or reconsidered; only then is the renewal Renewed. */
+export async function confirmDivisionHeadDecision(recordId: string, note: string): Promise<Done> {
+  const { error } = await supabase.rpc("renewal_confirm_decision", { p_record_id: recordId, p_note: note });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 

@@ -113,3 +113,8 @@ Tests: Phase 3 database 112, Phase 2 129, website 52. Demo: TEST-0040 (INC lette
 - Fixed on the way: sidebar `hasAnySpecificTool` lacked `scholar_renewal_evaluator` (evaluator-only accounts never saw the tool) and now also `sead_division_head`; pale 11px grey labels in ReferralFormPanel / SignatureUploadPanel / SubjectMatrix.
 - Demo: TEST-0041…0045 (at each point of the decisions); demo.divhead and demo.admin have a stored signature picture.
 - Tests: website 72, Phase 5 database 65, Phase 4 32, Phase 3 112, Phase 2 129, Phase 1 all, grades 99; tsc + build clean; axe audit of the list and decision screen clean; no sideways scrolling at phone width. Walkthrough: `Renewal_Phase5_Walkthrough.txt`.
+
+## 2026-10-14 — Owner's Phase 5 answers ("Approved, next phase")
+1. EVERY positive decision needs the evaluator's confirmation before Renewed: new stage `division_head_approved` (Approve Probationary sets the status Probationary, the renewal waits); `renewal_confirm_reconsidered` became `renewal_confirm_decision` (handles `reconsidered` and `division_head_approved`; result `reconsidered` / `renewed_probationary`, confirmed_by = evaluator). Removed needs no confirmation. The stage was added to the Phase 2 check list and title function too (nothing is live) and p5 re-adds the constraint for databases that ran p2 earlier.
+2. Reconsidered stays Reconsidered unless staff change it. 3. Removed in one database step: OK. 4. "Send back" kept.
+Tests: Phase 5 database 69, website 72; Phase 4/3/2/1 still pass.

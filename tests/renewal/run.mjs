@@ -534,7 +534,9 @@ test("the Forms Management section and the scholar link only call database funct
 console.log("The Division Head's decisions (Phase 5)");
 test("the scholar is told each outcome in plain words", () => {
   const ev = { required_documents: [], consultation_required: true, consultation_done: true, rule_code: "C2" };
-  assert.match(R.scholarNextSteps("renewed", ev, { result: "renewed_probationary" })[0], /approved your renewal with Probationary status/);
+  assert.match(R.scholarNextSteps("renewed", ev, { result: "renewed_probationary" })[0], /You are renewed with Probationary status/);
+  const appr = R.scholarNextSteps("division_head_approved", ev);
+  assert.match(appr[0], /approved your Probationary status/); assert.match(appr[1], /evaluator to confirm your renewal.*nothing to do/);
   assert.match(R.scholarNextSteps("renewed", ev, { result: "renewed" })[0], /You are renewed/);
   assert.match(R.scholarNextSteps("renewed", ev, { result: "reconsidered" })[0], /You are renewed/);
   const rec = R.scholarNextSteps("reconsidered", ev);
@@ -553,7 +555,8 @@ test("the tracker shows a reconsidered case waiting for the evaluator, and a rem
   assert.equal(label(R.renewalProgress("renewed", ev)).endsWith("Renewed:done"), true);
 });
 test("a Reconsidered case is NOT finished: the evaluator still has to confirm it (board group), the scholar still sees it as in progress", () => {
-  assert.ok(R.BOARD_GROUPS.find(g => g.key === "to_confirm").stages.includes("reconsidered"));
+  assert.ok(R.BOARD_GROUPS.find(g => g.key === "to_confirm").stages.includes("reconsidered") && R.BOARD_GROUPS.find(g => g.key === "to_confirm").stages.includes("division_head_approved"));
+  assert.equal(R.isClosedStage("division_head_approved"), false);
   assert.equal(R.isClosedStage("reconsidered"), false); assert.equal(R.isClosedStage("removed"), true); assert.equal(R.isClosedStage("renewed"), true);
   const win = (stage) => ({ window: { id: "w", schoolYear: "2026-2027", term: "1st Semester", opensOn: "2026-10-01", closesOn: "2026-11-01" }, state: "open", consultState: "not_needed", consultNeeded: false, booking: null, incItems: [],
     record: { stage, evaluation: { required_documents: [], consultation_required: true, consultation_done: true }, evaluatorComment: null, noShowFlag: false, result: null } });

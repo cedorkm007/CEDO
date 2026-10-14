@@ -257,7 +257,7 @@ function Tracker({ data, overview, onChanged }: { data: MyRenewalWindow; overvie
     setNote(""); await onChanged();
   }
 
-  const canFlag = !["renewed", "removed", "reconsidered", "late_declined", "not_required"].includes(record.stage);
+  const canFlag = !["renewed", "removed", "reconsidered", "division_head_approved", "late_declined", "not_required"].includes(record.stage);
   return (
     <div className="space-y-4">
       <RenewalProgressBar steps={progress} />
@@ -342,7 +342,7 @@ function DocumentsSection({ data, overview, onChanged }: { data: MyRenewalWindow
   const [busyKind, setBusyKind] = useState<DocKind | null>(null);
   const [error, setError] = useState("");
   const refs = useRef<Partial<Record<DocKind, HTMLInputElement | null>>>({});
-  const editable = !["renewed", "removed", "reconsidered", "late_declined", "not_required", "late_pending"].includes(record.stage);
+  const editable = !["renewed", "removed", "reconsidered", "division_head_approved", "late_declined", "not_required", "late_pending"].includes(record.stage);
 
   if (required.length === 0 && data.documents.length === 0) return null;
 

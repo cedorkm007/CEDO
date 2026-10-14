@@ -75,7 +75,7 @@ create table if not exists public.renewal_records (
     'submitted', 'late_pending', 'late_declined', 'sdp_on_hold', 'waiting_grades', 'review_needed', 'ready_for_confirmation',
     'ready_to_endorse', 'endorsed_division_head', 'needs_study_plan_consultation', 'needs_consultation_division_head', 'needs_inc_letter_consultation',
     'inc_waiting_compliance', 'inc_deadline_passed', 'summer_requirements',
-    'returned', 'renewed', 'removed', 'reconsidered', 'not_required')),
+    'returned', 'renewed', 'removed', 'reconsidered', 'division_head_approved', 'not_required')),
   -- The semester whose grades and SDP are checked for this term (1st Sem <- previous 2nd Sem; 2nd Sem <- same year 1st Sem; Summer <- same year 2nd Sem).
   basis_school_year      text,
   basis_term             text,
@@ -577,6 +577,7 @@ as $$
     when 'renewed' then 'Renewed'
     when 'removed' then 'Removed'
     when 'reconsidered' then 'Reconsidered'
+    when 'division_head_approved' then 'Approved by the Division Head'
     when 'not_required' then 'Not required this term'
     else p_stage end;
 $$;

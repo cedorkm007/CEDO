@@ -15,7 +15,9 @@
 --        2+ failed / 1 failed + earlier -> Removed (status Removed AND the login is switched off, like the Removed Scholars flow)
 --        probation                         or Reconsidered (status Reconsidered; the evaluator then confirms the renewal)
 --                                          or Send back to the evaluator (reason)
---   4. The evaluator confirms a Reconsidered case (renewal_confirm_reconsidered); the renewal then counts as Renewed.
+--   4. EVERY positive decision waits for the evaluator's confirmation before the renewal counts as Renewed: an approved Probationary
+--      (stage division_head_approved, result renewed_probationary) and a Reconsidered case (result reconsidered) are confirmed with
+--      renewal_confirm_decision. The scholar's status changes when the Division Head decides; "Renewed" only when the evaluator confirms.
 --   5. The signed referral prints the name the Division Head typed (the signature itself is still the Division Head's own).
 -- ─────────────────────────────────────────────────────────────
 
@@ -27,6 +29,13 @@ create index if not exists scholar_counseling_referrals_renewal_idx on public.sc
 create unique index if not exists scholar_counseling_referrals_one_open_renewal_uq on public.scholar_counseling_referrals (renewal_record_id)
   where renewal_record_id is not null and status <> 'approved';
 
+-- A new stage: approved by the Division Head, waiting for the evaluator's confirmation (also added to the Phase 2 list for new databases).
+alter table public.renewal_records drop constraint if exists renewal_records_stage_check;
+alter table public.renewal_records add constraint renewal_records_stage_check check (stage in (
+    'submitted', 'late_pending', 'late_declined', 'sdp_on_hold', 'waiting_grades', 'review_needed', 'ready_for_confirmation',
+    'ready_to_endorse', 'endorsed_division_head', 'needs_study_plan_consultation', 'needs_consultation_division_head', 'needs_inc_letter_consultation',
+    'inc_waiting_compliance', 'inc_deadline_passed', 'summer_requirements',
+    'returned', 'renewed', 'removed', 'reconsidered', 'division_head_approved', 'not_required'));
 alter table public.renewal_records add column if not exists division_head_decision text;
 alter table public.renewal_records drop constraint if exists renewal_records_division_head_decision_check;
 alter table public.renewal_records add constraint renewal_records_division_head_decision_check
@@ -595,12 +604,11 @@ begin
 
   if p_decision = 'approve_probationary' then
     perform public._renewal_set_status(v_rec.scholar_id_number, 'Probationary', false, 'Division Head approved Probationary for the renewal of ' || v_label || '.');
-    update public.renewal_records set stage = 'renewed', result = 'renewed_probationary', temp_probation = false, temp_previous_status = null,
-      division_head_decision = 'approved_probationary', division_head_decided_at = now(), division_head_decided_by = auth.uid(), division_head_note = v_note,
-      confirmed_at = now(), confirmed_by = auth.uid(), updated_at = now() where id = v_rec.id;
-    perform public._renewal_log(v_rec.id, v_rec.stage, 'renewed', 'Division Head approved Probationary: the renewal is Renewed as Probationary.' || coalesce(' ' || v_note, ''));
-    perform public._notify_scholar(v_rec.scholar_id_number, 'renewal_confirmed', 'Your renewal is approved — Probationary',
-      'The Division Head approved your renewal for ' || v_label || ' with Probationary status. Your Certificate of Scholarship Renewal will be available here once certificates are switched on.', v_rec.id);
+    update public.renewal_records set stage = 'division_head_approved', temp_probation = false, temp_previous_status = null,
+      division_head_decision = 'approved_probationary', division_head_decided_at = now(), division_head_decided_by = auth.uid(), division_head_note = v_note, updated_at = now() where id = v_rec.id;
+    perform public._renewal_log(v_rec.id, v_rec.stage, 'division_head_approved', 'Division Head approved Probationary: the scholar''s status is Probationary; the evaluator confirms the renewal.' || coalesce(' ' || v_note, ''));
+    perform public._notify_scholar(v_rec.scholar_id_number, 'progress', 'The Division Head approved your Probationary status',
+      'Your status is now Probationary. The evaluator will confirm your renewal for ' || v_label || '.', v_rec.id);
   elsif p_decision = 'reconsidered' then
     perform public._renewal_set_status(v_rec.scholar_id_number, 'Reconsidered', false, 'Division Head reconsidered the case (renewal of ' || v_label || ').');
     update public.renewal_records set stage = 'reconsidered', temp_probation = false, temp_previous_status = null,
@@ -653,8 +661,10 @@ $$;
 revoke all on function public.renewal_division_head_return(uuid, text) from public, anon;
 grant execute on function public.renewal_division_head_return(uuid, text) to authenticated;
 
--- The evaluator confirms a Reconsidered case; the renewal then counts as Renewed (the scholar's status stays Reconsidered).
-create or replace function public.renewal_confirm_reconsidered(p_record_id uuid, p_note text default '')
+-- The evaluator confirms a case the Division Head approved (Probationary) or reconsidered; only then does the renewal count as Renewed.
+-- (The scholar's status stays what the Division Head set until staff change it.)
+drop function if exists public.renewal_confirm_reconsidered(uuid, text);
+create or replace function public.renewal_confirm_decision(p_record_id uuid, p_note text default '')
 returns void
 language plpgsql
 security definer
@@ -667,17 +677,17 @@ begin
   perform public._renewal_require_evaluator();
   select * into v_rec from public.renewal_records where id = p_record_id for update;
   if not found then raise exception 'That renewal record was not found.'; end if;
-  if v_rec.stage <> 'reconsidered' then raise exception 'Only a case the Division Head reconsidered can be confirmed here (this one is "%").', public._renewal_stage_title(v_rec.stage); end if;
+  if v_rec.stage not in ('reconsidered', 'division_head_approved') then raise exception 'Only a case the Division Head approved or reconsidered can be confirmed here (this one is "%").', public._renewal_stage_title(v_rec.stage); end if;
   v_label := public._renewal_term_label(v_rec.school_year, v_rec.term);
-  update public.renewal_records set stage = 'renewed', result = 'reconsidered', confirmed_at = now(), confirmed_by = auth.uid(),
+  update public.renewal_records set stage = 'renewed', result = case v_rec.stage when 'reconsidered' then 'reconsidered' else 'renewed_probationary' end, confirmed_at = now(), confirmed_by = auth.uid(),
     evaluator_comment = nullif(btrim(coalesce(p_note, '')), ''), updated_at = now() where id = p_record_id;
-  perform public._renewal_log(p_record_id, 'reconsidered', 'renewed', 'Renewal confirmed after the Division Head reconsidered the case.' || case when btrim(coalesce(p_note, '')) <> '' then ' ' || btrim(p_note) else '' end);
+  perform public._renewal_log(p_record_id, v_rec.stage, 'renewed', 'Renewal confirmed after the Division Head ' || case v_rec.stage when 'reconsidered' then 'reconsidered the case.' else 'approved Probationary.' end || case when btrim(coalesce(p_note, '')) <> '' then ' ' || btrim(p_note) else '' end);
   perform public._notify_scholar(v_rec.scholar_id_number, 'renewal_confirmed', 'Your renewal is confirmed',
     'You are renewed for ' || v_label || '. Your Certificate of Scholarship Renewal will be available here once certificates are switched on.', p_record_id);
 end;
 $$;
-revoke all on function public.renewal_confirm_reconsidered(uuid, text) from public, anon;
-grant execute on function public.renewal_confirm_reconsidered(uuid, text) to authenticated;
+revoke all on function public.renewal_confirm_decision(uuid, text) from public, anon;
+grant execute on function public.renewal_confirm_decision(uuid, text) to authenticated;
 
 -- Where is this case with the Division Head? (the evaluator's detail page)
 create or replace function public.renewal_dh_status(p_record_id uuid)

@@ -13,7 +13,7 @@ export const RENEWAL_STAGES = [
   "submitted", "late_pending", "late_declined", "sdp_on_hold", "waiting_grades", "review_needed", "ready_for_confirmation",
   "ready_to_endorse", "endorsed_division_head", "needs_study_plan_consultation", "needs_consultation_division_head", "needs_inc_letter_consultation",
   "inc_waiting_compliance", "inc_deadline_passed", "summer_requirements",
-  "returned", "renewed", "removed", "reconsidered", "not_required",
+  "returned", "renewed", "removed", "reconsidered", "division_head_approved", "not_required",
 ] as const;
 export type RenewalStage = (typeof RENEWAL_STAGES)[number];
 
@@ -39,6 +39,7 @@ export const STAGE_INFO: Record<RenewalStage, { title: string; tone: StageTone; 
   renewed: { title: "Renewed", tone: "success", short: "Renewed" },
   removed: { title: "Removed", tone: "danger", short: "Removed" },
   reconsidered: { title: "Reconsidered", tone: "success", short: "Reconsidered — to confirm" },
+  division_head_approved: { title: "Approved by the Division Head", tone: "success", short: "Approved — to confirm" },
   not_required: { title: "Not required this term", tone: "neutral", short: "Not required" },
 };
 
@@ -57,7 +58,7 @@ export const isClosedStage = (stage: string): boolean => (CLOSED_STAGES as reado
 
 /** The groups the evaluator's board filters by (a stage can sit in one group). */
 export const BOARD_GROUPS: { key: string; label: string; stages: readonly RenewalStage[] }[] = [
-  { key: "to_confirm", label: "Ready for the evaluator", stages: ["ready_for_confirmation", "ready_to_endorse", "reconsidered"] },
+  { key: "to_confirm", label: "Ready for the evaluator", stages: ["ready_for_confirmation", "ready_to_endorse", "reconsidered", "division_head_approved"] },
   { key: "late", label: "Late — needs acceptance", stages: ["late_pending"] },
   { key: "on_hold", label: "On hold / waiting", stages: ["sdp_on_hold", "waiting_grades", "review_needed"] },
   { key: "consult", label: "Needs documents + consultation", stages: ["needs_study_plan_consultation", "needs_inc_letter_consultation", "summer_requirements", "submitted"] },
@@ -83,7 +84,7 @@ export const DIVISION_HEAD_DECISION_LABEL: Record<DivisionHeadDecision, string> 
 };
 /** The buttons the Division Head sees, in order, with plain words for what each one does. */
 export const DIVISION_HEAD_OPTION_INFO: Record<"approve_probationary" | "removed" | "reconsidered" | "return", { label: string; effect: string }> = {
-  approve_probationary: { label: "Approve Probationary", effect: "The scholar's status becomes Probationary and the renewal is Renewed as Probationary." },
+  approve_probationary: { label: "Approve Probationary", effect: "The scholar's status becomes Probationary and goes back to the evaluator, who confirms the renewal." },
   reconsidered: { label: "Reconsidered", effect: "The scholar's status becomes Reconsidered and goes back to the evaluator, who confirms the renewal." },
   removed: { label: "Removed", effect: "The scholar's status becomes Removed and their login is switched off (like the Removed Scholars tab). Any booked consultation is released." },
   return: { label: "Send back to the evaluator", effect: "Nothing changes for the scholar. The evaluator reads your reason and sends the case again." },
@@ -344,11 +345,12 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
     case "returned": steps.push(opts.evaluatorComment ? `The evaluator asked: ${opts.evaluatorComment}` : "The evaluator returned your application with comments."); steps.push("Fix what was asked and press “Submit again”."); break;
     case "renewed":
       steps.push(opts.result === "renewed_probationary"
-        ? "The Division Head approved your renewal with Probationary status. Your Certificate of Scholarship Renewal will be available here once certificates are switched on."
+        ? "You are renewed with Probationary status. Your Certificate of Scholarship Renewal will be available here once certificates are switched on."
         : "You are renewed. Your Certificate of Scholarship Renewal will be available here once certificates are switched on.");
       break;
     case "removed": steps.push("The Division Head decided that your scholarship ends with this renewal. Please contact the CEDO office."); break;
     case "reconsidered": steps.push("The Division Head reconsidered your case. Your status is now Reconsidered."); steps.push("Waiting for the evaluator to confirm your renewal — nothing to do right now."); break;
+    case "division_head_approved": steps.push("The Division Head approved your Probationary status."); steps.push("Waiting for the evaluator to confirm your renewal — nothing to do right now."); break;
     case "not_required": steps.push("You do not need to renew this term."); break;
   }
   return steps;
@@ -378,11 +380,11 @@ export function renewalProgress(stage: RenewalStage, ev: RenewalEvaluation | nul
     : holds.includes(stage) ? { key: "checked", label: "SDP and grades checked", state: "problem", note: stage === "sdp_on_hold" ? "On hold: SDP" : stage === "waiting_grades" ? "Waiting for grades" : "Being reviewed" }
     : done("checked", "SDP and grades checked"));
 
-  const decisionIsDivisionHead = stage === "needs_consultation_division_head" || stage === "endorsed_division_head" || stage === "reconsidered" || stage === "removed" || ev?.rule_code?.startsWith("C") === true || ev?.rule_code?.startsWith("B") === true;
+  const decisionIsDivisionHead = stage === "needs_consultation_division_head" || stage === "endorsed_division_head" || stage === "reconsidered" || stage === "division_head_approved" || stage === "removed" || ev?.rule_code?.startsWith("C") === true || ev?.rule_code?.startsWith("B") === true;
   const decisionLabel = decisionIsDivisionHead ? "Division Head decision" : "Evaluator confirmation";
   const terminal = stage === "renewed";
   const consultDoneEarly = !!ev?.consultation_done;
-  if (stage === "reconsidered") {
+  if (stage === "reconsidered" || stage === "division_head_approved") {
     // The Division Head decided; the evaluator confirms the renewal.
     return [done("applied", "Applied"), done("checked", "SDP and grades checked"), ...(ev?.consultation_required ? [done("consultation", "Consultation")] : []),
       done("decision", "Division Head decision"), { key: "confirm", label: "Evaluator confirmation", state: "current" }, { key: "renewed", label: "Renewed", state: "todo" }];

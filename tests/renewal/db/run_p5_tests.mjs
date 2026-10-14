@@ -130,8 +130,8 @@ check("the case information shows the decision, and no options any more", (await
 
 console.log("\nThe evaluator confirms a Reconsidered case");
 const rec3 = await apply(3);
-check("only the evaluator can; the case must be Reconsidered", await fails(DH, "select public.renewal_confirm_reconsidered($1)", [rec4], /Only the Scholar Renewal Evaluator/) && await fails(EVAL, "select public.renewal_confirm_reconsidered($1)", [rec3], /Only a case the Division Head reconsidered/));
-await rpc(EVAL, "select public.renewal_confirm_reconsidered($1, 'Welcome back')", [rec4]);
+check("only the evaluator can; the case must be one the Division Head approved or reconsidered", await fails(DH, "select public.renewal_confirm_decision($1)", [rec4], /Only the Scholar Renewal Evaluator/) && await fails(EVAL, "select public.renewal_confirm_decision($1)", [rec3], /Only a case the Division Head approved or reconsidered/));
+await rpc(EVAL, "select public.renewal_confirm_decision($1, 'Welcome back')", [rec4]);
 const conf4 = await recordOf(4);
 check("the renewal is Renewed with the result 'reconsidered' (and the scholar stays Reconsidered)", conf4.stage === "renewed" && conf4.result === "reconsidered" && conf4.confirmed_by === EVAL && (await statusOf(4)).status === "Reconsidered");
 check("the scholar is told it is confirmed", (await q("select 1 from scholar_notifications where scholar_id_number = $1 and kind = 'renewal_confirmed'", [num(4)])).length === 1);
@@ -178,9 +178,15 @@ const ref3b = await referralOf(rec3);
 check("the evaluator endorses again: the SAME referral is forwarded again (one referral, not two)", ref3b.length === 1 && ref3b[0].status === "forwarded_to_division_head" && ref3b[0].id === ref3[0].id);
 await rpc(DH, "select public.renewal_division_head_decide($1, 'approve_probationary', $2, 'Dr. Printed Name')", [rec3, SIG]);
 const ok3 = await recordOf(3);
-check("Approve Probationary: the scholar is Probationary and the renewal is Renewed as Probationary (confirmed by the Division Head)", (await statusOf(3)).status === "Probationary" && ok3.stage === "renewed" && ok3.result === "renewed_probationary" && ok3.confirmed_by === DH && ok3.division_head_decision === "approved_probationary");
-check("the scholar is told; the history records every step", (await q("select 1 from scholar_notifications where scholar_id_number = $1 and title = 'Your renewal is approved — Probationary'", [num(3)])).length === 1
-  && (await rpc(EVAL, "select public.renewal_record_detail($1) d", [rec3]))[0].d.history.filter(h => /Division Head/.test(h.note)).length >= 3);
+check("Approve Probationary: the scholar is Probationary, but the renewal is NOT Renewed yet - it waits for the evaluator", (await statusOf(3)).status === "Probationary" && ok3.stage === "division_head_approved" && ok3.result === null && ok3.confirmed_by === null && ok3.division_head_decision === "approved_probationary");
+check("the scholar is told it waits for the evaluator", (await q("select 1 from scholar_notifications where scholar_id_number = $1 and title = 'The Division Head approved your Probationary status'", [num(3)])).length === 1);
+check("it is not an active stage: an automatic re-check leaves it alone", await (async () => { await q("select public._renewal_recheck($1)", [rec3]); return (await recordOf(3)).stage === "division_head_approved"; })());
+check("the evaluator cannot return or endorse it again, and the Division Head cannot decide it twice", await fails(DH, "select public.renewal_division_head_decide($1, 'approve_probationary', $2, 'X')", [rec3, SIG], /not waiting for the Division Head/) && await fails(EVAL, "select public.renewal_confirm($1)", [rec3], /not ready for confirmation/));
+await rpc(EVAL, "select public.renewal_confirm_decision($1, 'Confirmed as Probationary')", [rec3]);
+const conf3 = await recordOf(3);
+check("the evaluator confirms: only now is it Renewed as Probationary (confirmed by the evaluator); the status stays Probationary", conf3.stage === "renewed" && conf3.result === "renewed_probationary" && conf3.confirmed_by === EVAL && (await statusOf(3)).status === "Probationary");
+check("the scholar is told it is confirmed; the history records every step", (await q("select 1 from scholar_notifications where scholar_id_number = $1 and kind = 'renewal_confirmed'", [num(3)])).length === 1
+  && (await rpc(EVAL, "select public.renewal_record_detail($1) d", [rec3]))[0].d.history.filter(h => /Division Head|confirmed/.test(h.note)).length >= 4);
 
 console.log("\nSending a 2+ failed case back");
 await mkScholar(51, ["5.0", "5.0", "1.5"]);
@@ -212,7 +218,7 @@ check("ordinary referrals still show in the counselor queue (a fresh one)", awai
 
 console.log("\nSafety");
 check("anonymous visitors cannot call any of the new functions", await (async () => {
-  for (const fn of ["renewal_division_head_queue()", "renewal_referral_info(gen_random_uuid())", "renewal_division_head_decide(gen_random_uuid(),'removed','x','x','x')", "renewal_division_head_return(gen_random_uuid(),'xxxxx')", "renewal_confirm_reconsidered(gen_random_uuid())", "renewal_send_to_division_head(gen_random_uuid(),'xxxxx')"]) {
+  for (const fn of ["renewal_division_head_queue()", "renewal_referral_info(gen_random_uuid())", "renewal_division_head_decide(gen_random_uuid(),'removed','x','x','x')", "renewal_division_head_return(gen_random_uuid(),'xxxxx')", "renewal_confirm_decision(gen_random_uuid())", "renewal_send_to_division_head(gen_random_uuid(),'xxxxx')"]) {
     try { await db.transaction(async tx => { await tx.exec("set local role anon"); await tx.query("select public." + fn); }); return false; } catch { /* refused */ }
   }
   return true;
