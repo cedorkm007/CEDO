@@ -1,0 +1,13 @@
+{
+  "name": "CEDO Scholar Portal",
+  "short_name": "CEDO",
+  "description": "The scholar portal of the City Education and Development Office.",
+  "start_url": "/CEDO/portal",
+  "scope": "/CEDO",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#062444",
+  "icons": [
+    { "src": "/push-icon.png", "sizes": "500x500", "type": "image/png", "purpose": "any" }
+  ]
+}

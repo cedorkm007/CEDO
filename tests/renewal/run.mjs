@@ -572,6 +572,112 @@ test("the Division Head's choices and what each one does are worded for the scre
   assert.deepEqual(Object.keys(R.DIVISION_HEAD_CASE_LABEL).sort(), ["probationary_approval", "removal_decision"]);
 });
 
+console.log("Notifications and web push (Phase 6)");
+const PS = await bundle("pushsupport", "src/lib/pushSupport.ts");
+const PM = await bundle("pushmessage", "supabase/functions/_shared/pushMessage.ts");
+const envOf = over => ({ hasKey: true, hasServiceWorker: true, hasPushManager: true, hasNotification: true, permission: "default", isIOS: false, isStandalone: false, insideAppBrowser: false, ...over });
+test("each device is sorted into: can turn on / needs Add to Home Screen / blocked / cannot / not set up", () => {
+  assert.equal(PS.classifyPushSupport(envOf({})), "supported");
+  assert.equal(PS.classifyPushSupport(envOf({ hasKey: false })), "not_configured");
+  assert.equal(PS.classifyPushSupport(envOf({ permission: "denied" })), "blocked");
+  assert.equal(PS.classifyPushSupport(envOf({ isIOS: true, hasPushManager: false })), "needs_install", "iPhone in plain Safari");
+  assert.equal(PS.classifyPushSupport(envOf({ isIOS: true, isStandalone: true })), "supported", "iPhone with the portal on the Home Screen");
+  assert.equal(PS.classifyPushSupport(envOf({ insideAppBrowser: true })), "unsupported", "Facebook / Messenger browsers");
+  assert.equal(PS.classifyPushSupport(envOf({ hasServiceWorker: false })), "unsupported");
+  assert.equal(PS.classifyPushSupport(envOf({ hasNotification: false })), "unsupported");
+  assert.equal(PS.classifyPushSupport(envOf({ hasKey: false, permission: "denied" })), "not_configured", "nothing to say until the office has set it up");
+});
+test("in-app browsers and iPads are recognised from the browser text", () => {
+  assert.equal(PS.isInAppBrowser("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 [FB_IAB/FB4A;FBAV/430.0]"), true);
+  assert.equal(PS.isInAppBrowser("Mozilla/5.0 (iPhone) Instagram 300.0"), true);
+  assert.equal(PS.isInAppBrowser("Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile Safari/537.36"), false);
+  assert.equal(PS.isIOSDevice("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"), true);
+  assert.equal(PS.isIOSDevice("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", 5), true, "iPadOS pretends to be a Mac");
+  assert.equal(PS.isIOSDevice("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", 0), false);
+});
+test("the public key is turned into the bytes the browser wants, and device names are friendly", () => {
+  const key = "BAyqddb614-Vh7FsiAbgh4G9lQK6oRL29lK9PeDIjE_FfcWcw3RtZTlMyVhEd2V75KX0LLudErClVv8LXICvZZk";
+  const bytes = PS.urlBase64ToUint8Array(key);
+  assert.equal(bytes.length, 65); assert.equal(bytes[0], 4, "an uncompressed P-256 point");
+  assert.equal(PS.deviceLabel("Mozilla/5.0 (Linux; Android 13) Chrome/120.0 Mobile Safari/537.36"), "Chrome on Android");
+  assert.equal(PS.deviceLabel("Mozilla/5.0 (Windows NT 10.0) Chrome/120 Safari/537 Edg/120"), "Edge on Windows");
+  assert.equal(PS.deviceLabel("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) AppleWebKit Safari/604"), "Safari on iPhone / iPad");
+});
+test("every answer has plain words; the not-set-up state says nothing", () => {
+  for (const k of ["supported", "needs_install", "blocked", "unsupported"]) assert.ok(PS.PUSH_MESSAGES[k].length > 20, k);
+  assert.match(PS.PUSH_MESSAGES.needs_install, /Add to Home Screen/); assert.match(PS.PUSH_MESSAGES.supported, /bell/); assert.equal(PS.PUSH_MESSAGES.not_configured, "");
+});
+test("the push message the phone shows is shortened, and only ever points at a page of this site", () => {
+  const p = JSON.parse(PM.buildPushPayload({ title: "Hello", body: "Body", url: "/CEDO/portal" }));
+  assert.deepEqual(p, { title: "Hello", body: "Body", url: "/CEDO/portal" });
+  const long = JSON.parse(PM.buildPushPayload({ title: "T".repeat(200), body: "B".repeat(500), url: "/x" }));
+  assert.ok(long.title.length <= 80 && long.body.length <= 200 && long.body.endsWith("…"));
+  assert.equal(JSON.parse(PM.buildPushPayload({ title: "x", body: "y", url: "https://evil.example/phish" })).url, "/");
+  assert.equal(JSON.parse(PM.buildPushPayload({ title: "x", body: "y", url: "//evil.example" })).url, "/");
+  assert.equal(JSON.parse(PM.buildPushPayload({ title: "  ", body: "", url: "/" })).title, "CEDO");
+});
+test("the push services' answers are read the same way the database reads them", () => {
+  assert.equal(PM.classifyPushStatus(201), "delivered"); assert.equal(PM.classifyPushStatus(410), "gone"); assert.equal(PM.classifyPushStatus(404), "gone");
+  assert.equal(PM.classifyPushStatus(503), "retry"); assert.equal(PM.classifyPushStatus(0), "retry"); assert.equal(PM.classifyPushStatus(429), "retry");
+});
+test("the function's shared secret check refuses a missing, wrong or unset secret", () => {
+  assert.equal(PM.secretMatches("abc123", "abc123"), true);
+  assert.equal(PM.secretMatches("abc124", "abc123"), false); assert.equal(PM.secretMatches("abc", "abc123"), false);
+  assert.equal(PM.secretMatches(null, "abc123"), false); assert.equal(PM.secretMatches("abc123", undefined), false); assert.equal(PM.secretMatches("", ""), false);
+});
+
+console.log("Source guards (Phase 6)");
+test("every database function the push client and the push-sender call exists in the Phase 6 migration", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p6_notifications.sql"), "utf8");
+  const files = ["src/lib/pushClient.ts", "supabase/functions/push-sender/index.ts"].map(p => fs.readFileSync(path.join(root, p), "utf8")).join("\n");
+  const called = [...files.matchAll(/rpc\("([a-z_]+)"/g)].map(m => m[1]);
+  assert.deepEqual([...new Set(called)].sort(), ["push_claim", "push_report", "push_send_test", "push_subscribe", "push_unsubscribe"]);
+  for (const fn of called) assert.ok(sql.includes(`create or replace function public.${fn}(`), fn);
+  assert.match(sql, /grant execute on function public\.push_claim\(integer\) to service_role/); assert.equal(/grant execute on function public\.push_claim\(integer\) to (authenticated|anon)/.test(sql), false);
+});
+test("the push-sender function refuses callers without the secret and never runs without the keys", () => {
+  const fn = fs.readFileSync(path.join(root, "supabase/functions/push-sender/index.ts"), "utf8");
+  assert.match(fn, /secretMatches\(req\.headers\.get\("x-push-secret"\), Deno\.env\.get\("PUSH_SENDER_SECRET"\)\)/);
+  assert.ok(fn.indexOf("secretMatches(req") < fn.indexOf("rpc(\"push_claim\""), "the secret is checked before anything is read");
+  assert.match(fn, /VAPID_PRIVATE_KEY/); assert.match(fn, /no-verify-jwt/);
+});
+test("the service worker only shows notifications and opens the page; it caches nothing and never answers page requests", () => {
+  const sw = fs.readFileSync(path.join(root, "public/push-sw.js"), "utf8");
+  assert.match(sw, /addEventListener\("push"/); assert.match(sw, /addEventListener\("notificationclick"/);
+  assert.equal(/addEventListener\("fetch"|caches\./.test(sw), false);
+  assert.match(sw, /charAt\(0\) === "\/"/, "only same-site paths are opened");
+});
+test("push permission is only ever asked from a button, never on page load", () => {
+  const client = fs.readFileSync(path.join(root, "src/lib/pushClient.ts"), "utf8");
+  const ui = fs.readFileSync(path.join(root, "src/app/components/PushSettings.tsx"), "utf8");
+  assert.equal(client.split("requestPermission").length - 1, 1, "asked in exactly one place (enablePush)");
+  assert.match(ui, /onClick=\{\(\) => void turnOn\(\)\}/); assert.equal(/useEffect\([^)]*enablePush/.test(ui), false);
+  for (const src of [ui]) {
+    assert.deepEqual([...src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), []);
+    assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(src), false);
+  }
+});
+test("the scholar bell, the Renewal tile and the staff Notifications pages offer it; staff renewal notices stay private to the person they are for", () => {
+  assert.match(fs.readFileSync(path.join(root, "src/scholar/components/dashboard/NotificationBell.tsx"), "utf8"), /<PushSettings variant="panel"/);
+  assert.match(fs.readFileSync(path.join(root, "src/scholar/components/dashboard/RenewalPanel.tsx"), "utf8"), /<PushSettings variant="banner"/);
+  const app = fs.readFileSync(path.join(root, "src/app/App.tsx"), "utf8");
+  assert.equal(app.split('<PushSettings audience="staff"').length - 1, 2, "both staff notification pages");
+  assert.match(app, /type NotifType = "submission" \| "leave_request" \| "referral_approval" \| "renewal"/);
+  assert.match(app, /\(n\.type !== "referral_approval" && n\.type !== "renewal"\) \|\| n\.userId === currentUser\.id/);
+  assert.match(app, /n\.type === "referral_approval" \|\| n\.type === "renewal"\s*\?\s*n\.userId === currentUser\?\.id/);
+  const main = fs.readFileSync(path.join(root, "src/main.tsx"), "utf8");
+  assert.match(main, /isScholarSite\) \{[\s\S]*scholar-manifest\.webmanifest/);
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "public/scholar-manifest.webmanifest"), "utf8"));
+  assert.equal(manifest.display, "standalone"); assert.equal(manifest.scope, "/CEDO"); assert.equal(manifest.start_url, "/CEDO/portal");
+});
+test("the key made for the website is public; the private key only ever appears in the function's secrets and the generator", () => {
+  const gen = fs.readFileSync(path.join(root, "scripts/generate-vapid-keys.mjs"), "utf8");
+  assert.match(gen, /prime256v1/);
+  assert.match(fs.readFileSync(path.join(root, "env.example"), "utf8"), /VITE_VAPID_PUBLIC_KEY=\s*$/m);
+  const client = fs.readFileSync(path.join(root, "src/lib/pushClient.ts"), "utf8");
+  assert.equal(/VAPID_PRIVATE|PRIVATE_KEY/.test(client), false);
+});
+
 console.log("Source guards (Phase 5)");
 const p5files = ["src/sead/divisionHeadApi.ts", "src/sead/renewal/RenewalDecisionPanel.tsx", "src/sead/renewal/RenewalDivisionHeadTab.tsx"];
 test("the Division Head screens use readable text (13px and up, no pale greys, no pale-blue links)", () => {

@@ -266,13 +266,26 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
   });
 
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
-  // The stand-in for the real project's scheduler (pg_cron): once a minute, send due consultation reminders and notice INC deadlines that passed.
-  const runJobs = () => db.query("select public.renewal_scheduled_jobs()").catch(() => {});
+  // The stand-in for the real project's scheduler (pg_cron): once a minute, send due consultation reminders, notice INC deadlines that passed,
+  // and send the INC / window-closing reminders.
+  const runJobs = () => db.query("select public.renewal_run_scheduled_jobs()").catch(() => {});
   void runJobs();
   const jobsTimer = setInterval(runJobs, 60_000);
+  // The stand-in for the push-sender function: it takes the waiting push messages the same way the real function does (push_claim) and
+  // reports every device as "delivered" (push_report). Nothing leaves this computer; the line it prints is the only trace of a "push".
+  const runPush = async () => {
+    try {
+      const claimed = (await db.query("select public.push_claim(50) c")).rows[0].c ?? [];
+      for (const m of claimed) {
+        console.error(`[demo push] "${m.title}" -> ${m.subscriptions.length} device(s)`);
+        await db.query("select public.push_report($1, $2::jsonb)", [m.id, JSON.stringify(m.subscriptions.map(s => ({ endpoint: s.endpoint, status: 201 })))]);
+      }
+    } catch { /* the push tables are not there yet (an older database) */ }
+  };
+  const pushTimer = setInterval(runPush, 15_000);
   return {
     url: `http://127.0.0.1:${port}`, port, rest,
-    close: () => new Promise(r => { clearInterval(jobsTimer); wss.close(); server.close(() => r()); server.closeAllConnections?.(); }),
+    close: () => new Promise(r => { clearInterval(jobsTimer); clearInterval(pushTimer); wss.close(); server.close(() => r()); server.closeAllConnections?.(); }),
   };
 }
 

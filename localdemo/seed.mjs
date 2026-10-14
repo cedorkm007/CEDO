@@ -296,4 +296,7 @@ export async function seedDb(db) {
 
   // Loading the scholars made the status-history trigger record a "System" row dated today for each one; the real database has none until a status changes.
   await db.query("delete from scholar_status_history where source = 'system'");
+  // The seeding itself (applications, decisions) created staff notifications and queued pushes; the real bell starts empty, so does this one.
+  await db.query("delete from notifications where type = 'renewal'");
+  await db.query("delete from push_outbox");
 }

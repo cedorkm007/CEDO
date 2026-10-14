@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { formatDateTime } from "@/lib/renewal";
+import { PushSettings } from "@/app/components/PushSettings";
 import { fetchScholarNotifications, markScholarNotificationsRead, type ScholarNotification } from "../../renewalApi";
 
 /** Anything that creates a notification (applying, resubmitting …) can ask the bell to refresh right away. */
 export const NOTIFICATIONS_CHANGED = "scholar-notifications-changed";
 
 /**
- * The scholar's bell: every notification the system sends (in the portal — web push comes later and always falls back to this list).
+ * The scholar's bell: every notification the system sends. Web push (notifications on the phone or computer) is an extra: the person turns it
+ * on at the bottom of this list, and whatever the device can do, every notification is always here.
  * Opening the list marks what was unread as read. Refreshes itself every minute while the portal is open.
  */
 export function NotificationBell({ tone = "dark" }: { tone?: "dark" | "light" }) {
@@ -77,6 +79,7 @@ export function NotificationBell({ tone = "dark" }: { tone?: "dark" | "light" })
               ))}
             </ul>
           </div>
+          <div className="border-t border-[#e6ecf5] p-2.5"><PushSettings variant="panel" /></div>
         </div>
       )}
     </div>

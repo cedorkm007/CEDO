@@ -12,8 +12,9 @@ import {
   Plus, Edit2, Check, Eye, Camera, Upload, FileText, ChevronDown, ChevronUp,
   X, Trash2, Clock, CheckCircle2, Circle, AlertCircle,
   Printer, Calendar as CalendarIcon, Sparkles, Bell, RotateCcw,
-  ClipboardCheck, Plane, MessageCircle, Send, Lock, ClipboardList,
+  ClipboardCheck, Plane, MessageCircle, Send, Lock, ClipboardList, RotateCw,
 } from "lucide-react";
+import { PushSettings } from "@/app/components/PushSettings";
 import { ReferralFormPanel } from "@/sead/components/ReferralFormPanel";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import { ExportButton } from "@/app/components/ExportButtons";
@@ -185,7 +186,13 @@ interface LeaveRequest {
   submittedAt: string; status: "pending" | "approved" | "returned"; adminNote?: string;
 }
 
-type NotifType = "submission" | "leave_request" | "referral_approval";
+type NotifType = "submission" | "leave_request" | "referral_approval" | "renewal";
+
+/** A renewal notification points at a tool: consultation notices at the Consultation Tool, everything else at Scholar Renewal. */
+function renewalNotifPage(n: { title: string }): "scholarRenewal" | "scholarCounseling" {
+  return /^A consultation was/.test(n.title) ? "scholarCounseling" : "scholarRenewal";
+}
+const RENEWAL_PAGE_LABEL: Record<"scholarRenewal" | "scholarCounseling", string> = { scholarRenewal: "Open Scholar Renewal", scholarCounseling: "Open the Consultation Tool" };
 interface AppNotification {
   id: string; type: NotifType; userId: string; userName: string;
   title: string; message: string; timestamp: string; read: boolean;
@@ -1720,7 +1727,7 @@ function ReportModal({ currentUser, approvedDaily, month, year, daysInMonth, onC
 // ─────────────────────────────────────────────────────────────
 // ADMIN NOTIFICATIONS PAGE
 // ─────────────────────────────────────────────────────────────
-function AdminNotificationsPage({ notifications, submissions, leaveRequests, allTasks, allUsers, onApproveSubmission, onReturnSubmission, onApproveLeave, onReturnLeave, onMarkRead, onDelete }: {
+function AdminNotificationsPage({ notifications, submissions, leaveRequests, allTasks, allUsers, onApproveSubmission, onReturnSubmission, onApproveLeave, onReturnLeave, onMarkRead, onDelete, onOpenPage, canOpen }: {
   notifications: AppNotification[]; submissions: Submission[]; leaveRequests: LeaveRequest[];
   allTasks: TasksData; allUsers: UserProfile[];
   onApproveSubmission: (subId: string, dailyId: string, userId: string) => void;
@@ -1729,6 +1736,8 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
   onReturnLeave: (reqId: string, note: string) => void;
   onMarkRead: (notifId: string) => void;
   onDelete: (notifId: string) => void;
+  onOpenPage: (p: Page) => void;
+  canOpen: (p: Page) => boolean;
 }) {
   const [selected, setSelected] = useState<AppNotification|null>(null);
   const [returnNote, setReturnNote] = useState("");
@@ -1776,6 +1785,7 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
 
   return (
     <div className="space-y-6">
+      <PushSettings audience="staff"/>
       <div><h1 className="text-xl font-bold text-foreground">Notifications</h1><p className="text-sm text-muted-foreground mt-0.5">{notifications.filter(n=>!n.read).length} unread notification{notifications.filter(n=>!n.read).length!==1?"s":""}</p></div>
 
       {notifications.length===0&&<div className="bg-card border border-dashed border-border rounded-2xl py-16 text-center text-muted-foreground"><Bell size={32} className="mx-auto mb-2 opacity-30"/><p className="text-sm">No notifications yet</p></div>}
@@ -1783,8 +1793,8 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
       <div className="space-y-2">
         {sorted.map(n => {
           const status = getBadgeStatusForNotif(n);
-          const typeIcon = n.type==="submission" ? <ClipboardCheck size={16} className="text-accent"/> : n.type==="referral_approval" ? <ClipboardList size={16} className="text-[#0088cc]"/> : <Plane size={16} className="text-purple-500"/>;
-          const typeBg = n.type==="submission" ? "bg-accent/15" : n.type==="referral_approval" ? "bg-[#0088cc]/15" : "bg-purple-100";
+          const typeIcon = n.type==="submission" ? <ClipboardCheck size={16} className="text-accent"/> : n.type==="referral_approval" ? <ClipboardList size={16} className="text-[#0088cc]"/> : n.type==="renewal" ? <RotateCw size={16} className="text-sky-700"/> : <Plane size={16} className="text-purple-500"/>;
+          const typeBg = n.type==="submission" ? "bg-accent/15" : n.type==="referral_approval" ? "bg-[#0088cc]/15" : n.type==="renewal" ? "bg-sky-100" : "bg-purple-100";
           return (
             <button key={n.id} onClick={()=>openNotif(n)}
               className={`w-full flex items-start gap-4 p-4 rounded-2xl border text-left transition-all hover:shadow-md ${!n.read?"bg-secondary border-accent/30 shadow-sm":"bg-card border-border hover:bg-muted/20"}`}>
@@ -1798,7 +1808,7 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
                 <p className="text-xs text-muted-foreground mt-1">{formatTimestamp(n.timestamp)}</p>
               </div>
               <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                <StatusBadge status={status}/>
+                {n.type!=="renewal"&&<StatusBadge status={status}/>}
                 <button onClick={e=>{e.stopPropagation();onDelete(n.id);}}
                   className="p-1 rounded-lg hover:bg-red-50 hover:text-red-500 text-muted-foreground transition-colors">
                   <Trash2 size={13}/>
@@ -1814,11 +1824,11 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
         <Modal title={selected.title} onClose={()=>setSelected(null)} wide>
           <div className="space-y-4">
             <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border border-border">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${selected.type==="submission"?"bg-accent/15":selected.type==="referral_approval"?"bg-[#0088cc]/15":"bg-purple-100"}`}>
-                {selected.type==="submission"?<ClipboardCheck size={18} className="text-accent"/>:selected.type==="referral_approval"?<ClipboardList size={18} className="text-[#0088cc]"/>:<Plane size={18} className="text-purple-500"/>}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${selected.type==="submission"?"bg-accent/15":selected.type==="referral_approval"?"bg-[#0088cc]/15":selected.type==="renewal"?"bg-sky-100":"bg-purple-100"}`}>
+                {selected.type==="submission"?<ClipboardCheck size={18} className="text-accent"/>:selected.type==="referral_approval"?<ClipboardList size={18} className="text-[#0088cc]"/>:selected.type==="renewal"?<RotateCw size={18} className="text-sky-700"/>:<Plane size={18} className="text-purple-500"/>}
               </div>
               <div><p className="text-sm font-bold text-foreground">{selected.userName}</p><p className="text-xs text-muted-foreground">{formatTimestamp(selected.timestamp)}</p></div>
-              {selected.type!=="referral_approval"&&<div className="ml-auto"><StatusBadge status={getBadgeStatusForNotif(selected)}/></div>}
+              {selected.type!=="referral_approval"&&selected.type!=="renewal"&&<div className="ml-auto"><StatusBadge status={getBadgeStatusForNotif(selected)}/></div>}
             </div>
 
             {selected.type==="submission"&&(()=>{
@@ -1864,7 +1874,16 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
                 onDone={()=>{ onDelete(selected.id); setSelected(null); }} />
             )}
 
-            {selected.type!=="referral_approval"&&getStatusForNotif(selected)==="pending"&&(
+            {selected.type==="renewal"&&(
+              <div className="space-y-3">
+                <p className="text-sm text-foreground">{selected.message}</p>
+                {canOpen(renewalNotifPage(selected))&&(
+                  <button onClick={()=>{ onOpenPage(renewalNotifPage(selected)); setSelected(null); }} className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">{RENEWAL_PAGE_LABEL[renewalNotifPage(selected)]}</button>
+                )}
+              </div>
+            )}
+
+            {selected.type!=="referral_approval"&&selected.type!=="renewal"&&getStatusForNotif(selected)==="pending"&&(
               <div className="space-y-3 border-t border-border pt-3">
                 {showReturnInput?(
                   <div className="space-y-2">
@@ -1879,7 +1898,7 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
                 )}
               </div>
             )}
-            {selected.type!=="referral_approval"&&getStatusForNotif(selected)!=="pending"&&<div className={`p-3 rounded-xl border text-sm font-medium text-center ${getStatusForNotif(selected)==="approved"?"border-green-200 bg-green-50 text-green-700":"border-red-200 bg-red-50 text-red-700"}`}>{getStatusForNotif(selected)==="approved"?"✓ Approved":"✗ Returned"}</div>}
+            {selected.type!=="referral_approval"&&selected.type!=="renewal"&&getStatusForNotif(selected)!=="pending"&&<div className={`p-3 rounded-xl border text-sm font-medium text-center ${getStatusForNotif(selected)==="approved"?"border-green-200 bg-green-50 text-green-700":"border-red-200 bg-red-50 text-red-700"}`}>{getStatusForNotif(selected)==="approved"?"✓ Approved":"✗ Returned"}</div>}
           </div>
         </Modal>
       )}
@@ -1892,17 +1911,21 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
 // Shows only approved/returned deliverable notifications for the
 // currently signed-in staff member, with delete option.
 // ─────────────────────────────────────────────────────────────
-function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead, onDelete }: {
+function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead, onDelete, onOpenPage, canOpen }: {
   userId: string;
   notifications: AppNotification[];
   submissions: Submission[];
   onMarkRead: (id: string) => void;
   onDelete: (id: string) => void;
+  onOpenPage: (p: Page) => void;
+  canOpen: (p: Page) => boolean;
 }) {
-  // Staff only see notifications about their own submissions being approved/returned
+  // Staff see notifications about their own submissions being approved/returned, the renewal notices addressed to them (evaluator, consultation
+  // staff) and referrals waiting for their approval (Division Head).
   const myNotifs = notifications
-    .filter(n => n.type === "submission" && n.userId === userId)
+    .filter(n => (n.type === "submission" || n.type === "renewal" || n.type === "referral_approval") && n.userId === userId)
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const [referralFor, setReferralFor] = useState<AppNotification | null>(null);
 
   function getStatus(n: AppNotification): string {
     const sub = submissions.find(s => s.id === n.referenceId);
@@ -1911,6 +1934,7 @@ function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead
 
   return (
     <div className="space-y-6">
+      <PushSettings audience="staff"/>
       <div>
         <h1 className="text-xl font-bold text-foreground">My Notifications</h1>
         <p className="text-sm text-muted-foreground mt-0.5">{myNotifs.filter(n=>!n.read).length} unread</p>
@@ -1925,6 +1949,35 @@ function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead
 
       <div className="space-y-2">
         {myNotifs.map(n => {
+          if (n.type !== "submission") {
+            const page = n.type === "renewal" ? renewalNotifPage(n) : null;
+            return (
+              <div key={n.id} onClick={() => onMarkRead(n.id)}
+                className={`relative bg-card rounded-2xl border p-4 transition-all ${!n.read ? "border-accent/40 bg-secondary/30 shadow-sm" : "border-border"}`}>
+                <div className="flex items-start gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${n.type === "renewal" ? "bg-sky-100" : "bg-[#0088cc]/15"}`}>
+                    {n.type === "renewal" ? <RotateCw size={18} className="text-sky-700"/> : <ClipboardList size={18} className="text-[#0088cc]"/>}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="text-sm font-semibold text-foreground">{n.title}</p>
+                      {!n.read && <span className="w-2 h-2 rounded-full bg-accent flex-shrink-0"/>}
+                    </div>
+                    <p className="text-sm text-slate-700">{n.message}</p>
+                    <p className="text-xs text-muted-foreground mt-1.5">{formatTimestamp(n.timestamp)}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {page && canOpen(page) && <button onClick={e => { e.stopPropagation(); onMarkRead(n.id); onOpenPage(page); }} className="px-3.5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">{RENEWAL_PAGE_LABEL[page]}</button>}
+                      {n.type === "referral_approval" && <button onClick={e => { e.stopPropagation(); onMarkRead(n.id); setReferralFor(n); }} className="px-3.5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">Review and decide</button>}
+                    </div>
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); onDelete(n.id); }} aria-label="Delete this notification"
+                    className="p-1.5 rounded-lg hover:bg-red-50 hover:text-red-500 text-muted-foreground transition-colors flex-shrink-0 ml-1">
+                    <Trash2 size={14}/>
+                  </button>
+                </div>
+              </div>
+            );
+          }
           const status = getStatus(n);
           const isApproved = status === "approved";
           const isReturned = status === "returned";
@@ -1957,6 +2010,11 @@ function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead
           );
         })}
       </div>
+      {referralFor && (
+        <Modal title={referralFor.title} onClose={() => setReferralFor(null)} wide>
+          <ReferralFormPanel mode="approve" referralId={referralFor.referenceId} onDone={() => { onDelete(referralFor.id); setReferralFor(null); }} />
+        </Modal>
+      )}
     </div>
   );
 }
@@ -2880,7 +2938,7 @@ export default function App() {
 
   const unreadCount = notifications.filter(n =>
     !n.read && (
-      n.type === "referral_approval"
+      n.type === "referral_approval" || n.type === "renewal"
         ? n.userId === currentUser?.id
         : currentUser?.isAdmin
           ? true
@@ -3415,7 +3473,7 @@ export default function App() {
   // Division Head) — never blanket-visible to every admin in the division
   // the way submission/leave notifications are, even though this
   // notification also lives in the shared `notifications` table.
-  const scopedNotifications = notifications.filter(n => scopedUserIds.has(n.userId) && (n.type !== "referral_approval" || n.userId === currentUser.id));
+  const scopedNotifications = notifications.filter(n => scopedUserIds.has(n.userId) && ((n.type !== "referral_approval" && n.type !== "renewal") || n.userId === currentUser.id));
   const scopedAllTasks: TasksData = Object.fromEntries(Object.entries(allTasks).filter(([uid]) => scopedUserIds.has(uid)));
 
   return (
@@ -3486,6 +3544,7 @@ export default function App() {
               onApproveSubmission={handleApproveSubmission} onReturnSubmission={handleReturnSubmission}
               onApproveLeave={handleApproveLeave} onReturnLeave={handleReturnLeave}
               onMarkRead={handleMarkRead} onDelete={handleDeleteNotification}
+              onOpenPage={setPage} canOpen={p=>isPageAuthorizedFor(p, currentUser)}
             />
           )}
           {page==="notifications" && !currentUser.isAdmin && (
@@ -3495,6 +3554,7 @@ export default function App() {
               submissions={submissions}
               onMarkRead={handleMarkRead}
               onDelete={handleDeleteNotification}
+              onOpenPage={setPage} canOpen={p=>isPageAuthorizedFor(p, currentUser)}
             />
           )}
           {page==="admin" && currentUser.role==="super_admin" && (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, CheckCircle2, ChevronDown, ChevronUp, FileUp, Flag, Loader2, Paperclip, RotateCw, Trash2, XCircle } from "lucide-react";
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
+import { PushSettings } from "@/app/components/PushSettings";
 import { NOTIFICATIONS_CHANGED } from "./NotificationBell";
 import { ConsultationSection } from "./ConsultationSection";
 import { RenewalProgressBar } from "./RenewalProgressBar";
@@ -52,6 +53,7 @@ export function RenewalPanel() {
   return (
     <div className="space-y-4">
       <p className="text-[14px] text-slate-700">Renew your scholarship for each term, online. We check your SDP credits and grades for you.</p>
+      <PushSettings variant="banner" />
       {overview.windows.map(w => <WindowCard key={w.window.id} data={w} overview={overview} onChanged={load} />)}
     </div>
   );

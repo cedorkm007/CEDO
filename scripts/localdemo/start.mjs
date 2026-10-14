@@ -18,6 +18,7 @@ const reset = process.argv.includes("--reset");
 // ── Safety: the website is pointed ONLY at this computer; refuse to run otherwise ──
 const API_URL = `http://127.0.0.1:${API_PORT}`;
 process.env.VITE_SUPABASE_URL = API_URL;
+process.env.VITE_VAPID_PUBLIC_KEY = "BAyqddb614-Vh7FsiAbgh4G9lQK6oRL29lK9PeDIjE_FfcWcw3RtZTlMyVhEd2V75KX0LLudErClVv8LXICvZZk";   // a demo-only key (its private half was thrown away: nothing can really be pushed from here)
 process.env.VITE_SUPABASE_ANON_KEY = ANON_KEY;      // process variables beat the values in .env.local, which points at the real project
 function assertLocal(url) {
   const host = new URL(url).hostname;
