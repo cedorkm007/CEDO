@@ -501,18 +501,28 @@ test("the tile chips and the home banner say the most important thing first", ()
 });
 
 console.log("A study plan form for each school (Phase 4)");
-test("the school's own form wins; otherwise the old title rule is only a safety net", () => {
+test("the old title rule is only a safety net when no template was uploaded", () => {
   const own = { title: "Form of my school" }, a = { title: "Study Plan Form", isUnlocked: true }, b = { title: "Study plan (locked)", isUnlocked: false }, c = { title: "Scholar Contract", isUnlocked: true };
   assert.equal(R.pickStudyPlanForm(own, [a]), own, "the chosen form beats a title match");
   assert.equal(R.pickStudyPlanForm(null, [c, b, a]), a, "no choice: an openable form with 'study plan' in its title");
   assert.equal(R.pickStudyPlanForm(null, [c, b]), null, "locked or unrelated forms are never picked by title");
   assert.equal(R.isStudyPlanFormTitle("Study-Plan 2026"), true); assert.equal(R.isStudyPlanFormTitle("Contract"), false);
 });
+test("a study plan template must be a PDF or Word file, not empty, up to 10 MB (judged by the file name, since browsers often give Word files no type)", () => {
+  const ok = n => R.validateStudyPlanTemplate({ name: n, size: 5000 });
+  assert.equal(ok("plan.pdf"), null); assert.equal(ok("Plan v2.DOCX"), null); assert.equal(ok("old.doc"), null);
+  assert.match(ok("plan.png"), /PDF or Word/); assert.match(ok("plan"), /PDF or Word/); assert.match(ok("plan.pdf.exe"), /PDF or Word/);
+  assert.match(R.validateStudyPlanTemplate({ name: "a.pdf", size: 0 }), /empty/);
+  assert.match(R.validateStudyPlanTemplate({ name: "a.pdf", size: 10 * 1024 * 1024 + 1 }), /10 MB/);
+  assert.equal(R.validateStudyPlanTemplate({ name: "a.pdf", size: 10 * 1024 * 1024 }), null);
+  assert.deepEqual(R.studyPlanFileType("x.DocX"), { ext: "docx", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+});
 test("the Forms Management section and the scholar link only call database functions that exist, and the section never writes tables directly", () => {
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p4_tracker.sql"), "utf8");
-  for (const fn of ["renewal_study_plan_form_setup", "renewal_study_plan_form_set", "renewal_my_study_plan_form", "renewal_is_my_study_plan_form"]) assert.ok(sql.includes("create or replace function public." + fn + "("), fn);
+  for (const fn of ["renewal_study_plan_form_setup", "renewal_study_plan_form_save", "renewal_study_plan_form_remove", "renewal_my_study_plan_form", "renewal_is_my_study_plan_path"]) assert.ok(sql.includes("create or replace function public." + fn + "("), fn);
   const staffApi = fs.readFileSync(path.join(root, "src/sead/studyPlanFormsApi.ts"), "utf8");
-  for (const fn of ["renewal_study_plan_form_setup", "renewal_study_plan_form_set"]) assert.ok(staffApi.includes('"' + fn + '"'), fn);
+  for (const fn of ["renewal_study_plan_form_setup", "renewal_study_plan_form_save", "renewal_study_plan_form_remove"]) assert.ok(staffApi.includes('"' + fn + '"'), fn);
+  assert.ok(staffApi.includes('"renewal-study-plan-forms"'), "uses its own private folder");
   assert.equal(/\.from\("renewal_study_plan_forms"\)\s*\.(insert|update|delete|upsert)/.test(staffApi), false);
   assert.ok(fs.readFileSync(path.join(root, "src/scholar/renewalApi.ts"), "utf8").includes('"renewal_my_study_plan_form"'));
   const section = fs.readFileSync(path.join(root, "src/sead/pages/RenewalStudyPlanFormsSection.tsx"), "utf8");

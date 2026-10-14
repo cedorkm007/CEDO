@@ -243,16 +243,16 @@ export async function seedDb(db) {
   await db.query("insert into form_material_conditions (material_id, condition_type, all_year_levels) values ($1, 'year_level', true)", [formId]);
   await db.query("insert into storage.buckets (id, name, public) values ('form-materials','form-materials', false) on conflict (id) do nothing");
   await db.query("insert into storage.objects (bucket_id, name, metadata) values ('form-materials', $1, $2::jsonb)", [`${formId}/file.pdf`, JSON.stringify({ mimetype: "application/pdf", size: 30, base64: Buffer.from("%PDF-1.4 demo study plan form (general)").toString("base64") })]);
-  // Each school has its own version: a second form made for the lower-is-better school only (locked in the Forms tab by a condition nobody meets).
-  const formLower = id("form:study-plan-lower");
-  await db.query("update form_materials set title = 'Study Plan Form (general)' where id = $1", [formId]);
-  await db.query("insert into form_materials (id, title, kind, url, description, file_name) values ($1, 'Study Plan Form – TEST Lower-Is-Better University', 'pdf', '', 'The study plan form of this school.', 'study-plan-lower.pdf')", [formLower]);
-  await db.query("insert into form_material_conditions (material_id, condition_type, course) values ($1, 'course', 'NO SUCH PROGRAM')", [formLower]);
-  await db.query("insert into storage.objects (bucket_id, name, metadata) values ('form-materials', $1, $2::jsonb)", [`${formLower}/file.pdf`, JSON.stringify({ mimetype: "application/pdf", size: 40, base64: Buffer.from("%PDF-1.4 demo study plan form (TEST Lower-Is-Better University)").toString("base64") })]);
-  await as(id("staff:demo.admin"), async tx => {
-    await tx.query("select public.renewal_study_plan_form_set(null, $1)", [formId]);
-    await tx.query("select public.renewal_study_plan_form_set($1, $2)", [id("school:lower"), formLower]);
-  });
+  // Each school has its own study plan template, uploaded in Forms Management > "Renewal study plans": one for every school that has its own,
+  // and a default for the rest (here the lower-is-better school has its own; the other three use the default).
+  const template = async (schoolKey, ext, label) => {
+    const path = `${schoolKey ? id("school:" + schoolKey) : "default"}/${id("template:" + (schoolKey ?? "default"))}.${ext}`;
+    const mime = ext === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    await db.query("insert into storage.objects (bucket_id, name, metadata) values ('renewal-study-plan-forms', $1, $2::jsonb)", [path, JSON.stringify({ mimetype: mime, size: 40, base64: Buffer.from("%PDF-1.4 demo study plan template (" + label + ")").toString("base64") })]);
+    await as(id("staff:demo.admin"), async tx => { await tx.query("select public.renewal_study_plan_form_save($1, $2, $3)", [schoolKey ? id("school:" + schoolKey) : null, path, `${label}.${ext}`]); });
+  };
+  await template(null, "pdf", "study-plan-template-default");
+  await template("lower", "pdf", "study-plan-template-lower-is-better");
 
   // Loading the scholars made the status-history trigger record a "System" row dated today for each one; the real database has none until a status changes.
   await db.query("delete from scholar_status_history where source = 'system'");

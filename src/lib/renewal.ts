@@ -400,6 +400,26 @@ export function pickStudyPlanForm<T extends { title: string; isUnlocked?: boolea
   return accessible.find(m => m.isUnlocked !== false && isStudyPlanFormTitle(m.title)) ?? null;
 }
 
+const STUDY_PLAN_TEMPLATE_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
+/** The file type of a study plan template from its NAME (the browser's own type is often empty for Word files); null when it is not a PDF or Word file. */
+export function studyPlanFileType(name: string): { ext: string; mime: string } | null {
+  const ext = /\.([A-Za-z0-9]{1,5})$/.exec(name)?.[1].toLowerCase() ?? "";
+  return STUDY_PLAN_TEMPLATE_TYPES[ext] ? { ext, mime: STUDY_PLAN_TEMPLATE_TYPES[ext] } : null;
+}
+
+/** A friendly problem with a study plan template before uploading it (PDF or Word, not empty, up to 10 MB), or null when it is fine. */
+export function validateStudyPlanTemplate(file: { name: string; size: number }): string | null {
+  if (!studyPlanFileType(file.name)) return "Please upload a PDF or Word file (.pdf, .doc or .docx).";
+  if (file.size === 0) return "That file is empty.";
+  if (file.size > DOC_MAX_BYTES) return "That file is over 10 MB. Please upload a smaller one.";
+  return null;
+}
+
 /** Does a form's title look like the study plan form? (Staff upload it in Forms Management; the Renewal tile links to it.) */
 export function isStudyPlanFormTitle(title: string): boolean {
   return /study[\s_-]*plan/i.test(title);

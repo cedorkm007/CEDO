@@ -164,13 +164,20 @@ export async function markScholarNotificationsRead(ids?: string[]): Promise<Done
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
-/** The study plan form the CEDO office chose for this scholar's school (or the default), or null when none was chosen. */
-export interface MyStudyPlanForm { id: string; title: string; kind: "pdf" | "flipbook"; url: string; fileName: string; isDefault: boolean }
+/** The study plan template the CEDO office uploaded for this scholar's school (or the default one), or null when none was uploaded. */
+export interface MyStudyPlanForm { storagePath: string; downloadName: string; title: string; isDefault: boolean }
 export async function fetchMyStudyPlanForm(): Promise<MyStudyPlanForm | null> {
   const { data, error } = await supabase.rpc("renewal_my_study_plan_form");
   const row = (data as Row[] | null)?.[0];
   if (error || !row) return null;
-  return { id: str(row.material_id), title: str(row.title), kind: (row.kind as "pdf" | "flipbook") ?? "pdf", url: str(row.url), fileName: str(row.file_name), isDefault: !!row.is_default };
+  return { storagePath: str(row.storage_path), downloadName: str(row.download_name), title: str(row.title), isDefault: !!row.is_default };
+}
+
+const STUDY_PLAN_BUCKET = "renewal-study-plan-forms";
+/** A short-lived download link for the template; the file arrives under the tidy name the system chose. Null when it cannot be opened. */
+export async function fetchMyStudyPlanFormUrl(form: MyStudyPlanForm): Promise<string | null> {
+  const { data, error } = await supabase.storage.from(STUDY_PLAN_BUCKET).createSignedUrl(form.storagePath, 300, { download: form.downloadName });
+  return error || !data ? null : data.signedUrl;
 }
 
 // ── The Consultation tile: the scholar's own appointments (upcoming and past) ──
