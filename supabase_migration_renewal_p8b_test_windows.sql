@@ -13,6 +13,7 @@
 --      notices and certificate records) so the same term can then be opened for everybody with clean numbers.
 --   4. Five older functions get ONE extra condition each (their full text is repeated below): renewal_my_overview (Phase 3), renewal_not_applied (2),
 --      renewal_notification_jobs (6), renewal_dashboard and renewal_export_data (7).
+--   5. renewal_scholar_lookup(): the evaluator finds scholars by name or ID to pick the test accounts on screen.
 -- NEVER run the Phase 2, 3, 6 or 7 file again AFTER this one (they would put the old versions back); run p2 > p8b in order if you ever do.
 -- ─────────────────────────────────────────────────────────────
 
@@ -447,6 +448,33 @@ end;
 $$;
 revoke all on function public.renewal_export_data(text, text, text[], text[], text[], text[]) from public, anon;
 grant execute on function public.renewal_export_data(text, text, text[], text[], text[], text[]) to authenticated;
+
+-- ── 3b. Choosing the test scholars on screen ──
+-- Evaluator only. Finds scholars by (part of) a name or ID (up to 20, never a Removed or On leave scholar) and/or looks up the names of IDs already chosen.
+create or replace function public.renewal_scholar_lookup(p_query text default null, p_ids text[] default null)
+returns table(scholar_id_number text, name text, school text, program text, year_level text, status text)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_q text := btrim(coalesce(p_query, ''));
+begin
+  perform public._renewal_require_evaluator();
+  return query
+  select s.scholar_id_number, btrim(s.last_name || ', ' || s.first_name || ' ' || coalesce(s.middle_name, '')), s.school, s.course, s.year_level, s.status
+  from public.scholars s
+  where (p_ids is not null and s.scholar_id_number = any (p_ids))
+     or (char_length(v_q) >= 2 and s.status not in ('Removed', 'On leave')
+         and (s.scholar_id_number ilike '%' || v_q || '%' or (s.first_name || ' ' || s.last_name) ilike '%' || v_q || '%' or (s.last_name || ' ' || s.first_name) ilike '%' || v_q || '%'
+              or (s.last_name || ', ' || s.first_name) ilike '%' || v_q || '%'))
+  order by s.last_name, s.first_name
+  limit 120;
+end;
+$$;
+revoke all on function public.renewal_scholar_lookup(text, text[]) from public, anon;
+grant execute on function public.renewal_scholar_lookup(text, text[]) to authenticated;
 
 -- ── 4. After the test: clear the testers' test data ──
 -- Only for a testers-only window. Removes, for the listed scholars and that term only: their renewal records (with history, documents, INC items), the

@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { FlaskConical, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-import { RENEWAL_TERMS, formatDay, parseTesterIds, renewalBasis, termLabelOf, windowState } from "@/lib/renewal";
+import { useEffect, useState } from "react";
+import { FlaskConical, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { RENEWAL_TERMS, formatDay, renewalBasis, termLabelOf, windowState } from "@/lib/renewal";
 import { isValidSchoolYear } from "@/lib/academicPeriods";
-import { clearWindowTestData, deleteRenewalWindow, saveRenewalWindow, type RenewalWindowRow } from "../renewalApi";
+import { clearWindowTestData, deleteRenewalWindow, lookupScholars, saveRenewalWindow, type RenewalWindowRow, type ScholarChoice } from "../renewalApi";
 import { ModalShell } from "../components/SeadUiShell";
 
 const STATE_TEXT = { upcoming: "Not open yet", open: "Open", late: "Closed — late applications go to the evaluator", closed: "Closed" } as const;
@@ -77,7 +77,15 @@ function WindowForm({ initial, onClose, onSaved }: { initial: RenewalWindowRow |
   const [lateAllowed, setLateAllowed] = useState(initial?.lateAllowed ?? true);
   const [note, setNote] = useState(initial?.note ?? "");
   const [testersOnly, setTestersOnly] = useState((initial?.testers.length ?? 0) > 0);
-  const [testerText, setTesterText] = useState(initial?.testers.join("\n") ?? "");
+  const [chosen, setChosen] = useState<ScholarChoice[]>((initial?.testers ?? []).map(id => ({ scholarIdNumber: id, name: "", school: "", program: "", yearLevel: "", status: "" })));
+  // the names of the scholars already chosen
+  useEffect(() => {
+    const ids = initial?.testers ?? [];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    void lookupScholars({ ids }).then(r => { if (!cancelled && r.ok) setChosen(prev => prev.map(c => r.rows.find(x => x.scholarIdNumber === c.scholarIdNumber) ?? c)); });
+    return () => { cancelled = true; };
+  }, [initial]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const basis = isValidSchoolYear(schoolYear) ? renewalBasis(schoolYear.trim(), term) : null;
@@ -87,8 +95,8 @@ function WindowForm({ initial, onClose, onSaved }: { initial: RenewalWindowRow |
     setError("");
     if (!isValidSchoolYear(schoolYear)) { setError("The school year must look like 2026-2027."); return; }
     if (!opensOn || !closesOn) { setError("Please choose the opening and closing dates."); return; }
-    const testers = parseTesterIds(testerText);
-    if (testersOnly && testers.length === 0) { setError("Type the scholar IDs of the test accounts, or choose \"Everyone\"."); return; }
+    const testers = chosen.map(c => c.scholarIdNumber);
+    if (testersOnly && testers.length === 0) { setError("Choose at least one test scholar, or choose \"Everyone\"."); return; }
     if (initial && initial.testers.length > 0 && !testersOnly && !window.confirm("This window is now TESTERS ONLY. Opening it to everyone makes it visible to every scholar, and every scholar who has not applied gets the \"Renewal is now open\" alert at the next 8:00-18:00 check. Continue?")) return;
     setBusy(true);
     // Only send the list when it matters, so the call also works before the Phase 8b SQL file is installed.
@@ -117,12 +125,8 @@ function WindowForm({ initial, onClose, onSaved }: { initial: RenewalWindowRow |
         <fieldset className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3 py-3">
           <legend className="px-1 text-[14px] font-bold text-[#062444]">Who can see this window</legend>
           <label className="flex items-start gap-2 text-[14px] text-slate-800"><input type="radio" name="window-audience" checked={!testersOnly} onChange={() => setTestersOnly(false)} className="mt-1" /> <span><strong>Everyone</strong> — every scholar sees it, gets the "Renewal is now open" alert and can apply.</span></label>
-          <label className="mt-2 flex items-start gap-2 text-[14px] text-slate-800"><input type="radio" name="window-audience" checked={testersOnly} onChange={() => setTestersOnly(true)} className="mt-1" /> <span><strong>Testers only</strong> — only the scholar IDs below see it, get alerts, can apply, and are counted in the lists, the dashboard and the Excel file. Nobody else notices anything. Use it to test with test accounts.</span></label>
-          {testersOnly && (
-            <label className="mt-2 block text-[14px] font-semibold text-[#062444]">Scholar IDs of the test accounts (one per line, or separated by commas)
-              <textarea value={testerText} onChange={e => setTesterText(e.target.value)} rows={3} className={`${input} font-mono`} placeholder="2108-00001&#10;2108-00002" />
-            </label>
-          )}
+          <label className="mt-2 flex items-start gap-2 text-[14px] text-slate-800"><input type="radio" name="window-audience" checked={testersOnly} onChange={() => setTestersOnly(true)} className="mt-1" /> <span><strong>Testers only</strong> — only the scholars you choose below see it, get alerts, can apply, and are counted in the lists, the dashboard and the Excel file. Nobody else notices anything. Use it to test with test accounts.</span></label>
+          {testersOnly && <TesterPicker chosen={chosen} onChange={setChosen} />}
         </fieldset>
         {error && <p role="alert" className="text-[14px] text-red-700">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
@@ -131,5 +135,61 @@ function WindowForm({ initial, onClose, onSaved }: { initial: RenewalWindowRow |
         </div>
       </div>
     </ModalShell>
+  );
+}
+
+/** Picks the test scholars: search by name or ID, press "Add", and the chosen ones show as removable chips. Only the chosen scholars will see the window. */
+function TesterPicker({ chosen, onChange }: { chosen: ScholarChoice[]; onChange: (next: ScholarChoice[]) => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<ScholarChoice[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const ids = new Set(chosen.map(c => c.scholarIdNumber));
+
+  useEffect(() => {
+    if (query.trim().length < 2) { setResults([]); setError(""); return; }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setBusy(true);
+      const r = await lookupScholars({ query });
+      if (cancelled) return;
+      setBusy(false);
+      if (r.ok) { setResults(r.rows); setError(""); } else setError(r.error);
+    }, 300);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [query]);
+
+  return (
+    <div className="mt-2">
+      <p className="text-[14px] font-semibold text-[#062444]">Chosen test scholars ({chosen.length})</p>
+      {chosen.length === 0 ? <p className="text-[14px] text-slate-700">Nobody yet. Search below and press "Add".</p> : (
+        <ul className="mt-1 flex flex-wrap gap-2">
+          {chosen.map(c => (
+            <li key={c.scholarIdNumber} className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 py-1 pl-3 pr-1.5 text-[14px] text-amber-950">
+              <span><strong>{c.name || c.scholarIdNumber}</strong>{c.name ? ` · ${c.scholarIdNumber}` : ""}</span>
+              <button type="button" onClick={() => onChange(chosen.filter(x => x.scholarIdNumber !== c.scholarIdNumber))} aria-label={`Remove ${c.name || c.scholarIdNumber}`} className="rounded-full p-1 hover:bg-amber-200"><X size={14} aria-hidden="true" /></button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <label className="mt-3 block text-[14px] font-semibold text-[#062444]">Find a scholar (name or ID, at least 2 letters)
+        <input value={query} onChange={e => setQuery(e.target.value)} className="mt-1 w-full rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] font-normal outline-none focus:border-[#062444] bg-white" placeholder="e.g. Dela Cruz or 2108" />
+      </label>
+      {busy && <p className="mt-1 text-[14px] text-slate-700">Searching…</p>}
+      {error && <p role="alert" className="mt-1 text-[14px] text-red-700">{error}</p>}
+      {query.trim().length >= 2 && !busy && !error && results.length === 0 && <p className="mt-1 text-[14px] text-slate-700">No active scholar matches.</p>}
+      {results.length > 0 && (
+        <ul className="mt-2 max-h-56 divide-y divide-[#e6ecf5] overflow-y-auto rounded-lg border border-[#e6ecf5] bg-white">
+          {results.map(r => (
+            <li key={r.scholarIdNumber} className="flex items-center justify-between gap-3 px-3 py-2 text-[14px]">
+              <span><strong className="text-[#062444]">{r.name}</strong> · {r.scholarIdNumber}<br /><span className="text-slate-700">{r.school} · {r.program} · {r.yearLevel}</span></span>
+              {ids.has(r.scholarIdNumber)
+                ? <span className="font-bold text-green-800">Added</span>
+                : <button type="button" onClick={() => onChange([...chosen, r])} className="rounded-lg border border-[#062444]/40 px-3 py-1 font-bold text-[#062444] hover:bg-[#f7f9fc]">Add</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

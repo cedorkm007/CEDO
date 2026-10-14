@@ -195,3 +195,14 @@ export async function getStaffRenewalDocumentUrl(storagePath: string): Promise<{
   if (error || !data) return { ok: false, error: error?.message ?? "Couldn't open the file." };
   return { ok: true, url: data.signedUrl };
 }
+
+/** A scholar the evaluator can pick (for the testers-only window). */
+export interface ScholarChoice { scholarIdNumber: string; name: string; school: string; program: string; yearLevel: string; status: string }
+const toChoice = (r: Row): ScholarChoice => ({ scholarIdNumber: str(r.scholar_id_number), name: str(r.name), school: str(r.school), program: str(r.program), yearLevel: str(r.year_level), status: str(r.status) });
+
+/** Finds scholars by part of a name or ID (at least 2 letters), and/or looks up already chosen IDs. */
+export async function lookupScholars(args: { query?: string; ids?: string[] }): Promise<{ ok: true; rows: ScholarChoice[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("renewal_scholar_lookup", { p_query: args.query ?? null, p_ids: args.ids ?? null });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, rows: ((data ?? []) as Row[]).map(toChoice) };
+}

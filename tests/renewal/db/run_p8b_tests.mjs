@@ -47,6 +47,14 @@ check("only the evaluator can save or clear a window", await fails(COUNSELOR, SA
 check("an ID that is not a scholar is refused, and says which", await fails(EVAL, SAVE, [null, "2028-2029", TERM, day, closes, [num(1), "NOPE-1", "NOPE-2"]], /not found: NOPE-1, NOPE-2/));
 check("more than 100 scholars are refused", await fails(EVAL, SAVE, [null, "2028-2029", TERM, day, closes, Array.from({ length: 101 }, (_, i) => `X${i}`)], /at most 100/));
 
+console.log("\nChoosing the test scholars on screen");
+const lk = async (uid, query, ids) => rpc(uid, "select * from public.renewal_scholar_lookup($1, $2)", [query ?? null, ids ?? null]);
+check("only the evaluator can look scholars up", await fails(COUNSELOR, "select * from public.renewal_scholar_lookup('test', null)", [], /Only the Scholar Renewal Evaluator/) && await fails(scholarUid(1), "select * from public.renewal_scholar_lookup('test', null)", [], /Only the Scholar Renewal Evaluator/));
+check("a search by part of an ID or a name finds scholars (at least 2 letters; nothing for 1 letter)", (await lk(EVAL, "TEST-0001")).some(r => r.scholar_id_number === num(1)) && (await lk(EVAL, "Renewed With")).some(r => r.scholar_id_number === num(46)) && (await lk(EVAL, "T")).length === 0 && (await lk(EVAL, null)).length === 0);
+const removedId = (await q("select scholar_id_number from scholars where status = 'Removed' limit 1"))[0]?.scholar_id_number;
+check("a search never offers a Removed or On leave scholar, and gives at most 120 rows", (!removedId || !(await lk(EVAL, removedId)).some(r => r.scholar_id_number === removedId)) && (await lk(EVAL, "TEST")).length <= 120);
+check("already chosen IDs can be looked up by ID (to show their names)", await (async () => { const r = await lk(EVAL, null, [num(1), num(2)]); return r.length === 2 && r.every(x => x.name && x.school); })());
+
 console.log("\nWho can see it");
 check("a listed scholar sees the window on their Renewal tile", await overviewHas(1) && await overviewHas(2));
 check("every other scholar does NOT see it, however they ask", !(await overviewHas(3)) && !(await overviewHas(46)) && !(await overviewHas(10)));

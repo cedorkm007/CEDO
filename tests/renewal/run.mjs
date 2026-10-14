@@ -1066,10 +1066,12 @@ test("the public QR page shows only the status line (and the certificate number)
 
 // ── Phase 8b: the testers-only renewal window ──
 console.log("\nPhase 8b: the testers-only renewal window");
-const RENEWAL_LIB = await bundle("renewallib8b", "src/lib/renewal.ts");
-test("the testers box accepts IDs separated by new lines, commas, semicolons or spaces, with no empty entries or repeats", () => {
-  assert.deepEqual(RENEWAL_LIB.parseTesterIds("2108-00001\n2108-00002, 2108-00003;  2108-00001\r\n\n"), ["2108-00001", "2108-00002", "2108-00003"]);
-  assert.deepEqual(RENEWAL_LIB.parseTesterIds("   "), []); assert.deepEqual(RENEWAL_LIB.parseTesterIds(""), []);
+test("the evaluator PICKS the test scholars (search by name or ID, Add, remove with the x); nothing is typed blindly", () => {
+  const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalWindowsTab.tsx"), "utf8");
+  assert.match(tab, /function TesterPicker/); assert.match(tab, /lookupScholars\(\{ query \}\)/); assert.match(tab, /Choose at least one test scholar/);
+  assert.match(tab, /aria-label=\{`Remove \$\{c\.name \|\| c\.scholarIdNumber\}`\}/);
+  assert.match(fs.readFileSync(path.join(root, "src/sead/renewalApi.ts"), "utf8"), /"renewal_scholar_lookup"/);
+  assert.match(fs.readFileSync(path.join(root, "supabase_migration_renewal_p8b_test_windows.sql"), "utf8"), /create or replace function public\.renewal_scholar_lookup\(/);
 });
 test("the Windows screen sends the list only when it matters, warns before opening a testers-only window to everyone, and the call works before the 8b SQL is installed", () => {
   const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalWindowsTab.tsx"), "utf8");
