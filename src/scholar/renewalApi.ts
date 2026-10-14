@@ -7,7 +7,7 @@
 import { supabase } from "@/lib/supabase";
 import {
   RENEWAL_DOCUMENT_BUCKET, renewalDocumentPath, validateRenewalFile,
-  type DocKind, type RenewalEvaluation, type RenewalStage, type WindowState,
+  type ConsultState, type DocKind, type RenewalEvaluation, type RenewalStage, type WindowState,
 } from "@/lib/renewal";
 
 export type Done = { ok: true } | { ok: false; error: string };
@@ -30,7 +30,7 @@ export interface MyRenewalWindow {
   /** Does this renewal still need a consultation that has not happened? (the database decides) */
   consultNeeded: boolean;
   /** Why a consultation can (not) be booked yet: ok, study_plan_missing, study_plan_pending (waiting for the evaluator's approval) or not_needed. */
-  consultState: "ok" | "study_plan_missing" | "study_plan_pending" | "not_needed";
+  consultState: ConsultState;
 }
 export interface MyRenewalOverview { scholar: { scholarIdNumber: string; school: string; program: string; yearLevel: string; status: string }; windows: MyRenewalWindow[] }
 

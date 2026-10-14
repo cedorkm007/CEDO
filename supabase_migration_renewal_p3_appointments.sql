@@ -122,8 +122,9 @@ revoke all on function public._manila_slot_text(timestamptz) from public, anon, 
 --   not_needed         the renewal needs no consultation, or it already happened
 --   study_plan_missing a study plan is required and has not been uploaded yet
 --   study_plan_pending the study plan is uploaded but the evaluator has not approved it yet
+--   inc_letter_missing / inc_letter_pending   the same for the INC letter from the dean
 --   ok                 the scholar may book
--- A scholar whose case needs a study plan must WAIT FOR THE EVALUATOR'S APPROVAL of it before booking.
+-- A scholar whose case needs a study plan and / or an INC letter must WAIT FOR THE EVALUATOR'S APPROVAL of them before booking.
 create or replace function public._renewal_consult_state(p_record_id uuid)
 returns text
 language plpgsql
@@ -133,18 +134,21 @@ set search_path = public
 as $$
 declare
   r public.renewal_records%rowtype;
-  v_study jsonb;
+  v_doc jsonb;
+  v_kind text;
 begin
   select * into r from public.renewal_records where id = p_record_id;
   if not found or r.consultation_done_at is not null
      or r.stage not in ('needs_study_plan_consultation', 'needs_consultation_division_head', 'needs_inc_letter_consultation', 'summer_requirements') then
     return 'not_needed';
   end if;
-  select d into v_study from jsonb_array_elements(coalesce(r.evaluation -> 'required_documents', '[]'::jsonb)) d where d ->> 'kind' = 'study_plan' limit 1;
-  if v_study is not null then
-    if not coalesce((v_study ->> 'satisfied')::boolean, false) then return 'study_plan_missing'; end if;
-    if not coalesce((v_study ->> 'approved')::boolean, false) then return 'study_plan_pending'; end if;
-  end if;
+  foreach v_kind in array array['study_plan', 'inc_letter'] loop
+    select d into v_doc from jsonb_array_elements(coalesce(r.evaluation -> 'required_documents', '[]'::jsonb)) d where d ->> 'kind' = v_kind limit 1;
+    if v_doc is not null then
+      if not coalesce((v_doc ->> 'satisfied')::boolean, false) then return v_kind || '_missing'; end if;
+      if not coalesce((v_doc ->> 'approved')::boolean, false) then return v_kind || '_pending'; end if;
+    end if;
+  end loop;
   return 'ok';
 end;
 $$;
@@ -174,6 +178,8 @@ begin
   raise exception '%', case v
     when 'study_plan_missing' then 'Please upload your study plan first. You can book your consultation after the evaluator approves it.'
     when 'study_plan_pending' then 'Your study plan has to be approved by the evaluator before you can book your consultation. We will tell you as soon as it is.'
+    when 'inc_letter_missing' then 'Please upload your INC letter from your dean first. You can book your consultation after the evaluator approves it.'
+    when 'inc_letter_pending' then 'Your INC letter has to be approved by the evaluator before you can book your consultation. We will tell you as soon as it is.'
     else 'You do not need to book a consultation right now.' end;
 end;
 $$;
@@ -897,7 +903,8 @@ revoke all on function public.renewal_record_detail(uuid) from public, anon;
 grant execute on function public.renewal_record_detail(uuid) to authenticated;
 
 -- ── 7b. The evaluator approves (or returns) the scholar's documents ──
--- Only the study plan gates anything: until it is approved the scholar cannot book a consultation, and the case cannot be endorsed.
+-- The study plan and the INC letter gate booking: until they are approved the scholar cannot book a consultation (the study plan also gates
+-- the endorsement). Returning one of them cancels an existing booking until the new one is approved. The prospectus is reviewed but gates nothing.
 create or replace function public.renewal_review_document(p_document_id uuid, p_approve boolean, p_comment text default '')
 returns void
 language plpgsql
@@ -908,6 +915,8 @@ declare
   d public.renewal_documents%rowtype;
   r public.renewal_records%rowtype;
   v_label text;
+  v_slot public.counseling_slots%rowtype;
+  v_cancelled boolean := false;
 begin
   perform public._renewal_require_evaluator();
   select * into d from public.renewal_documents where id = p_document_id for update;
@@ -921,12 +930,23 @@ begin
   perform public._renewal_log(r.id, r.stage, r.stage, case when p_approve then 'Approved the ' else 'Returned the ' end || v_label || ' (' || d.file_name || ')'
     || case when btrim(coalesce(p_comment, '')) <> '' then ': ' || btrim(p_comment) else '.' end);
   if p_approve then
-    perform public._notify_scholar(d.scholar_id_number, case when d.kind = 'study_plan' then 'study_plan_approved' else 'document_approved' end,
+    perform public._notify_scholar(d.scholar_id_number, case when d.kind = 'study_plan' then 'study_plan_approved' when d.kind = 'inc_letter' then 'inc_letter_approved' else 'document_approved' end,
       'Your ' || v_label || ' was approved',
-      case when d.kind = 'study_plan' and public._renewal_consult_state(r.id) = 'ok' then 'You can now book your consultation from your Renewal tile.' else 'Thank you.' end, r.id);
+      case when d.kind in ('study_plan', 'inc_letter') and public._renewal_consult_state(r.id) = 'ok' then 'You can now book your consultation from your Renewal tile.' else 'Thank you.' end, r.id);
   else
+    -- A returned study plan / INC letter takes back the booking: the scholar books again once the new one is approved.
+    if d.kind in ('study_plan', 'inc_letter') then
+      select * into v_slot from public.counseling_slots x where x.record_id = r.id and x.state = 'booked' and x.starts_at > now() for update;
+      if found then
+        update public.counseling_slots set state = 'open', record_id = null, scholar_id_number = null, booked_at = null, reminded_day_at = null, reminded_hour_at = null where id = v_slot.id;
+        perform public._booking_log(r.id, d.scholar_id_number, v_slot.starts_at, v_slot.staff_id, 'removed_by_staff', 'The ' || v_label || ' was returned by the evaluator.');
+        perform public._renewal_log(r.id, r.stage, r.stage, 'The consultation on ' || public._manila_slot_text(v_slot.starts_at) || ' was cancelled because the ' || v_label || ' was returned.');
+        v_cancelled := true;
+      end if;
+    end if;
     perform public._notify_scholar(d.scholar_id_number, case when d.kind = 'study_plan' then 'study_plan_returned' else 'document_returned' end,
-      'Your ' || v_label || ' was returned', 'The evaluator wrote: ' || btrim(p_comment) || ' Please upload a new one.', r.id);
+      'Your ' || v_label || ' was returned', 'The evaluator wrote: ' || btrim(p_comment) || ' Please upload a new one.'
+        || case when v_cancelled then ' Your consultation on ' || public._manila_slot_text(v_slot.starts_at) || ' was cancelled; you can book a new time after the new ' || v_label || ' is approved.' else '' end, r.id);
   end if;
   perform public._renewal_recheck(r.id);
 end;

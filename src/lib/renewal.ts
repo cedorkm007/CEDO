@@ -221,13 +221,19 @@ export interface RenewalEvaluation {
   error?: string;
 }
 
+export type ConsultState = "ok" | "study_plan_missing" | "study_plan_pending" | "inc_letter_missing" | "inc_letter_pending" | "not_needed";
+/** The documents the evaluator must approve before a scholar can book. */
+export function consultBlockedBy(state: ConsultState): "study plan" | "INC letter" | null {
+  return state === "study_plan_missing" || state === "study_plan_pending" ? "study plan" : state === "inc_letter_missing" || state === "inc_letter_pending" ? "INC letter" : null;
+}
+
 /** Plain, encouraging next steps for the scholar, in order. The database decided the case; this only words it. */
 export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | null | undefined, opts: {
   incDeadlines?: { subject: string; deadline: string | null }[]; evaluatorComment?: string | null;
   /** Does the scholar still need a consultation (none held yet)? Default: yes. */
   consultNeeded?: boolean;
   /** ok = can book; study_plan_missing / study_plan_pending = must wait for the evaluator to approve the study plan; not_needed = none left to hold. */
-  consultState?: "ok" | "study_plan_missing" | "study_plan_pending" | "not_needed";
+  consultState?: ConsultState;
   booking?: { startsAt: string; staffName: string } | null; isSummer?: boolean; noShow?: boolean;
 } = {}): string[] {
   const steps: string[] = [];
@@ -235,8 +241,9 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
   /** Book / keep the face-to-face consultation. */
   const consult = () => {
     if (!consultNeeded) { steps.push("Your consultation is done."); return; }
-    if (!opts.booking && opts.consultState === "study_plan_pending") { steps.push("Wait for the evaluator to approve your study plan. Then you can book your face-to-face consultation."); return; }
-    if (!opts.booking && opts.consultState === "study_plan_missing") { steps.push("After the evaluator approves your study plan, you can book your face-to-face consultation."); return; }
+    const blocked = opts.consultState ? consultBlockedBy(opts.consultState) : null;
+    if (!opts.booking && blocked && opts.consultState!.endsWith("_pending")) { steps.push(`Wait for the evaluator to approve your ${blocked}. Then you can book your face-to-face consultation.`); return; }
+    if (!opts.booking && blocked) { steps.push(`After the evaluator approves your ${blocked}, you can book your face-to-face consultation.`); return; }
     if (opts.booking) {
       steps.push(`Come to your face-to-face consultation on ${formatSlot(opts.booking.startsAt)} with ${opts.booking.staffName}.${opts.isSummer ? " Bring the hard copy of your prospectus." : ""}`);
     } else {

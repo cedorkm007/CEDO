@@ -332,7 +332,7 @@ declare
   v_need_study boolean := false;
   v_need_inc boolean := false;
   v_docs_complete boolean := true;
-  v_study_have integer := 0;  v_inc_have integer := 0;  v_prosp_have integer := 0;  v_study_approved integer := 0;
+  v_study_have integer := 0;  v_inc_have integer := 0;  v_prosp_have integer := 0;  v_study_approved integer := 0;  v_inc_approved integer := 0;
   v_consult_done boolean := false;
   v_hard_copy boolean := false;
   v_consult_required boolean := false;
@@ -436,8 +436,8 @@ begin
   end if;
   if v_rec.id is not null then
     select count(*) filter (where d.kind = 'study_plan'), count(*) filter (where d.kind = 'inc_letter'), count(*) filter (where d.kind = 'prospectus'),
-           count(*) filter (where d.kind = 'study_plan' and d.status = 'accepted')
-      into v_study_have, v_inc_have, v_prosp_have, v_study_approved
+           count(*) filter (where d.kind = 'study_plan' and d.status = 'accepted'), count(*) filter (where d.kind = 'inc_letter' and d.status = 'accepted')
+      into v_study_have, v_inc_have, v_prosp_have, v_study_approved, v_inc_approved
     from public.renewal_documents d where d.record_id = v_rec.id and d.status <> 'returned';
   end if;
   if v_need_study then
@@ -446,8 +446,8 @@ begin
     if v_study_have = 0 or v_study_approved = 0 then v_docs_complete := false; end if;
   end if;
   if v_need_inc then
-    v_docs := v_docs || jsonb_build_array(jsonb_build_object('kind', 'inc_letter', 'label', 'INC letter from your dean', 'satisfied', v_inc_have > 0));
-    if v_inc_have = 0 then v_docs_complete := false; end if;
+    v_docs := v_docs || jsonb_build_array(jsonb_build_object('kind', 'inc_letter', 'label', 'INC letter from your dean', 'satisfied', v_inc_have > 0, 'approved', v_inc_approved > 0));
+    if v_inc_have = 0 or v_inc_approved = 0 then v_docs_complete := false; end if;
   end if;
   if v_summer then
     v_docs := v_docs || jsonb_build_array(jsonb_build_object('kind', 'prospectus', 'label', 'Prospectus (bring the hard copy to your consultation)', 'satisfied', v_prosp_have > 0));

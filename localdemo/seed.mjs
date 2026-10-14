@@ -83,6 +83,8 @@ const SCHOLARS = [
   { n: 37, school: "lower", last: "Consult Tomorrow", grades: g("5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", plan: "accepted" }, booking: { hours: 30 } },
   { n: 38, school: "lower", last: "Consult Under 12 Hours", grades: g("5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", plan: "accepted" }, booking: { hours: 8 } },
   // study plan uploaded, waiting for the evaluator's approval: the scholar cannot book until it is approved
+  // INC letter uploaded, waiting for the evaluator's approval: the scholar cannot book until it is approved
+  { n: 40, school: "lower", last: "INC Letter To Approve", grades: g("INC", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", letter: "submitted" } },
   { n: 39, school: "lower", last: "Study Plan To Approve", grades: g("5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", plan: "submitted" } },
 ];
 export const SCHOLAR_LAST = Object.fromEntries(SCHOLARS.map(s => [s.n, s.last]));
@@ -226,6 +228,10 @@ export async function seedDb(db) {
     await db.query("insert into storage.objects (bucket_id, name, metadata) values ('renewal-documents', $1, $2::jsonb)", [path, JSON.stringify({ mimetype: "application/pdf", size: 24, base64: Buffer.from("%PDF-1.4 demo " + kind).toString("base64") })]);
     await db.query("insert into renewal_documents (record_id, scholar_id_number, kind, storage_path, file_name, mime_type, size_bytes, status) values ($1,$2,$3,$4,$5,'application/pdf',24,$6)",
       [rec, sidNum(n), kind, path, `${kind.replace("_", "-")}.pdf`, status]);
+  }
+  for (const s of SCHOLARS.filter(x => x.renewal?.letter)) {
+    const rec = (await db.query("select id from renewal_records where scholar_id_number = $1 order by created_at desc limit 1", [sidNum(s.n)])).rows[0].id;
+    await seedDoc(rec, s.n, "inc_letter", s.renewal.letter);
   }
   for (const s of SCHOLARS.filter(x => x.renewal?.plan)) {
     const rec = (await db.query("select id from renewal_records where scholar_id_number = $1 order by created_at desc limit 1", [sidNum(s.n)])).rows[0].id;

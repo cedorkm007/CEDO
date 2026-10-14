@@ -33,7 +33,30 @@ const fails = async (uid, sql, params, pattern) => { try { await rpc(uid, sql, p
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const iso = d => (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10);
 const recordOf = async (n, year, term) => (await q("select * from renewal_records where scholar_id_number = $1 and school_year = $2 and term = $3", [num(n), year, term]))[0];
-const apply = async (n, windowId) => (await rpc(scholarUid(n), "select public.renewal_apply($1, 'S', 'BS Test Studies', '2nd Year', '') as r", [windowId]))[0].r;
+const fixtureUids = {};
+const uidOf = n => fixtureUids[n] ?? scholarUid(n);
+/** A throw-away scholar (lower school, SDP complete) for cases the demo data does not cover. */
+async function mkScholar(n, grades) {
+  const uid = crypto.randomUUID();
+  const school = seedId("school:lower");
+  await q("insert into auth.users (id, email) values ($1,$2)", [uid, `fx${n}@demo.local`]);
+  await q(`insert into scholars (id, scholar_id_number, first_name, last_name, middle_name, birthday, email, school, course, status, barangay, year_level, house_unit_no, street, city_municipality, province_region, country, zip_code, school_id,
+      emergency_contact_name, emergency_contact_relationship, emergency_contact_number)
+    values ($1,$2,'TEST','Fixture ${n}','T','2005-05-05',$3,'TEST – Lower-Is-Better University','BS Test Studies','Regular','B','2nd Year','1','S','C','P','PH','0',$4,'G','P','0')`, [uid, num(n), `fx${n}@demo.local`, school]);
+  const period = (await q("select id from academic_periods where school_year = '2025-2026' and term = '2nd Semester'"))[0].id;
+  for (const [i, g] of grades.entries())
+    await q("insert into scholar_subjects_grades (scholar_id_number, school_year, semester, subject, subject_code, grade, units, recorded_by_school_id, period_id) values ($1,'2025-2026','2nd Semester',$2,$3,$4,3,$5,$6)", [num(n), `TEST – S${i}`, `FX${i}`, g, school, period]);
+  await q("insert into sdp_attendance (activity_id, scholar_id_number, attended_date, school_year, semester) select a.id, $1, '2026-04-15', '2025-2026', '2nd Semester' from sdp_activities a where a.name in ('TEST – Community Service Day','TEST – Volunteer Drive','TEST – Formation Seminar')", [num(n)]);
+  fixtureUids[n] = uid;
+}
+/** Uploads a document as the scholar; returns its id. */
+async function upload(n, windowYear, term, kind) {
+  const rec = await recordOf(n, windowYear, term);
+  return (await rpc(uidOf(n), `insert into renewal_documents (record_id, scholar_id_number, kind, storage_path, file_name, mime_type, size_bytes)
+    values ($1,$2,$3,$4,$5,'application/pdf',500) returning id`, [rec.id, num(n), kind, `${num(n)}/${rec.id}/${kind}/${crypto.randomUUID()}-f.pdf`, kind + '.pdf']))[0].id;
+}
+const stateOfN = async (n, year, term) => (await rpc(uidOf(n), "select public.renewal_my_overview() o"))[0].o.windows.find(w => w.window.term === term && w.window.school_year === year).consult_state;
+const apply = async (n, windowId) => (await rpc(uidOf(n), "select public.renewal_apply($1, 'S', 'BS Test Studies', '2nd Year', '') as r", [windowId]))[0].r;
 const hoursFromNow = h => new Date(Date.now() + h * 3600 * 1000);
 const T = "2026-2027", S1 = "1st Semester";
 
@@ -145,6 +168,54 @@ console.log("\nBooking");
   check("the overview shows the booking and that it can still be changed", w.booking && w.booking.can_change === true && w.booking.staff_name && w.consult_needed === true);
   const board = await rpc(EVAL, "select * from public.renewal_board($1,$2)", [T, S1]);
   check("the evaluator's board shows the next consultation", !!board.find(b => b.scholar_id_number === num(3))?.next_consultation);
+}
+
+console.log("\nThe INC letter needs approval too, and a returned document cancels the booking");
+{
+  await mkScholar(103, ["INC", "1.5"]);
+  await apply(103, W1);
+  const r103 = await recordOf(103, T, S1);
+  const free = await mkSlot({ startsInHours: 40 });
+  check("INC: no letter yet -> cannot book, told to upload it first", await stateOfN(103, T, S1) === "inc_letter_missing"
+    && await fails(uidOf(103), "select public.renewal_book_slot($1,$2)", [r103.id, free.id], /upload your INC letter from your dean first/i));
+  const letter = await upload(103, T, S1, "inc_letter");
+  check("INC: letter uploaded but not approved -> still cannot book", await stateOfN(103, T, S1) === "inc_letter_pending"
+    && await fails(uidOf(103), "select public.renewal_book_slot($1,$2)", [r103.id, free.id], /INC letter has to be approved/i)
+    && await fails(uidOf(103), "select * from public.renewal_open_slots($1)", [r103.id], /INC letter has to be approved/i));
+  await rpc(EVAL, "select public.renewal_review_document($1,true,'')", [letter]);
+  check("INC: letter approved -> the scholar is told and can book", await stateOfN(103, T, S1) === "ok" && (await notes(103, "inc_letter_approved")).length === 1);
+  await rpc(uidOf(103), "select public.renewal_book_slot($1,$2)", [r103.id, free.id]);
+  check("INC: booked", (await q("select state from counseling_slots where id = $1", [free.id]))[0].state === "booked");
+  await rpc(EVAL, "select public.renewal_review_document($1,false,'The dean did not sign it')", [letter]);
+  const after = (await q("select state, record_id from counseling_slots where id = $1", [free.id]))[0];
+  check("Q2: returning the INC letter CANCELS the booking and frees the slot", after.state === "open" && after.record_id === null);
+  check("Q2: the scholar is told why, and that they can book again after the new letter is approved", (await notes(103, "document_returned")).some(n => /did not sign it/.test(n.body) && /was cancelled/.test(n.body)) && await stateOfN(103, T, S1) === "inc_letter_missing");
+  check("Q2: the cancellation is in the booking history", (await q("select count(*)::int n from counseling_booking_history where record_id = $1 and action = 'removed_by_staff' and note like '%returned%'", [r103.id]))[0].n === 1);
+  const letter2 = await upload(103, T, S1, "inc_letter");
+  await rpc(EVAL, "select public.renewal_review_document($1,true,'')", [letter2]);
+  check("a new letter, approved: booking is open again", await stateOfN(103, T, S1) === "ok");
+
+  // study plan: same rule
+  await mkScholar(104, ["5.0", "1.5"]);
+  await apply(104, W1);
+  const r104 = await recordOf(104, T, S1);
+  const plan = await upload(104, T, S1, "study_plan");
+  await rpc(EVAL, "select public.renewal_review_document($1,true,'')", [plan]);
+  const s104 = await mkSlot({ startsInHours: 45 });
+  await rpc(uidOf(104), "select public.renewal_book_slot($1,$2)", [r104.id, s104.id]);
+  await rpc(EVAL, "select public.renewal_review_document($1,false,'Plan is too short')", [plan]);
+  check("Q2: returning the study plan cancels the booking too, until the new plan is approved", (await q("select state from counseling_slots where id = $1", [s104.id]))[0].state === "open"
+    && await stateOfN(104, T, S1) === "study_plan_missing" && (await notes(104, "study_plan_returned")).some(n => /was cancelled/.test(n.body)));
+
+  // a slot that is already over is not touched; the prospectus gates nothing
+  await mkScholar(105, ["1.5", "2.0"]);
+  await apply(105, W2);
+  const r105 = await recordOf(105, "2025-2026", "Summer");
+  check("Summer: no document needs approval before booking", await stateOfN(105, "2025-2026", "Summer") === "ok");
+  const s105 = await mkSlot({ startsInHours: 50, state: "booked", record: r105.id, scholar: num(105) });
+  const prosp = await upload(105, "2025-2026", "Summer", "prospectus");
+  await rpc(EVAL, "select public.renewal_review_document($1,false,'Please scan all pages')", [prosp]);
+  check("returning the prospectus does NOT cancel the booking", (await q("select state from counseling_slots where id = $1", [s105.id]))[0].state === "booked");
 }
 
 console.log("\nRescheduling and cancelling (scenarios 28 and 29)");

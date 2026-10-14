@@ -81,3 +81,9 @@ Walkthrough: `Renewal_Phase3_Walkthrough.txt` (also lists what changed in Phase 
 - Q2: "60 days" = how far ahead scholars can SEE open times (12 hours to 60 days from now); kept at 60 — explained to the owner.
 - Q3: the evaluator sees every counselor's calendar READ-ONLY: new "Consultations" tab (`renewal_calendar_staff/availability/slots`; `AppointmentsTab readOnly`).
 Tests: Phase 3 database 101, Phase 2 129, website 51. Demo: new TEST-0039 (plan waiting for approval); TEST-0035/37/38 have approved plans.
+
+## 2026-10-14 — Second round of answers on Phase 3
+- The INC letter needs the evaluator's approval before booking too (`_renewal_consult_state` now returns study_plan_/inc_letter_ missing / pending; a case is also not "ready" until its INC letter is approved). The Summer prospectus gates nothing.
+- Returning a study plan or INC letter cancels the scholar's future booking (slot freed, scholar told, history row, evaluator warned in the dialog) until the new one is approved; a returned prospectus does not.
+- Scholars keep seeing open times up to 60 days ahead (confirmed).
+Tests: Phase 3 database 112, Phase 2 129, website 52. Demo: TEST-0040 (INC letter waiting for approval).

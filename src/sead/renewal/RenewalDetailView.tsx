@@ -137,7 +137,7 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
         {(ev.required_documents ?? []).length === 0 && detail.documents.length === 0 && <p>No documents are needed for this case.</p>}
         {(ev.required_documents ?? []).map(d => (
           <p key={d.kind}>{d.label}: {!d.satisfied ? <strong className="text-amber-900">still needed</strong>
-            : d.kind === "study_plan" ? (d.approved ? <strong className="text-green-800">approved</strong> : <strong className="text-sky-900">uploaded — waiting for your approval (the scholar cannot book a consultation until you approve it)</strong>)
+            : d.kind === "study_plan" || d.kind === "inc_letter" ? (d.approved ? <strong className="text-green-800">approved</strong> : <strong className="text-sky-900">uploaded — waiting for your approval (the scholar cannot book a consultation until you approve it)</strong>)
             : <strong className="text-green-800">uploaded</strong>}</p>
         ))}
         {detail.documents.length > 0 && (
@@ -180,8 +180,8 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
         <ReasonDialog
           title={reviewing.approve ? `Approve the ${DOC_LABEL[reviewing.doc.kind].toLowerCase()}` : `Return the ${DOC_LABEL[reviewing.doc.kind].toLowerCase()}`}
           intro={reviewing.approve
-            ? (reviewing.doc.kind === "study_plan" ? <>{s.name} will be told the study plan is approved and can then book a consultation.</> : <>{s.name} will be told the document was approved.</>)
-            : <>{s.name} will see your comment and must upload a new file.</>}
+            ? (reviewing.doc.kind !== "prospectus" ? <>{s.name} will be told the {DOC_LABEL[reviewing.doc.kind].toLowerCase()} is approved and can then book a consultation.</> : <>{s.name} will be told the document was approved.</>)
+            : <>{s.name} will see your comment and must upload a new file.{reviewing.doc.kind !== "prospectus" && detail.nextConsultation ? " Their booked consultation will be CANCELLED until the new one is approved." : ""}</>}
           label={reviewing.approve ? "Note (optional)" : "What should the scholar fix?"} required={!reviewing.approve} minLength={5}
           confirmLabel={reviewing.approve ? "Approve" : "Return to the scholar"} danger={!reviewing.approve} onCancel={() => setReviewing(null)}
           onConfirm={async c => { const x = await reviewDocument(reviewing.doc.id, reviewing.approve, c); if (!x.ok) return x.error; setReviewing(null); await after(); return null; }} />

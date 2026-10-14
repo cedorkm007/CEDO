@@ -380,9 +380,20 @@ test("a study plan that is not approved yet: the scholar is told to wait, and th
   assert.match(booked.join(" "), /Come to your face-to-face consultation/);
   assert.deepEqual(R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: plan(true) }, { consultState: "not_needed" }), ["Your consultation is done."]);
 });
+test("the INC letter needs approval too: the same waiting messages, worded for the INC letter", () => {
+  const ev = { required_documents: [{ kind: "inc_letter", label: "INC letter from your dean", satisfied: true, approved: false }], sdp: { applicable: true, complied: true, missing: null }, grades: { reason: "" } };
+  assert.equal(R.consultBlockedBy("inc_letter_pending"), "INC letter");
+  assert.equal(R.consultBlockedBy("study_plan_missing"), "study plan");
+  assert.equal(R.consultBlockedBy("ok"), null);
+  const pend = R.scholarNextSteps("needs_inc_letter_consultation", ev, { consultState: "inc_letter_pending" });
+  assert.equal(pend[0], "Wait for the evaluator to approve your INC letter. Then you can book your face-to-face consultation.");
+  const missing = R.scholarNextSteps("needs_inc_letter_consultation", { ...ev, required_documents: [{ kind: "inc_letter", label: "INC letter from your dean", satisfied: false }] }, { consultState: "inc_letter_missing" });
+  assert.match(missing.join(" "), /Upload your INC letter from your dean/); assert.match(missing.join(" "), /After the evaluator approves your INC letter, you can book/);
+});
 test("the website's consultation states are the ones the database returns", () => {
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p3_appointments.sql"), "utf8");
   for (const s of ["not_needed", "study_plan_missing", "study_plan_pending", "ok"]) assert.ok(sql.includes("'" + s + "'"), s);
+  assert.ok(sql.includes("v_kind || '_missing'") && sql.includes("v_kind || '_pending'") && sql.includes("'inc_letter'"));
   const api = fs.readFileSync(path.join(root, "src/scholar/renewalApi.ts"), "utf8");
   for (const s of ["study_plan_missing", "study_plan_pending", "not_needed"]) assert.ok(api.includes(s), s);
 });
