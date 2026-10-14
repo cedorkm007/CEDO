@@ -391,6 +391,15 @@ export function renewalProgress(stage: RenewalStage, ev: RenewalEvaluation | nul
   return steps;
 }
 
+/**
+ * Which form is this scholar's study plan form? The one the office chose for the scholar's school (or the default); if nothing was chosen, a form
+ * the scholar can open whose title contains "study plan" (the old rule, kept as a safety net); otherwise none.
+ */
+export function pickStudyPlanForm<T extends { title: string; isUnlocked?: boolean }>(assigned: T | null, accessible: T[]): T | null {
+  if (assigned) return assigned;
+  return accessible.find(m => m.isUnlocked !== false && isStudyPlanFormTitle(m.title)) ?? null;
+}
+
 /** Does a form's title look like the study plan form? (Staff upload it in Forms Management; the Renewal tile links to it.) */
 export function isStudyPlanFormTitle(title: string): boolean {
   return /study[\s_-]*plan/i.test(title);

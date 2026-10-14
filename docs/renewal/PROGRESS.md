@@ -94,3 +94,9 @@ Tests: Phase 3 database 112, Phase 2 129, website 52. Demo: TEST-0040 (INC lette
 - Demo: form material "Study Plan Form" (a small real PDF) so the download link works.
 - Tests: website 61, Phase 4 database 11, Phase 3 112, Phase 2 129, Phase 1 64, grades 99; tsc + build clean; axe audit of the new screens clean; no sideways scrolling at phone width.
 - Walkthrough: `Renewal_Phase4_Walkthrough.txt` (scenarios 1, 2, 4, 6, 10, 11, 22, 24).
+
+## 2026-10-14 — Phase 4 comment: a different study plan form for each school (same branch)
+- Owner's comment: each school has its own version of the study plan form. Database (appended to `supabase_migration_renewal_p4_tracker.sql`): table `renewal_study_plan_forms` (school_id null = default; one choice per school), `renewal_study_plan_form_setup()` / `renewal_study_plan_form_set()` (Forms Management tag only), scholar `renewal_my_study_plan_form()`, and storage rule "scholar downloads renewal study plan form" using the security-definer helper `renewal_is_my_study_plan_form(text)` (scholars cannot read the choices table directly; helper never raises for staff reads).
+- Website: Forms Management new tab "Renewal study plans" (`RenewalStudyPlanFormsSection.tsx`, `studyPlanFormsApi.ts`); `StudyPlanFormLink` asks `renewal_my_study_plan_form()` first, falls back to the old title rule (`pickStudyPlanForm`).
+- Demo: demo.admin now has `forms_management`; "Study Plan Form (general)" = default, "Study Plan Form – TEST Lower-Is-Better University" chosen for that school and locked in the Forms tab by a course condition nobody meets.
+- Tests: website 63, Phase 4 database 30, Phase 3 112, Phase 2 129, Phase 1 all pass; tsc clean. Browser-checked: the new tab saves a choice; a Higher-school scholar's download requested the default form.

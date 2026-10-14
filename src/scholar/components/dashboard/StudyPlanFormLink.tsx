@@ -1,23 +1,31 @@
 import { useEffect, useState } from "react";
 import { Download, FileText, Loader2 } from "lucide-react";
-import { isStudyPlanFormTitle } from "@/lib/renewal";
-import { fetchFormMaterialDownloadUrl, fetchFormMaterialsForScholar, type FormMaterial } from "../../formsApi";
+import { pickStudyPlanForm } from "@/lib/renewal";
+import { fetchFormMaterialDownloadUrl, fetchFormMaterialsForScholar } from "../../formsApi";
+import { fetchMyStudyPlanForm } from "../../renewalApi";
+
+/** What the link needs to know about the form it opens. */
+interface PlanForm { id: string; title: string; kind: "pdf" | "flipbook"; url: string; fileName: string; isUnlocked?: boolean }
 
 /**
- * "Download the study plan form": the blank form is added by the CEDO office in Forms Management (the Forms tab of Forms and Services), not
- * built here. This finds it by its title (anything with "study plan" in it) and links straight to it; until it exists it points the scholar
- * to the Forms tab.
+ * "Download the study plan form": every school has its own version, chosen by the CEDO office in Forms Management (Renewal study plans). This
+ * shows the one for THIS scholar's school (or the default). If the office has not chosen one yet it falls back to a form the scholar can open
+ * with "study plan" in its title, and otherwise points the scholar to the Forms tab.
  */
 export function StudyPlanFormLink() {
-  const [form, setForm] = useState<FormMaterial | null | undefined>(undefined);
+  const [form, setForm] = useState<PlanForm | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    void fetchFormMaterialsForScholar().then(list => {
-      if (!cancelled) setForm(list.find(m => isStudyPlanFormTitle(m.title) && m.isUnlocked) ?? null);
-    });
+    void (async () => {
+      const assigned = await fetchMyStudyPlanForm();
+      const found: PlanForm | null = assigned
+        ? { id: assigned.id, title: assigned.title, kind: assigned.kind, url: assigned.url, fileName: assigned.fileName }
+        : pickStudyPlanForm<PlanForm>(null, await fetchFormMaterialsForScholar());
+      if (!cancelled) setForm(found);
+    })();
     return () => { cancelled = true; };
   }, []);
 

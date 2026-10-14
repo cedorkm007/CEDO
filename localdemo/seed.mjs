@@ -21,7 +21,7 @@ const SCHOOLS = [
 
 // ── Staff (one account per role) ──
 const STAFF = [
-  { username: "demo.admin", first: "TEST", last: "Super Admin", role: "super_admin", sead: true, tags: ["scholar_management", "scholars_grades_monitoring", "sdp_monitoring", "scholar_counseling", "sead_division_head", "scholar_renewal_evaluator"], label: "Super admin (all SEAD tools)" },
+  { username: "demo.admin", first: "TEST", last: "Super Admin", role: "super_admin", sead: true, tags: ["scholar_management", "scholars_grades_monitoring", "sdp_monitoring", "scholar_counseling", "sead_division_head", "scholar_renewal_evaluator", "forms_management"], label: "Super admin (all SEAD tools)" },
   { username: "demo.sead", first: "TEST", last: "SEAD Staff", role: "staff", sead: true, tags: ["scholar_management", "scholars_grades_monitoring", "sdp_monitoring"], label: "SEAD staff (Grades Monitoring, SDP, Scholars)" },
   { username: "demo.counselor", first: "TEST", last: "Counselor", role: "staff", sead: true, tags: ["scholar_counseling"], label: "Scholar counselor" },
   { username: "demo.evaluator", first: "TEST", last: "Renewal Evaluator", role: "staff", sead: true, tags: ["scholar_renewal_evaluator"], label: "Scholar Renewal Evaluator" },
@@ -242,7 +242,17 @@ export async function seedDb(db) {
   await db.query("insert into form_materials (id, title, kind, url, description, file_name) values ($1, 'Study Plan Form', 'pdf', '', 'Fill this in and upload it with your renewal.', 'study-plan-form.pdf')", [formId]);
   await db.query("insert into form_material_conditions (material_id, condition_type, all_year_levels) values ($1, 'year_level', true)", [formId]);
   await db.query("insert into storage.buckets (id, name, public) values ('form-materials','form-materials', false) on conflict (id) do nothing");
-  await db.query("insert into storage.objects (bucket_id, name, metadata) values ('form-materials', $1, $2::jsonb)", [`${formId}/file.pdf`, JSON.stringify({ mimetype: "application/pdf", size: 30, base64: Buffer.from("%PDF-1.4 demo study plan form").toString("base64") })]);
+  await db.query("insert into storage.objects (bucket_id, name, metadata) values ('form-materials', $1, $2::jsonb)", [`${formId}/file.pdf`, JSON.stringify({ mimetype: "application/pdf", size: 30, base64: Buffer.from("%PDF-1.4 demo study plan form (general)").toString("base64") })]);
+  // Each school has its own version: a second form made for the lower-is-better school only (locked in the Forms tab by a condition nobody meets).
+  const formLower = id("form:study-plan-lower");
+  await db.query("update form_materials set title = 'Study Plan Form (general)' where id = $1", [formId]);
+  await db.query("insert into form_materials (id, title, kind, url, description, file_name) values ($1, 'Study Plan Form – TEST Lower-Is-Better University', 'pdf', '', 'The study plan form of this school.', 'study-plan-lower.pdf')", [formLower]);
+  await db.query("insert into form_material_conditions (material_id, condition_type, course) values ($1, 'course', 'NO SUCH PROGRAM')", [formLower]);
+  await db.query("insert into storage.objects (bucket_id, name, metadata) values ('form-materials', $1, $2::jsonb)", [`${formLower}/file.pdf`, JSON.stringify({ mimetype: "application/pdf", size: 40, base64: Buffer.from("%PDF-1.4 demo study plan form (TEST Lower-Is-Better University)").toString("base64") })]);
+  await as(id("staff:demo.admin"), async tx => {
+    await tx.query("select public.renewal_study_plan_form_set(null, $1)", [formId]);
+    await tx.query("select public.renewal_study_plan_form_set($1, $2)", [id("school:lower"), formLower]);
+  });
 
   // Loading the scholars made the status-history trigger record a "System" row dated today for each one; the real database has none until a status changes.
   await db.query("delete from scholar_status_history where source = 'system'");

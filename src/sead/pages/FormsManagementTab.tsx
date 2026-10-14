@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileText, Link2, Plus, Pencil, Trash2, X, Check, UploadCloud, Eye, ShieldCheck, ShieldAlert, SlidersHorizontal, FolderOpen, ClipboardList, FolderTree } from "lucide-react";
+import { FileText, Link2, Plus, Pencil, Trash2, X, Check, UploadCloud, Eye, ShieldCheck, ShieldAlert, SlidersHorizontal, FolderOpen, ClipboardList, FolderTree, GraduationCap } from "lucide-react";
 import {
   fetchFormMaterials, createFormMaterial, updateFormMaterial, deleteFormMaterial,
   uploadFormMaterialFile, removeFormMaterialFile, fetchFormMaterialPreviewUrl, setFormMaterialConditions,
@@ -13,6 +13,7 @@ import { FORMATION_YEAR_LEVELS, type FormationActivity } from "@/scholar/formati
 import { fetchAllSDPActivities, type SDPActivity } from "../sdpMonitorApi";
 import { SubmissionActivitiesSection } from "./SubmissionActivitiesSection";
 import { SubmissionFileBrowserTab } from "./SubmissionFileBrowserTab";
+import { RenewalStudyPlanFormsSection } from "./RenewalStudyPlanFormsSection";
 
 /**
  * Staff-side list + create/edit UI for the materials scholars see under
@@ -331,7 +332,7 @@ export function FormsManagementTab() {
   // ToolsPage.tsx / SDPMonitoringTab.tsx / FormationToolsTab.tsx); adding
   // it now would be scope creep beyond this task. Flagged as a possible
   // small follow-up if refresh persistence should extend here too.
-  const [section, setSection] = useState<"materials" | "submission-activities" | "submission-files">("materials");
+  const [section, setSection] = useState<"materials" | "study-plans" | "submission-activities" | "submission-files">("materials");
   const [materials, setMaterials] = useState<FormMaterial[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
@@ -366,6 +367,12 @@ export function FormsManagementTab() {
           }`}>
           <FolderOpen size={14} /> Materials
         </button>
+        <button onClick={() => setSection("study-plans")}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
+            section === "study-plans" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}>
+          <GraduationCap size={14} /> Renewal study plans
+        </button>
         <button onClick={() => setSection("submission-activities")}
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
             section === "submission-activities" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
@@ -380,7 +387,7 @@ export function FormsManagementTab() {
         </button>
       </div>
 
-      {section === "submission-activities" ? <SubmissionActivitiesSection /> : section === "submission-files" ? <SubmissionFileBrowserTab /> : (
+      {section === "study-plans" ? <RenewalStudyPlanFormsSection /> : section === "submission-activities" ? <SubmissionActivitiesSection /> : section === "submission-files" ? <SubmissionFileBrowserTab /> : (
     <div>
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>

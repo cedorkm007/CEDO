@@ -500,6 +500,27 @@ test("the tile chips and the home banner say the most important thing first", ()
   assert.equal(SUM.consultationTileChip([waiting]), null);
 });
 
+console.log("A study plan form for each school (Phase 4)");
+test("the school's own form wins; otherwise the old title rule is only a safety net", () => {
+  const own = { title: "Form of my school" }, a = { title: "Study Plan Form", isUnlocked: true }, b = { title: "Study plan (locked)", isUnlocked: false }, c = { title: "Scholar Contract", isUnlocked: true };
+  assert.equal(R.pickStudyPlanForm(own, [a]), own, "the chosen form beats a title match");
+  assert.equal(R.pickStudyPlanForm(null, [c, b, a]), a, "no choice: an openable form with 'study plan' in its title");
+  assert.equal(R.pickStudyPlanForm(null, [c, b]), null, "locked or unrelated forms are never picked by title");
+  assert.equal(R.isStudyPlanFormTitle("Study-Plan 2026"), true); assert.equal(R.isStudyPlanFormTitle("Contract"), false);
+});
+test("the Forms Management section and the scholar link only call database functions that exist, and the section never writes tables directly", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p4_tracker.sql"), "utf8");
+  for (const fn of ["renewal_study_plan_form_setup", "renewal_study_plan_form_set", "renewal_my_study_plan_form", "renewal_is_my_study_plan_form"]) assert.ok(sql.includes("create or replace function public." + fn + "("), fn);
+  const staffApi = fs.readFileSync(path.join(root, "src/sead/studyPlanFormsApi.ts"), "utf8");
+  for (const fn of ["renewal_study_plan_form_setup", "renewal_study_plan_form_set"]) assert.ok(staffApi.includes('"' + fn + '"'), fn);
+  assert.equal(/\.from\("renewal_study_plan_forms"\)\s*\.(insert|update|delete|upsert)/.test(staffApi), false);
+  assert.ok(fs.readFileSync(path.join(root, "src/scholar/renewalApi.ts"), "utf8").includes('"renewal_my_study_plan_form"'));
+  const section = fs.readFileSync(path.join(root, "src/sead/pages/RenewalStudyPlanFormsSection.tsx"), "utf8");
+  assert.deepEqual([...section.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), []);
+  assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(section), false);
+  assert.match(fs.readFileSync(path.join(root, "src/sead/pages/FormsManagementTab.tsx"), "utf8"), /RenewalStudyPlanFormsSection/);
+});
+
 console.log("Source guards (Phase 4)");
 const p4files = [
   "src/scholar/components/dashboard/RenewalProgressBar.tsx", "src/scholar/components/dashboard/ConsultationPanel.tsx", "src/scholar/components/dashboard/ConsultationSection.tsx",
