@@ -464,3 +464,8 @@ export function validateStudyPlanTemplate(file: { name: string; size: number }):
 export function isStudyPlanFormTitle(title: string): boolean {
   return /study[\s_-]*plan/i.test(title);
 }
+
+/** The scholar IDs typed (or pasted) into the "testers only" box: split on commas, semicolons, spaces and new lines; no empty entries, no repeats. */
+export function parseTesterIds(text: string): string[] {
+  return [...new Set(text.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean))];
+}

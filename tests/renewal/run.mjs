@@ -924,7 +924,7 @@ test("the appointment screens only ask the database (no direct writes to slots, 
 test("the Appointments subtab sits inside the existing Consultation Tool (same tag), and every function the website calls exists in the migration", () => {
   const page = fs.readFileSync(path.join(root, "src/sead/ScholarCounselingToolPage.tsx"), "utf8");
   assert.match(page, /key: "appointments"/);
-  const sql = ["p2_application", "p3_appointments", "p4_tracker"].map(n => fs.readFileSync(path.join(root, "supabase_migration_renewal_" + n + ".sql"), "utf8")).join("\n");
+  const sql = ["p2_application", "p3_appointments", "p4_tracker", "p8b_test_windows"].map(n => fs.readFileSync(path.join(root, "supabase_migration_renewal_" + n + ".sql"), "utf8")).join("\n");
   const called = new Set();
   for (const p of ["src/sead/appointmentsApi.ts", "src/scholar/renewalApi.ts", "src/sead/renewalApi.ts"]) for (const m of fs.readFileSync(path.join(root, p), "utf8").matchAll(/rpc\("([a-z_]+)"/g)) called.add(m[1]);
   const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql));
@@ -1062,6 +1062,34 @@ test("the public QR page shows only the status line (and the certificate number)
     assert.deepEqual([...src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], p);
     assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(src), false, p);
   }
+});
+
+// ── Phase 8b: the testers-only renewal window ──
+console.log("\nPhase 8b: the testers-only renewal window");
+const RENEWAL_LIB = await bundle("renewallib8b", "src/lib/renewal.ts");
+test("the testers box accepts IDs separated by new lines, commas, semicolons or spaces, with no empty entries or repeats", () => {
+  assert.deepEqual(RENEWAL_LIB.parseTesterIds("2108-00001\n2108-00002, 2108-00003;  2108-00001\r\n\n"), ["2108-00001", "2108-00002", "2108-00003"]);
+  assert.deepEqual(RENEWAL_LIB.parseTesterIds("   "), []); assert.deepEqual(RENEWAL_LIB.parseTesterIds(""), []);
+});
+test("the Windows screen sends the list only when it matters, warns before opening a testers-only window to everyone, and the call works before the 8b SQL is installed", () => {
+  const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalWindowsTab.tsx"), "utf8");
+  assert.match(tab, /testersOnly \? \{ testers \} : \(initial\?\.testers\.length \?\? 0\) > 0 \? \{ testers: \[\] \} : \{\}/);
+  assert.match(tab, /Opening it to everyone makes it visible to every scholar/);
+  assert.match(tab, /TESTERS ONLY/); assert.match(tab, /Clear test data/);
+  const api = fs.readFileSync(path.join(root, "src/sead/renewalApi.ts"), "utf8");
+  assert.match(api, /w\.testers === undefined \? \{\} : \{ p_testers: w\.testers \}/);
+  assert.match(api, /"renewal_window_clear_test_data"/);
+  assert.deepEqual([...tab.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), []);
+  assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(tab), false);
+});
+test("the 8b file: the new functions exist, the older ones keep their other text, and every list that counts scholars asks the same helper", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p8b_test_windows.sql"), "utf8");
+  for (const fn of ["_renewal_window_includes", "renewal_window_save", "renewal_window_clear_test_data", "renewal_my_overview", "renewal_not_applied", "renewal_notification_jobs", "renewal_dashboard", "renewal_export_data"]) assert.ok(new RegExp(`create or replace function public\\.${fn}\\(`).test(sql), fn);
+  assert.equal((sql.match(/_renewal_window_includes\(/g) ?? []).length, 7, "1 definition + not_applied + 2 in the alert job + dashboard + export + the grant line");
+  assert.match(sql, /renewal_windows\.testers is null or v_id = any \(renewal_windows\.testers\)/);
+  assert.match(sql, /drop function if exists public\.renewal_window_save\(uuid, text, text, date, date, boolean, text\)/);
+  const p7 = fs.readFileSync(path.join(root, "supabase_migration_renewal_p7_reports.sql"), "utf8");
+  assert.equal(/_renewal_window_includes/.test(p7), false, "the Phase 7 file is untouched, so it works without 8b");
 });
 
 console.log(`\n${process.exitCode ? "SOME TESTS FAILED" : "All " + passed + " tests passed"}`);

@@ -14,19 +14,31 @@ const str = (v: unknown) => (v == null ? "" : String(v));
 const strOrNull = (v: unknown) => (v == null ? null : String(v));
 const num = (v: unknown) => (v == null ? 0 : Number(v));
 
-export interface RenewalWindowRow { id: string; schoolYear: string; term: string; opensOn: string; closesOn: string; lateAllowed: boolean; note: string }
+/** testers: scholar IDs when the window is TESTERS ONLY (nobody else sees it, is alerted or counted); an empty list = a normal window for everyone. */
+export interface RenewalWindowRow { id: string; schoolYear: string; term: string; opensOn: string; closesOn: string; lateAllowed: boolean; note: string; testers: string[] }
 
 export async function fetchRenewalWindows(): Promise<Loaded<RenewalWindowRow>> {
   const { data, error } = await supabase.from("renewal_windows").select("*").order("opens_on", { ascending: false });
   if (error) return { ok: false, error: error.message };
-  return { ok: true, rows: ((data ?? []) as Row[]).map(r => ({ id: str(r.id), schoolYear: str(r.school_year), term: str(r.term), opensOn: str(r.opens_on), closesOn: str(r.closes_on), lateAllowed: !!r.late_allowed, note: str(r.note) })) };
+  return { ok: true, rows: ((data ?? []) as Row[]).map(r => ({ id: str(r.id), schoolYear: str(r.school_year), term: str(r.term), opensOn: str(r.opens_on), closesOn: str(r.closes_on), lateAllowed: !!r.late_allowed, note: str(r.note), testers: Array.isArray(r.testers) ? (r.testers as unknown[]).map(str) : [] })) };
 }
 
-export async function saveRenewalWindow(w: { id: string | null; schoolYear: string; term: string; opensOn: string; closesOn: string; lateAllowed: boolean; note: string }): Promise<Done> {
+/** `testers`: the scholar IDs for a testers-only window, [] to open the window to everyone, undefined to leave it as it is (the call then also works before the Phase 8b SQL is installed). */
+export async function saveRenewalWindow(w: { id: string | null; schoolYear: string; term: string; opensOn: string; closesOn: string; lateAllowed: boolean; note: string; testers?: string[] }): Promise<Done> {
   const { error } = await supabase.rpc("renewal_window_save", {
     p_id: w.id, p_school_year: w.schoolYear.trim(), p_term: w.term, p_opens_on: w.opensOn, p_closes_on: w.closesOn, p_late_allowed: w.lateAllowed, p_note: w.note,
+    ...(w.testers === undefined ? {} : { p_testers: w.testers }),
   });
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/** What clearing a testers-only window removed, and the files that stay in the private folders. */
+export interface ClearedTestData { records: number; slotsReleased: number; referrals: number; certificates: number; filesLeft: string[] }
+export async function clearWindowTestData(id: string): Promise<{ ok: true; cleared: ClearedTestData } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("renewal_window_clear_test_data", { p_id: id });
+  if (error || !data) return { ok: false, error: error?.message ?? "Couldn't clear the test data." };
+  const d = data as Row;
+  return { ok: true, cleared: { records: num(d.records), slotsReleased: num(d.slots_released), referrals: num(d.referrals), certificates: num(d.certificates), filesLeft: ((d.files_left ?? []) as unknown[]).map(str) } };
 }
 
 export async function deleteRenewalWindow(id: string): Promise<Done> {

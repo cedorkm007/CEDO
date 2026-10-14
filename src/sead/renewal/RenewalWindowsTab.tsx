@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-import { RENEWAL_TERMS, formatDay, renewalBasis, termLabelOf, windowState } from "@/lib/renewal";
+import { FlaskConical, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { RENEWAL_TERMS, formatDay, parseTesterIds, renewalBasis, termLabelOf, windowState } from "@/lib/renewal";
 import { isValidSchoolYear } from "@/lib/academicPeriods";
-import { deleteRenewalWindow, saveRenewalWindow, type RenewalWindowRow } from "../renewalApi";
+import { clearWindowTestData, deleteRenewalWindow, saveRenewalWindow, type RenewalWindowRow } from "../renewalApi";
 import { ModalShell } from "../components/SeadUiShell";
 
 const STATE_TEXT = { upcoming: "Not open yet", open: "Open", late: "Closed — late applications go to the evaluator", closed: "Closed" } as const;
@@ -11,6 +11,16 @@ const STATE_TEXT = { upcoming: "Not open yet", open: "Open", late: "Closed — l
 export function RenewalWindowsTab({ windows, onChanged }: { windows: RenewalWindowRow[]; onChanged: () => Promise<void> }) {
   const [editing, setEditing] = useState<RenewalWindowRow | "new" | null>(null);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  async function clearTest(w: RenewalWindowRow) {
+    if (!window.confirm(`Clear the test data of ${termLabelOf(w.schoolYear, w.term)}?\n\nThis deletes the renewals of the ${w.testers.length} test scholar${w.testers.length === 1 ? "" : "s"} for this term (their history, documents, referrals, notices and certificate records) and frees their booked consultation slots. It cannot be undone. A scholar's status (for example Probationary) is not changed.`)) return;
+    const r = await clearWindowTestData(w.id);
+    if (!r.ok) { setError(r.error); setMessage(""); return; }
+    const c = r.cleared;
+    setError(""); setMessage(`Cleared: ${c.records} renewal${c.records === 1 ? "" : "s"}, ${c.slotsReleased} consultation slot${c.slotsReleased === 1 ? "" : "s"} freed, ${c.referrals} referral${c.referrals === 1 ? "" : "s"}, ${c.certificates} certificate record${c.certificates === 1 ? "" : "s"}.${c.filesLeft.length ? ` ${c.filesLeft.length} uploaded file${c.filesLeft.length === 1 ? "" : "s"} stay in the private folders until you delete them in the Supabase dashboard: ${c.filesLeft.join(", ")}.` : ""}`);
+    await onChanged();
+  }
 
   async function remove(w: RenewalWindowRow) {
     if (!window.confirm(`Delete the renewal window for ${termLabelOf(w.schoolYear, w.term)}? This only works if nobody has applied.`)) return;
@@ -29,6 +39,7 @@ export function RenewalWindowsTab({ windows, onChanged }: { windows: RenewalWind
         <button onClick={() => setEditing("new")} className="inline-flex items-center gap-1.5 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e]"><Plus size={15} aria-hidden="true" /> Open a renewal window</button>
       </div>
       {error && <p role="alert" className="mb-2 text-[14px] text-red-700">{error}</p>}
+      {message && <p role="status" className="mb-2 text-[14px] text-green-800">{message}</p>}
       {windows.length === 0 ? <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">No renewal window yet. Open one so scholars can apply.</p> : (
         <ul className="space-y-2">
           {windows.map(w => {
@@ -41,8 +52,10 @@ export function RenewalWindowsTab({ windows, onChanged }: { windows: RenewalWind
                   <p className="text-[14px] text-slate-700">{formatDay(w.opensOn)} to {formatDay(w.closesOn)} · <strong>{STATE_TEXT[state]}</strong>{!w.lateAllowed && " · late applications refused"}</p>
                   {basis && <p className="text-[13.5px] text-slate-600">Checks {termLabelOf(basis.schoolYear, basis.term)}</p>}
                   {w.note && <p className="text-[13.5px] text-slate-700">Note: {w.note}</p>}
+                  {w.testers.length > 0 && <p className="mt-1 inline-flex flex-wrap items-center gap-1.5 rounded-md bg-amber-100 px-2 py-1 text-[13.5px] font-bold text-amber-950"><FlaskConical size={14} aria-hidden="true" /> TESTERS ONLY — only these {w.testers.length} scholar{w.testers.length === 1 ? "" : "s"} can see it: <span className="font-normal">{w.testers.join(", ")}</span></p>}
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
+                  {w.testers.length > 0 && <button onClick={() => void clearTest(w)} className="inline-flex items-center gap-1 text-[14px] font-semibold text-amber-900 hover:underline"><FlaskConical size={14} aria-hidden="true" /> Clear test data</button>}
                   <button onClick={() => setEditing(w)} className="inline-flex items-center gap-1 text-[14px] font-semibold text-[#00709f] hover:underline"><Pencil size={14} aria-hidden="true" /> Edit</button>
                   <button onClick={() => void remove(w)} className="inline-flex items-center gap-1 text-[14px] font-semibold text-red-700 hover:underline"><Trash2 size={14} aria-hidden="true" /> Delete</button>
                 </div>
@@ -63,6 +76,8 @@ function WindowForm({ initial, onClose, onSaved }: { initial: RenewalWindowRow |
   const [closesOn, setClosesOn] = useState(initial?.closesOn ?? "");
   const [lateAllowed, setLateAllowed] = useState(initial?.lateAllowed ?? true);
   const [note, setNote] = useState(initial?.note ?? "");
+  const [testersOnly, setTestersOnly] = useState((initial?.testers.length ?? 0) > 0);
+  const [testerText, setTesterText] = useState(initial?.testers.join("\n") ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const basis = isValidSchoolYear(schoolYear) ? renewalBasis(schoolYear.trim(), term) : null;
@@ -72,8 +87,12 @@ function WindowForm({ initial, onClose, onSaved }: { initial: RenewalWindowRow |
     setError("");
     if (!isValidSchoolYear(schoolYear)) { setError("The school year must look like 2026-2027."); return; }
     if (!opensOn || !closesOn) { setError("Please choose the opening and closing dates."); return; }
+    const testers = parseTesterIds(testerText);
+    if (testersOnly && testers.length === 0) { setError("Type the scholar IDs of the test accounts, or choose \"Everyone\"."); return; }
+    if (initial && initial.testers.length > 0 && !testersOnly && !window.confirm("This window is now TESTERS ONLY. Opening it to everyone makes it visible to every scholar, and every scholar who has not applied gets the \"Renewal is now open\" alert at the next 8:00-18:00 check. Continue?")) return;
     setBusy(true);
-    const r = await saveRenewalWindow({ id: initial?.id ?? null, schoolYear, term, opensOn, closesOn, lateAllowed, note });
+    // Only send the list when it matters, so the call also works before the Phase 8b SQL file is installed.
+    const r = await saveRenewalWindow({ id: initial?.id ?? null, schoolYear, term, opensOn, closesOn, lateAllowed, note, ...(testersOnly ? { testers } : (initial?.testers.length ?? 0) > 0 ? { testers: [] } : {}) });
     setBusy(false);
     if (!r.ok) { setError(r.error); return; }
     await onSaved();
@@ -95,6 +114,16 @@ function WindowForm({ initial, onClose, onSaved }: { initial: RenewalWindowRow |
         </div>
         <label className="flex items-center gap-2 text-[14px] text-slate-800"><input type="checkbox" checked={lateAllowed} onChange={e => setLateAllowed(e.target.checked)} /> Allow late applications after the closing date (the evaluator accepts or declines each one)</label>
         <label className="block text-[14px] font-semibold text-[#062444]">Message for scholars (optional)<textarea value={note} onChange={e => setNote(e.target.value)} rows={2} maxLength={500} className={input} /></label>
+        <fieldset className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3 py-3">
+          <legend className="px-1 text-[14px] font-bold text-[#062444]">Who can see this window</legend>
+          <label className="flex items-start gap-2 text-[14px] text-slate-800"><input type="radio" name="window-audience" checked={!testersOnly} onChange={() => setTestersOnly(false)} className="mt-1" /> <span><strong>Everyone</strong> — every scholar sees it, gets the "Renewal is now open" alert and can apply.</span></label>
+          <label className="mt-2 flex items-start gap-2 text-[14px] text-slate-800"><input type="radio" name="window-audience" checked={testersOnly} onChange={() => setTestersOnly(true)} className="mt-1" /> <span><strong>Testers only</strong> — only the scholar IDs below see it, get alerts, can apply, and are counted in the lists, the dashboard and the Excel file. Nobody else notices anything. Use it to test with test accounts.</span></label>
+          {testersOnly && (
+            <label className="mt-2 block text-[14px] font-semibold text-[#062444]">Scholar IDs of the test accounts (one per line, or separated by commas)
+              <textarea value={testerText} onChange={e => setTesterText(e.target.value)} rows={3} className={`${input} font-mono`} placeholder="2108-00001&#10;2108-00002" />
+            </label>
+          )}
+        </fieldset>
         {error && <p role="alert" className="text-[14px] text-red-700">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} disabled={busy} className="rounded-lg border border-[#062444]/25 px-4 py-2 text-[14px] font-semibold text-[#062444]">Cancel</button>
