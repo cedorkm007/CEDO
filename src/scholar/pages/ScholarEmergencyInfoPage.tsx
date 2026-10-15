@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { UserCircle2, Phone, SearchX, FileWarning, Building2 } from "lucide-react";
+import { UserCircle2, Phone, SearchX, FileWarning, Building2, BadgeCheck, Ban, RotateCw } from "lucide-react";
 import { fetchPublicScholarEmergencyInfo, type PublicScholarEmergencyInfo } from "../publicEmergencyInfoApi";
 
 // CEDO's own contact info shown alongside a scholar's emergency contact —
@@ -65,6 +65,8 @@ export function ScholarEmergencyInfoPage() {
               <p className="text-[15px] font-semibold text-[#062444]">{result.name}</p>
             </div>
 
+            {result.renewal && <RenewalLine renewal={result.renewal} />}
+
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
               <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-700 mb-2"><Phone size={13} /> Emergency Contact</p>
               {result.emergencyContactName ? (
@@ -86,6 +88,19 @@ export function ScholarEmergencyInfoPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** The one public line about renewal: Removed, Renewed (with the certificate number, which is how a school checks a printed certificate), in progress, or nothing yet. */
+function RenewalLine({ renewal }: { renewal: NonNullable<PublicScholarEmergencyInfo["renewal"]> }) {
+  const tone = renewal.state === "removed" ? "border-red-200 bg-red-50 text-red-900" : renewal.state === "renewed" ? "border-green-200 bg-green-50 text-green-900" : "border-[#e6ecf5] bg-white text-[#062444]";
+  const Icon = renewal.state === "removed" ? Ban : renewal.state === "renewed" ? BadgeCheck : RotateCw;
+  return (
+    <div className={`rounded-xl border p-4 ${tone}`} aria-label="Scholarship renewal status">
+      <p className="flex items-center gap-1.5 text-[12.5px] font-bold uppercase tracking-wide mb-1"><Icon size={14} aria-hidden="true" /> Scholarship status</p>
+      <p className="text-[15px] font-semibold">{renewal.line}</p>
+      {renewal.state === "renewed" && renewal.csr_number && <p className="text-[13.5px] mt-0.5">Certificate {renewal.csr_number} — valid</p>}
     </div>
   );
 }

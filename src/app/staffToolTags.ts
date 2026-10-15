@@ -71,11 +71,16 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
   {
     key: "sead_division_head",
     label: "SEAD Division Head (Referral Approvals)",
-    description: "Receives notifications to approve or reconsider Scholar Consultation referrals forwarded by consultation staff.",
+    description: "Receives notifications to approve or reconsider Scholar Consultation referrals forwarded by consultation staff, and decides Scholar Renewal cases (Approve Probationary, Removed, Reconsidered) in the Scholar Renewal tool.",
   },
   {
     key: "scholars_grades_monitoring",
     label: "Scholars' Grades Monitoring",
     description: "Monitor scholars' grade-completion rates by school and program, and drill into individual grades and GWA.",
+  },
+  {
+    key: "scholar_renewal_evaluator",
+    label: "Scholar Renewal Evaluator",
+    description: "Opens renewal windows, reviews renewal applications, accepts or declines late ones, confirms every renewal, and decides INC cases after the deadline.",
   },
 ];

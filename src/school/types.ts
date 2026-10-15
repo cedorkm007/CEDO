@@ -16,6 +16,8 @@ export interface GradingConfig {
   usesLetterGrades: boolean;
   /** The school's retention requirement on its own scale (e.g. 2.5 = "GWA 2.50 or better"); null/undefined = not set. */
   retentionThreshold?: number | null;
+  /** The passing mark on the school's own scale (a grade worse than it is failed); null/undefined = not set. */
+  passingMark?: number | null;
 }
 
 export interface LetterGrade {
@@ -44,4 +46,6 @@ export interface SchoolSubjectGrade {
   units: number | null;
   /** True for subjects kept out of the GWA (e.g. NSTP, PE). */
   excludeFromGwa: boolean;
+  /** A short remark or tag from the school (e.g. NSTP, Repeated, Cross-enrolled). Information only. */
+  remarks: string;
 }

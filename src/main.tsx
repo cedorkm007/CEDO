@@ -35,6 +35,19 @@
   // manifest link, iOS home-screen icon, and theme-color are injected here
   // rather than in the shared index.html so the staff app and public CEDO
   // site — which share this one Vite build — aren't affected.
+  // The scholar portal gets its own small manifest + icon the same way: that is what lets an iPhone / iPad scholar "Add to Home Screen",
+  // which is the only way push notifications work on iOS. Nothing else about the site changes.
+  if (isScholarSite) {
+    const manifestLink = document.createElement("link");
+    manifestLink.rel = "manifest";
+    manifestLink.href = "/scholar-manifest.webmanifest";
+    document.head.appendChild(manifestLink);
+    const appleIcon = document.createElement("link");
+    appleIcon.rel = "apple-touch-icon";
+    appleIcon.href = "/push-icon.png";
+    document.head.appendChild(appleIcon);
+  }
+
   if (isKaubanSite) {
     const head = document.head;
 

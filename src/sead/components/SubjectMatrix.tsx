@@ -29,11 +29,11 @@ export function SubjectMatrix({
 
   return (
     <div>
-      <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">{label}</label>
       <div className="border border-[#062444]/15 rounded-lg overflow-hidden">
         <table className="w-full text-[12.5px]">
           <thead>
-            <tr className="bg-[#f8fafd] text-left text-[10.5px] uppercase tracking-wide text-[#0088cc]">
+            <tr className="bg-[#f8fafd] text-left text-[12px] uppercase tracking-wide text-[#00709f]">
               <th className="px-2.5 py-2">Subject Code</th>
               <th className="px-2.5 py-2">Semester and Academic Year</th>
               <th className="px-2.5 py-2 w-24">Yr. Lvl</th>
@@ -42,7 +42,7 @@ export function SubjectMatrix({
           </thead>
           <tbody>
             {displayRows.length === 0 ? (
-              <tr><td colSpan={readOnly ? 3 : 4} className="px-2.5 py-3 text-center text-slate-400">None.</td></tr>
+              <tr><td colSpan={readOnly ? 3 : 4} className="px-2.5 py-3 text-center text-slate-600">None.</td></tr>
             ) : displayRows.map((row, i) => (
               <tr key={i} className="border-t border-[#f0f3f8]">
                 {readOnly ? (
@@ -77,7 +77,7 @@ export function SubjectMatrix({
         </table>
       </div>
       {!readOnly && (
-        <button type="button" onClick={addRow} className="mt-1.5 flex items-center gap-1 text-[12px] font-semibold text-[#0088cc] hover:underline">
+        <button type="button" onClick={addRow} className="mt-1.5 flex items-center gap-1 text-[13px] font-semibold text-[#00709f] hover:underline">
           <Plus size={13} /> Add row
         </button>
       )}

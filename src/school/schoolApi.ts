@@ -49,6 +49,7 @@ export async function fetchGradingConfig(): Promise<GradingConfig | null> {
     direction: (data.direction as GradingConfig["direction"]) ?? "lower_is_better",
     usesLetterGrades: !!data.uses_letter_grades,
     retentionThreshold: data.retention_threshold == null ? null : Number(data.retention_threshold),
+    passingMark: data.passing_mark == null ? null : Number(data.passing_mark),
   };
 }
 
@@ -60,7 +61,7 @@ export async function fetchLetterGrades(schoolId: string): Promise<LetterGrade[]
 
 export async function saveGradingConfig(config: GradingConfig): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.rpc("upsert_school_grading_config", {
-    p_scale_min: config.scaleMin, p_scale_max: config.scaleMax, p_direction: config.direction, p_uses_letter_grades: config.usesLetterGrades, p_retention_threshold: config.retentionThreshold ?? null,
+    p_scale_min: config.scaleMin, p_scale_max: config.scaleMax, p_direction: config.direction, p_uses_letter_grades: config.usesLetterGrades, p_retention_threshold: config.retentionThreshold ?? null, p_passing_mark: config.passingMark ?? null,
   });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
@@ -95,6 +96,7 @@ function toSubjectGrade(r: Record<string, unknown>): SchoolSubjectGrade {
     grade: r.grade == null ? "" : String(r.grade),
     units: r.units == null ? null : Number(r.units),
     excludeFromGwa: !!r.exclude_from_gwa,
+    remarks: String(r.remarks ?? ""),
   };
 }
 
@@ -164,13 +166,15 @@ export interface UpsertGradeInput {
   units?: number | null;
   /** Leave out (or null) to keep the stored flag; a new subject starts as false. */
   excludeFromGwa?: boolean | null;
+  /** Leave out (or null) to keep the stored remark; an empty string clears it. */
+  remarks?: string | null;
 }
 
 export async function upsertGrade(input: UpsertGradeInput): Promise<{ ok: boolean; error?: string; id?: string }> {
   const { data, error } = await supabase.rpc("upsert_scholar_subject_grade", {
     p_id: input.id || null, p_scholar_id_number: input.scholarIdNumber, p_school_year: input.schoolYear,
     p_semester: input.semester, p_subject_code: input.subjectCode, p_subject: input.subject, p_grade: input.grade,
-    p_units: input.units ?? null, p_exclude_from_gwa: input.excludeFromGwa ?? null,
+    p_units: input.units ?? null, p_exclude_from_gwa: input.excludeFromGwa ?? null, p_remarks: input.remarks ?? null,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, id: data as string };
@@ -185,7 +189,7 @@ export interface BulkGradeRowResult {
 
 export async function bulkUpsertGrades(rows: UpsertGradeInput[]): Promise<{ ok: boolean; error?: string; results?: BulkGradeRowResult[] }> {
   const { data, error } = await supabase.rpc("bulk_upsert_scholar_subject_grades", {
-    p_rows: rows.map(r => ({ id: r.id || null, scholarIdNumber: r.scholarIdNumber, schoolYear: r.schoolYear, semester: r.semester, subjectCode: r.subjectCode, subject: r.subject, grade: r.grade, units: r.units ?? null, excludeFromGwa: r.excludeFromGwa ?? null })),
+    p_rows: rows.map(r => ({ id: r.id || null, scholarIdNumber: r.scholarIdNumber, schoolYear: r.schoolYear, semester: r.semester, subjectCode: r.subjectCode, subject: r.subject, grade: r.grade, units: r.units ?? null, excludeFromGwa: r.excludeFromGwa ?? null, ...(r.remarks != null ? { remarks: r.remarks } : {}) })),
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, results: (data as Record<string, unknown>[]).map(r => ({ rowIndex: Number(r.row_index), ok: !!r.ok, error: r.error == null ? null : String(r.error), id: r.id == null ? null : String(r.id) })) };

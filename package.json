@@ -11,7 +11,9 @@
     "lint:fix": "eslint . --fix",
     "type-check": "tsc --noEmit",
     "seed:admins": "node scripts/create-admin-accounts.mjs",
-    "postinstall": "node scripts/copy-ffmpeg-core.mjs && node scripts/download-vosk-model.mjs"
+    "postinstall": "node scripts/copy-ffmpeg-core.mjs && node scripts/download-vosk-model.mjs",
+    "demo": "node scripts/localdemo/start.mjs",
+    "demo:reset": "node scripts/localdemo/start.mjs --reset"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -91,6 +93,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@eslint/js": "^9.17.0",
     "@tailwindcss/vite": "^4.1.12",
     "@types/canvas-confetti": "^1.9.0",

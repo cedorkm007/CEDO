@@ -1,17 +1,27 @@
 import { useState } from "react";
 import { X, ClipboardPlus } from "lucide-react";
 import { createDailyRecord, VISIT_TYPES, type VisitType } from "../scholarCounselingApi";
+import { saveConsultationRecord, type AttendedPrefill } from "../appointmentsApi";
+import { formatDay } from "@/lib/renewal";
 import { fetchScholarInformationByIdNumber } from "../seadApi";
 import { SCHOLARSHIP_STATUSES, type ScholarshipStatus } from "../types";
 import { ScholarSearchField, type ScholarSearchResult } from "./ScholarSearchField";
 
-export function AddDailyRecordModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+/**
+ * The Daily Record form. Opened from the Appointments calendar after "Attended", it arrives PRE-FILLED (`prefill`): the scholar, the date, the
+ * status and the failed / INC subjects are copied from the renewal, and two renewal fields appear — "Days given to comply" (required when an
+ * INC has no deadline yet; it sets the deadline) and, for Summer, "Prospectus hard copy received".
+ */
+export function AddDailyRecordModal({ onClose, onCreated, prefill }: { onClose: () => void; onCreated: () => void; prefill?: AttendedPrefill }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<ScholarSearchResult | null>(null);
-  const [dateVisited, setDateVisited] = useState(new Date().toISOString().slice(0, 10));
-  const [status, setStatus] = useState<ScholarshipStatus>("Regular");
+  const [dateVisited, setDateVisited] = useState(prefill?.dateVisited || new Date().toISOString().slice(0, 10));
+  const [status, setStatus] = useState<ScholarshipStatus>((prefill?.status as ScholarshipStatus) || "Regular");
   const [visitType, setVisitType] = useState<VisitType>("Office");
-  const [failedSubjects, setFailedSubjects] = useState("");
+  const [failedSubjects, setFailedSubjects] = useState(prefill?.failedSubjects ?? "");
+  const [daysGiven, setDaysGiven] = useState("");
+  const [hardCopy, setHardCopy] = useState(false);
+  const needsDays = !!prefill && prefill.incItems.some(i => !i.deadline);
   const [findings, setFindings] = useState("");
   const [staffRecommendations, setStaffRecommendations] = useState("");
   const [busy, setBusy] = useState(false);
@@ -30,6 +40,20 @@ export function AddDailyRecordModal({ onClose, onCreated }: { onClose: () => voi
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (prefill) {
+      const days = Number(daysGiven);
+      if (needsDays && (!Number.isInteger(days) || days < 1)) { setError("Enter the days given to comply (a whole number, at least 1)."); return; }
+      setBusy(true);
+      const r = await saveConsultationRecord({
+        slotId: prefill.slotId, scholarIdNumber: prefill.scholarIdNumber, status, dateVisited, visitType, failedSubjects: failedSubjects.trim(), findings: findings.trim(),
+        staffRecommendations: staffRecommendations.trim(), daysGiven: needsDays ? days : null, hardCopy: prefill.isSummer ? hardCopy : null,
+      });
+      setBusy(false);
+      if (!r.ok) { setError(r.error); return; }
+      onCreated();
+      onClose();
+      return;
+    }
     const scholarIdNumber = selected?.scholarIdNumber ?? query.trim();
     if (!scholarIdNumber) { setError("Enter or pick a scholar."); return; }
     if (!dateVisited) { setError("Enter the date visited."); return; }
@@ -55,8 +79,12 @@ export function AddDailyRecordModal({ onClose, onCreated }: { onClose: () => voi
         <form onSubmit={handleSubmit} className="p-6">
           <div className="mb-3">
             <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Scholar</label>
-            <ScholarSearchField query={query} setQuery={v => { setQuery(v); setSelected(null); }} selected={selected}
-              onSelect={handleSelectScholar} onClear={() => setSelected(null)} filter={{ includeRemoved: true }} />
+            {prefill ? (
+              <p className="border border-[#062444]/15 rounded-lg px-3 py-2 text-sm bg-[#f7f9fc] text-[#062444]"><strong>{prefill.scholarName}</strong> · {prefill.scholarIdNumber} · renewal for {prefill.termLabel}</p>
+            ) : (
+              <ScholarSearchField query={query} setQuery={v => { setQuery(v); setSelected(null); }} selected={selected}
+                onSelect={handleSelectScholar} onClear={() => setSelected(null)} filter={{ includeRemoved: true }} />
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3 mb-3">
@@ -87,6 +115,25 @@ export function AddDailyRecordModal({ onClose, onCreated }: { onClose: () => voi
             <input value={failedSubjects} onChange={e => setFailedSubjects(e.target.value)} placeholder="e.g. Calculus 2, Physics 1"
               className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
           </div>
+
+          {needsDays && (
+            <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+              <label htmlFor="days-given" className="block text-[13px] font-bold text-amber-950 mb-1.5">Days given to comply (INC) — required</label>
+              <input id="days-given" type="number" min={1} step={1} value={daysGiven} onChange={e => setDaysGiven(e.target.value)} required
+                className="w-32 border border-[#062444]/25 rounded-lg px-3 py-2 text-sm outline-none bg-white" />
+              <p className="text-[13px] text-amber-950 mt-1.5">
+                INC subject{prefill!.incItems.length > 1 ? "s" : ""}: {prefill!.incItems.map(i => i.subject).join(", ")}.
+                {Number.isInteger(Number(daysGiven)) && Number(daysGiven) >= 1 && dateVisited
+                  ? <> The deadline will be <strong>{formatDay(new Date(new Date(`${dateVisited}T00:00:00Z`).getTime() + Number(daysGiven) * 86400000).toISOString().slice(0, 10))}</strong> (the consultation date plus the days given).</>
+                  : " The deadline is the consultation date plus these days."}
+              </p>
+            </div>
+          )}
+          {prefill?.isSummer && (
+            <label className="mb-3 flex items-center gap-2 text-[13.5px] font-semibold text-[#062444]">
+              <input type="checkbox" checked={hardCopy} onChange={e => setHardCopy(e.target.checked)} /> Prospectus hard copy received
+            </label>
+          )}
 
           <div className="mb-3">
             <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5">Findings</label>

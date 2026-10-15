@@ -7,8 +7,9 @@
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
 import { fetchGradesForScholars } from "@/school/schoolApi";
-import { gwaDetail, type GradeLike, type LetterGrade } from "@/lib/gwa";
-import { scholarStanding, type StandingConfig, type StandingResult } from "@/lib/standing";
+import { gwaDetail, type GradeLike, type GradingConfig, type LetterGrade } from "@/lib/gwa";
+import { countOutcomes, type OutcomeCounts } from "@/lib/subjectOutcome";
+import { scholarStanding, type StandingResult } from "@/lib/standing";
 import type { GradingPeriod } from "./scholarsGradesMonitoringApi";
 
 export interface StaffScholar {
@@ -79,14 +80,14 @@ export async function fetchSchoolSummaries(): Promise<SchoolSummary[]> {
 }
 
 export interface SchoolSetup {
-  config: (StandingConfig & { usesLetterGrades: boolean }) | null;
+  config: GradingConfig | null;
   letters: LetterGrade[];
 }
 
 /** Every school's grading scale, letters and retention requirement, keyed by school id (staff can read them all). */
 export async function fetchSchoolSetups(): Promise<Map<string, SchoolSetup>> {
   const [cfg, lets] = await Promise.all([
-    supabase.from("school_grading_configs").select("school_id, scale_min, scale_max, direction, uses_letter_grades, retention_threshold"),
+    supabase.from("school_grading_configs").select("school_id, scale_min, scale_max, direction, uses_letter_grades, retention_threshold, passing_mark"),
     supabase.from("school_letter_grades").select("school_id, letter, numeric_value"),
   ]);
   const letters = new Map<string, LetterGrade[]>();
@@ -102,8 +103,9 @@ export async function fetchSchoolSetups(): Promise<Map<string, SchoolSetup>> {
     const usesLetterGrades = !!r.uses_letter_grades;
     out.set(id, {
       config: {
-        scaleMin: Number(r.scale_min), scaleMax: Number(r.scale_max), direction: r.direction as StandingConfig["direction"], usesLetterGrades,
+        scaleMin: Number(r.scale_min), scaleMax: Number(r.scale_max), direction: r.direction as GradingConfig["direction"], usesLetterGrades,
         retentionThreshold: r.retention_threshold == null ? null : Number(r.retention_threshold),
+        passingMark: r.passing_mark == null ? null : Number(r.passing_mark),
       },
       letters: usesLetterGrades ? letters.get(id) ?? [] : [],
     });
@@ -116,6 +118,8 @@ export interface ScholarStandingInfo {
   graded: number;
   gwa: number | null;
   standing: StandingResult;
+  /** Failed / DRP / INC / to-review subjects in this period. */
+  outcomes: OutcomeCounts;
 }
 
 /** GWA and standing of each given scholar for one period (their subjects are read in pages of 1000). */
@@ -124,7 +128,7 @@ export async function loadScholarStandings(
 ): Promise<{ ok: true; byScholar: Map<string, ScholarStandingInfo> } | Failure> {
   const byScholar = new Map<string, ScholarStandingInfo>();
   if (!period.schoolYear || !period.semester || scholars.length === 0) {
-    for (const s of scholars) byScholar.set(s.scholarIdNumber, { subjects: 0, graded: 0, gwa: null, standing: "no_gwa" });
+    for (const s of scholars) byScholar.set(s.scholarIdNumber, { subjects: 0, graded: 0, gwa: null, standing: "no_gwa", outcomes: countOutcomes([], null, []) });
     return { ok: true, byScholar };
   }
   const result = await fetchGradesForScholars(scholars.map(s => s.scholarIdNumber), period);
@@ -141,6 +145,7 @@ export async function loadScholarStandings(
     const gwa = gwaDetail(grades, setup?.letters ?? []).gwa;
     byScholar.set(s.scholarIdNumber, {
       subjects: grades.length, graded: grades.filter(g => g.grade.trim() !== "").length, gwa, standing: scholarStanding(gwa, setup?.config ?? null),
+      outcomes: countOutcomes(grades, setup?.config ?? null, setup?.letters ?? []),
     });
   }
   return { ok: true, byScholar };

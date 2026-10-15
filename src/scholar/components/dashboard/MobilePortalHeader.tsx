@@ -1,5 +1,6 @@
 import { User } from "lucide-react";
 import CEDOLogoWhite from "@/imports/scholar/CEDO_Logo_White.png";
+import { NotificationBell } from "./NotificationBell";
 
 interface MobilePortalHeaderProps {
   onHome: () => void;
@@ -21,9 +22,12 @@ export function MobilePortalHeader({ onHome, onOpenProfile }: MobilePortalHeader
 
       <img src={CEDOLogoWhite} alt="CEDO" className="h-8 w-auto justify-self-center" />
 
-      <button onClick={onOpenProfile} aria-label="Profile" className="justify-self-end flex items-center justify-center w-10 h-10 rounded-md bg-[#F3BC00] hover:bg-[#e0ac00] transition-colors">
-        <User size={18} className="text-[#1F334F]" />
-      </button>
+      <div className="justify-self-end flex items-center gap-2">
+        <NotificationBell tone="dark" />
+        <button onClick={onOpenProfile} aria-label="Profile" className="flex items-center justify-center w-10 h-10 rounded-md bg-[#F3BC00] hover:bg-[#e0ac00] transition-colors">
+          <User size={18} className="text-[#1F334F]" />
+        </button>
+      </div>
     </header>
   );
 }

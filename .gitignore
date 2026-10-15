@@ -47,3 +47,6 @@ pnpm-debug.log*
 coverage/
 
 .vercel
+
+# local demo database (rebuilt by npm run demo)
+localdemo/.data/

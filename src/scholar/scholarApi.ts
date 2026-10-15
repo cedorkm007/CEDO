@@ -111,7 +111,7 @@ export async function fetchSubjectsAndGrades(scholarIdNumber: string): Promise<S
 }
 
 /** This scholar's school's grading config/letter table, for computing GWA on the Grades tab. Both null/empty when no school_id is set on this scholar's row yet. */
-export async function fetchMyGradingConfig(): Promise<{ scaleMin: number; scaleMax: number; direction: "lower_is_better" | "higher_is_better"; usesLetterGrades: boolean } | null> {
+export async function fetchMyGradingConfig(): Promise<{ scaleMin: number; scaleMax: number; direction: "lower_is_better" | "higher_is_better"; usesLetterGrades: boolean; passingMark: number | null } | null> {
   const { data, error } = await supabase.rpc("get_scholar_grading_config").maybeSingle();
   if (error || !data) return null;
   const row = data as Record<string, unknown>;
@@ -119,6 +119,7 @@ export async function fetchMyGradingConfig(): Promise<{ scaleMin: number; scaleM
     scaleMin: Number(row.scale_min ?? 1), scaleMax: Number(row.scale_max ?? 5),
     direction: (row.direction as "lower_is_better" | "higher_is_better") ?? "lower_is_better",
     usesLetterGrades: !!row.uses_letter_grades,
+    passingMark: row.passing_mark == null ? null : Number(row.passing_mark),
   };
 }
 

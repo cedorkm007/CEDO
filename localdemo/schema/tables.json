@@ -1,0 +1,6503 @@
+{
+ "note": "Structure of the real public tables (no data). Regenerate with localdemo/tools/refresh_schema.mjs.",
+ "tables": {
+  "research_survey_responses": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "survey_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "in_progress"
+    },
+    {
+     "name": "started_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "submitted_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "consented",
+     "type": "boolean",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "survey_id",
+     "table": "research_surveys",
+     "refColumn": "id"
+    },
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    }
+   ]
+  },
+  "attendance_sessions": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "sdp_activity_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "program_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "type",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "expected_attendees",
+     "type": "integer",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "duration_hours",
+     "type": "integer",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "formation_activity_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "sdp_activity_id",
+     "table": "sdp_activities",
+     "refColumn": "id"
+    },
+    {
+     "column": "program_id",
+     "table": "programs",
+     "refColumn": "id"
+    },
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "formation_activity_id",
+     "table": "formation_activities",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "sead_scholar_account_log": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "action",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "scholar_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "scholar_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "performed_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "performed_by_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "batch_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "source",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "description",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "performed_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "research_surveys": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "description",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "sdp_activity_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "formation_activity_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "is_active",
+     "type": "boolean",
+     "notNull": true,
+     "default": true
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "requires_consent",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "consent_text",
+     "type": "text",
+     "notNull": true,
+     "default": "This survey is voluntary. Do you agree to participate?"
+    },
+    {
+     "name": "quest_subject_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "sdp_activity_id",
+     "table": "sdp_activities",
+     "refColumn": "id"
+    },
+    {
+     "column": "formation_activity_id",
+     "table": "formation_activities",
+     "refColumn": "id"
+    },
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "quest_subject_id",
+     "table": "quest_subjects",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "scholars": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "first_name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "last_name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "middle_name",
+     "type": "text",
+     "notNull": false,
+     "default": ""
+    },
+    {
+     "name": "birthday",
+     "type": "date",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "email",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "contact_no",
+     "type": "text",
+     "notNull": false,
+     "default": ""
+    },
+    {
+     "name": "school",
+     "type": "text",
+     "notNull": false,
+     "default": ""
+    },
+    {
+     "name": "course",
+     "type": "text",
+     "notNull": false,
+     "default": ""
+    },
+    {
+     "name": "civil_status",
+     "type": "text",
+     "notNull": false,
+     "default": ""
+    },
+    {
+     "name": "address",
+     "type": "text",
+     "notNull": false,
+     "default": ""
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "Regular"
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "barangay",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "year_level",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "house_unit_no",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "street",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "city_municipality",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "province_region",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "country",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "zip_code",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "security_question",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "security_answer_hash",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "father_first_name",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "father_middle_initial",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "father_last_name",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "mother_first_name",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "mother_middle_initial",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "mother_last_name",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "contact_email",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "status_before_removal",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "school_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "qr_token",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "emergency_contact_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "emergency_contact_relationship",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "emergency_contact_number",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "school_id",
+     "table": "schools",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "division_change_log": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "staff_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "old_division",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "new_division",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "changed_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "changed_by_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "changed_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "staff_id",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "changed_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "users": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "username",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "last_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "first_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "middle_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "suffix",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "nickname",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "designation",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "position",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "nature_of_work",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "mobile_phone",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "email",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "is_admin",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "division",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "role",
+     "type": "text",
+     "notNull": true,
+     "default": "staff"
+    },
+    {
+     "name": "profile_picture",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "is_sead_staff",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": []
+  },
+  "staff_signatures": {
+   "columns": [
+    {
+     "name": "staff_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "storage_path",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "staff_id"
+   ],
+   "fks": [
+    {
+     "column": "staff_id",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "staff_account_tags": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "staff_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "tag_key",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "staff_id",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "school_grading_configs": {
+   "columns": [
+    {
+     "name": "school_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "scale_min",
+     "type": "numeric",
+     "notNull": true,
+     "default": 1
+    },
+    {
+     "name": "scale_max",
+     "type": "numeric",
+     "notNull": true,
+     "default": 5
+    },
+    {
+     "name": "direction",
+     "type": "text",
+     "notNull": true,
+     "default": "lower_is_better"
+    },
+    {
+     "name": "uses_letter_grades",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "retention_threshold",
+     "type": "numeric",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "school_id"
+   ],
+   "fks": [
+    {
+     "column": "school_id",
+     "table": "schools",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "grade_correction_requests": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "school_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "period_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "grade_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "subject_code",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "subject",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "current_grade",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "proposed_grade",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "reason",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "pending"
+    },
+    {
+     "name": "requested_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "requested_by_label",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "requested_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "reviewed_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "reviewed_by_label",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "reviewed_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "review_note",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "applied_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "school_id",
+     "table": "schools",
+     "refColumn": "id"
+    },
+    {
+     "column": "period_id",
+     "table": "academic_periods",
+     "refColumn": "id"
+    },
+    {
+     "column": "grade_id",
+     "table": "scholar_subjects_grades",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "financial_assistance_applicants": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "period_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "reference_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "barangay",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "school",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "program",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "year_level",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "vulnerable_sector",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "mode_of_application",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "processing"
+    },
+    {
+     "name": "applied_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "approved_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "guarantee_letter_generated_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "father_first_name",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "father_middle_initial",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "father_last_name",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "mother_first_name",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "mother_middle_initial",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "mother_last_name",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "contact_email",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "period_id",
+     "table": "financial_assistance_periods",
+     "refColumn": "id"
+    },
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "notifications": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "type",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "user_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "user_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "message",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "timestamp",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "read",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "reference_id",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "user_id",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "research_survey_questions": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "survey_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "question_type",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "question_text",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "likert_scale_min",
+     "type": "integer",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "likert_scale_max",
+     "type": "integer",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "likert_min_label",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "likert_max_label",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "open_ended_format",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "survey_id",
+     "table": "research_surveys",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "my_survey_answers": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "response_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "survey_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "question_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "option_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "value_text",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "value_number",
+     "type": "numeric",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "option_id",
+     "table": "my_survey_options",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "scholar_quest_scores": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "quest_name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "score",
+     "type": "numeric",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "max_score",
+     "type": "numeric",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "date_taken",
+     "type": "date",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "remarks",
+     "type": "text",
+     "notNull": false,
+     "default": ""
+    },
+    {
+     "name": "recorded_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "subject_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "topic_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "recorded_by",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "subject_id",
+     "table": "quest_subjects",
+     "refColumn": "id"
+    },
+    {
+     "column": "topic_id",
+     "table": "quest_topics",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "scholar_form_unlock_notifications": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "scholar_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "material_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "read_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id",
+     "table": "scholars",
+     "refColumn": "id"
+    },
+    {
+     "column": "material_id",
+     "table": "form_materials",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "school_password_reset_requests": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "account_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "requested_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "handled_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "handled_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "account_id",
+     "table": "school_accounts",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "scholar_services": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "details",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "recorded_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "recorded_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "submission_drive_folders": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "activity_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "year_level",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "activity_folder_id",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "year_level_folder_id",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "school",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "school_folder_id",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "activity_id",
+     "table": "submission_activities",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "school_aliases": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "school_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "alias",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "alias_key",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "merged_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "merged_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "school_id",
+     "table": "schools",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "research_project_stage_submissions": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "project_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "stage",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "form_data",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "under_review"
+    },
+    {
+     "name": "evaluator_comment",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "reviewed_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "reviewed_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "submitted_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "form_key",
+     "type": "text",
+     "notNull": true,
+     "default": "main"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "project_id",
+     "table": "research_projects",
+     "refColumn": "id"
+    },
+    {
+     "column": "reviewed_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "school_accounts": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "school_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "email",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "username",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "school_id",
+     "table": "schools",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "sdp_attendance": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "activity_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "attended_date",
+     "type": "date",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "occurrence_number",
+     "type": "integer",
+     "notNull": true,
+     "default": 1
+    },
+    {
+     "name": "school_year",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "semester",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "activity_id",
+     "table": "sdp_activities",
+     "refColumn": "id"
+    },
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "scholar_sdp": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "details",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "recorded_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "recorded_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "schools": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": []
+  },
+  "scholar_probation_notes": {
+   "columns": [
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "study_plan",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "academic_contract_update",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "scholar_id_number"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "updated_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "form_material_conditions": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "material_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "condition_type",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "subject_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "formation_activity_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "sdp_activity_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "target_year_levels",
+     "type": "text[]",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "all_year_levels",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "course",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "material_id",
+     "table": "form_materials",
+     "refColumn": "id"
+    },
+    {
+     "column": "subject_id",
+     "table": "quest_subjects",
+     "refColumn": "id"
+    },
+    {
+     "column": "formation_activity_id",
+     "table": "formation_activities",
+     "refColumn": "id"
+    },
+    {
+     "column": "sdp_activity_id",
+     "table": "sdp_activities",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "scholar_subjects_grades": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "school_year",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "semester",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "subject",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "grade",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "remarks",
+     "type": "text",
+     "notNull": false,
+     "default": ""
+    },
+    {
+     "name": "recorded_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "subject_code",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "recorded_by_school_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "period_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "legacy_semester",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "units",
+     "type": "numeric",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "exclude_from_gwa",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "recorded_by",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "recorded_by_school_id",
+     "table": "schools",
+     "refColumn": "id"
+    },
+    {
+     "column": "period_id",
+     "table": "academic_periods",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "scholar_counseling_referrals": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "referred_by",
+     "type": "uuid",
+     "notNull": true,
+     "default": "auth.uid()"
+    },
+    {
+     "name": "referred_to",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "referral_date",
+     "type": "date",
+     "notNull": true,
+     "default": "CURRENT_DATE"
+    },
+    {
+     "name": "previous_semester_status",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "failed_subjects",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "lacking_grades",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "endorsed_for",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "remarks",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "pending"
+    },
+    {
+     "name": "division_head_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "reconsideration_reason",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "signature_path",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "approved_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "approved_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "referred_by",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "referred_to",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "division_head_id",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "approved_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "sdp_activities": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "submitted_by_scholar_id",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "category",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "nature",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "organization",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "date_time",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "venue",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "project_head",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "head_cluster",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "budgetary_requirement",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "source_of_fund",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "source_of_fund_other",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "rationale",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "link_with_org",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "objectives",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "target_partners",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "target_partners_other",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "specific_role",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "work_plan",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "program_flow",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "budget_items",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "reviewed_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "reviewed_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "pubmat_path",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "activity_type",
+     "type": "text",
+     "notNull": true,
+     "default": "one_time"
+    },
+    {
+     "name": "recurring_dates",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "credits",
+     "type": "integer",
+     "notNull": true,
+     "default": 1
+    },
+    {
+     "name": "end_time",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "target_year_levels",
+     "type": "text[]",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "all_year_levels",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "target_barangays",
+     "type": "text[]",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "target_clusters",
+     "type": "text[]",
+     "notNull": true,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "submitted_by_scholar_id",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "reviewed_by",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "activity_monitors": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "activity_type",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "activity_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "staff_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "assigned_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "staff_id",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "assigned_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "submission_uploads": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "scholar_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "activity_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "field_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "field_label_snapshot",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "original_file_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "renamed_file_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "mime_type",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "drive_file_id",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "uploaded"
+    },
+    {
+     "name": "staff_comment",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "reviewed_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "reviewed_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "storage_path",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "file_size_bytes",
+     "type": "bigint",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "file_removed_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id",
+     "table": "scholars",
+     "refColumn": "id"
+    },
+    {
+     "column": "activity_id",
+     "table": "submission_activities",
+     "refColumn": "id"
+    },
+    {
+     "column": "field_id",
+     "table": "submission_upload_fields",
+     "refColumn": "id"
+    },
+    {
+     "column": "reviewed_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "quest_subjects": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "max_attempts_per_day",
+     "type": "integer",
+     "notNull": true,
+     "default": 3
+    },
+    {
+     "name": "passing_rate_min",
+     "type": "numeric",
+     "notNull": true,
+     "default": 75
+    },
+    {
+     "name": "passing_rate_max",
+     "type": "numeric",
+     "notNull": true,
+     "default": 100
+    },
+    {
+     "name": "certificate_filename",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "pubmat_path",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "answer_destination",
+     "type": "text",
+     "notNull": true,
+     "default": "quest_monitoring"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "scholar_subject_progress": {
+   "columns": [
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "subject_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "topic_count",
+     "type": "bigint",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "subject_percentage",
+     "type": "numeric",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [],
+   "fks": [
+    {
+     "column": "subject_id",
+     "table": "quest_subjects",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "kauban_emergency_messages": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "message",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": []
+  },
+  "financial_assistance_periods": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "academic_year",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "semester",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "is_active",
+     "type": "boolean",
+     "notNull": true,
+     "default": true
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "formation_activities": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "short_description",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "date_time",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "venue",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "target_year_levels",
+     "type": "text[]",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "all_year_levels",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "attendance_enabled",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "end_time",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "pubmat_path",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "financial_assistance_settings": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "boolean",
+     "notNull": true,
+     "default": true
+    },
+    {
+     "name": "approved_instructions",
+     "type": "text",
+     "notNull": true,
+     "default": "Please visit the CEDO office to claim your guarantee letter."
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": []
+  },
+  "school_letter_grades": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "school_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "letter",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "numeric_value",
+     "type": "numeric",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "school_id",
+     "table": "schools",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "programs": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "description",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "organizer",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "venue",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "date_time",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "division",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "research_survey_choices": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "question_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "choice_text",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "skip_to_question_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "ends_survey",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "question_id",
+     "table": "research_survey_questions",
+     "refColumn": "id"
+    },
+    {
+     "column": "skip_to_question_id",
+     "table": "research_survey_questions",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "scholar_counseling_records": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "consulted_by",
+     "type": "uuid",
+     "notNull": true,
+     "default": "auth.uid()"
+    },
+    {
+     "name": "date_visited",
+     "type": "date",
+     "notNull": true,
+     "default": "CURRENT_DATE"
+    },
+    {
+     "name": "failed_subjects",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "findings",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "staff_recommendations",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "visit_type",
+     "type": "text",
+     "notNull": true,
+     "default": "Office"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "consulted_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "scholar_attendance_finalized_notifications": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "scholar_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "session_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "read_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id",
+     "table": "scholars",
+     "refColumn": "id"
+    },
+    {
+     "column": "session_id",
+     "table": "attendance_sessions",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "my_survey_questions": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "survey_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "section_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "question_key",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "version",
+     "type": "integer",
+     "notNull": true,
+     "default": 1
+    },
+    {
+     "name": "archived_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "order_index",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "question_type",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "question_text",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "help_text",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "required",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "scale_min",
+     "type": "integer",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "scale_max",
+     "type": "integer",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "scale_min_label",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "scale_max_label",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "survey_id",
+     "table": "my_surveys",
+     "refColumn": "id"
+    },
+    {
+     "column": "section_id",
+     "table": "my_survey_sections",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "kauban_emergency_contacts": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "color",
+     "type": "text",
+     "notNull": true,
+     "default": "#E53E3E"
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": []
+  },
+  "scholar_grade_audit": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "changed_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "action",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "source",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "actor_type",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "actor_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "actor_label",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "school_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "grade_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "period_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "school_year",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "semester",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "old_subject_code",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "new_subject_code",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "old_subject",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "new_subject",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "old_grade",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "new_grade",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "old_units",
+     "type": "numeric",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "new_units",
+     "type": "numeric",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "old_exclude",
+     "type": "boolean",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "new_exclude",
+     "type": "boolean",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": []
+  },
+  "school_submission_events": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "school_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "period_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "event",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "actor_label",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "note",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "school_id",
+     "table": "schools",
+     "refColumn": "id"
+    },
+    {
+     "column": "period_id",
+     "table": "academic_periods",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "attendance_codes": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "session_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "code",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "kind",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "redeemed_by_scholar_id",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "redeemed_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "batch_number",
+     "type": "integer",
+     "notNull": true,
+     "default": 1
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "session_id",
+     "table": "attendance_sessions",
+     "refColumn": "id"
+    },
+    {
+     "column": "redeemed_by_scholar_id",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    }
+   ]
+  },
+  "accomplishment_logs": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "user_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "user_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "date",
+     "type": "date",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "activity",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "deliverable",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "photo",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "user_id",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "my_survey_shares": {
+   "columns": [
+    {
+     "name": "survey_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "user_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "role",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "granted_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "survey_id",
+    "user_id"
+   ],
+   "fks": [
+    {
+     "column": "survey_id",
+     "table": "my_surveys",
+     "refColumn": "id"
+    },
+    {
+     "column": "user_id",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "granted_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "submission_activities": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "description",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "all_year_levels",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "target_year_levels",
+     "type": "text[]",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "pubmat_path",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "leave_requests": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "user_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "user_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "type",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "date",
+     "type": "date",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "date_to",
+     "type": "date",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "day_part",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "time_from",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "time_to",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "reason",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "submitted_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "pending"
+    },
+    {
+     "name": "admin_note",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "user_id",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "my_surveys": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "owner_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "notNull": true,
+     "default": "Untitled survey"
+    },
+    {
+     "name": "description",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "draft"
+    },
+    {
+     "name": "public_slug",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "consent_enabled",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "consent_text",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "closes_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "response_limit",
+     "type": "integer",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "one_response_per_device",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "thank_you_message",
+     "type": "text",
+     "notNull": true,
+     "default": "Thank you for your response!"
+    },
+    {
+     "name": "revision",
+     "type": "integer",
+     "notNull": true,
+     "default": 1
+    },
+    {
+     "name": "last_edited_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "published_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "owner_id",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "last_edited_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "research_survey_answers": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "response_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "question_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "choice_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "likert_value",
+     "type": "integer",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "answered_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "text_value",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "response_id",
+     "table": "research_survey_responses",
+     "refColumn": "id"
+    },
+    {
+     "column": "question_id",
+     "table": "research_survey_questions",
+     "refColumn": "id"
+    },
+    {
+     "column": "choice_id",
+     "table": "research_survey_choices",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "kauban_sign_words": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "category_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "phrase",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "label",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "clip_video_path",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "tutorial_video_path",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "category_id",
+     "table": "kauban_sign_categories",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "submission_upload_fields": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "activity_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "label",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "is_required",
+     "type": "boolean",
+     "notNull": true,
+     "default": true
+    },
+    {
+     "name": "max_files",
+     "type": "integer",
+     "notNull": true,
+     "default": 1
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "allowed_categories",
+     "type": "text[]",
+     "notNull": true,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "activity_id",
+     "table": "submission_activities",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "submissions": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "user_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "user_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "daily_task_id",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "weekly_task_id",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "monthly_task_id",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "task_title",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "deliverable",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "parent_title",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "evidence",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "submitted_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "pending"
+    },
+    {
+     "name": "admin_note",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "user_id",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "quest_survey_answers": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "attempt_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "question_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "choice_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "other_text",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "attempt_id",
+     "table": "quest_survey_attempts",
+     "refColumn": "id"
+    },
+    {
+     "column": "question_id",
+     "table": "quest_questions",
+     "refColumn": "id"
+    },
+    {
+     "column": "choice_id",
+     "table": "quest_choices",
+     "refColumn": "id"
+    },
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    }
+   ]
+  },
+  "presentation_responses": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "session_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "slide_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "device_id",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "response",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "hidden",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "session_id",
+     "table": "presentation_sessions",
+     "refColumn": "id"
+    },
+    {
+     "column": "slide_id",
+     "table": "presentation_slides",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "sdp_reserved_credits": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "category",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "amount",
+     "type": "integer",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "source_school_year",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "source_semester",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "claimed",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "claimed_school_year",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "claimed_semester",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "claimed_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    }
+   ]
+  },
+  "quest_survey_attempts": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "subject_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "topic_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "date_taken",
+     "type": "date",
+     "notNull": true,
+     "default": "CURRENT_DATE"
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "subject_id",
+     "table": "quest_subjects",
+     "refColumn": "id"
+    },
+    {
+     "column": "topic_id",
+     "table": "quest_topics",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "kauban_sign_categories": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "key",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "label",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": []
+  },
+  "kauban_quick_phrase_categories": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "icon",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "color",
+     "type": "text",
+     "notNull": true,
+     "default": "#3B82F6"
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": []
+  },
+  "academic_periods": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "school_year",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "term",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "open"
+    },
+    {
+     "name": "submission_deadline",
+     "type": "date",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": []
+  },
+  "research_projects": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "research_agenda",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "agenda_type",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "leader_name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "members",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "stakeholders",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "rationale",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "significance",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "expected_outcomes_summary",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "current_stage",
+     "type": "text",
+     "notNull": true,
+     "default": "concept"
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "attendance_records": {
+   "columns": [
+    {
+     "name": "session_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "time_in_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "time_out_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "hours_earned",
+     "type": "numeric",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "incomplete"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "pending_survey_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "voucher_redemption_count",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    }
+   ],
+   "pk": [
+    "session_id",
+    "scholar_id_number"
+   ],
+   "fks": [
+    {
+     "column": "session_id",
+     "table": "attendance_sessions",
+     "refColumn": "id"
+    },
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "pending_survey_id",
+     "table": "research_surveys",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "scholar_sdp_category_status": {
+   "columns": [
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "category",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "completed",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "scholar_id_number",
+    "category"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    }
+   ]
+  },
+  "my_survey_sections": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "survey_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "notNull": true,
+     "default": "Untitled section"
+    },
+    {
+     "name": "description",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "order_index",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "survey_id",
+     "table": "my_surveys",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "divisions": {
+   "columns": [
+    {
+     "name": "code",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "code"
+   ],
+   "fks": []
+  },
+  "quest_topics": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "subject_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "max_attempts_per_day",
+     "type": "integer",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "video_url",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "slide_url",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "pdf_url",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "subject_id",
+     "table": "quest_subjects",
+     "refColumn": "id"
+    },
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "presentation_folders": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "owner_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "parent_folder_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "owner_id",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "parent_folder_id",
+     "table": "presentation_folders",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "grade_documents": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "school_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "period_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "storage_path",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "file_name",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "mime_type",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "size_bytes",
+     "type": "bigint",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "uploaded_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "uploaded_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "school_id",
+     "table": "schools",
+     "refColumn": "id"
+    },
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "period_id",
+     "table": "academic_periods",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "presentations": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "owner_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "folder_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "notNull": true,
+     "default": "Untitled presentation"
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "owner_id",
+     "table": "users",
+     "refColumn": "id"
+    },
+    {
+     "column": "folder_id",
+     "table": "presentation_folders",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "my_survey_responses": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "survey_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "device_id",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "consent_given",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "submitted_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "survey_id",
+     "table": "my_surveys",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "submission_activity_conditions": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "activity_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "condition_type",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "subject_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "formation_activity_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "sdp_activity_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "course",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "target_year_levels",
+     "type": "text[]",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "all_year_levels",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "activity_id",
+     "table": "submission_activities",
+     "refColumn": "id"
+    },
+    {
+     "column": "subject_id",
+     "table": "quest_subjects",
+     "refColumn": "id"
+    },
+    {
+     "column": "formation_activity_id",
+     "table": "formation_activities",
+     "refColumn": "id"
+    },
+    {
+     "column": "sdp_activity_id",
+     "table": "sdp_activities",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "presentation_slides": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "presentation_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "type",
+     "type": "text",
+     "notNull": true,
+     "default": "title"
+    },
+    {
+     "name": "order_index",
+     "type": "integer",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "settings",
+     "type": "jsonb",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "presentation_id",
+     "table": "presentations",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "presentation_sessions": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "presentation_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "join_code",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "active"
+    },
+    {
+     "name": "current_slide_id",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "show_results",
+     "type": "boolean",
+     "notNull": true,
+     "default": true
+    },
+    {
+     "name": "voting_locked",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "ended_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "presentation_id",
+     "table": "presentations",
+     "refColumn": "id"
+    },
+    {
+     "column": "current_slide_id",
+     "table": "presentation_slides",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "chat_messages": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "sender_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "sender_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "sender_picture",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "message",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "division",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "sender_id",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "grading_period_settings": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "boolean",
+     "notNull": true,
+     "default": true
+    },
+    {
+     "name": "current_school_year",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "current_semester",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": []
+  },
+  "formation_positions": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "org_type",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "org_key",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "role_key",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "role_label",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "slot_order",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    }
+   ]
+  },
+  "quest_choices": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "question_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "choice_text",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "is_correct",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "is_other",
+     "type": "boolean",
+     "notNull": true,
+     "default": false
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "question_id",
+     "table": "quest_questions",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "form_materials": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "kind",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "url",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "description",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    },
+    {
+     "name": "file_name",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "quest_word_cloud_entries": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "scholar_id_number",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "subject_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "topic_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "word",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "scholar_id_number",
+     "table": "scholars",
+     "refColumn": "scholar_id_number"
+    },
+    {
+     "column": "subject_id",
+     "table": "quest_subjects",
+     "refColumn": "id"
+    },
+    {
+     "column": "topic_id",
+     "table": "quest_topics",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "quest_questions": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "topic_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "question_text",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "points",
+     "type": "numeric",
+     "notNull": true,
+     "default": 1
+    },
+    {
+     "name": "is_active",
+     "type": "boolean",
+     "notNull": true,
+     "default": true
+    },
+    {
+     "name": "created_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "explanation",
+     "type": "text",
+     "notNull": true,
+     "default": ""
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "topic_id",
+     "table": "quest_topics",
+     "refColumn": "id"
+    },
+    {
+     "column": "created_by",
+     "table": "users",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "school_period_submissions": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "school_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "period_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notNull": true,
+     "default": "submitted"
+    },
+    {
+     "name": "submitted_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "submitted_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "scholars_total",
+     "type": "integer",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "submit_count",
+     "type": "integer",
+     "notNull": true,
+     "default": 1
+    },
+    {
+     "name": "reopened_at",
+     "type": "timestamp with time zone",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "reopened_by",
+     "type": "uuid",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "reopen_note",
+     "type": "text",
+     "notNull": false,
+     "default": null
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "school_id",
+     "table": "schools",
+     "refColumn": "id"
+    },
+    {
+     "column": "period_id",
+     "table": "academic_periods",
+     "refColumn": "id"
+    }
+   ]
+  },
+  "my_survey_options": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "question_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "survey_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "label",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "order_index",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": []
+  },
+  "kauban_quick_phrases": {
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notNull": true,
+     "default": "gen_random_uuid()"
+    },
+    {
+     "name": "category_id",
+     "type": "uuid",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "text",
+     "type": "text",
+     "notNull": true,
+     "default": null
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notNull": true,
+     "default": 0
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notNull": true,
+     "default": "now()"
+    }
+   ],
+   "pk": [
+    "id"
+   ],
+   "fks": [
+    {
+     "column": "category_id",
+     "table": "kauban_quick_phrase_categories",
+     "refColumn": "id"
+    }
+   ]
+  }
+ }
+}

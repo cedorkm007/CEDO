@@ -11,6 +11,8 @@ import { DashboardHome } from "../components/dashboard/DashboardHome";
 import { CompactNav } from "../components/dashboard/CompactNav";
 import { BottomNav } from "../components/dashboard/BottomNav";
 import { MobilePortalHeader } from "../components/dashboard/MobilePortalHeader";
+import { NotificationBell } from "../components/dashboard/NotificationBell";
+import { RenewalHomeBanner } from "../components/dashboard/RenewalHomeBanner";
 import { ProfilePopupModal } from "../components/dashboard/ProfilePopupModal";
 import { ProfilePanel } from "../components/dashboard/ProfilePanel";
 import { SubjectsGradesPanel } from "../components/dashboard/SubjectsGradesPanel";
@@ -149,10 +151,24 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
           {/* Desktop only — on mobile, Sign Out lives in the profile popup instead */}
           <div className="hidden md:flex items-center justify-between mb-4">
             <p className="text-sm text-slate-500">Scholar Portal</p>
-            <button onClick={handleSignOut} style={{ cursor: 'pointer' }} className="flex items-center gap-1.5 text-sm font-semibold text-[#062444] hover:text-red-600 hover:opacity-80 transition-colors">
-              <LogOut size={15} /> Sign Out
-            </button>
+            <div className="flex items-center gap-4">
+              <NotificationBell tone="light" />
+              <button onClick={handleSignOut} style={{ cursor: 'pointer' }} className="flex items-center gap-1.5 text-sm font-semibold text-[#062444] hover:text-red-600 hover:opacity-80 transition-colors">
+                <LogOut size={15} /> Sign Out
+              </button>
+            </div>
           </div>
+
+          {panel === null && (
+            <RenewalHomeBanner onOpen={() => {
+              // open Forms and Services > Services > Renewal directly
+              const url = new URL(window.location.href);
+              url.searchParams.set("formsTab", "services");
+              url.searchParams.set("service", "renewal");
+              window.history.pushState(window.history.state, "", url.toString());
+              setPanel("services");
+            }} />
+          )}
 
           {(pendingSurveys.length > 0 || finalizedNotifications.length > 0) && (
             <div className="space-y-2 mb-4">

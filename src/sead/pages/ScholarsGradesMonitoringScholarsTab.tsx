@@ -4,7 +4,7 @@ import { Modal } from "../components/Modal";
 import { ScholarGradesTable } from "../components/ScholarGradesTable";
 import {
   fetchScholarGradesForStaff, fetchScholarGradingConfigForStaff, fetchScholarLetterGradesForStaff,
-  type MonitoringScholarRow, type LetterGrade, type GradingPeriod,
+  type MonitoringScholarRow, type LetterGrade, type GradingPeriod, type GradingConfig,
 } from "../scholarsGradesMonitoringApi";
 import {
   fetchAllMatching, fetchFilterOptions, fetchSchoolSetups, fetchSchoolSummaries, fetchScholarsPage, loadScholarStandings,
@@ -14,6 +14,7 @@ import type { StaffGradeRow } from "../components/ScholarGradesTable";
 import { periodKey, periodTitle } from "@/lib/academicPeriods";
 import { STANDING_LABEL, type StandingResult } from "@/lib/standing";
 import { StandingChip } from "@/school/components/portalParts";
+import { OutcomeCountChips } from "@/app/components/OutcomeBadge";
 import { GradeDocumentsList, GradeHistoryList, HistoryHeading } from "@/app/components/GradeEvidence";
 import { fetchGradeAudit, fetchGradeDocuments } from "@/lib/gradeEvidenceApi";
 import type { AuditEntry, GradeDocument } from "@/lib/gradeEvidence";
@@ -190,7 +191,7 @@ export function ScholarsGradesMonitoringScholarsTab({ period, periodId }: { peri
       </p>
 
       <div className="bg-white border border-[#e6ecf5] rounded-xl overflow-x-auto relative">
-        <table className="w-full min-w-[860px] text-[14px]">
+        <table className="w-full min-w-[980px] text-[14px]">
           <caption className="sr-only">Scholars with their GWA and scholarship standing for {periodTitle(period)}</caption>
           <thead className="bg-[#f7f9fc]">
             <tr>
@@ -200,15 +201,16 @@ export function ScholarsGradesMonitoringScholarsTab({ period, periodId }: { peri
               <th scope="col" className={TH_CLS}>Program</th>
               <th scope="col" className={TH_CLS}>Year</th>
               <th scope="col" className={TH_CLS}>GWA</th>
+              <th scope="col" className={TH_CLS}>Failed / INC</th>
               <th scope="col" className={TH_CLS}>Standing</th>
               <th scope="col" className={TH_CLS}>Grades</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="text-center py-8 text-slate-600">Loading…</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-slate-600">Loading…</td></tr>
             ) : shown.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-8 text-slate-600">No scholars found.</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-slate-600">No scholars found.</td></tr>
             ) : shown.map(r => {
               const i = info.get(r.scholarIdNumber);
               const standing: StandingResult = i?.standing ?? "no_gwa";
@@ -220,6 +222,7 @@ export function ScholarsGradesMonitoringScholarsTab({ period, periodId }: { peri
                   <td className="px-4 py-2.5 text-slate-700">{r.program}</td>
                   <td className="px-4 py-2.5 text-slate-700">{r.yearLevel}</td>
                   <td className="px-4 py-2.5 font-semibold text-[#062444]">{i?.gwa == null ? "—" : i.gwa.toFixed(2)}{i?.gwa == null && <span className="sr-only">No GWA yet</span>}</td>
+                  <td className="px-4 py-2.5"><div className="flex flex-wrap items-center gap-1.5">{i?.outcomes ? <OutcomeCountChips counts={i.outcomes} /> : null}{!i?.outcomes || (i.outcomes.failed + i.outcomes.inc + i.outcomes.review === 0) ? <span className="text-slate-700">—</span> : null}</div></td>
                   <td className="px-4 py-2.5"><StandingChip standing={standing} /></td>
                   <td className="px-4 py-2.5">
                     <button onClick={() => setViewing(r)} className="text-[#0077b6] font-semibold hover:underline">View Grades<span className="sr-only"> for {displayName(r)}</span></button>
@@ -257,6 +260,7 @@ function ScholarGradesModal({ scholar, period, periodId, onClose }: { scholar: M
   const [grades, setGrades] = useState<StaffGradeRow[]>([]);
   const [showAll, setShowAll] = useState(false);
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
+  const [config, setConfig] = useState<GradingConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -266,6 +270,7 @@ function ScholarGradesModal({ scholar, period, periodId, onClose }: { scholar: M
       fetchScholarLetterGradesForStaff(scholar.scholarIdNumber),
     ]).then(([g, config, letters]) => {
       setGrades(g);
+      setConfig(config);
       setLetterGrades(config?.usesLetterGrades ? letters : []);
       setLoading(false);
     });
@@ -319,7 +324,7 @@ function ScholarGradesModal({ scholar, period, periodId, onClose }: { scholar: M
               Nothing is recorded for this scholar in {periodTitle(period)}, but other periods have grades — use "Show all periods".
             </p>
           )}
-          <ScholarGradesTable key={showAll ? "all" : wantedKey} grades={shown} letterGrades={letterGrades} />
+          <ScholarGradesTable key={showAll ? "all" : wantedKey} grades={shown} letterGrades={letterGrades} config={config} />
 
           <section aria-label="Supporting documents" className="mt-5">
             <h4 className="flex items-center gap-1.5 text-[14.5px] font-bold text-[#062444] mb-2"><Paperclip size={15} aria-hidden="true" /> Supporting documents — {periodTitle(period)}</h4>

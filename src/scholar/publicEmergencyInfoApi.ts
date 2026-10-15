@@ -11,12 +11,14 @@ export interface PublicScholarEmergencyInfo {
   emergencyContactName?: string;
   emergencyContactRelationship?: string;
   emergencyContactNumber?: string;
+  /** Where the scholar's renewal stands. Only a short status line is public: nothing about grades, SDP or documents. */
+  renewal?: { state: "removed" | "renewed" | "in_progress" | "none"; line: string; csr_number: string | null };
 }
 
 export async function fetchPublicScholarEmergencyInfo(token: string): Promise<{ ok: boolean; error?: string; result?: PublicScholarEmergencyInfo }> {
   const { data, error } = await supabase.rpc("get_public_scholar_emergency_info", { p_token: token });
   if (error) return { ok: false, error: error.message };
-  const payload = data as { found: boolean; name?: string; emergencyContactName?: string; emergencyContactRelationship?: string; emergencyContactNumber?: string } | null;
+  const payload = data as PublicScholarEmergencyInfo | null;
   if (!payload) return { ok: false, error: "Couldn't load this scholar ID." };
   return { ok: true, result: payload };
 }

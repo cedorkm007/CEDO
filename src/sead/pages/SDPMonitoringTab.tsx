@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
-import { X, ClipboardList, Plus, Search, CheckCircle2, UserCheck, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
   fetchAttendanceForActivity, creditAttendance, removeAttendance,
-  fetchAllScholarsSDPChecklist,
+  fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
-  type SDPActivity, type SDPCategory, type SDPActivityType, type AttendanceEntry, type ScholarSDPChecklist,
+  type SDPActivity, type SDPCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
 } from "../sdpMonitorApi";
 import { SDP_CATEGORIES } from "@/scholar/sdpApi";
@@ -16,6 +16,10 @@ import { uploadPubmat, pubmatUrl } from "../pubmatApi";
 import { ScholarSearchField, type ScholarSearchResult } from "../components/ScholarSearchField";
 import { SDPHistoryModal } from "../components/SDPHistoryModal";
 import { ListPagination } from "@/app/components/PaginatedList";
+import { PeriodSelect } from "@/app/components/PeriodSelect";
+import { fetchAcademicPeriods } from "@/lib/academicPeriodsApi";
+import { fetchCurrentGradingPeriod, type GradingPeriod } from "../scholarsGradesMonitoringApi";
+import { normalizeTerm, periodKey, periodOptions, type AcademicPeriod } from "@/lib/academicPeriods";
 import { useUrlState } from "@/app/useUrlState";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
 import { ExportButton } from "@/app/components/ExportButtons";
@@ -1015,31 +1019,89 @@ function CreditCell({ credits }: { credits: number }) {
   );
 }
 
+type ComplianceFilter = "all" | "complied" | "not_complied";
+
+/** Complied / Not complied for the chosen semester. Words and an icon, never colour alone; Summer has no requirement. */
+function ComplianceBadge({ row }: { row: ScholarSdpCompliance }) {
+  const base = "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[13px] font-bold";
+  if (!row.applicable) return <span className="text-[13px] font-semibold text-slate-700">Not required (Summer)</span>;
+  if (row.complied) return <span className={`${base} border-green-300 bg-green-50 text-green-800`}><CheckCircle2 size={13} aria-hidden="true" /> Complied</span>;
+  return <span className={`${base} border-red-300 bg-red-50 text-red-800`}><XCircle size={13} aria-hidden="true" /> Not complied</span>;
+}
+
 function ChecklistSection() {
-  const [scholars, setScholars] = useState<ScholarSDPChecklist[]>([]);
+  const [rows, setRows] = useState<ScholarSdpCompliance[]>([]);
+  const [legacy, setLegacy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [viewingScholar, setViewingScholar] = useState<ScholarSDPChecklist | null>(null);
+  const [filter, setFilter] = useState<ComplianceFilter>("all");
+  const [viewingScholar, setViewingScholar] = useState<{ scholarIdNumber: string; name: string } | null>(null);
+  const [periods, setPeriods] = useState<AcademicPeriod[]>([]);
+  const [current, setCurrent] = useState<GradingPeriod>({ schoolYear: "", semester: "" });
+  const [viewKey, setViewKey] = useState<string | null>(null);
 
-  async function load() {
+  useEffect(() => {
+    void Promise.all([fetchAcademicPeriods(), fetchCurrentGradingPeriod()]).then(([p, cur]) => {
+      if (p.ok) setPeriods(p.periods);
+      setCurrent(cur);
+    });
+  }, []);
+
+  // The semesters on record, plus the Current Grading Period if it is not listed yet. Summer is a normal option (no SDP requirement).
+  const allPeriods = useMemo(() => {
+    const list = [...periods];
+    const term = normalizeTerm(current.semester);
+    if (current.schoolYear && term && !list.some(x => periodKey(x.schoolYear, x.term) === periodKey(current.schoolYear, term))) {
+      list.push({ id: periodKey(current.schoolYear, term), schoolYear: current.schoolYear, term, status: "open", deadline: null });
+    }
+    return list;
+  }, [periods, current]);
+  const options = useMemo(() => periodOptions(allPeriods, current), [allPeriods, current]);
+  const currentKey = current.schoolYear ? periodKey(current.schoolYear, current.semester) : "";
+  const effectiveKey = viewKey && options.some(o => o.key === viewKey) ? viewKey : currentKey;
+  const chosen = allPeriods.find(x => periodKey(x.schoolYear, x.term) === effectiveKey) ?? null;
+
+  const load = useCallback(async () => {
+    if (!chosen) { if (current.schoolYear === "") return; setRows([]); setLoading(false); return; }
     setLoading(true);
-    setScholars(await fetchAllScholarsSDPChecklist());
+    setError("");
+    const result = await fetchScholarsSdpCompliance({ schoolYear: chosen.schoolYear, semester: chosen.term });
+    if (result.ok) {
+      setLegacy(false);
+      setRows(result.rows);
+    } else {
+      // The compliance function comes with a database update. Until it is applied, still show the credits (current period only), without the result.
+      setLegacy(true);
+      setError(result.error);
+      const old = await fetchAllScholarsSDPChecklist();
+      setRows(old.map(o => ({ scholarIdNumber: o.scholarIdNumber, name: o.name, communityService: o.communityService, communityVolunteerism: o.communityVolunteerism, formationProgram: o.formationProgram, applicable: true, complied: null, missing: "" })));
+    }
     setLoading(false);
-  }
-  useEffect(() => { load(); }, []);
+  }, [chosen, current.schoolYear]);
+  useEffect(() => { void load(); }, [load]);
 
-  const filtered = scholars.filter(s => {
+  const counts = useMemo(() => ({
+    complied: rows.filter(r => r.applicable && r.complied === true).length,
+    notComplied: rows.filter(r => r.applicable && r.complied === false).length,
+  }), [rows]);
+  const summer = rows.length > 0 && rows.every(r => !r.applicable);
+
+  const filtered = rows.filter(s => {
+    if (filter === "complied" && s.complied !== true) return false;
+    if (filter === "not_complied" && s.complied !== false) return false;
     if (!search.trim()) return true;
     const q = search.trim().toLowerCase();
     return s.name.toLowerCase().includes(q) || s.scholarIdNumber.toLowerCase().includes(q);
   });
 
-  const { sorted: sortedScholars, sortState, toggleSort } = useSort<ScholarSDPChecklist>(filtered, {
+  const { sorted: sortedScholars, sortState, toggleSort } = useSort<ScholarSdpCompliance>(filtered, {
     scholarIdNumber: s => s.scholarIdNumber,
     name: s => s.name,
     communityService: s => s.communityService,
     communityVolunteerism: s => s.communityVolunteerism,
     formationProgram: s => s.formationProgram,
+    result: s => (s.complied === null ? 2 : s.complied ? 1 : 0),
   });
 
   const [page, setPage] = useState(1);
@@ -1047,45 +1109,76 @@ function ChecklistSection() {
   const totalPages = Math.max(1, Math.ceil(sortedScholars.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const paged = sortedScholars.slice((safePage - 1) * pageSize, safePage * pageSize);
-  useEffect(() => { setPage(1); }, [search]);
+  useEffect(() => { setPage(1); }, [search, filter, effectiveKey]);
 
   return (
     <div>
-      <p className="text-sm text-muted-foreground mb-4">Each scholar's completion of the 3 required SDP categories, and their attended vs. available activities.</p>
+      <p className="text-sm text-slate-600 mb-4">Each scholar's SDP credits and whether they <strong>complied</strong> in the chosen semester: at least 3 credits in each of the 3 categories, counting credit carried over from earlier semesters. Summer has no SDP requirement.</p>
 
-      <div className="flex items-center gap-2 bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 max-w-sm mb-4">
-        <Search size={15} className="text-slate-400" />
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or Scholar ID…"
-          className="w-full text-sm outline-none" />
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mb-4">
+        <PeriodSelect label="Semester" options={options} value={effectiveKey} onChange={setViewKey} />
+        <div className="flex items-center gap-2 bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 w-full max-w-sm">
+          <Search size={15} className="text-slate-500" aria-hidden="true" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or Scholar ID…" aria-label="Search by name or Scholar ID"
+            className="w-full text-sm outline-none" />
+        </div>
       </div>
+
+      {!summer && !legacy && (
+        <div role="group" aria-label="Filter by SDP result" className="flex items-center gap-1 bg-[#f8fafd] border border-[#e6ecf5] rounded-lg p-1 mb-4 w-fit max-w-full flex-wrap">
+          {([
+            ["all", `All (${rows.length.toLocaleString()})`],
+            ["complied", `Complied (${counts.complied.toLocaleString()})`],
+            ["not_complied", `Not complied (${counts.notComplied.toLocaleString()})`],
+          ] as const).map(([value, label]) => (
+            <button key={value} onClick={() => setFilter(value)} aria-pressed={filter === value}
+              className={`text-[13px] font-semibold px-3 py-1.5 rounded-md ${filter === value ? "bg-[#062444] text-white" : "text-slate-600 hover:bg-white"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {legacy && (
+        <p role="status" className="text-[13.5px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+          Showing credits only, for the current period. The Complied / Not complied result needs the latest database update{error ? ` (${error})` : ""}.
+        </p>
+      )}
 
       <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden overflow-x-auto">
         <table className="w-full text-sm">
+          <caption className="sr-only">Scholars' SDP credits and result for the chosen semester</caption>
           <thead>
-            <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#0088cc]">
+            <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#00709f]">
               <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
               <SortableTh label="Scholar Name" sortKey="name" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />
               <SortableTh label={<>Institutional<br />Volunteerism</>} sortKey="communityService" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap text-center" />
               <SortableTh label={<>Community<br />Volunteerism</>} sortKey="communityVolunteerism" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap text-center" />
               <SortableTh label={<>Formation<br />Program</>} sortKey="formationProgram" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap text-center" />
+              {!legacy && <SortableTh label="SDP Result" sortKey="result" sortState={sortState} onSort={toggleSort} className="px-5 py-3 whitespace-nowrap" />}
               <th className="px-5 py-3 text-center whitespace-nowrap">SDP History</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">Loading…</td></tr>
+              <tr><td colSpan={7} className="px-5 py-10 text-center text-slate-600">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">No scholars found.</td></tr>
+              <tr><td colSpan={7} className="px-5 py-10 text-center text-slate-600">No scholars found.</td></tr>
             ) : (
               paged.map(s => (
                 <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
-                  <td className="px-5 py-3 text-slate-500 whitespace-nowrap">{s.scholarIdNumber}</td>
+                  <td className="px-5 py-3 text-slate-600 whitespace-nowrap">{s.scholarIdNumber}</td>
                   <td className="px-5 py-3 font-medium text-[#062444] whitespace-nowrap">{s.name}</td>
                   <td className="px-5 py-3 text-center"><CreditCell credits={s.communityService} /></td>
                   <td className="px-5 py-3 text-center"><CreditCell credits={s.communityVolunteerism} /></td>
                   <td className="px-5 py-3 text-center"><CreditCell credits={s.formationProgram} /></td>
+                  {!legacy && (
+                    <td className="px-5 py-3">
+                      <ComplianceBadge row={s} />
+                      {s.applicable && s.complied === false && s.missing && <p className="mt-1 text-[13px] text-slate-700">{s.missing}</p>}
+                    </td>
+                  )}
                   <td className="px-5 py-3 text-center">
-                    <button onClick={() => setViewingScholar(s)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">View</button>
+                    <button onClick={() => setViewingScholar({ scholarIdNumber: s.scholarIdNumber, name: s.name })} className="text-[13px] font-semibold text-[#0077b6] hover:underline">View</button>
                   </td>
                 </tr>
               ))

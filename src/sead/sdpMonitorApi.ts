@@ -215,6 +215,42 @@ export interface ScholarSDPChecklist {
  */
 const SDP_CHECKLIST_PAGE_SIZE = 1000;
 
+export interface ScholarSdpCompliance {
+  scholarIdNumber: string;
+  name: string;
+  communityService: number;
+  communityVolunteerism: number;
+  formationProgram: number;
+  /** False for Summer: there is no SDP requirement, so there is no result. */
+  applicable: boolean;
+  /** true / false for 1st and 2nd Semester; null when not applicable. */
+  complied: boolean | null;
+  /** What is missing, e.g. "Formation Program: 2 of 3"; empty when complied. For Summer: "Not required for Summer". */
+  missing: string;
+}
+
+/**
+ * Every scholar's SDP credits AND whether they complied in ONE semester (scholars_sdp_compliance,
+ * supabase_migration_renewal_p1_foundations.sql): complied = at least 3 credits in each of the three categories, counting credit carried
+ * over from earlier semesters. Read in pages because PostgREST caps one response at 1,000 rows.
+ */
+export async function fetchScholarsSdpCompliance(period: { schoolYear: string; semester: string }): Promise<{ ok: true; rows: ScholarSdpCompliance[] } | { ok: false; error: string }> {
+  const PAGE = 1000;
+  const rows: ScholarSdpCompliance[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase.rpc("scholars_sdp_compliance", { p_school_year: period.schoolYear, p_semester: period.semester }).range(from, from + PAGE - 1);
+    if (error) return { ok: false, error: error.message };
+    const page = (data ?? []) as Record<string, unknown>[];
+    rows.push(...page.map(r => ({
+      scholarIdNumber: String(r.scholar_id_number), name: String(r.name ?? ""),
+      communityService: Number(r.community_service ?? 0), communityVolunteerism: Number(r.community_volunteerism ?? 0), formationProgram: Number(r.formation_program ?? 0),
+      applicable: r.applicable !== false, complied: r.complied == null ? null : !!r.complied, missing: String(r.missing ?? ""),
+    })));
+    if (page.length < PAGE) break;
+  }
+  return { ok: true, rows };
+}
+
 /** Paginated via .range() because scholars_sdp_checklist() returns one row per scholar — PostgREST caps any single response (RPCs included) at 1000 rows, well under this project's scholar count. */
 export async function fetchAllScholarsSDPChecklist(): Promise<ScholarSDPChecklist[]> {
   const out: ScholarSDPChecklist[] = [];
