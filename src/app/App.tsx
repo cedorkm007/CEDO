@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { PushSettings } from "@/app/components/PushSettings";
 import { canSeeScholarRenewal, isItAdmin, isSeadHead } from "@/lib/renewalAccess";
+import { canUseStorageTool } from "@/lib/storageToolAccess";
 import { ReferralFormPanel } from "@/sead/components/ReferralFormPanel";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import { ExportButton } from "@/app/components/ExportButtons";
@@ -40,6 +41,7 @@ import { ScholarsGradesMonitoringPage } from "@/sead/ScholarsGradesMonitoringPag
 import { ScholarRenewalPage } from "@/sead/ScholarRenewalPage";
 import { MyResearchPage } from "@/sead/pages/MyResearchPage";
 import { MyPresentationsPage } from "@/presentations/pages/MyPresentationsPage";
+import { StorageToolPage } from "@/storagetool/pages/StorageToolPage";
 import { MySurveysPage } from "@/mysurveys/pages/MySurveysPage";
 import { AccountsPage } from "@/itadmin/AccountsPage";
 import { TopNav } from "@/app/components/TopNav";
@@ -68,7 +70,7 @@ export const DIVISION_LIST: DivisionInfo[] = [DIVISIONS.LITM, DIVISIONS.EPDPM, D
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
-export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "questManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "researchProjectMonitoring" | "myResearch" | "myPresentations" | "mySurveys" | "staffAccounts" | "financialAssistanceTools" | "scholarCounseling" | "scholarsGradesMonitoring" | "scholarRenewal" | "scanningTools";
+export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitoring" | "notifications" | "history" | "forms" | "admin" | "scholarManagement" | "questManagement" | "sdpMonitoring" | "formationTools" | "formsManagement" | "kaubanContent" | "scholarshipProgramInfo" | "researchProjectMonitoring" | "myResearch" | "myPresentations" | "mySurveys" | "staffAccounts" | "financialAssistanceTools" | "scholarCounseling" | "scholarsGradesMonitoring" | "scholarRenewal" | "scanningTools" | "storageTool";
 
 /** "Scholar Management Tools" (question bank + scholar accounts) is now gated by
  *  the "scholar_management" tag (see src/app/staffToolTags.ts) instead of a fixed
@@ -89,7 +91,7 @@ export type Page = "home" | "profile" | "tasks" | "accomplishments" | "monitorin
 // hand-copied a third time into a different file.
 export const IT_ADMIN_USERNAME = "it.admin1";
 
-const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "questManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "researchProjectMonitoring", "myResearch", "myPresentations", "mySurveys", "staffAccounts", "financialAssistanceTools", "scholarCounseling", "scholarsGradesMonitoring", "scholarRenewal", "scanningTools"];
+const PAGE_VALUES: readonly Page[] = ["home", "profile", "tasks", "accomplishments", "monitoring", "notifications", "history", "forms", "admin", "scholarManagement", "questManagement", "sdpMonitoring", "formationTools", "formsManagement", "kaubanContent", "scholarshipProgramInfo", "researchProjectMonitoring", "myResearch", "myPresentations", "mySurveys", "staffAccounts", "financialAssistanceTools", "scholarCounseling", "scholarsGradesMonitoring", "scholarRenewal", "scanningTools", "storageTool"];
 
 /**
  * Mirrors the exact gating conditions in the render switch at the bottom
@@ -119,6 +121,7 @@ function isPageAuthorizedFor(page: Page, user: UserProfile): boolean {
     case "scholarsGradesMonitoring": return user.tags.includes("scholars_grades_monitoring");
     case "scholarRenewal": return canSeeScholarRenewal(user);
     case "scanningTools": return user.hasMonitorAssignment;
+    case "storageTool": return canUseStorageTool(user);
     default: return true; // home, profile, tasks, accomplishments, notifications, forms, myResearch, myPresentations, mySurveys — open to any signed-in user
   }
 }
@@ -3596,6 +3599,9 @@ export default function App() {
           )}
           {page==="scholarsGradesMonitoring" && currentUser.tags.includes("scholars_grades_monitoring") && (
             <ScholarsGradesMonitoringPage/>
+          )}
+          {page==="storageTool" && canUseStorageTool(currentUser) && (
+            <StorageToolPage/>
           )}
           {page==="scholarRenewal" && canSeeScholarRenewal(currentUser) && (
             <ScholarRenewalPage isEvaluator={currentUser.tags.includes("scholar_renewal_evaluator")} isDivisionHead={currentUser.tags.includes("sead_division_head")} isSeadHead={isSeadHead(currentUser)} isItAdmin={isItAdmin(currentUser)}/>

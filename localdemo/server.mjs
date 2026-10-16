@@ -188,11 +188,68 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
   }
 
   /** Files are kept inside the private database (never on disk elsewhere). Access rules run as the caller, so the real storage policies apply. */
+  const tusUploads = new Map();   // uploads in progress: id -> { bucket, name, type, length, chunks, received }
   async function handleStorage(req, res, url) {
     const who = caller(req);
     const asCaller = fn => rest.withRole({ role: who.role, claims: who.claims }, fn);
     const none = (status, message) => json(res, status, { statusCode: String(status), error: message, message });
     const p = url.pathname.replace(/^\/storage\/v1/, "");
+
+    // ── Resumable (tus) uploads: what the website uses for files over 6 MB. POST creates, HEAD tells how much arrived, PATCH adds a chunk. ──
+    const tusM = /^\/upload\/resumable(?:\/([^/]+))?$/.exec(p);
+    if (tusM) {
+      const tusHeaders = extra => ({ "tus-resumable": "1.0.0", ...extra });
+      const decodeMeta = h => Object.fromEntries(String(h ?? "").split(",").map(s => s.trim()).filter(Boolean).map(s => { const [k, v] = s.split(" "); return [k, v ? Buffer.from(v, "base64").toString("utf8") : ""]; }));
+      const storeObject = async (bucket, name, type, data) => asCaller(async tx => {
+        await tx.query("insert into storage.objects (bucket_id, name, owner, metadata) values ($1, $2, nullif(current_setting('request.jwt.claim.sub', true), '')::uuid, $3::jsonb)",
+          [bucket, name, JSON.stringify({ mimetype: type, size: data.length, base64: data.toString("base64") })]);
+      });
+      if (req.method === "POST" && !tusM[1]) {
+        const meta = decodeMeta(req.headers["upload-metadata"]);
+        const length = Number(req.headers["upload-length"]);
+        const bucket = meta.bucketName, name = meta.objectName, type = meta.contentType || "application/octet-stream";
+        if (!bucket || !name || !Number.isFinite(length)) return none(400, "Missing upload information");
+        const bucketRow = (await db.query("select file_size_limit from storage.buckets where id = $1", [bucket])).rows[0];
+        if (!bucketRow) return none(404, "Bucket not found");
+        if (bucketRow.file_size_limit && length > Number(bucketRow.file_size_limit)) return none(413, "The object exceeded the maximum allowed size");
+        const verdict = await asCaller(async tx => {
+          if ((await tx.query("select 1 from storage.objects where bucket_id = $1 and name = $2", [bucket, name])).rows.length > 0) throw new Error("__exists__");
+          await tx.query("insert into storage.objects (bucket_id, name, owner, metadata) values ($1, $2, nullif(current_setting('request.jwt.claim.sub', true), '')::uuid, '{}'::jsonb)", [bucket, name]);
+          throw new Error("__allowed__");
+        }).then(() => "?", e => (e.message === "__allowed__" ? "ok" : e.message === "__exists__" ? "exists" : "denied"));
+        if (verdict === "exists") return none(409, "The resource already exists");
+        if (verdict !== "ok") return none(403, "new row violates row-level security policy");
+        const id = crypto.randomUUID();
+        const up = { bucket, name, type, length, chunks: [], received: 0 };
+        tusUploads.set(id, up);
+        const body = await readBody(req);
+        if (body.length) { up.chunks.push(body); up.received += body.length; }
+        const loc = `http://127.0.0.1:${port}/storage/v1/upload/resumable/${id}`;
+        if (up.received >= up.length) { try { await storeObject(bucket, name, type, Buffer.concat(up.chunks)); } catch { return none(403, "new row violates row-level security policy"); } tusUploads.delete(id); }
+        res.writeHead(201, tusHeaders({ location: loc, "upload-offset": String(up.received) }));
+        return res.end();
+      }
+      const up = tusM[1] ? tusUploads.get(tusM[1]) : null;
+      if (req.method === "HEAD") {
+        if (!up) return none(404, "Not found");
+        res.writeHead(200, tusHeaders({ "upload-offset": String(up.received), "upload-length": String(up.length), "cache-control": "no-store" }));
+        return res.end();
+      }
+      if (req.method === "PATCH") {
+        if (!up) return none(404, "Not found");
+        if (Number(req.headers["upload-offset"]) !== up.received) { res.writeHead(409, tusHeaders({})); return res.end(); }
+        const body = await readBody(req);
+        up.chunks.push(body); up.received += body.length;
+        if (up.received >= up.length) {
+          try { await storeObject(up.bucket, up.name, up.type, Buffer.concat(up.chunks)); } catch { return none(403, "new row violates row-level security policy"); }
+          tusUploads.delete(tusM[1]);
+        }
+        res.writeHead(204, tusHeaders({ "upload-offset": String(up.received) }));
+        return res.end();
+      }
+      if (req.method === "DELETE") { tusUploads.delete(tusM[1]); res.writeHead(204, tusHeaders({})); return res.end(); }
+      return none(405, "Method not allowed");
+    }
 
     // Remove files: DELETE /object/<bucket> with { prefixes: [...] }
     let m = /^\/object\/([^/]+)$/.exec(p);
@@ -264,7 +321,7 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
       "access-control-allow-origin": req.headers.origin ?? "*",
       "access-control-allow-headers": req.headers["access-control-request-headers"] ?? "*",
       "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS",
-      "access-control-expose-headers": "Content-Range, Content-Type",
+      "access-control-expose-headers": "Content-Range, Content-Type, Location, Upload-Offset, Upload-Length, Tus-Resumable",
       "access-control-max-age": "600",
     };
     for (const [k, v] of Object.entries(cors)) res.setHeader(k, v);

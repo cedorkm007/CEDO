@@ -42,6 +42,9 @@ const STAFF = [
   { username: "demo.divhead", first: "TEST", last: "Division Head", role: "staff", sead: true, tags: ["sead_division_head"], label: "Division Head" },
   { username: "demo.seadhead", first: "TEST", last: "SEAD Head", role: "division_admin", sead: true, tags: [], label: "Head of SEAD (Scholar Renewal Dashboard and Excel only)" },
   { username: "it.admin1", first: "TEST", last: "IT Admin", role: "staff", sead: false, tags: [], label: "IT admin" },
+  { username: "demo.storage", first: "TEST", last: "Storage Staff", role: "staff", sead: false, tags: ["storage_tool"], label: "Staff WITH the Storage Tool tag" },
+  { username: "demo.storage2", first: "TEST", last: "Storage Staff Two", role: "staff", sead: false, tags: ["storage_tool"], label: "A second staff member WITH the Storage Tool tag" },
+  { username: "demo.plain", first: "TEST", last: "Plain Staff", role: "staff", sead: false, tags: [], label: "Staff WITHOUT the Storage Tool tag (no special tools)" },
 ];
 
 // ── SDP activities: category + credits each attendance is worth ──
@@ -276,6 +279,8 @@ export async function seedDb(db) {
   for (const s of SCHOLARS.filter(x => x.renewal?.endorsed)) { const rec = await recOf(s.n); await as(id("staff:demo.evaluator"), async tx => tx.query("select public.renewal_endorse($1, 'Study plan approved and consultation done.')", [rec])); }
   // Phase 8: certificates are switched ON in the demo (in the real project the office switches them on), and one renewal is already confirmed.
   await db.query("update csr_settings set enabled = true where id");
+  // Storage Tool: the demo's biggest file is 20 MB (the real setting is 500 MB), so "a file over the limit" can be tried without a huge file.
+  await db.query("update storage_tool_settings set max_file_mb = 20 where id");
   for (const s of SCHOLARS.filter(x => x.renewal?.confirmed)) { const rec = await recOf(s.n); await as(id("staff:demo.evaluator"), async tx => tx.query("select public.renewal_confirm($1, 'All passed.')", [rec])); }
   for (const s of SCHOLARS.filter(x => x.renewal?.reconsidered)) {
     const rec = await recOf(s.n);

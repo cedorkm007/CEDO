@@ -1,0 +1,17 @@
+# Storage Tool — progress
+
+Working rules (owner): each phase on its own branch + PR; NO merge until the owner says "Approved, next phase" for the whole feature's go-live; end each phase with a walkthrough and STOP; plain language; previews must not touch real data (local demo only).
+
+## Decisions (owner, 2026-10-16)
+Name **Storage Tool**; access = a NEW staff tool tag `storage_tool` (given by it.admin1; it.admin1 always may); **personal storage** per person, with sharing to other staff (permission chosen per share: view / upload / full edit) and to the public (upload-only links, with a "lock key" = optional password); non-staff = anyone with the link; uploaders cannot see others' files; Trash 30 days; whole storage 200 GB; biggest file 500 MB; only the link creator is notified; local demo first, then one careful real-site trial; no virus scanning in v1; default allowed types PDF, JPG, PNG, DOCX, XLSX; CAPTCHA (Cloudflare Turnstile) built but OFF until a key is added.
+
+## Phase 0 — plan (2026-10-16)
+`CEDO_Drive_Phase0_Plan.docx` (CEDO-SQL-exports). Findings: React + Vite on Vercel, Supabase; `it.admin1` is a username not a tag; files in a new private bucket; tus uploads; ZIP in the browser (cap ~500 MB); public upload through edge functions + signed upload URLs (Phase 3).
+
+## Phase 1 — access, personal storage, folders, upload, preview, download (branch `storage-tool/phase-1`)
+- Database — `supabase_migration_storage_tool_p1.sql`: `can_use_storage_tool()` (it.admin1 or tag `storage_tool`), `storage_tool_settings` (500 MB / 30 days / 200 GB), `storage_tool_folders` / `storage_tool_files` (personal: RLS owner + can_use; no write policies; unique names per folder among non-trashed; files stored as `<owner id>/<file id>`, FKs `on delete restrict`), `storage_tool_activity` (written from the start), private bucket `storage-tool` (500 MB) with rules (send/read own part; remove only unregistered objects), functions `storage_tool_create_folder`, `storage_tool_register_file` (real size from storage, limit, 200 GB quota, " (1)" names, idempotent), `storage_tool_path`, `storage_tool_usage`, `storage_tool_settings_save` (it.admin1), helpers `_storage_tool_clean_name/_free_name/_log/_require/_object_registered`.
+- Website: `src/storagetool/` (`storageToolLogic.ts` pure rules, `storageToolApi.ts`, `uploader.ts` (XHR ≤ 6 MB, tus > 6 MB via `tus-js-client`), `dropCollect.ts`, `pages/StorageToolPage.tsx`, components `UploadTray`, `PreviewModal`, `FileTypeIcon`), `src/lib/storageToolAccess.ts`, tag in `staffToolTags.ts`, page wiring in `App.tsx` + `Sidebar.tsx`.
+- Demo: staff `demo.storage`, `demo.storage2` (tag), `demo.plain` (no tag); the demo storage stand-in supports resumable (tus) uploads; demo biggest file 20 MB.
+- Tests: `tests/storage-tool/run_db_tests.mjs` (38), `tests/storage-tool/run.mjs` (16). Browser (demo): no-tag staff blocked (menu, URL, direct calls); folders; 11 files incl. 8 MB resumable; same names → "(1)"; whole-folder upload + merge; cancel (uploading and waiting); preview; list/sort; second user isolated; axe clean (only the existing chat button).
+- Not done: Phase 2 (rename/move/copy/multi-select/search/Trash/ZIP/details), Phase 3 (sharing: staff + public links), Phase 4 (activity screen, notifications, mobile polish).
+- Real-project note: Supabase Storage "Global file size limit" must be ≥ 500 MB; deleting a staff account that owns stored files is refused (restrict) until a hand-over feature exists.

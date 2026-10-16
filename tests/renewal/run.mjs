@@ -313,7 +313,7 @@ test("the Scholar Renewal tool is gated by its own tag, in the same places as th
   const app = fs.readFileSync(path.join(root, "src/app/App.tsx"), "utf8");
   assert.match(app, /case "scholarRenewal": return canSeeScholarRenewal\(user\)/);
   assert.match(app, /page==="scholarRenewal" && canSeeScholarRenewal\(currentUser\)/);
-  assert.match(app, /"scholarRenewal", "scanningTools"\]/, "PAGE_VALUES");
+  assert.match(app, /"scholarRenewal", "scanningTools"(, "storageTool")?]/, "PAGE_VALUES");
   assert.match(fs.readFileSync(path.join(root, "src/app/components/Sidebar.tsx"), "utf8"), /canSeeScholarRenewal\(user\)/);
 });
 

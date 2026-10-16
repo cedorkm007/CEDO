@@ -79,6 +79,11 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     description: "Monitor scholars' grade-completion rates by school and program, and drill into individual grades and GWA.",
   },
   {
+    key: "storage_tool",
+    label: "Storage Tool",
+    description: "A personal, private file storage (folders, upload, preview, download) with sharing for upload.",
+  },
+  {
     key: "scholar_renewal_evaluator",
     label: "Scholar Renewal Evaluator",
     description: "Opens renewal windows, reviews renewal applications, accepts or declines late ones, confirms every renewal, and decides INC cases after the deadline.",
