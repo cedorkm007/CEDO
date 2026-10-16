@@ -206,7 +206,7 @@ test("every new function in the SQL file checks access first; the clean-up funct
 });
 test("'Delete forever' lists the stored files, removes them from storage, and only then removes the rows; a ZIP and a copy never go through the website's server", () => {
   const api = read("src/storagetool/storageToolOrganizeApi.ts");
-  const forever = /export async function deleteForever[^]*?\n}\n/.exec(api)[0];
+  const forever = /export async function deleteForever[^]*?\r?\n}\r?\n/.exec(api)[0];
   assert.ok(forever.indexOf("storage_tool_forever_prepare") < forever.indexOf(".remove(") && forever.indexOf(".remove(") < forever.indexOf("storage_tool_forever_finish"));
   assert.match(api, /\.copy\(file\.storagePath, newPath\)/); assert.match(api, /registerFile\(newId, targetFolderId, file\.name, file\.mimeType\)/);
   const zip = read("src/storagetool/zipDownload.ts");
