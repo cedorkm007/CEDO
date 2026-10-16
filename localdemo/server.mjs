@@ -7,6 +7,8 @@ import { WebSocketServer } from "ws";
 import { RestApi } from "./postgrest.mjs";
 import { sign, verify, ANON_KEY, SERVICE_KEY, hashPassword, checkPassword } from "./jwt.mjs";
 
+if (!globalThis.crypto) globalThis.crypto = crypto.webcrypto;   // the public-upload stand-in uses the standard Web Crypto (older Node versions have no global one)
+
 const ACCESS_SECONDS = 60 * 60 * 8;
 const REFRESH_SECONDS = 60 * 60 * 24 * 30;
 
@@ -106,6 +108,7 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
   async function handleFunction(req, res, url, body) {
     const name = url.pathname.replace(/^\/functions\/v1\//, "");
     const who = caller(req);
+    if (name === "storage-tool-public") return await storageToolPublic(req, res, body);   // no sign-in: the public upload page
     if (who.role !== "authenticated" && who.role !== "service_role") return json(res, 200, { error: "Please sign in first." });
     const notInDemo = () => json(res, 200, { error: "This action is not available in the local demo." });
     switch (name) {
@@ -162,6 +165,56 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
     return link(path, d.scholar_id_number, d.term, d.school_year, prep.csr_number, prep.version);
   }
 
+  // ── The stand-in for the storage-tool-public edge function: the very same request handler (bundled from supabase/functions/_shared/storageToolPublic.ts),
+  //    with the database and the demo's storage behind it. Visitors have no account, so this is open to everybody, exactly like the real function. ──
+  let publicHandler = null;
+  async function publicHandlerModule() {
+    if (!publicHandler) {
+      const { build } = await import("esbuild");
+      const os = await import("node:os"), fsm = await import("node:fs"), pathm = await import("node:path"), { pathToFileURL, fileURLToPath } = await import("node:url");
+      const root = pathm.resolve(pathm.dirname(fileURLToPath(import.meta.url)), "..");
+      const outDir = fsm.mkdtempSync(pathm.join(os.tmpdir(), "storage-public-demo-"));
+      const outfile = pathm.join(outDir, "storageToolPublic.mjs");
+      await build({ entryPoints: [pathm.join(root, "supabase/functions/_shared/storageToolPublic.ts")], bundle: true, format: "esm", platform: "node", outfile, logLevel: "error" });
+      publicHandler = await import(pathToFileURL(outfile).href);
+    }
+    return publicHandler;
+  }
+  async function storageToolPublic(req, res, body) {
+    const M = await publicHandlerModule();
+    const deps = {
+      rpc: async (fn, args) => {
+        const keys = Object.keys(args);
+        try {
+          const sql = `select public."${fn}"(${keys.map((k, i) => `${k} => $${i + 1}`).join(", ")}) as r`;
+          const row = (await db.query(sql, keys.map(k => args[k]))).rows[0];
+          return { data: row ? row.r : null, error: null };
+        } catch (e) { return { data: null, error: { message: String(e.message ?? e) } }; }
+      },
+      storage: {
+        signedUpload: async path => {
+          const token = sign({ url: `upload:storage-tool/${path}`, exp: Math.floor(Date.now() / 1000) + 7200 });
+          return { url: `http://127.0.0.1:${port}/storage/v1/object/upload/sign/storage-tool/${path.split("/").map(encodeURIComponent).join("/")}?token=${token}` };
+        },
+        stat: async path => {
+          const row = (await db.query("select metadata from storage.objects where bucket_id = 'storage-tool' and name = $1", [path])).rows[0];
+          return row ? { size: Number(row.metadata?.size ?? 0) } : null;
+        },
+        head: async (path, bytes) => {
+          const row = (await db.query("select metadata from storage.objects where bucket_id = 'storage-tool' and name = $1", [path])).rows[0];
+          return row ? new Uint8Array(Buffer.from(row.metadata?.base64 ?? "", "base64").subarray(0, bytes)) : null;
+        },
+        remove: async paths => { for (const p of paths) await db.query("delete from storage.objects where bucket_id = 'storage-tool' and name = $1", [p]); },
+      },
+      ipSalt: "demo-salt",
+      turnstile: null,
+    };
+    try {
+      const result = await M.handlePublic(deps, body ?? {}, String(req.socket.remoteAddress ?? "unknown"));
+      return json(res, result.status, result.json);
+    } catch (e) { return json(res, 500, { error: String(e.message ?? e) }); }
+  }
+
   // ── Storage (files kept in the private database, nothing leaves this computer) ──
   /** Pulls the file out of a multipart/form-data upload (what the website's storage client sends for a File). */
   function parseMultipart(buf, contentType) {
@@ -188,12 +241,94 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
   }
 
   /** Files are kept inside the private database (never on disk elsewhere). Access rules run as the caller, so the real storage policies apply. */
+  const tusUploads = new Map();   // uploads in progress: id -> { bucket, name, type, length, chunks, received }
   async function handleStorage(req, res, url) {
     const who = caller(req);
     const asCaller = fn => rest.withRole({ role: who.role, claims: who.claims }, fn);
     const none = (status, message) => json(res, status, { statusCode: String(status), error: message, message });
     const p = url.pathname.replace(/^\/storage\/v1/, "");
 
+    // ── Resumable (tus) uploads: what the website uses for files over 6 MB. POST creates, HEAD tells how much arrived, PATCH adds a chunk. ──
+    const tusM = /^\/upload\/resumable(?:\/([^/]+))?$/.exec(p);
+    if (tusM) {
+      const tusHeaders = extra => ({ "tus-resumable": "1.0.0", ...extra });
+      const decodeMeta = h => Object.fromEntries(String(h ?? "").split(",").map(s => s.trim()).filter(Boolean).map(s => { const [k, v] = s.split(" "); return [k, v ? Buffer.from(v, "base64").toString("utf8") : ""]; }));
+      const storeObject = async (bucket, name, type, data) => asCaller(async tx => {
+        await tx.query("insert into storage.objects (bucket_id, name, owner, metadata) values ($1, $2, nullif(current_setting('request.jwt.claim.sub', true), '')::uuid, $3::jsonb)",
+          [bucket, name, JSON.stringify({ mimetype: type, size: data.length, base64: data.toString("base64") })]);
+      });
+      if (req.method === "POST" && !tusM[1]) {
+        const meta = decodeMeta(req.headers["upload-metadata"]);
+        const length = Number(req.headers["upload-length"]);
+        const bucket = meta.bucketName, name = meta.objectName, type = meta.contentType || "application/octet-stream";
+        if (!bucket || !name || !Number.isFinite(length)) return none(400, "Missing upload information");
+        const bucketRow = (await db.query("select file_size_limit from storage.buckets where id = $1", [bucket])).rows[0];
+        if (!bucketRow) return none(404, "Bucket not found");
+        if (bucketRow.file_size_limit && length > Number(bucketRow.file_size_limit)) return none(413, "The object exceeded the maximum allowed size");
+        const verdict = await asCaller(async tx => {
+          if ((await tx.query("select 1 from storage.objects where bucket_id = $1 and name = $2", [bucket, name])).rows.length > 0) throw new Error("__exists__");
+          await tx.query("insert into storage.objects (bucket_id, name, owner, metadata) values ($1, $2, nullif(current_setting('request.jwt.claim.sub', true), '')::uuid, '{}'::jsonb)", [bucket, name]);
+          throw new Error("__allowed__");
+        }).then(() => "?", e => (e.message === "__allowed__" ? "ok" : e.message === "__exists__" ? "exists" : "denied"));
+        if (verdict === "exists") return none(409, "The resource already exists");
+        if (verdict !== "ok") return none(403, "new row violates row-level security policy");
+        const id = crypto.randomUUID();
+        const up = { bucket, name, type, length, chunks: [], received: 0 };
+        tusUploads.set(id, up);
+        const body = await readBody(req);
+        if (body.length) { up.chunks.push(body); up.received += body.length; }
+        const loc = `http://127.0.0.1:${port}/storage/v1/upload/resumable/${id}`;
+        if (up.received >= up.length) { try { await storeObject(bucket, name, type, Buffer.concat(up.chunks)); } catch { return none(403, "new row violates row-level security policy"); } tusUploads.delete(id); }
+        res.writeHead(201, tusHeaders({ location: loc, "upload-offset": String(up.received) }));
+        return res.end();
+      }
+      const up = tusM[1] ? tusUploads.get(tusM[1]) : null;
+      if (req.method === "HEAD") {
+        if (!up) return none(404, "Not found");
+        res.writeHead(200, tusHeaders({ "upload-offset": String(up.received), "upload-length": String(up.length), "cache-control": "no-store" }));
+        return res.end();
+      }
+      if (req.method === "PATCH") {
+        if (!up) return none(404, "Not found");
+        if (Number(req.headers["upload-offset"]) !== up.received) { res.writeHead(409, tusHeaders({})); return res.end(); }
+        const body = await readBody(req);
+        up.chunks.push(body); up.received += body.length;
+        if (up.received >= up.length) {
+          try { await storeObject(up.bucket, up.name, up.type, Buffer.concat(up.chunks)); } catch { return none(403, "new row violates row-level security policy"); }
+          tusUploads.delete(tusM[1]);
+        }
+        res.writeHead(204, tusHeaders({ "upload-offset": String(up.received) }));
+        return res.end();
+      }
+      if (req.method === "DELETE") { tusUploads.delete(tusM[1]); res.writeHead(204, tusHeaders({})); return res.end(); }
+      return none(405, "Method not allowed");
+    }
+
+    // Copy inside storage: POST /object/copy { bucketId, sourceKey, destinationKey } (the rules run as the caller: read the source, insert the copy)
+    if (p === "/object/copy" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)).toString("utf8") || "{}");
+      try {
+        await asCaller(async tx => {
+          const src = (await tx.query("select metadata from storage.objects where bucket_id = $1 and name = $2", [body.bucketId, body.sourceKey])).rows[0];
+          if (!src) throw Object.assign(new Error("Object not found"), { code: "404" });
+          await tx.query("insert into storage.objects (bucket_id, name, owner, metadata) values ($1, $2, nullif(current_setting('request.jwt.claim.sub', true), '')::uuid, $3::jsonb)", [body.bucketId, body.destinationKey, JSON.stringify(src.metadata)]);
+        });
+        return json(res, 200, { Key: `${body.bucketId}/${body.destinationKey}` });
+      } catch (e) { return none(e.code === "404" ? 404 : 403, e.code === "404" ? "Object not found" : "new row violates row-level security policy"); }
+    }
+    // Several signed links at once: POST /object/sign/<bucket> { expiresIn, paths }
+    const signMany = /^\/object\/sign\/([^/]+)$/.exec(p);
+    if (signMany && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)).toString("utf8") || "{}");
+      const out = [];
+      for (const name of body.paths ?? []) {
+        const found = await asCaller(async tx => (await tx.query("select 1 from storage.objects where bucket_id = $1 and name = $2", [signMany[1], name])).rows.length > 0).catch(() => false);
+        if (!found) { out.push({ error: "Object not found", path: name, signedURL: null }); continue; }
+        const token = sign({ url: `${signMany[1]}/${name}`, exp: Math.floor(Date.now() / 1000) + 3600 });
+        out.push({ error: null, path: name, signedURL: `/object/sign/${signMany[1]}/${name.split("/").map(encodeURIComponent).join("/")}?token=${token}` });
+      }
+      return json(res, 200, out);
+    }
     // Remove files: DELETE /object/<bucket> with { prefixes: [...] }
     let m = /^\/object\/([^/]+)$/.exec(p);
     if (m && req.method === "DELETE") {
@@ -205,6 +340,22 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
       }).catch(e => ({ error: e }));
       if (removed.error) return none(403, String(removed.error.message));
       return json(res, 200, removed.map(r => ({ name: r.name })));
+    }
+    // One-time upload address made by the storage-tool-public stand-in: PUT /object/upload/sign/<bucket>/<path>?token=...  (no sign-in, the token is the permission)
+    m = /^\/object\/upload\/sign\/([^/]+)\/(.+)$/.exec(p);
+    if (m && req.method === "PUT") {
+      const bucket = m[1], name = decodeURIComponent(m[2]);
+      if (verify(url.searchParams.get("token"))?.url !== `upload:${bucket}/${name}`) return none(403, "Invalid token");
+      const raw = await readBody(req);
+      const ct = String(req.headers["content-type"] ?? "application/octet-stream");
+      const file = /multipart\/form-data/i.test(ct) ? parseMultipart(raw, ct) : { data: raw, type: ct };
+      if (!file) return none(400, "Could not read the upload");
+      const bucketRow = (await db.query("select file_size_limit from storage.buckets where id = $1", [bucket])).rows[0];
+      if (!bucketRow) return none(404, "Bucket not found");
+      if (bucketRow.file_size_limit && file.data.length > Number(bucketRow.file_size_limit)) return none(413, "The object exceeded the maximum allowed size");
+      if ((await db.query("select 1 from storage.objects where bucket_id = $1 and name = $2", [bucket, name])).rows.length > 0) return none(409, "The resource already exists");
+      await db.query("insert into storage.objects (bucket_id, name, metadata) values ($1, $2, $3::jsonb)", [bucket, name, JSON.stringify({ mimetype: file.type, size: file.data.length, base64: file.data.toString("base64") })]);
+      return json(res, 200, { Key: `${bucket}/${name}` });
     }
     // Signed link: POST /object/sign/<bucket>/<path>
     m = /^\/object\/sign\/([^/]+)\/(.+)$/.exec(p);
@@ -264,7 +415,7 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
       "access-control-allow-origin": req.headers.origin ?? "*",
       "access-control-allow-headers": req.headers["access-control-request-headers"] ?? "*",
       "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS",
-      "access-control-expose-headers": "Content-Range, Content-Type",
+      "access-control-expose-headers": "Content-Range, Content-Type, Location, Upload-Offset, Upload-Length, Tus-Resumable",
       "access-control-max-age": "600",
     };
     for (const [k, v] of Object.entries(cors)) res.setHeader(k, v);
@@ -319,6 +470,23 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
   // The stand-in for the real project's scheduler (pg_cron): once a minute, send due consultation reminders, notice INC deadlines that passed,
   // and send the INC / window-closing reminders.
+  // Stand-in for the storage-tool-purge function (the real one is called hourly by pg_cron): every minute, remove the stored files of items that were
+  // in the Trash longer than the setting, then their rows.
+  const runPurge = async () => {
+    try {
+      for (let round = 0; round < 5; round++) {
+        const due = (await db.query("select public.storage_tool_purge_claim(200) c")).rows[0].c ?? [];
+        if (due.length === 0) break;
+        for (const d of due) await db.query("delete from storage.objects where bucket_id = 'storage-tool' and name = $1", [d.path]);
+        await db.query("select public.storage_tool_purge_finish($1::uuid[])", [due.map(d => d.id)]);
+        if (due.length < 200) break;
+      }
+    } catch { /* the Storage Tool tables are not there (an older database): nothing to do */ }
+  };
+  const purgeTimer = setInterval(runPurge, 60_000);
+  // Stand-in for the pg_cron job "storage-tool-notices": tells the owner of an upload link about new uploads, one grouped notice per visit.
+  const runNotices = () => db.query("select public.storage_tool_notify_uploads()").catch(() => {});
+  const noticeTimer = setInterval(runNotices, 15_000);
   const runJobs = () => db.query("select public.renewal_run_scheduled_jobs()").catch(() => {});
   void runJobs();
   const jobsTimer = setInterval(runJobs, 60_000);
@@ -336,7 +504,7 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
   const pushTimer = setInterval(runPush, 15_000);
   return {
     url: `http://127.0.0.1:${port}`, port, rest,
-    close: () => new Promise(r => { clearInterval(jobsTimer); clearInterval(pushTimer); wss.close(); server.close(() => r()); server.closeAllConnections?.(); }),
+    close: () => new Promise(r => { clearInterval(jobsTimer); clearInterval(pushTimer); clearInterval(purgeTimer); clearInterval(noticeTimer); wss.close(); server.close(() => r()); server.closeAllConnections?.(); }),
   };
 }
 

@@ -5,6 +5,7 @@
   import { SchoolSiteApp } from "./school/SchoolSiteApp.tsx";
   import { KaubanApp } from "./kauban/KaubanApp.tsx";
   import { JoinSiteApp } from "./join/JoinSiteApp.tsx";
+  import { PublicUploadApp } from "./publicupload/PublicUploadApp.tsx";
   import "./styles/index.css";
 
   // Five separate apps, one Vite build, one Vercel deployment:
@@ -30,6 +31,9 @@
   const isScholarSite = !isKaubanSite && path.startsWith("/cedo");
   const isSchoolSite = !isKaubanSite && !isScholarSite && path.startsWith("/school");
   const isJoinSite = !isKaubanSite && !isScholarSite && !isSchoolSite && path.startsWith("/join");
+  //  - "/upload/<code>" -> the Storage Tool's public upload page (src/publicupload/PublicUploadApp.tsx): people outside CEDO send files into one folder
+  //                  through an upload link. No accounts at all; it talks only to the "storage-tool-public" function.
+  const isUploadSite = !isKaubanSite && !isScholarSite && !isSchoolSite && !isJoinSite && path.startsWith("/upload/");
 
   // PWA baseline for Kauban only (docs/kauban/PROGRESS.md milestone 16):
   // manifest link, iOS home-screen icon, and theme-color are injected here
@@ -78,5 +82,5 @@
   }
 
   createRoot(document.getElementById("root")!).render(
-    isKaubanSite ? <KaubanApp /> : isScholarSite ? <ScholarSiteApp /> : isSchoolSite ? <SchoolSiteApp /> : isJoinSite ? <JoinSiteApp /> : <App />
+    isKaubanSite ? <KaubanApp /> : isScholarSite ? <ScholarSiteApp /> : isSchoolSite ? <SchoolSiteApp /> : isJoinSite ? <JoinSiteApp /> : isUploadSite ? <PublicUploadApp /> : <App />
   );
