@@ -657,6 +657,9 @@ export async function generateFinancialAssistanceReport(opts: FinancialAssistanc
 // to any single entity.
 
 export interface SubmissionRosterReportOptions {
+  /** The heading and the start of the file name; the roster's own by default. */
+  title?: string
+  fileNamePrefix?: string
   activityName: string
   columns: string[]
   columnWeights?: number[]
@@ -705,7 +708,7 @@ export async function generateSubmissionRosterReport(opts: SubmissionRosterRepor
       headers: { default: header },
       children: [
         new Paragraph({
-          children: [bold('SUBMISSION MONITORING ROSTER', 36)],
+          children: [bold(opts.title ?? 'SUBMISSION MONITORING ROSTER', 36)],
           alignment: AlignmentType.CENTER,
           spacing: { after: 60 },
         }),
@@ -734,7 +737,7 @@ export async function generateSubmissionRosterReport(opts: SubmissionRosterRepor
   })
 
   const blob = await Packer.toBlob(doc)
-  saveAs(blob, `Submission_Roster_${opts.activityName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.docx`)
+  saveAs(blob, `${opts.fileNamePrefix ?? 'Submission_Roster'}_${opts.activityName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.docx`)
 }
 
 // â”€â”€ 7. Comprehensive Scholar Profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { FileText, Eye } from "lucide-react";
 import {
   fetchSubmissionUploadCountsByActivity, fetchSubmissionUploadCountsByYearLevel, fetchSubmissionUploadCountsBySchool,
-  fetchSubmissionFiles, fetchSubmissionUploadStatusCounts,
-  type SubmissionUploadActivityCount, type SubmissionUploadGroupCount, type SubmissionFileRow, type SubmissionUploadStatusCounts, type SubmissionUploadStatus,
+  fetchSubmissionFiles, fetchSubmissionUploadStatusCounts, fetchSubmissionActivities,
+  type SubmissionActivity, type SubmissionUploadActivityCount, type SubmissionUploadGroupCount, type SubmissionFileRow, type SubmissionUploadStatusCounts, type SubmissionUploadStatus,
 } from "../submissionActivitiesApi";
 import { GroupCountBreakdown, type GroupCountRow } from "../components/GroupCountBreakdown";
 import { Modal } from "../components/Modal";
@@ -40,8 +40,13 @@ const STATUS_CLASSES: Record<string, string> = {
  */
 export function SubmissionFileBrowserTab() {
   const [activityCounts, setActivityCounts] = useState<SubmissionUploadActivityCount[] | null>(null);
-  const [statusCounts, setStatusCounts] = useState<SubmissionUploadStatusCounts | null>(null);
+  const [statusCounts, setStatusCounts] = useState<(SubmissionUploadStatusCounts & { error?: string }) | null>(null);
   const [loading, setLoading] = useState(true);
+  // The three totals follow ONE submission activity that was created in Submission Activities (the newest by default), or all of them.
+  const [createdActivities, setCreatedActivities] = useState<SubmissionActivity[]>([]);
+  const [statusActivityId, setStatusActivityId] = useState<string | null>(null);
+  const [statusReady, setStatusReady] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState(false);
 
   const [selectedActivity, setSelectedActivity] = useState<SubmissionUploadActivityCount | null>(null);
   const [yearLevelCounts, setYearLevelCounts] = useState<SubmissionUploadGroupCount[] | null>(null);
@@ -61,12 +66,24 @@ export function SubmissionFileBrowserTab() {
   useEffect(() => {
     void (async () => {
       setLoading(true);
-      const [activities, statuses] = await Promise.all([fetchSubmissionUploadCountsByActivity(), fetchSubmissionUploadStatusCounts()]);
+      const [activities, created] = await Promise.all([fetchSubmissionUploadCountsByActivity(), fetchSubmissionActivities()]);
       setActivityCounts(activities);
-      setStatusCounts(statuses);
+      setCreatedActivities(created);                       // newest first
+      setStatusActivityId(created[0]?.id ?? null);
+      setStatusReady(true);
       setLoading(false);
     })();
   }, []);
+
+  // The totals are read again whenever another activity is chosen.
+  useEffect(() => {
+    if (!statusReady) return;
+    let cancelled = false;
+    setLoadingStatus(true);
+    void fetchSubmissionUploadStatusCounts(statusActivityId).then(counts => { if (!cancelled) { setStatusCounts(counts); setLoadingStatus(false); } });
+    return () => { cancelled = true; };
+  }, [statusActivityId, statusReady]);
+  const statusActivityName = statusActivityId === null ? "All submission activities" : createdActivities.find(a => a.id === statusActivityId)?.name ?? "Submission activity";
 
   async function handleSelectActivity(activityName: string) {
     const activity = activityCounts?.find(a => a.activityName === activityName);
@@ -136,8 +153,21 @@ export function SubmissionFileBrowserTab() {
         </>}
       </div>
 
-      {!selectedActivity && statusCounts && (statusCounts.accepted + statusCounts.needsResubmission + statusCounts.pending > 0) && (
-        <div role="group" aria-label="Submission status totals" className="grid grid-cols-3 gap-2">
+      {!selectedActivity && createdActivities.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <label htmlFor="status-activity" className="text-[13px] font-bold text-[#062444]">Submission activity</label>
+          <select id="status-activity" value={statusActivityId ?? "all"} onChange={e => setStatusActivityId(e.target.value === "all" ? null : e.target.value)}
+            className="max-w-full rounded-lg border border-[#062444]/15 bg-white px-3 py-2 text-[13px] font-semibold text-[#062444] outline-none focus:border-[#0088cc]">
+            {createdActivities.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            <option value="all">All submission activities</option>
+          </select>
+          <p className="text-[12.5px] text-slate-600">The totals count the scholars with files in that activity only.</p>
+        </div>
+      )}
+      {!selectedActivity && statusCounts?.error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-[13px] text-red-700">{statusCounts.error}</p>}
+
+      {!selectedActivity && statusCounts && !statusCounts.error && (createdActivities.length > 0 || statusCounts.accepted + statusCounts.needsResubmission + statusCounts.pending > 0) && (
+        <div role="group" aria-label={`Submission status totals for ${statusActivityName}`} aria-busy={loadingStatus} className={`grid grid-cols-3 gap-2 ${loadingStatus ? "opacity-60" : ""}`}>
           {([
             ["accepted", "Accepted", statusCounts.accepted],
             ["needs_resubmission", "Needs Resubmission", statusCounts.needsResubmission],
@@ -158,7 +188,7 @@ export function SubmissionFileBrowserTab() {
       )}
 
       {!selectedActivity && statusView && (
-        <SubmissionStatusScholarsPanel status={statusView} label={TILE_LABELS[statusView]} />
+        <SubmissionStatusScholarsPanel status={statusView} label={TILE_LABELS[statusView]} activityId={statusActivityId} activityName={statusActivityName} />
       )}
 
       {!selectedActivity && !statusView && (
