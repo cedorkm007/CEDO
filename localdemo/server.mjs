@@ -7,6 +7,8 @@ import { WebSocketServer } from "ws";
 import { RestApi } from "./postgrest.mjs";
 import { sign, verify, ANON_KEY, SERVICE_KEY, hashPassword, checkPassword } from "./jwt.mjs";
 
+if (!globalThis.crypto) globalThis.crypto = crypto.webcrypto;   // the public-upload stand-in uses the standard Web Crypto (older Node versions have no global one)
+
 const ACCESS_SECONDS = 60 * 60 * 8;
 const REFRESH_SECONDS = 60 * 60 * 24 * 30;
 
@@ -106,6 +108,7 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
   async function handleFunction(req, res, url, body) {
     const name = url.pathname.replace(/^\/functions\/v1\//, "");
     const who = caller(req);
+    if (name === "storage-tool-public") return await storageToolPublic(req, res, body);   // no sign-in: the public upload page
     if (who.role !== "authenticated" && who.role !== "service_role") return json(res, 200, { error: "Please sign in first." });
     const notInDemo = () => json(res, 200, { error: "This action is not available in the local demo." });
     switch (name) {
@@ -160,6 +163,56 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
     await db.query("insert into storage.objects (bucket_id, name, metadata) values ('csr-issued', $1, $2::jsonb)", [path, JSON.stringify({ mimetype: "application/pdf", size: pdf.length, base64: Buffer.from(pdf).toString("base64") })]);
     try { await db.query("select public.csr_complete($1, $2)", [prep.csr_id, path]); } catch (e) { return answer(500, { error: String(e.message ?? e) }); }
     return link(path, d.scholar_id_number, d.term, d.school_year, prep.csr_number, prep.version);
+  }
+
+  // ── The stand-in for the storage-tool-public edge function: the very same request handler (bundled from supabase/functions/_shared/storageToolPublic.ts),
+  //    with the database and the demo's storage behind it. Visitors have no account, so this is open to everybody, exactly like the real function. ──
+  let publicHandler = null;
+  async function publicHandlerModule() {
+    if (!publicHandler) {
+      const { build } = await import("esbuild");
+      const os = await import("node:os"), fsm = await import("node:fs"), pathm = await import("node:path"), { pathToFileURL, fileURLToPath } = await import("node:url");
+      const root = pathm.resolve(pathm.dirname(fileURLToPath(import.meta.url)), "..");
+      const outDir = fsm.mkdtempSync(pathm.join(os.tmpdir(), "storage-public-demo-"));
+      const outfile = pathm.join(outDir, "storageToolPublic.mjs");
+      await build({ entryPoints: [pathm.join(root, "supabase/functions/_shared/storageToolPublic.ts")], bundle: true, format: "esm", platform: "node", outfile, logLevel: "error" });
+      publicHandler = await import(pathToFileURL(outfile).href);
+    }
+    return publicHandler;
+  }
+  async function storageToolPublic(req, res, body) {
+    const M = await publicHandlerModule();
+    const deps = {
+      rpc: async (fn, args) => {
+        const keys = Object.keys(args);
+        try {
+          const sql = `select public."${fn}"(${keys.map((k, i) => `${k} => $${i + 1}`).join(", ")}) as r`;
+          const row = (await db.query(sql, keys.map(k => args[k]))).rows[0];
+          return { data: row ? row.r : null, error: null };
+        } catch (e) { return { data: null, error: { message: String(e.message ?? e) } }; }
+      },
+      storage: {
+        signedUpload: async path => {
+          const token = sign({ url: `upload:storage-tool/${path}`, exp: Math.floor(Date.now() / 1000) + 7200 });
+          return { url: `http://127.0.0.1:${port}/storage/v1/object/upload/sign/storage-tool/${path.split("/").map(encodeURIComponent).join("/")}?token=${token}` };
+        },
+        stat: async path => {
+          const row = (await db.query("select metadata from storage.objects where bucket_id = 'storage-tool' and name = $1", [path])).rows[0];
+          return row ? { size: Number(row.metadata?.size ?? 0) } : null;
+        },
+        head: async (path, bytes) => {
+          const row = (await db.query("select metadata from storage.objects where bucket_id = 'storage-tool' and name = $1", [path])).rows[0];
+          return row ? new Uint8Array(Buffer.from(row.metadata?.base64 ?? "", "base64").subarray(0, bytes)) : null;
+        },
+        remove: async paths => { for (const p of paths) await db.query("delete from storage.objects where bucket_id = 'storage-tool' and name = $1", [p]); },
+      },
+      ipSalt: "demo-salt",
+      turnstile: null,
+    };
+    try {
+      const result = await M.handlePublic(deps, body ?? {}, String(req.socket.remoteAddress ?? "unknown"));
+      return json(res, result.status, result.json);
+    } catch (e) { return json(res, 500, { error: String(e.message ?? e) }); }
   }
 
   // ── Storage (files kept in the private database, nothing leaves this computer) ──
@@ -288,6 +341,22 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
       if (removed.error) return none(403, String(removed.error.message));
       return json(res, 200, removed.map(r => ({ name: r.name })));
     }
+    // One-time upload address made by the storage-tool-public stand-in: PUT /object/upload/sign/<bucket>/<path>?token=...  (no sign-in, the token is the permission)
+    m = /^\/object\/upload\/sign\/([^/]+)\/(.+)$/.exec(p);
+    if (m && req.method === "PUT") {
+      const bucket = m[1], name = decodeURIComponent(m[2]);
+      if (verify(url.searchParams.get("token"))?.url !== `upload:${bucket}/${name}`) return none(403, "Invalid token");
+      const raw = await readBody(req);
+      const ct = String(req.headers["content-type"] ?? "application/octet-stream");
+      const file = /multipart\/form-data/i.test(ct) ? parseMultipart(raw, ct) : { data: raw, type: ct };
+      if (!file) return none(400, "Could not read the upload");
+      const bucketRow = (await db.query("select file_size_limit from storage.buckets where id = $1", [bucket])).rows[0];
+      if (!bucketRow) return none(404, "Bucket not found");
+      if (bucketRow.file_size_limit && file.data.length > Number(bucketRow.file_size_limit)) return none(413, "The object exceeded the maximum allowed size");
+      if ((await db.query("select 1 from storage.objects where bucket_id = $1 and name = $2", [bucket, name])).rows.length > 0) return none(409, "The resource already exists");
+      await db.query("insert into storage.objects (bucket_id, name, metadata) values ($1, $2, $3::jsonb)", [bucket, name, JSON.stringify({ mimetype: file.type, size: file.data.length, base64: file.data.toString("base64") })]);
+      return json(res, 200, { Key: `${bucket}/${name}` });
+    }
     // Signed link: POST /object/sign/<bucket>/<path>
     m = /^\/object\/sign\/([^/]+)\/(.+)$/.exec(p);
     if (m && req.method === "POST") {
@@ -415,6 +484,9 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
     } catch { /* the Storage Tool tables are not there (an older database): nothing to do */ }
   };
   const purgeTimer = setInterval(runPurge, 60_000);
+  // Stand-in for the pg_cron job "storage-tool-notices": tells the owner of an upload link about new uploads, one grouped notice per visit.
+  const runNotices = () => db.query("select public.storage_tool_notify_uploads()").catch(() => {});
+  const noticeTimer = setInterval(runNotices, 15_000);
   const runJobs = () => db.query("select public.renewal_run_scheduled_jobs()").catch(() => {});
   void runJobs();
   const jobsTimer = setInterval(runJobs, 60_000);
@@ -432,7 +504,7 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
   const pushTimer = setInterval(runPush, 15_000);
   return {
     url: `http://127.0.0.1:${port}`, port, rest,
-    close: () => new Promise(r => { clearInterval(jobsTimer); clearInterval(pushTimer); clearInterval(purgeTimer); wss.close(); server.close(() => r()); server.closeAllConnections?.(); }),
+    close: () => new Promise(r => { clearInterval(jobsTimer); clearInterval(pushTimer); clearInterval(purgeTimer); clearInterval(noticeTimer); wss.close(); server.close(() => r()); server.closeAllConnections?.(); }),
   };
 }
 

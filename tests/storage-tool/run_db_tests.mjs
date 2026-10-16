@@ -14,6 +14,8 @@ await seedDb(db);
 // The demo builder retries a few statements of older files at the very end; apply this file once more to get exactly the order of the real project.
 const SQL_FILE = new URL("../../supabase_migration_storage_tool_p1.sql", import.meta.url);
 await db.exec(fs.readFileSync(SQL_FILE, "utf8"));
+// The later files re-define some of these functions (sharing); the Phase 1 checks must still hold for the final versions.
+for (const n of ["p2", "p3"]) { const f = new URL(`../../supabase_migration_storage_tool_${n}.sql`, import.meta.url); if (fs.existsSync(f)) await db.exec(fs.readFileSync(f, "utf8")); }
 
 const staffUid = name => seedId(`staff:${name}`);
 const ITADMIN = staffUid("it.admin1"), A = staffUid("demo.storage"), B = staffUid("demo.storage2"), PLAIN = staffUid("demo.plain"), COUNSELOR = staffUid("demo.counselor");

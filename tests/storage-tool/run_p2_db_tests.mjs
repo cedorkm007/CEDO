@@ -14,6 +14,7 @@ await seedDb(db);
 const P1 = new URL("../../supabase_migration_storage_tool_p1.sql", import.meta.url), P2 = new URL("../../supabase_migration_storage_tool_p2.sql", import.meta.url);
 await db.exec(fs.readFileSync(P1, "utf8"));
 await db.exec(fs.readFileSync(P2, "utf8"));
+{ const P3 = new URL("../../supabase_migration_storage_tool_p3.sql", import.meta.url); if (fs.existsSync(P3)) await db.exec(fs.readFileSync(P3, "utf8")); }   // the final versions of the functions must pass the Phase 2 checks too
 
 const staffUid = name => seedId(`staff:${name}`);
 const ITADMIN = staffUid("it.admin1"), A = staffUid("demo.storage"), B = staffUid("demo.storage2"), PLAIN = staffUid("demo.plain");

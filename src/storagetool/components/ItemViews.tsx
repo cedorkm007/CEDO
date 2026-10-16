@@ -26,6 +26,8 @@ export interface ItemViewProps {
   onDragLeaveFolder: (id: string) => void;
   onDropOnFolder: (id: string, e: React.DragEvent) => void;
   sortHeader: (key: "name" | "date" | "size" | "type", label: string) => ReactNode;
+  /** false when the person may only look (items cannot be dragged to other folders). Default true. */
+  canDrag?: boolean;
 }
 
 const dateText = (iso: string) => new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -53,7 +55,7 @@ export function ItemViews(p: ItemViewProps) {
   const folderDrag = (f: ListedFolder) => ({
     onDragOver: (e: React.DragEvent) => p.onDragOverFolder(f.id, e), onDragLeave: () => p.onDragLeaveFolder(f.id), onDrop: (e: React.DragEvent) => p.onDropOnFolder(f.id, e),
   });
-  const dragSource = (entry: Entry) => ({ draggable: true, onDragStart: (e: React.DragEvent) => p.onDragStartItem(entry, e), onDragEnd: p.onDragEndItem });
+  const dragSource = (entry: Entry) => (p.canDrag === false ? {} : { draggable: true, onDragStart: (e: React.DragEvent) => p.onDragStartItem(entry, e), onDragEnd: p.onDragEndItem });
   const contextMenu = (key: string) => ({ onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); p.setMenuFor(key); } });
   const ring = (id: string) => (p.dropTarget === id ? "ring-2 ring-[#00709f] bg-sky-50" : "");
 

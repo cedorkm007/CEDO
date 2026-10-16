@@ -6,7 +6,7 @@ export function ModalShell({ title, onClose, children, wide }: { title: string; 
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8" onClick={onClose}>
       <div className={`w-full ${wide ? "max-w-lg" : "max-w-md"} bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto`} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4 rounded-t-2xl sticky top-0">
-          <h3 className="text-white font-bold text-[15px]">{title}</h3>
+          <h2 className="text-white font-bold text-[15px]">{title}</h2>
           <button onClick={onClose} aria-label="Close" className="text-white/70 hover:text-white"><XIcon size={18} /></button>
         </div>
         <div className="p-6 space-y-3">{children}</div>

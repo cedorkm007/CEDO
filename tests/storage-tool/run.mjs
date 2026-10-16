@@ -7,6 +7,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import fs from "node:fs";
 import os from "node:os";
+import { webcrypto } from "node:crypto";
+if (!globalThis.crypto) globalThis.crypto = webcrypto;   // older Node versions have no global Web Crypto
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "storage-tool-"));
@@ -231,6 +233,59 @@ test("the Phase 2 screens use readable text (13px and up, no pale greys) and the
   }
   const page = read("src/storagetool/pages/StorageToolPage.tsx");
   assert.match(page, /fetchDetails\("folder", e\.folder\.id\)/); assert.match(page, /everything goes to the Trash together/);
+});
+
+console.log("\nPhase 3: sharing and upload links");
+const P = await bundle("public", "supabase/functions/_shared/storageToolPublic.ts");
+const lockHash = await P.hashLockKey("Open-Sesame-7", 1000), lockHash2 = await P.hashLockKey("Open-Sesame-7", 1000);
+const lockRight = await P.verifyLockKey("Open-Sesame-7", lockHash), lockCase = await P.verifyLockKey("open-sesame-7", lockHash), lockEmpty = await P.verifyLockKey("", lockHash);
+test("the lock key is turned into a scrambled hash in the browser (never sent as text), and only the right key matches it", () => {
+  assert.match(lockHash, /^pbkdf2\$1000\$[A-Za-z0-9+/=_-]+\$[A-Za-z0-9+/=_-]+$/); assert.equal(lockHash.includes("Open-Sesame-7"), false);
+  assert.equal(lockRight, true); assert.equal(lockCase, false); assert.equal(lockEmpty, false);
+  assert.notEqual(lockHash2, lockHash, "a new salt each time");
+});
+test("the share and link calls the website makes all exist in the Phase 3 SQL file, and none writes a table directly", () => {
+  const sql = read("supabase_migration_storage_tool_p3.sql"), api = read("src/storagetool/storageToolShareApi.ts");
+  const called = new Set([...api.matchAll(/rpc\("([a-z_]+)"/g)].map(m => m[1]));
+  assert.deepEqual([...called].sort(), ["storage_tool_browse", "storage_tool_link_create", "storage_tool_link_set_status", "storage_tool_link_update", "storage_tool_link_visitors", "storage_tool_links_list", "storage_tool_share_remove", "storage_tool_share_set", "storage_tool_shared_with_me", "storage_tool_shares_of", "storage_tool_staff_search"]);
+  for (const fn of called) assert.ok(new RegExp(`create or replace function public\\.${fn}\\(`).test(sql), fn);
+  for (const p of ["src/storagetool/storageToolShareApi.ts", "src/storagetool/components/ShareDialog.tsx", "src/storagetool/components/LinkManager.tsx", "src/storagetool/components/SharedWithMeView.tsx", "src/storagetool/pages/StorageToolPage.tsx"]) assert.equal(/\.from\("storage_tool_[a-z_]+"\)\s*\.(insert|update|delete|upsert)/.test(read(p)), false, p);
+});
+test("every Phase 3 function a signed-in person calls checks access first; the public ones are for the service role only and never for 'anon'", () => {
+  const sql = read("supabase_migration_storage_tool_p3.sql");
+  for (const fn of ["storage_tool_browse", "storage_tool_shared_with_me", "storage_tool_staff_search", "storage_tool_share_set", "storage_tool_share_remove", "storage_tool_shares_of", "storage_tool_link_create", "storage_tool_link_update", "storage_tool_link_set_status", "storage_tool_links_list", "storage_tool_link_visitors"]) {
+    const body = new RegExp(`create or replace function public\\.${fn}\\([^]*?\\n\\$\\$;`).exec(sql)?.[0] ?? "";
+    assert.ok(body.includes("perform public._storage_tool_require();"), fn);
+  }
+  for (const fn of ["public_link_get", "public_rate", "public_session_create", "public_session_get", "public_register", "public_mine"]) assert.match(sql, new RegExp(`grant execute on function public\\.storage_tool_${fn}\\([^)]*\\) to service_role;`), fn);
+  assert.equal(/to anon/.test(sql.replace(/--.*$/gm, "")), false);
+});
+test("the public page talks only to the storage-tool-public function: no tables, no sign-in, and a visitor can only add files", () => {
+  const api = read("src/publicupload/publicUploadApi.ts"), app = read("src/publicupload/PublicUploadApp.tsx");
+  assert.match(api, /\/functions\/v1\/storage-tool-public/); assert.equal(/supabase\.(from|rpc|auth|storage)|@\/lib\/supabase/.test(api + app), false, "no database or account access");
+  assert.deepEqual([...api.matchAll(/action: "([a-z]+)"/g)].map(m => m[1]).sort(), ["finish", "info", "mine", "open", "start"]);
+  assert.match(app, /checkStart\(f\.name, f\.size, rules\)/, "the same file check as the server is run before anything is sent");
+  assert.match(read("src/main.tsx"), /isUploadSite[^]*PublicUploadApp/);
+});
+test("the public page reads well: 14px and up, a progress bar with a name, errors announced, no pale greys", () => {
+  for (const p of ["src/publicupload/PublicUploadApp.tsx", "src/storagetool/components/LinkManager.tsx", "src/storagetool/components/ShareDialog.tsx", "src/storagetool/components/SharedWithMeView.tsx"]) {
+    const src = read(p);
+    assert.deepEqual([...src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], p);
+    assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(src), false, p);
+  }
+  const app = read("src/publicupload/PublicUploadApp.tsx");
+  assert.match(app, /role="progressbar"/); assert.match(app, /role="alert"/); assert.match(app, /aria-label="Choose files to send"/);
+});
+test("a person who may only look cannot change anything from the screens: add, edit and share are tied to the level the database reported", () => {
+  const page = read("src/storagetool/pages/StorageToolPage.tsx");
+  assert.match(page, /const canAdd = inBrowse && level >= 2/); assert.match(page, /const canEdit = inBrowse && level >= 3/); assert.match(page, /const isOwner = mode === "files"/);
+  assert.match(page, /canEdit \? \[\{ label: "Move to…"/); assert.match(page, /\.\.\.\(many \|\| !isOwner \? \[\] : \[\{ label: "Share…"/);
+  assert.match(page, /canDrag=\{canEdit\}/); assert.match(page, /Things you delete go to \$\{ownerName\}'s Trash/);
+});
+test("the bell and the notifications list know the new 'storage' kind and only show it to the person it was sent to", () => {
+  const app = read("src/app/App.tsx");
+  assert.match(app, /type NotifType = [^;]*"storage"/); assert.match(app, /n\.type === "referral_approval" \|\| n\.type === "renewal" \|\| n\.type === "storage"\s*\?\s*n\.userId === currentUser\?\.id/);
+  assert.match(app, /n\.type !== "storage"\) \|\| n\.userId === currentUser\.id/); assert.match(app, /Open Storage Tool/);
 });
 
 console.log(`\n${process.exitCode ? "SOME TESTS FAILED" : "All " + passed + " tests passed"}`);

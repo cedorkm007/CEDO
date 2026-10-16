@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronRight, Copy, Download, FolderInput, FolderPlus, FolderUp, HardDrive, Home, Info, LayoutGrid, List as ListIcon, Loader2, Search, Trash2, Upload, UploadCloud, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronRight, Copy, Download, FolderInput, FolderPlus, FolderUp, HardDrive, Home, Info, LayoutGrid, Link2, List as ListIcon, Loader2, Search, Share2, Trash2, Upload, UploadCloud, Users, X } from "lucide-react";
 import { ModalShell } from "@/sead/components/SeadUiShell";
-import { createFolder, fetchFolderContents, fetchFolderPath, fetchUsage, fileLink, findOrCreateFolder, type PathEntry, type StorageUsage } from "../storageToolApi";
+import { createFolder, fetchUsage, fileLink, findOrCreateFolder, type PathEntry, type StorageUsage } from "../storageToolApi";
 import { fetchDetails, moveItems, renameItem, searchItems, trashItems, type SearchHit } from "../storageToolOrganizeApi";
+import { LEVEL_TEXT, fetchBrowse, type AccessLevel, type SharedItem } from "../storageToolShareApi";
 import {
   countWords, formatBytes, itemKey, parseItemKey, planUpload, sortFiles, sortFolders, typeLabel,
-  type ItemRef, type ListedFile, type ListedFolder, type PickedFile, type SortKey,
+  type ItemKind, type ItemRef, type ListedFile, type ListedFolder, type PickedFile, type SortKey,
 } from "../storageToolLogic";
 import { collectDropped, collectFromInput } from "../dropCollect";
 import { uploadFile } from "../uploader";
@@ -19,6 +20,9 @@ import { ConfirmDialog, RenameDialog } from "../components/Dialogs";
 import { FolderPickerModal } from "../components/FolderPickerModal";
 import { DetailsPanel } from "../components/DetailsPanel";
 import { TrashView } from "../components/TrashView";
+import { ShareDialog } from "../components/ShareDialog";
+import { LinkManager } from "../components/LinkManager";
+import { SharedWithMeView } from "../components/SharedWithMeView";
 
 const DEFAULT_MAX_BYTES = 500 * 1024 * 1024;
 const PARALLEL_UPLOADS = 3;
@@ -32,11 +36,16 @@ function savedView(): "grid" | "list" { try { return localStorage.getItem(VIEW_K
  * "Storage Tool" — a person's own private storage, like a drive: folders inside folders, upload by button or drag and drop (files and whole folders),
  * rename, move (also by dragging), copy, search, details, delete to a Trash with Restore, download of files, folders or several items as a ZIP,
  * grid or list view, preview in the page. Only people with the "Storage Tool" tag (and the IT admin) can open it, and the database lets each person
- * see only their own folders and files. See supabase_migration_storage_tool_p1.sql and _p2.sql.
+ * see only their own folders and files. Phase 3: share with other staff (view / add files / edit, chosen per person; shown under "Shared with me")
+ * and upload links for people outside CEDO. See supabase_migration_storage_tool_p1.sql, _p2.sql and _p3.sql.
  */
 export function StorageToolPage() {
-  const [mode, setMode] = useState<"files" | "trash">("files");
+  const [mode, setMode] = useState<"files" | "shared" | "links" | "trash">("files");
   const [folderId, setFolderId] = useState<string | null>(null);
+  const [level, setLevel] = useState<AccessLevel>(4);          // what I may do here: 4 = my own, 3 = edit, 2 = add files, 1 = look only
+  const [ownerName, setOwnerName] = useState("");
+  const [shareFor, setShareFor] = useState<{ kind: ItemKind; id: string; name: string } | null>(null);
+  const [sharedKey, setSharedKey] = useState(0);
   const [path, setPath] = useState<PathEntry[]>([]);
   const [folders, setFolders] = useState<ListedFolder[]>([]);
   const [files, setFiles] = useState<ListedFile[]>([]);
@@ -76,19 +85,28 @@ export function StorageToolPage() {
   const maxBytes = usage?.maxFileBytes || DEFAULT_MAX_BYTES;
   const maxBytesRef = useRef(maxBytes);
   maxBytesRef.current = maxBytes;
+  const inBrowse = mode === "files" || (mode === "shared" && folderId !== null);   // looking at the inside of a folder (mine or shared with me)
+  const canAdd = inBrowse && level >= 2;                                           // upload and make folders
+  const canEdit = inBrowse && level >= 3;                                          // rename, move, delete
+  const isOwner = mode === "files";
+  const sharedRoot = mode === "shared" && path.length > 0 ? path[0] : null;       // the folder that was shared with me (the top of what I can see)
 
   const load = useCallback(async (id: string | null) => {
-    const [contents, where] = await Promise.all([fetchFolderContents(id), fetchFolderPath(id)]);
-    if (!contents.ok) { setError(contents.error); setLoading(false); return; }
-    if (!where.ok) { setError(where.error); setLoading(false); return; }
+    const r = await fetchBrowse(id);
     if (id !== folderIdRef.current) return;   // the person already moved on
-    setError(""); setFolders(contents.value.folders); setFiles(contents.value.files); setPath(where.value); setLoading(false);
-    setSelected(prev => { const alive = new Set([...contents.value.folders.map(f => itemKey("folder", f.id)), ...contents.value.files.map(f => itemKey("file", f.id))]); const next = new Set([...prev].filter(k => alive.has(k))); return next.size === prev.size ? prev : next; });
+    if (!r.ok) { setError(r.error); setLoading(false); return; }
+    setError(""); setFolders(r.value.folders); setFiles(r.value.files); setPath(r.value.path); setLevel(r.value.level); setOwnerName(r.value.ownerName); setLoading(false);
+    setSelected(prev => { const alive = new Set([...r.value.folders.map(f => itemKey("folder", f.id)), ...r.value.files.map(f => itemKey("file", f.id))]); const next = new Set([...prev].filter(k => alive.has(k))); return next.size === prev.size ? prev : next; });
   }, []);
   const refreshUsage = useCallback(async () => { const u = await fetchUsage(); if (u.ok) setUsage(u.value); }, []);
   const reloadAll = useCallback(() => { void load(folderIdRef.current); void refreshUsage(); setDetailsKey(k => k + 1); }, [load, refreshUsage]);
 
-  useEffect(() => { setLoading(true); setPreview(null); setSelected(new Set()); void load(folderId); }, [folderId, load]);
+  useEffect(() => {
+    setPreview(null); setSelected(new Set());
+    if (mode !== "files" && !(mode === "shared" && folderId !== null)) return;   // those tabs show their own lists
+    setLoading(true); void load(folderId);
+  }, [folderId, mode, load]);
+  const goTab = (m: "files" | "shared" | "links" | "trash") => { setMode(m); setFolderId(null); setQuery(""); setError(""); setNotice(""); setFolders([]); setFiles([]); setPath([]); setLevel(4); setDetailsOpen(false); };
   useEffect(() => { void refreshUsage(); }, [refreshUsage]);
   useEffect(() => () => { if (refreshTimer.current) window.clearTimeout(refreshTimer.current); }, []);
   useEffect(() => { try { localStorage.setItem(VIEW_KEY, view); } catch { /* private window: keep it for this visit only */ } }, [view]);
@@ -124,7 +142,7 @@ export function StorageToolPage() {
   const startUploads = useCallback(async (picked: PickedFile[]) => {
     if (picked.length === 0) return;
     const rootId = folderIdRef.current;
-    const rootLabel = ["My storage", ...path.map(p => p.name)].join(" / ");
+    const rootLabel = [mode === "shared" ? `${ownerName || "Shared"} (shared)` : "My storage", ...path.map(p => p.name)].join(" / ");
     const plan = planUpload(picked, maxBytesRef.current);
     setNotice(plan.skipped.length ? plan.skipped.slice(0, 3).join(" ") + (plan.skipped.length > 3 ? ` (and ${plan.skipped.length - 3} more were skipped.)` : "") : "");
     if (plan.files.length === 0) return;
@@ -163,7 +181,7 @@ export function StorageToolPage() {
     }
     scheduleRefresh();
     pump();
-  }, [path, patchJob, pump, scheduleRefresh]);
+  }, [path, mode, ownerName, patchJob, pump, scheduleRefresh]);
 
   const cancelJob = useCallback((id: string) => {
     const waiting = pending.current.findIndex(p => p.job === id);
@@ -174,11 +192,11 @@ export function StorageToolPage() {
 
   // ── Dropping files from the computer on the page ──
   const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
-  const onDragEnter = (e: React.DragEvent) => { if (mode === "files" && hasFiles(e)) { dragDepth.current++; setDragging(true); } };
+  const onDragEnter = (e: React.DragEvent) => { if (canAdd && hasFiles(e)) { dragDepth.current++; setDragging(true); } };
   const onDragLeave = () => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (dragDepth.current === 0) setDragging(false); };
   const onDrop = async (e: React.DragEvent) => {
     e.preventDefault(); dragDepth.current = 0; setDragging(false);
-    if (mode !== "files" || !hasFiles(e)) return;
+    if (!canAdd || !hasFiles(e)) return;
     await startUploads(await collectDropped(e.dataTransfer));
   };
 
@@ -244,12 +262,13 @@ export function StorageToolPage() {
     const list = targetsOf(entry), many = list.length > 1;
     return [
       ...(many ? [] : [{ label: "Open", run: () => openEntry(entry) }]),
+      ...(many || !isOwner ? [] : [{ label: "Share…", run: () => setShareFor({ kind: entry.kind, id: entry.kind === "folder" ? entry.folder.id : entry.file.id, name: nameOf(entry) }) }]),
       { label: many ? `Download ${list.length} items (ZIP)` : entry.kind === "folder" ? "Download (ZIP)" : "Download", run: () => download(list) },
-      ...(many ? [] : [{ label: "Rename", run: () => setRename(entry) }]),
-      { label: "Move to…", run: () => setPicker({ mode: "move", entries: list }) },
-      { label: "Copy to…", run: () => setPicker({ mode: "copy", entries: list }) },
+      ...(many || !canEdit ? [] : [{ label: "Rename", run: () => setRename(entry) }]),
+      ...(canEdit ? [{ label: "Move to…", run: () => setPicker({ mode: "move", entries: list }) }] : []),
+      { label: isOwner ? "Copy to…" : "Copy to my storage…", run: () => setPicker({ mode: "copy", entries: list }) },
       ...(many ? [] : [{ label: "Details", run: () => { setSelected(new Set([keyOf(entry)])); setDetailsOpen(true); } }]),
-      { label: many ? `Delete ${list.length} items` : "Delete", run: () => setTrashAsk(list), danger: true },
+      ...(canEdit ? [{ label: many ? `Delete ${list.length} items` : "Delete", run: () => setTrashAsk(list), danger: true }] : []),
     ];
   };
 
@@ -262,9 +281,9 @@ export function StorageToolPage() {
   };
   const isInternal = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes(DRAG_TYPE);
   const canDropOn = (id: string | null) => !draggedKeys.current.some(k => { const r = parseItemKey(k); return r?.kind === "folder" && r.id === id; });
-  const onDragOverFolder = (id: string, e: React.DragEvent) => { if (isInternal(e) && canDropOn(id)) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDropTarget(id); } };
+  const onDragOverFolder = (id: string, e: React.DragEvent) => { if (canEdit && isInternal(e) && canDropOn(id)) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDropTarget(id); } };
   async function dropOnFolder(id: string | null, e: React.DragEvent) {
-    if (!isInternal(e)) return;
+    if (!canEdit || !isInternal(e)) return;
     e.preventDefault(); e.stopPropagation();
     setDropTarget(null);
     const refs = draggedKeys.current.map(parseItemKey).filter((r): r is ItemRef => r !== null);
@@ -291,15 +310,15 @@ export function StorageToolPage() {
       {label} {sortKey === key && (sortDir === "asc" ? <ArrowUp size={13} aria-hidden="true" /> : <ArrowDown size={13} aria-hidden="true" />)}
     </button>
   );
-  const crumbDrop = (id: string | null) => ({ onDragOver: (e: React.DragEvent) => { if (isInternal(e) && canDropOn(id)) { e.preventDefault(); setDropTarget(id ?? "root"); } }, onDragLeave: () => setDropTarget(null), onDrop: (e: React.DragEvent) => void dropOnFolder(id, e) });
-  const tabCls = (active: boolean) => `inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-[14px] font-bold ${active ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-700 hover:text-[#062444]"}`;
+  const crumbDrop = (id: string | null) => ({ onDragOver: (e: React.DragEvent) => { if (canEdit && isInternal(e) && canDropOn(id)) { e.preventDefault(); setDropTarget(id ?? "root"); } }, onDragLeave: () => setDropTarget(null), onDrop: (e: React.DragEvent) => void dropOnFolder(id, e) });
+  const tabCls = (active: boolean) => `inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[14px] font-bold ${active ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-700 hover:text-[#062444]"}`;
 
   return (
     <div onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDragOver={e => { if (mode === "files" && hasFiles(e)) e.preventDefault(); }} onDrop={e => void onDrop(e)} className="relative min-h-[60vh]">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-foreground"><HardDrive size={22} aria-hidden="true" /> Storage Tool</h1>
-          <p className="text-sm text-slate-700">Your own private storage. Only you can see what is here.</p>
+          <p className="text-sm text-slate-700">Your own storage. Only you can see what is here, unless you share it.</p>
         </div>
         {usage && (
           <div className="min-w-[14rem] rounded-xl border border-[#e6ecf5] bg-[#f7f9fc] px-4 py-2.5 text-[14px]">
@@ -312,27 +331,40 @@ export function StorageToolPage() {
         )}
       </div>
 
-      <div className="mb-3 flex border-b border-[#e6ecf5]" role="tablist" aria-label="Storage Tool">
-        <button role="tab" aria-selected={mode === "files"} onClick={() => setMode("files")} className={tabCls(mode === "files")}><HardDrive size={16} aria-hidden="true" /> My storage</button>
-        <button role="tab" aria-selected={mode === "trash"} onClick={() => setMode("trash")} className={tabCls(mode === "trash")}><Trash2 size={16} aria-hidden="true" /> Trash</button>
+      <div className="mb-3 flex overflow-x-auto border-b border-[#e6ecf5] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Storage Tool">
+        <button role="tab" aria-selected={mode === "files"} onClick={() => goTab("files")} className={tabCls(mode === "files")}><HardDrive size={16} aria-hidden="true" /> My storage</button>
+        <button role="tab" aria-selected={mode === "shared"} onClick={() => goTab("shared")} className={tabCls(mode === "shared")}><Users size={16} aria-hidden="true" /> Shared with me</button>
+        <button role="tab" aria-selected={mode === "links"} onClick={() => goTab("links")} className={tabCls(mode === "links")}><Link2 size={16} aria-hidden="true" /> Upload links</button>
+        <button role="tab" aria-selected={mode === "trash"} onClick={() => goTab("trash")} className={tabCls(mode === "trash")}><Trash2 size={16} aria-hidden="true" /> Trash</button>
       </div>
 
       {error && <p role="alert" className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[14px] text-red-800">{error}</p>}
       {notice && <p role="status" className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-[14px] text-amber-950">{notice}</p>}
 
-      {mode === "trash" ? <TrashView onChanged={reloadAll} /> : (
+      {mode === "trash" ? <TrashView onChanged={reloadAll} />
+        : mode === "links" ? <LinkManager folderId={null} />
+        : mode === "shared" && folderId === null ? (
+          <SharedWithMeView refreshKey={sharedKey} onOpenFolder={setFolderId}
+            onOpenFile={i => setPreview({ id: i.id, name: i.name, sizeBytes: i.sizeBytes, mimeType: i.mimeType, storagePath: i.storagePath, uploaderLabel: "", createdAt: i.sharedAt, modifiedAt: i.sharedAt })} />
+        ) : (
         <>
+          {mode === "shared" && !loading && !error && (
+            <p className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-[14px] text-sky-950">Shared by <strong>{ownerName}</strong>. {LEVEL_TEXT[level]}.{level >= 2 && level < 4 ? ` Files you add belong to ${ownerName}.` : ""}{level >= 3 ? ` Things you delete go to ${ownerName}'s Trash.` : ""}</p>
+          )}
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <button onClick={() => setNewFolderOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-[#062444]/40 bg-white px-4 py-2 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><FolderPlus size={16} aria-hidden="true" /> New folder</button>
-            <button onClick={() => fileInput.current?.click()} className="inline-flex items-center gap-2 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e]"><Upload size={16} aria-hidden="true" /> Upload files</button>
-            <button onClick={() => folderInput.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-[#062444]/40 bg-white px-4 py-2 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><FolderUp size={16} aria-hidden="true" /> Upload folder</button>
+            {canAdd && <button onClick={() => setNewFolderOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-[#062444]/40 bg-white px-4 py-2 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><FolderPlus size={16} aria-hidden="true" /> New folder</button>}
+            {canAdd && <button onClick={() => fileInput.current?.click()} className="inline-flex items-center gap-2 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e]"><Upload size={16} aria-hidden="true" /> Upload files</button>}
+            {canAdd && <button onClick={() => folderInput.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-[#062444]/40 bg-white px-4 py-2 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><FolderUp size={16} aria-hidden="true" /> Upload folder</button>}
+            {isOwner && folderId !== null && selectedEntries.length === 0 && <button onClick={() => setShareFor({ kind: "folder", id: folderId, name: here })} className="inline-flex items-center gap-2 rounded-lg border border-[#062444]/40 bg-white px-4 py-2 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><Share2 size={16} aria-hidden="true" /> Share this folder</button>}
             <input ref={fileInput} type="file" multiple className="sr-only" aria-label="Choose files to upload" tabIndex={-1} onChange={e => { void startUploads(collectFromInput(e.target.files)); e.target.value = ""; }} />
             <input ref={folderInput} type="file" multiple className="sr-only" aria-label="Choose a folder to upload" tabIndex={-1} {...({ webkitdirectory: "", directory: "" } as Record<string, string>)} onChange={e => { void startUploads(collectFromInput(e.target.files)); e.target.value = ""; }} />
+            {isOwner && (
             <div className="relative min-w-[11rem] flex-1 sm:max-w-xs">
               <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" aria-hidden="true" />
               <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === "Escape") setQuery(""); }} aria-label="Search your storage by name" placeholder="Search by name" className="w-full rounded-lg border border-[#062444]/25 bg-white py-2 pl-9 pr-8 text-[14px] outline-none focus:border-[#062444]" />
               {query && <button onClick={() => setQuery("")} aria-label="Clear the search" className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-slate-700 hover:bg-[#f7f9fc]"><X size={14} aria-hidden="true" /></button>}
             </div>
+            )}
             <div className="ml-auto flex items-center gap-2">
               <button onClick={() => setDetailsOpen(v => !v)} aria-pressed={detailsOpen} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[14px] font-bold ${detailsOpen ? "border-[#062444] bg-[#062444] text-white" : "border-[#062444]/40 bg-white text-[#062444] hover:bg-[#f7f9fc]"}`}><Info size={15} aria-hidden="true" /> Details</button>
               <label className="flex items-center gap-1.5 text-[14px] text-slate-800">Sort by
@@ -352,15 +384,18 @@ export function StorageToolPage() {
             <div role="toolbar" aria-label="Actions for the chosen items" className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#00709f]/40 bg-sky-50 px-3 py-2">
               <p className="mr-2 text-[14px] font-bold text-[#062444]">{selectedEntries.length} selected</p>
               <button onClick={() => download(selectedEntries)} className="inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/40 bg-white px-3 py-1.5 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><Download size={15} aria-hidden="true" /> Download</button>
-              <button onClick={() => setPicker({ mode: "move", entries: selectedEntries })} className="inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/40 bg-white px-3 py-1.5 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><FolderInput size={15} aria-hidden="true" /> Move to…</button>
-              <button onClick={() => setPicker({ mode: "copy", entries: selectedEntries })} className="inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/40 bg-white px-3 py-1.5 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><Copy size={15} aria-hidden="true" /> Copy to…</button>
-              <button onClick={() => setTrashAsk(selectedEntries)} className="inline-flex items-center gap-1.5 rounded-lg border border-red-800 bg-white px-3 py-1.5 text-[14px] font-bold text-red-800 hover:bg-red-50"><Trash2 size={15} aria-hidden="true" /> Delete</button>
+              {isOwner && selectedEntries.length === 1 && <button onClick={() => setShareFor({ kind: selectedEntries[0].kind, id: selectedEntries[0].kind === "folder" ? selectedEntries[0].folder.id : selectedEntries[0].file.id, name: nameOf(selectedEntries[0]) })} className="inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/40 bg-white px-3 py-1.5 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><Share2 size={15} aria-hidden="true" /> Share</button>}
+              {canEdit && <button onClick={() => setPicker({ mode: "move", entries: selectedEntries })} className="inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/40 bg-white px-3 py-1.5 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><FolderInput size={15} aria-hidden="true" /> Move to…</button>}
+              <button onClick={() => setPicker({ mode: "copy", entries: selectedEntries })} className="inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/40 bg-white px-3 py-1.5 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><Copy size={15} aria-hidden="true" /> {isOwner ? "Copy to…" : "Copy to my storage…"}</button>
+              {canEdit && <button onClick={() => setTrashAsk(selectedEntries)} className="inline-flex items-center gap-1.5 rounded-lg border border-red-800 bg-white px-3 py-1.5 text-[14px] font-bold text-red-800 hover:bg-red-50"><Trash2 size={15} aria-hidden="true" /> Delete</button>}
               <button onClick={() => setSelected(new Set())} className="ml-auto rounded-lg px-3 py-1.5 text-[14px] font-semibold text-[#062444] hover:bg-sky-100">Clear selection</button>
             </div>
           )}
 
           <nav aria-label="Where you are" className="mb-3 flex flex-wrap items-center gap-1 text-[14px]">
-            <button onClick={() => { setQuery(""); setFolderId(null); }} {...crumbDrop(null)} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold hover:underline ${dropTarget === "root" ? "bg-sky-100 ring-2 ring-[#00709f]" : ""} ${path.length === 0 ? "text-[#062444]" : "text-[#00709f]"}`} aria-current={path.length === 0 ? "page" : undefined}><Home size={14} aria-hidden="true" /> My storage</button>
+            {mode === "shared"
+              ? <button onClick={() => setFolderId(null)} className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold text-[#00709f] hover:underline"><Users size={14} aria-hidden="true" /> Shared with me</button>
+              : <button onClick={() => { setQuery(""); setFolderId(null); }} {...crumbDrop(null)} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold hover:underline ${dropTarget === "root" ? "bg-sky-100 ring-2 ring-[#00709f]" : ""} ${path.length === 0 ? "text-[#062444]" : "text-[#00709f]"}`} aria-current={path.length === 0 ? "page" : undefined}><Home size={14} aria-hidden="true" /> My storage</button>}
             {path.map((p, i) => (
               <span key={p.id} className="inline-flex items-center gap-1">
                 <ChevronRight size={14} className="text-slate-600" aria-hidden="true" />
@@ -379,12 +414,12 @@ export function StorageToolPage() {
                   <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-[#062444]/30 bg-[#f7f9fc] px-6 py-14 text-center">
                     <UploadCloud size={40} className="text-[#062444]" aria-hidden="true" />
                     <p className="text-[16px] font-bold text-[#062444]">{path.length ? "This folder is empty" : "Your storage is empty"}</p>
-                    <p className="text-[14px] text-slate-700">Drag files or a whole folder here, or press “Upload files”. Biggest file: {formatBytes(maxBytes)}.</p>
+                    <p className="text-[14px] text-slate-700">{canAdd ? `Drag files or a whole folder here, or press “Upload files”. Biggest file: ${formatBytes(maxBytes)}.` : "There is nothing in it yet, and you can only look."}</p>
                   </div>
                 ) : (
                   <ItemViews view={view} folders={shownFolders} files={shownFiles} selected={selected} allSelected={allSelected} onToggle={toggle}
                     onToggleAll={() => setSelected(allSelected ? new Set() : new Set(everyKey))} onOpenFolder={setFolderId} onOpenFile={setPreview}
-                    actionsFor={actionsFor} menuFor={menuFor} setMenuFor={setMenuFor} dropTarget={dropTarget}
+                    actionsFor={actionsFor} menuFor={menuFor} setMenuFor={setMenuFor} dropTarget={dropTarget} canDrag={canEdit}
                     onDragStartItem={onDragStartItem} onDragEndItem={() => { draggedKeys.current = []; setDropTarget(null); }}
                     onDragOverFolder={onDragOverFolder} onDragLeaveFolder={() => setDropTarget(null)} onDropOnFolder={(id, e) => void dropOnFolder(id, e)} sortHeader={sortHeader} />
                 )}
@@ -407,7 +442,8 @@ export function StorageToolPage() {
           onRename={async value => { const r = await renameItem(rename.kind, rename.kind === "folder" ? rename.folder.id : rename.file.id, value); if (!r.ok) return r.error; setRename(null); reloadAll(); return null; }} />
       )}
       {picker && (
-        <FolderPickerModal mode={picker.mode} summary={summaryOf(picker.entries)} movingFolderIds={picker.mode === "move" ? picker.entries.flatMap(e => (e.kind === "folder" ? [e.folder.id] : [])) : []} startFolderId={folderId}
+        <FolderPickerModal mode={picker.mode} summary={summaryOf(picker.entries)} movingFolderIds={picker.mode === "move" ? picker.entries.flatMap(e => (e.kind === "folder" ? [e.folder.id] : [])) : []}
+          startFolderId={picker.mode === "move" || isOwner ? folderId : null} root={picker.mode === "move" && sharedRoot ? sharedRoot : undefined}
           onCancel={() => setPicker(null)}
           onPick={async target => {
             const list = picker.entries;
@@ -422,9 +458,10 @@ export function StorageToolPage() {
             return null;
           }} />
       )}
+      {shareFor && <ShareDialog kind={shareFor.kind} id={shareFor.id} name={shareFor.name} onClose={() => setShareFor(null)} onChanged={() => { setSharedKey(k => k + 1); reloadAll(); }} />}
       {trashAsk && (
-        <TrashConfirm entries={trashAsk} onCancel={() => setTrashAsk(null)}
-          onConfirm={async () => { const r = await trashItems(trashAsk.map(refOf)); if (!r.ok) return r.error; setTrashAsk(null); setSelected(new Set()); setNotice(`Moved ${summaryOf(trashAsk)} to the Trash. You can restore ${trashAsk.length === 1 ? "it" : "them"} from the Trash tab for ${usage?.trashDays ?? 30} days.`); reloadAll(); return null; }} />
+        <TrashConfirm entries={trashAsk} ownerName={isOwner ? undefined : ownerName} onCancel={() => setTrashAsk(null)}
+          onConfirm={async () => { const r = await trashItems(trashAsk.map(refOf)); if (!r.ok) return r.error; setTrashAsk(null); setSelected(new Set()); setNotice(isOwner ? `Moved ${summaryOf(trashAsk)} to the Trash. You can restore ${trashAsk.length === 1 ? "it" : "them"} from the Trash tab for ${usage?.trashDays ?? 30} days.` : `Moved ${summaryOf(trashAsk)} to ${ownerName}'s Trash. Only ${ownerName} can restore ${trashAsk.length === 1 ? "it" : "them"}.`); reloadAll(); return null; }} />
       )}
       <UploadTray jobs={jobs} onCancel={cancelJob} onCancelAll={cancelAll} onClear={() => setJobs([])} />
     </div>
@@ -432,7 +469,7 @@ export function StorageToolPage() {
 }
 
 /** The question before deleting: for a folder it says how many items are inside. */
-function TrashConfirm({ entries, onCancel, onConfirm }: { entries: Entry[]; onCancel: () => void; onConfirm: () => Promise<string | null> }) {
+function TrashConfirm({ entries, ownerName, onCancel, onConfirm }: { entries: Entry[]; /** set when the folder belongs to somebody else */ ownerName?: string; onCancel: () => void; onConfirm: () => Promise<string | null> }) {
   const [inside, setInside] = useState<{ files: number; folders: number } | null>(null);
   const folderEntries = entries.filter((e): e is Extract<Entry, { kind: "folder" }> => e.kind === "folder");
   useEffect(() => {
@@ -448,7 +485,7 @@ function TrashConfirm({ entries, onCancel, onConfirm }: { entries: Entry[]; onCa
   const what = entries.length === 1 ? `“${entries[0].kind === "folder" ? entries[0].folder.name : entries[0].file.name}”` : countWords(entries.length, "item", "items");
   return (
     <ConfirmDialog title="Move to the Trash?" confirmLabel="Move to Trash" danger onCancel={onCancel} onConfirm={onConfirm}>
-      <p>{what} will be moved to the Trash. You can restore {entries.length === 1 ? "it" : "them"} from the Trash tab until it is emptied or the days run out.</p>
+      <p>{what} will be moved to the Trash{ownerName ? ` of ${ownerName}, who shared this folder` : ""}. {ownerName ? "Only they can restore it." : <>You can restore {entries.length === 1 ? "it" : "them"} from the Trash tab until it is emptied or the days run out.</>}</p>
       {folderEntries.length > 0 && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-950">{inside === null ? "Counting what is inside…" : <>{folderEntries.length === 1 ? "This folder contains" : "These folders contain"} <strong>{countWords(inside.files, "file", "files")}</strong> and <strong>{countWords(inside.folders, "folder", "folders")}</strong>; everything goes to the Trash together.</>}</p>
       )}

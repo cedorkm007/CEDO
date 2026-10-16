@@ -12,7 +12,7 @@ import {
   Plus, Edit2, Check, Eye, Camera, Upload, FileText, ChevronDown, ChevronUp,
   X, Trash2, Clock, CheckCircle2, Circle, AlertCircle,
   Printer, Calendar as CalendarIcon, Sparkles, Bell, RotateCcw,
-  ClipboardCheck, Plane, MessageCircle, Send, Lock, ClipboardList, RotateCw,
+  ClipboardCheck, Plane, MessageCircle, Send, Lock, ClipboardList, RotateCw, HardDrive,
 } from "lucide-react";
 import { PushSettings } from "@/app/components/PushSettings";
 import { canSeeScholarRenewal, isItAdmin, isSeadHead } from "@/lib/renewalAccess";
@@ -190,7 +190,7 @@ interface LeaveRequest {
   submittedAt: string; status: "pending" | "approved" | "returned"; adminNote?: string;
 }
 
-type NotifType = "submission" | "leave_request" | "referral_approval" | "renewal";
+type NotifType = "submission" | "leave_request" | "referral_approval" | "renewal" | "storage";
 
 /** A renewal notification points at a tool: consultation notices at the Consultation Tool, everything else at Scholar Renewal. */
 function renewalNotifPage(n: { title: string }): "scholarRenewal" | "scholarCounseling" {
@@ -1797,8 +1797,8 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
       <div className="space-y-2">
         {sorted.map(n => {
           const status = getBadgeStatusForNotif(n);
-          const typeIcon = n.type==="submission" ? <ClipboardCheck size={16} className="text-accent"/> : n.type==="referral_approval" ? <ClipboardList size={16} className="text-[#0088cc]"/> : n.type==="renewal" ? <RotateCw size={16} className="text-sky-700"/> : <Plane size={16} className="text-purple-500"/>;
-          const typeBg = n.type==="submission" ? "bg-accent/15" : n.type==="referral_approval" ? "bg-[#0088cc]/15" : n.type==="renewal" ? "bg-sky-100" : "bg-purple-100";
+          const typeIcon = n.type==="submission" ? <ClipboardCheck size={16} className="text-accent"/> : n.type==="referral_approval" ? <ClipboardList size={16} className="text-[#0088cc]"/> : n.type==="renewal" ? <RotateCw size={16} className="text-sky-700"/> : n.type==="storage" ? <HardDrive size={16} className="text-amber-800"/> : <Plane size={16} className="text-purple-500"/>;
+          const typeBg = n.type==="submission" ? "bg-accent/15" : n.type==="referral_approval" ? "bg-[#0088cc]/15" : n.type==="renewal" ? "bg-sky-100" : n.type==="storage" ? "bg-amber-100" : "bg-purple-100";
           return (
             <button key={n.id} onClick={()=>openNotif(n)}
               className={`w-full flex items-start gap-4 p-4 rounded-2xl border text-left transition-all hover:shadow-md ${!n.read?"bg-secondary border-accent/30 shadow-sm":"bg-card border-border hover:bg-muted/20"}`}>
@@ -1812,7 +1812,7 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
                 <p className="text-xs text-muted-foreground mt-1">{formatTimestamp(n.timestamp)}</p>
               </div>
               <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                {n.type!=="renewal"&&<StatusBadge status={status}/>}
+                {n.type!=="renewal"&&n.type!=="storage"&&<StatusBadge status={status}/>}
                 <button onClick={e=>{e.stopPropagation();onDelete(n.id);}}
                   className="p-1 rounded-lg hover:bg-red-50 hover:text-red-500 text-muted-foreground transition-colors">
                   <Trash2 size={13}/>
@@ -1828,11 +1828,11 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
         <Modal title={selected.title} onClose={()=>setSelected(null)} wide>
           <div className="space-y-4">
             <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border border-border">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${selected.type==="submission"?"bg-accent/15":selected.type==="referral_approval"?"bg-[#0088cc]/15":selected.type==="renewal"?"bg-sky-100":"bg-purple-100"}`}>
-                {selected.type==="submission"?<ClipboardCheck size={18} className="text-accent"/>:selected.type==="referral_approval"?<ClipboardList size={18} className="text-[#0088cc]"/>:selected.type==="renewal"?<RotateCw size={18} className="text-sky-700"/>:<Plane size={18} className="text-purple-500"/>}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${selected.type==="submission"?"bg-accent/15":selected.type==="referral_approval"?"bg-[#0088cc]/15":selected.type==="renewal"?"bg-sky-100":selected.type==="storage"?"bg-amber-100":"bg-purple-100"}`}>
+                {selected.type==="submission"?<ClipboardCheck size={18} className="text-accent"/>:selected.type==="referral_approval"?<ClipboardList size={18} className="text-[#0088cc]"/>:selected.type==="renewal"?<RotateCw size={18} className="text-sky-700"/>:selected.type==="storage"?<HardDrive size={18} className="text-amber-800"/>:<Plane size={18} className="text-purple-500"/>}
               </div>
               <div><p className="text-sm font-bold text-foreground">{selected.userName}</p><p className="text-xs text-muted-foreground">{formatTimestamp(selected.timestamp)}</p></div>
-              {selected.type!=="referral_approval"&&selected.type!=="renewal"&&<div className="ml-auto"><StatusBadge status={getBadgeStatusForNotif(selected)}/></div>}
+              {selected.type!=="referral_approval"&&selected.type!=="renewal"&&selected.type!=="storage"&&<div className="ml-auto"><StatusBadge status={getBadgeStatusForNotif(selected)}/></div>}
             </div>
 
             {selected.type==="submission"&&(()=>{
@@ -1887,7 +1887,14 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
               </div>
             )}
 
-            {selected.type!=="referral_approval"&&selected.type!=="renewal"&&getStatusForNotif(selected)==="pending"&&(
+            {selected.type==="storage"&&(
+              <div className="space-y-3">
+                <p className="text-sm text-foreground">{selected.message}</p>
+                {canOpen("storageTool")&&<button onClick={()=>{ onOpenPage("storageTool"); setSelected(null); }} className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">Open Storage Tool</button>}
+              </div>
+            )}
+
+            {selected.type!=="referral_approval"&&selected.type!=="renewal"&&selected.type!=="storage"&&getStatusForNotif(selected)==="pending"&&(
               <div className="space-y-3 border-t border-border pt-3">
                 {showReturnInput?(
                   <div className="space-y-2">
@@ -1902,7 +1909,7 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
                 )}
               </div>
             )}
-            {selected.type!=="referral_approval"&&selected.type!=="renewal"&&getStatusForNotif(selected)!=="pending"&&<div className={`p-3 rounded-xl border text-sm font-medium text-center ${getStatusForNotif(selected)==="approved"?"border-green-200 bg-green-50 text-green-700":"border-red-200 bg-red-50 text-red-700"}`}>{getStatusForNotif(selected)==="approved"?"✓ Approved":"✗ Returned"}</div>}
+            {selected.type!=="referral_approval"&&selected.type!=="renewal"&&selected.type!=="storage"&&getStatusForNotif(selected)!=="pending"&&<div className={`p-3 rounded-xl border text-sm font-medium text-center ${getStatusForNotif(selected)==="approved"?"border-green-200 bg-green-50 text-green-700":"border-red-200 bg-red-50 text-red-700"}`}>{getStatusForNotif(selected)==="approved"?"✓ Approved":"✗ Returned"}</div>}
           </div>
         </Modal>
       )}
@@ -1927,7 +1934,7 @@ function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead
   // Staff see notifications about their own submissions being approved/returned, the renewal notices addressed to them (evaluator, consultation
   // staff) and referrals waiting for their approval (Division Head).
   const myNotifs = notifications
-    .filter(n => (n.type === "submission" || n.type === "renewal" || n.type === "referral_approval") && n.userId === userId)
+    .filter(n => (n.type === "submission" || n.type === "renewal" || n.type === "referral_approval" || n.type === "storage") && n.userId === userId)
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   const [referralFor, setReferralFor] = useState<AppNotification | null>(null);
 
@@ -1959,8 +1966,8 @@ function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead
               <div key={n.id} onClick={() => onMarkRead(n.id)}
                 className={`relative bg-card rounded-2xl border p-4 transition-all ${!n.read ? "border-accent/40 bg-secondary/30 shadow-sm" : "border-border"}`}>
                 <div className="flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${n.type === "renewal" ? "bg-sky-100" : "bg-[#0088cc]/15"}`}>
-                    {n.type === "renewal" ? <RotateCw size={18} className="text-sky-700"/> : <ClipboardList size={18} className="text-[#0088cc]"/>}
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${n.type === "renewal" ? "bg-sky-100" : n.type === "storage" ? "bg-amber-100" : "bg-[#0088cc]/15"}`}>
+                    {n.type === "renewal" ? <RotateCw size={18} className="text-sky-700"/> : n.type === "storage" ? <HardDrive size={18} className="text-amber-800"/> : <ClipboardList size={18} className="text-[#0088cc]"/>}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
@@ -1971,6 +1978,7 @@ function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead
                     <p className="text-xs text-muted-foreground mt-1.5">{formatTimestamp(n.timestamp)}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {page && canOpen(page) && <button onClick={e => { e.stopPropagation(); onMarkRead(n.id); onOpenPage(page); }} className="px-3.5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">{RENEWAL_PAGE_LABEL[page]}</button>}
+                      {n.type === "storage" && canOpen("storageTool") && <button onClick={e => { e.stopPropagation(); onMarkRead(n.id); onOpenPage("storageTool"); }} className="px-3.5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">Open Storage Tool</button>}
                       {n.type === "referral_approval" && <button onClick={e => { e.stopPropagation(); onMarkRead(n.id); setReferralFor(n); }} className="px-3.5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">Review and decide</button>}
                     </div>
                   </div>
@@ -2942,7 +2950,7 @@ export default function App() {
 
   const unreadCount = notifications.filter(n =>
     !n.read && (
-      n.type === "referral_approval" || n.type === "renewal"
+      n.type === "referral_approval" || n.type === "renewal" || n.type === "storage"
         ? n.userId === currentUser?.id
         : currentUser?.isAdmin
           ? true
@@ -3477,7 +3485,7 @@ export default function App() {
   // Division Head) — never blanket-visible to every admin in the division
   // the way submission/leave notifications are, even though this
   // notification also lives in the shared `notifications` table.
-  const scopedNotifications = notifications.filter(n => scopedUserIds.has(n.userId) && ((n.type !== "referral_approval" && n.type !== "renewal") || n.userId === currentUser.id));
+  const scopedNotifications = notifications.filter(n => scopedUserIds.has(n.userId) && ((n.type !== "referral_approval" && n.type !== "renewal" && n.type !== "storage") || n.userId === currentUser.id));
   const scopedAllTasks: TasksData = Object.fromEntries(Object.entries(allTasks).filter(([uid]) => scopedUserIds.has(uid)));
 
   return (
