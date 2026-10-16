@@ -185,7 +185,7 @@ export function SubmissionRosterPanel({ activity, activities, onClose }: {
     try {
       const columns = buildExportColumns();
       const csv = toCsv(columns.map(c => c.label), sortedRows.map(r => columns.map(c => c.value(r))));
-      downloadCsv(csv, `Submission_Roster_${activeActivityName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.csv`);
+      downloadCsv(`Submission_Roster_${activeActivityName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.csv`, csv);
     } catch {
       setExportError("Could not export CSV. Please try again.");
     } finally {

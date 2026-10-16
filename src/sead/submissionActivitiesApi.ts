@@ -447,15 +447,24 @@ export async function backfillDriveFilesToStorage(
 
 // ── Submission file browser (Activity -> Year Level -> School) ────────
 
+/** True when the database does not have the function yet (the SQL file has not been run). */
+function isMissingFunction(error: { code?: string; message?: string }): boolean {
+  return error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "");
+}
+
 export interface SubmissionUploadActivityCount { activityId: string; activityName: string; uploadCount: number }
 export interface SubmissionUploadGroupCount { label: string; count: number }
 export interface SubmissionUploadStatusCounts { accepted: number; needsResubmission: number; pending: number }
 
 /** Overall Accepted/Needs Resubmission/Pending breakdown for the summary shown above the per-activity table in SubmissionFileBrowserTab.tsx -- each number is a count of DISTINCT SCHOLARS with at least one upload in that status, not raw upload rows (an activity can have several upload fields, so one scholar easily has 2-3 rows). A scholar with uploads in more than one status is counted in each. 'uploaded' (the only status a scholar's own upload is ever created with) is the "Pending" bucket -- see supabase_migration_submission_review.sql. */
-export async function fetchSubmissionUploadStatusCounts(): Promise<SubmissionUploadStatusCounts> {
-  const { data, error } = await supabase.rpc("submission_upload_status_counts");
-  const counts: SubmissionUploadStatusCounts = { accepted: 0, needsResubmission: 0, pending: 0 };
-  if (error || !data) return counts;
+export async function fetchSubmissionUploadStatusCounts(activityId: string | null = null): Promise<SubmissionUploadStatusCounts & { error?: string }> {
+  // activityId = one created submission activity (supabase_migration_submission_status_by_activity.sql); null = all activities. Until that file is
+  // installed, "all activities" still works through the older function; a single activity cannot be counted without it.
+  let { data, error } = await supabase.rpc("submission_files_status_counts", { p_activity_id: activityId });
+  if (error && activityId === null && isMissingFunction(error)) ({ data, error } = await supabase.rpc("submission_upload_status_counts"));
+  const counts: SubmissionUploadStatusCounts & { error?: string } = { accepted: 0, needsResubmission: 0, pending: 0 };
+  if (error) { counts.error = isMissingFunction(error) ? "Counting one submission activity needs the latest database update (supabase_migration_submission_status_by_activity.sql)." : error.message; return counts; }
+  if (!data) return counts;
   for (const r of data as Record<string, unknown>[]) {
     const n = Number(r.scholar_count);
     if (r.status === "accepted") counts.accepted = n;
@@ -486,12 +495,13 @@ export interface SubmissionStatusScholar {
  * one row per scholar with at least one file in that status — the same people the total counts. Read in pages because PostgREST
  * caps a single response at 1,000 rows.
  */
-export async function fetchSubmissionScholarsByStatus(status: SubmissionUploadStatus): Promise<{ ok: true; rows: SubmissionStatusScholar[] } | { ok: false; error: string }> {
+export async function fetchSubmissionScholarsByStatus(status: SubmissionUploadStatus, activityId: string | null = null): Promise<{ ok: true; rows: SubmissionStatusScholar[] } | { ok: false; error: string }> {
   const PAGE = 1000;
   const rows: SubmissionStatusScholar[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase.rpc("submission_scholars_by_status", { p_status: status }).range(from, from + PAGE - 1);
-    if (error) return { ok: false, error: error.message };
+    let { data, error } = await supabase.rpc("submission_files_status_scholars", { p_status: status, p_activity_id: activityId }).range(from, from + PAGE - 1);
+    if (error && activityId === null && isMissingFunction(error)) ({ data, error } = await supabase.rpc("submission_scholars_by_status", { p_status: status }).range(from, from + PAGE - 1));
+    if (error) return { ok: false, error: isMissingFunction(error) ? "Listing one submission activity needs the latest database update (supabase_migration_submission_status_by_activity.sql)." : error.message };
     const page = (data ?? []) as Record<string, unknown>[];
     rows.push(...page.map(r => ({
       scholarId: String(r.scholar_id), scholarIdNumber: String(r.scholar_id_number ?? ""),
