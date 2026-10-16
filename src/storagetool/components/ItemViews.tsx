@@ -91,7 +91,7 @@ export function ItemViews(p: ItemViewProps) {
     );
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-[#e6ecf5] bg-white">
+    <div className="relative overflow-x-auto rounded-xl border border-[#e6ecf5] bg-white">
       <table className="w-full text-left text-[14px]">
         <thead className="bg-[#f7f9fc]">
           <tr>

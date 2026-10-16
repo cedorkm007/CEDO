@@ -819,8 +819,8 @@ test("the scholar bell, the Renewal tile and the staff Notifications pages offer
   const app = fs.readFileSync(path.join(root, "src/app/App.tsx"), "utf8");
   assert.equal(app.split('<PushSettings audience="staff"').length - 1, 2, "both staff notification pages");
   assert.match(app, /type NotifType = "submission" \| "leave_request" \| "referral_approval" \| "renewal"/);
-  assert.match(app, /\(n\.type !== "referral_approval" && n\.type !== "renewal"\) \|\| n\.userId === currentUser\.id/);
-  assert.match(app, /n\.type === "referral_approval" \|\| n\.type === "renewal"\s*\?\s*n\.userId === currentUser\?\.id/);
+  assert.match(app, /\(n\.type !== "referral_approval" && n\.type !== "renewal"( && n\.type !== "storage")?\) \|\| n\.userId === currentUser\.id/);
+  assert.match(app, /n\.type === "referral_approval" \|\| n\.type === "renewal"( \|\| n\.type === "storage")?\s*\?\s*n\.userId === currentUser\?\.id/);
   const main = fs.readFileSync(path.join(root, "src/main.tsx"), "utf8");
   assert.match(main, /isScholarSite\) \{[\s\S]*scholar-manifest\.webmanifest/);
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "public/scholar-manifest.webmanifest"), "utf8"));

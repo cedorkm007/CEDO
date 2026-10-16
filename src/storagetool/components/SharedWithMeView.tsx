@@ -32,7 +32,7 @@ export function SharedWithMeView({ onOpenFolder, onOpenFile, refreshKey }: { onO
             <p className="text-[14px] text-slate-700">When a colleague shares something, it appears here and you get a notification.</p>
           </div>
         ) : items && (
-          <div className="overflow-x-auto rounded-xl border border-[#e6ecf5] bg-white">
+          <div className="relative overflow-x-auto rounded-xl border border-[#e6ecf5] bg-white">
             <table className="w-full text-left text-[14px]">
               <thead className="bg-[#f7f9fc] text-[#062444]"><tr><th className="px-4 py-2.5 font-bold">Name</th><th className="px-3 py-2.5 font-bold">Shared by</th><th className="px-3 py-2.5 font-bold">You can</th><th className="px-3 py-2.5 font-bold">Size</th><th className="px-3 py-2.5 font-bold">Shared on</th><th className="w-24 px-3 py-2.5"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody className="divide-y divide-[#e6ecf5]">

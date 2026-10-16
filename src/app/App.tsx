@@ -3609,7 +3609,7 @@ export default function App() {
             <ScholarsGradesMonitoringPage/>
           )}
           {page==="storageTool" && canUseStorageTool(currentUser) && (
-            <StorageToolPage/>
+            <StorageToolPage isAdmin={isItAdmin(currentUser)}/>
           )}
           {page==="scholarRenewal" && canSeeScholarRenewal(currentUser) && (
             <ScholarRenewalPage isEvaluator={currentUser.tags.includes("scholar_renewal_evaluator")} isDivisionHead={currentUser.tags.includes("sead_division_head")} isSeadHead={isSeadHead(currentUser)} isItAdmin={isItAdmin(currentUser)}/>

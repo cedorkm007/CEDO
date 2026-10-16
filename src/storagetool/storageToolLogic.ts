@@ -234,3 +234,52 @@ export function trashCountdown(daysLeft: number): string {
 }
 
 export function countWords(n: number, one: string, many: string): string { return `${n} ${n === 1 ? one : many}`; }
+
+// ── Phase 4: the activity screen ──
+export interface ActivityItem { id: string; at: string; actor: string; action: string; kind: ItemKind; name: string; location: string; detail: Record<string, unknown> }
+
+const PERMISSION_WORDS: Record<string, string> = { view: "can only view", upload: "can view and add files", edit: "can view, add and change things" };
+
+/** One plain sentence for a line of the activity list ("Maria Cruz uploaded the file “form.pdf”"). */
+export function describeActivity(a: ActivityItem): string {
+  const who = a.actor || "Somebody", what = a.kind === "folder" ? "folder" : "file", it = `${what} “${a.name}”`, d = a.detail ?? {};
+  const text = (v: unknown) => (typeof v === "string" ? v : "");
+  switch (a.action) {
+    case "file_uploaded": return `${who} uploaded the ${it}`;
+    case "folder_created": return `${who} made the ${it}`;
+    case "renamed": return `${who} renamed the ${what} “${text(d.from) || "…"}” to “${a.name}”`;
+    case "moved": return `${who} moved the ${it}`;
+    case "trashed": return `${who} moved the ${it} to the Trash${Number(d.files) > 0 ? ` (with ${countWords(Number(d.files), "file", "files")} inside)` : ""}`;
+    case "restored": return `${who} restored the ${it} from the Trash`;
+    case "deleted_forever": return `${who} deleted the ${it} for good`;
+    case "purged": return `The automatic clean-up removed the ${it} from the Trash`;
+    case "shared": return `${who} shared the ${it} with ${text(d.with) || "a colleague"}, who ${PERMISSION_WORDS[text(d.permission)] ?? "can open it"}`;
+    case "share_changed": return `${who} changed what ${text(d.with) || "a colleague"} can do with the ${it}: they ${PERMISSION_WORDS[text(d.permission)] ?? "can open it"}`;
+    case "share_removed": return `${who} stopped sharing the ${it}`;
+    case "link_created": return `${who} made an upload link for the ${it}${text(d.title) ? ` (“${text(d.title)}”)` : ""}`;
+    case "link_changed": return `${who} changed the settings of an upload link for the ${it}`;
+    case "link_paused": return `${who} paused an upload link for the ${it}`;
+    case "link_resumed": return `${who} opened an upload link for the ${it} again`;
+    case "link_revoked": return `${who} stopped an upload link for the ${it} for good`;
+    case "handed_over": return `The IT admin handed over the files of ${text(d.from) || "a former colleague"} to you: ${countWords(Number(d.files) || 0, "file", "files")} in the ${what} “${a.name}”`;
+    default: return `${who}: ${a.action.replace(/_/g, " ")} (${it})`;
+  }
+}
+
+/** The day heading of an activity line: "Today", "Yesterday" or the date. */
+export function dayHeading(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso), start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((start(now) - start(d)) / 86400000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+}
+
+/** The IT admin's settings form: whole numbers within what the database accepts, with a plain message for the first problem. */
+export function settingsProblem(v: { maxFileMb: number; trashDays: number; quotaGb: number }): string | null {
+  const whole = (n: number) => Number.isInteger(n);
+  if (!whole(v.maxFileMb) || v.maxFileMb < 1 || v.maxFileMb > 500) return "The biggest file must be a whole number from 1 to 500 MB (the storage itself does not take more).";
+  if (!whole(v.trashDays) || v.trashDays < 1 || v.trashDays > 365) return "Days in the Trash must be a whole number from 1 to 365.";
+  if (!whole(v.quotaGb) || v.quotaGb < 1) return "The whole storage must be at least 1 GB.";
+  return null;
+}

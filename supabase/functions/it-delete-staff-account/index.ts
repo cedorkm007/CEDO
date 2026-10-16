@@ -33,7 +33,11 @@ Deno.serve(async (req: Request) => {
     // (a login with no profile, which would break the app's sign-in flow).
     const { error: deleteProfileError } = await admin.from("users").delete().eq("id", targetId);
     if (deleteProfileError) {
-      return new Response(JSON.stringify({ error: deleteProfileError.message }), {
+      // A person who still owns folders, files, shares or upload links in the Storage Tool cannot be deleted until their things are handed over.
+      const friendly = /storage_tool/i.test(deleteProfileError.message)
+        ? "This person still owns files, folders, shares or upload links in the Storage Tool. Open Storage Tool > Admin, hand them over to another person, then delete the account."
+        : deleteProfileError.message;
+      return new Response(JSON.stringify({ error: friendly }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

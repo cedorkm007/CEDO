@@ -57,7 +57,7 @@ export function TrashView({ onChanged }: { onChanged: () => void }) {
             <Trash2 size={36} className="text-[#062444]" aria-hidden="true" /><p className="text-[16px] font-bold text-[#062444]">The Trash is empty</p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-[#e6ecf5] bg-white">
+          <div className="relative overflow-x-auto rounded-xl border border-[#e6ecf5] bg-white">
             <table className="w-full text-left text-[14px]">
               <thead className="bg-[#f7f9fc] text-[#062444]">
                 <tr>

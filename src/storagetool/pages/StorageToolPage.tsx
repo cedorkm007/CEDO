@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronRight, Copy, Download, FolderInput, FolderPlus, FolderUp, HardDrive, Home, Info, LayoutGrid, Link2, List as ListIcon, Loader2, Search, Share2, Trash2, Upload, UploadCloud, Users, X } from "lucide-react";
+import { Activity, ArrowDown, ArrowUp, ChevronRight, Copy, Download, FolderInput, FolderPlus, FolderUp, HardDrive, Home, Info, LayoutGrid, Link2, List as ListIcon, Loader2, Search, Settings, Share2, Trash2, Upload, UploadCloud, Users, X } from "lucide-react";
 import { ModalShell } from "@/sead/components/SeadUiShell";
 import { createFolder, fetchUsage, fileLink, findOrCreateFolder, type PathEntry, type StorageUsage } from "../storageToolApi";
 import { fetchDetails, moveItems, renameItem, searchItems, trashItems, type SearchHit } from "../storageToolOrganizeApi";
@@ -23,6 +23,8 @@ import { TrashView } from "../components/TrashView";
 import { ShareDialog } from "../components/ShareDialog";
 import { LinkManager } from "../components/LinkManager";
 import { SharedWithMeView } from "../components/SharedWithMeView";
+import { ActivityView } from "../components/ActivityView";
+import { AdminView } from "../components/AdminView";
 
 const DEFAULT_MAX_BYTES = 500 * 1024 * 1024;
 const PARALLEL_UPLOADS = 3;
@@ -39,8 +41,10 @@ function savedView(): "grid" | "list" { try { return localStorage.getItem(VIEW_K
  * see only their own folders and files. Phase 3: share with other staff (view / add files / edit, chosen per person; shown under "Shared with me")
  * and upload links for people outside CEDO. See supabase_migration_storage_tool_p1.sql, _p2.sql and _p3.sql.
  */
-export function StorageToolPage() {
-  const [mode, setMode] = useState<"files" | "shared" | "links" | "trash">("files");
+export function StorageToolPage({ isAdmin = false }: { /** the IT admin also gets the "Admin" tab */ isAdmin?: boolean }) {
+  type Mode = "files" | "shared" | "links" | "activity" | "trash" | "admin";
+  const [mode, setMode] = useState<Mode>("files");
+  const [activityFolder, setActivityFolder] = useState<{ id: string; name: string } | null>(null);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [level, setLevel] = useState<AccessLevel>(4);          // what I may do here: 4 = my own, 3 = edit, 2 = add files, 1 = look only
   const [ownerName, setOwnerName] = useState("");
@@ -106,7 +110,7 @@ export function StorageToolPage() {
     if (mode !== "files" && !(mode === "shared" && folderId !== null)) return;   // those tabs show their own lists
     setLoading(true); void load(folderId);
   }, [folderId, mode, load]);
-  const goTab = (m: "files" | "shared" | "links" | "trash") => { setMode(m); setFolderId(null); setQuery(""); setError(""); setNotice(""); setFolders([]); setFiles([]); setPath([]); setLevel(4); setDetailsOpen(false); };
+  const goTab = (m: Mode, folder: { id: string; name: string } | null = null) => { setActivityFolder(folder); setMode(m); setFolderId(null); setQuery(""); setError(""); setNotice(""); setFolders([]); setFiles([]); setPath([]); setLevel(4); setDetailsOpen(false); };
   useEffect(() => { void refreshUsage(); }, [refreshUsage]);
   useEffect(() => () => { if (refreshTimer.current) window.clearTimeout(refreshTimer.current); }, []);
   useEffect(() => { try { localStorage.setItem(VIEW_KEY, view); } catch { /* private window: keep it for this visit only */ } }, [view]);
@@ -332,10 +336,12 @@ export function StorageToolPage() {
       </div>
 
       <div className="mb-3 flex overflow-x-auto border-b border-[#e6ecf5] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Storage Tool">
-        <button role="tab" aria-selected={mode === "files"} onClick={() => goTab("files")} className={tabCls(mode === "files")}><HardDrive size={16} aria-hidden="true" /> My storage</button>
-        <button role="tab" aria-selected={mode === "shared"} onClick={() => goTab("shared")} className={tabCls(mode === "shared")}><Users size={16} aria-hidden="true" /> Shared with me</button>
-        <button role="tab" aria-selected={mode === "links"} onClick={() => goTab("links")} className={tabCls(mode === "links")}><Link2 size={16} aria-hidden="true" /> Upload links</button>
-        <button role="tab" aria-selected={mode === "trash"} onClick={() => goTab("trash")} className={tabCls(mode === "trash")}><Trash2 size={16} aria-hidden="true" /> Trash</button>
+        <button role="tab" aria-selected={mode === "files"} onClick={e => { goTab("files"); e.currentTarget.scrollIntoView?.({ inline: "nearest", block: "nearest" }); }} className={tabCls(mode === "files")}><HardDrive size={16} aria-hidden="true" /> My storage</button>
+        <button role="tab" aria-selected={mode === "shared"} onClick={e => { goTab("shared"); e.currentTarget.scrollIntoView?.({ inline: "nearest", block: "nearest" }); }} className={tabCls(mode === "shared")}><Users size={16} aria-hidden="true" /> Shared with me</button>
+        <button role="tab" aria-selected={mode === "links"} onClick={e => { goTab("links"); e.currentTarget.scrollIntoView?.({ inline: "nearest", block: "nearest" }); }} className={tabCls(mode === "links")}><Link2 size={16} aria-hidden="true" /> Upload links</button>
+        <button role="tab" aria-selected={mode === "activity"} onClick={e => { goTab("activity"); e.currentTarget.scrollIntoView?.({ inline: "nearest", block: "nearest" }); }} className={tabCls(mode === "activity")}><Activity size={16} aria-hidden="true" /> Activity</button>
+        <button role="tab" aria-selected={mode === "trash"} onClick={e => { goTab("trash"); e.currentTarget.scrollIntoView?.({ inline: "nearest", block: "nearest" }); }} className={tabCls(mode === "trash")}><Trash2 size={16} aria-hidden="true" /> Trash</button>
+        {isAdmin && <button role="tab" aria-selected={mode === "admin"} onClick={e => { goTab("admin"); e.currentTarget.scrollIntoView?.({ inline: "nearest", block: "nearest" }); }} className={tabCls(mode === "admin")}><Settings size={16} aria-hidden="true" /> Admin</button>}
       </div>
 
       {error && <p role="alert" className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[14px] text-red-800">{error}</p>}
@@ -343,6 +349,8 @@ export function StorageToolPage() {
 
       {mode === "trash" ? <TrashView onChanged={reloadAll} />
         : mode === "links" ? <LinkManager folderId={null} />
+        : mode === "activity" ? <ActivityView folder={activityFolder} onShowAll={() => setActivityFolder(null)} />
+        : mode === "admin" && isAdmin ? <AdminView onChanged={reloadAll} />
         : mode === "shared" && folderId === null ? (
           <SharedWithMeView refreshKey={sharedKey} onOpenFolder={setFolderId}
             onOpenFile={i => setPreview({ id: i.id, name: i.name, sizeBytes: i.sizeBytes, mimeType: i.mimeType, storagePath: i.storagePath, uploaderLabel: "", createdAt: i.sharedAt, modifiedAt: i.sharedAt })} />
@@ -356,6 +364,7 @@ export function StorageToolPage() {
             {canAdd && <button onClick={() => fileInput.current?.click()} className="inline-flex items-center gap-2 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e]"><Upload size={16} aria-hidden="true" /> Upload files</button>}
             {canAdd && <button onClick={() => folderInput.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-[#062444]/40 bg-white px-4 py-2 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><FolderUp size={16} aria-hidden="true" /> Upload folder</button>}
             {isOwner && folderId !== null && selectedEntries.length === 0 && <button onClick={() => setShareFor({ kind: "folder", id: folderId, name: here })} className="inline-flex items-center gap-2 rounded-lg border border-[#062444]/40 bg-white px-4 py-2 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><Share2 size={16} aria-hidden="true" /> Share this folder</button>}
+            {isOwner && folderId !== null && selectedEntries.length === 0 && <button onClick={() => goTab("activity", { id: folderId, name: here })} className="inline-flex items-center gap-2 rounded-lg border border-[#062444]/40 bg-white px-4 py-2 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><Activity size={16} aria-hidden="true" /> Activity of this folder</button>}
             <input ref={fileInput} type="file" multiple className="sr-only" aria-label="Choose files to upload" tabIndex={-1} onChange={e => { void startUploads(collectFromInput(e.target.files)); e.target.value = ""; }} />
             <input ref={folderInput} type="file" multiple className="sr-only" aria-label="Choose a folder to upload" tabIndex={-1} {...({ webkitdirectory: "", directory: "" } as Record<string, string>)} onChange={e => { void startUploads(collectFromInput(e.target.files)); e.target.value = ""; }} />
             {isOwner && (

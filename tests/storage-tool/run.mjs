@@ -288,4 +288,59 @@ test("the bell and the notifications list know the new 'storage' kind and only s
   assert.match(app, /n\.type !== "storage"\) \|\| n\.userId === currentUser\.id/); assert.match(app, /Open Storage Tool/);
 });
 
+console.log("\nPhase 4: activity, admin, hand-over");
+const act = (action, over = {}) => ({ id: "x", at: "2026-10-16T08:00:00Z", actor: "Maria Cruz (via link)", action, kind: "file", name: "form.pdf", location: "My storage / Reports", detail: {}, ...over });
+test("every kind of activity line is one plain sentence with the person, the item and what was done", () => {
+  const d = L.describeActivity;
+  assert.equal(d(act("file_uploaded")), "Maria Cruz (via link) uploaded the file “form.pdf”");
+  assert.equal(d(act("folder_created", { kind: "folder", name: "2026", actor: "Ana" })), "Ana made the folder “2026”");
+  assert.equal(d(act("renamed", { actor: "Ana", detail: { from: "a.pdf", to: "form.pdf" } })), "Ana renamed the file “a.pdf” to “form.pdf”");
+  assert.equal(d(act("trashed", { actor: "Ana", kind: "folder", name: "Old", detail: { files: 3, folders: 1 } })), "Ana moved the folder “Old” to the Trash (with 3 files inside)");
+  assert.equal(d(act("trashed", { actor: "Ana" })), "Ana moved the file “form.pdf” to the Trash");
+  assert.equal(d(act("restored", { actor: "Ana" })), "Ana restored the file “form.pdf” from the Trash");
+  assert.equal(d(act("deleted_forever", { actor: "Ana" })), "Ana deleted the file “form.pdf” for good");
+  assert.equal(d(act("purged", { actor: "Automatic clean-up" })), "The automatic clean-up removed the file “form.pdf” from the Trash");
+  assert.equal(d(act("shared", { actor: "Ana", kind: "folder", name: "Docs", detail: { with: "Ben", permission: "edit" } })), "Ana shared the folder “Docs” with Ben, who can view, add and change things");
+  assert.equal(d(act("share_changed", { actor: "Ana", kind: "folder", name: "Docs", detail: { with: "Ben", permission: "view" } })), "Ana changed what Ben can do with the folder “Docs”: they can only view");
+  assert.equal(d(act("link_created", { actor: "Ana", kind: "folder", name: "Docs", detail: { title: "Send forms" } })), "Ana made an upload link for the folder “Docs” (“Send forms”)");
+  assert.equal(d(act("link_revoked", { actor: "Ana", kind: "folder", name: "Docs" })), "Ana stopped an upload link for the folder “Docs” for good");
+  assert.equal(d(act("handed_over", { actor: "IT", kind: "folder", name: "From Ben (handed over 2026-10-16)", detail: { from: "Ben", files: 1 } })), "The IT admin handed over the files of Ben to you: 1 file in the folder “From Ben (handed over 2026-10-16)”");
+  assert.match(d(act("something_new", { actor: "Ana" })), /^Ana: something new/, "an unknown kind still reads, it does not break the list");
+});
+test("the activity list groups by day: Today, Yesterday, then the date", () => {
+  const now = new Date(2026, 9, 16, 15, 0);
+  assert.equal(L.dayHeading(new Date(2026, 9, 16, 1, 0).toISOString(), now), "Today"); assert.equal(L.dayHeading(new Date(2026, 9, 15, 23, 0).toISOString(), now), "Yesterday");
+  assert.match(L.dayHeading(new Date(2026, 9, 3, 12, 0).toISOString(), now), /2026/);
+});
+test("the admin's limits form: whole numbers in range, with a plain message", () => {
+  assert.equal(L.settingsProblem({ maxFileMb: 500, trashDays: 30, quotaGb: 200 }), null); assert.equal(L.settingsProblem({ maxFileMb: 1, trashDays: 365, quotaGb: 1 }), null);
+  assert.match(L.settingsProblem({ maxFileMb: 501, trashDays: 30, quotaGb: 200 }), /1 to 500 MB/); assert.match(L.settingsProblem({ maxFileMb: 0, trashDays: 30, quotaGb: 200 }), /1 to 500 MB/); assert.match(L.settingsProblem({ maxFileMb: 2.5, trashDays: 30, quotaGb: 200 }), /whole number/);
+  assert.match(L.settingsProblem({ maxFileMb: 50, trashDays: 0, quotaGb: 200 }), /Trash/); assert.match(L.settingsProblem({ maxFileMb: 50, trashDays: 366, quotaGb: 200 }), /365/); assert.match(L.settingsProblem({ maxFileMb: 50, trashDays: 30, quotaGb: 0 }), /1 GB/); assert.match(L.settingsProblem({ maxFileMb: NaN, trashDays: 30, quotaGb: 5 }), /whole number/);
+});
+test("the Phase 4 calls exist in the Phase 4 SQL file; the admin ones check the IT admin first, the activity one checks access", () => {
+  const sql = read("supabase_migration_storage_tool_p4.sql"), api = read("src/storagetool/storageToolAdminApi.ts");
+  const called = new Set([...api.matchAll(/rpc\("([a-z_]+)"/g)].map(m => m[1]));
+  assert.deepEqual([...called].sort(), ["storage_tool_activity_list", "storage_tool_admin_overview", "storage_tool_admin_transfer", "storage_tool_settings_save"]);
+  for (const fn of ["storage_tool_activity_list", "storage_tool_admin_overview", "storage_tool_admin_transfer"]) assert.ok(new RegExp(`create or replace function public\\.${fn}\\(`).test(sql), fn);
+  for (const fn of ["storage_tool_admin_overview", "storage_tool_admin_transfer"]) assert.ok(new RegExp(`create or replace function public\\.${fn}\\([^]*?if not public\\.is_it_admin\\(\\) then raise exception`).test(sql), fn);
+  assert.ok(/create or replace function public\.storage_tool_activity_list\([^]*?perform public\._storage_tool_require\(\);/.test(sql));
+  assert.equal(/to anon/.test(sql.replace(/--.*$/gm, "")), false); assert.equal(/\.from\("storage_tool_[a-z_]+"\)\s*\.(insert|update|delete|upsert)/.test(api), false);
+});
+test("the Admin tab exists only for the IT admin: the page asks, the app says who, and the database refuses everybody else anyway", () => {
+  const page = read("src/storagetool/pages/StorageToolPage.tsx"), app = read("src/app/App.tsx");
+  assert.match(page, /\{isAdmin && <button role="tab"[^\n]*goTab\("admin"\)/); assert.match(page, /mode === "admin" && isAdmin \? <AdminView/); assert.match(app, /<StorageToolPage isAdmin=\{isItAdmin\(currentUser\)\}\/>/);
+});
+test("deleting a staff account that still owns Storage Tool things explains what to do, instead of a database error", () => {
+  const fn = read("supabase/functions/it-delete-staff-account/index.ts");
+  assert.match(fn, /\/storage_tool\/i\.test\(deleteProfileError\.message\)/); assert.match(fn, /Storage Tool > Admin, hand them over/);
+});
+test("the Phase 4 screens read well: 13px and up, no pale greys, day headings and the progress bar have names", () => {
+  for (const p of ["src/storagetool/components/ActivityView.tsx", "src/storagetool/components/AdminView.tsx"]) {
+    const src = read(p);
+    assert.deepEqual([...src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], p);
+    assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(src), false, p);
+  }
+  assert.match(read("src/storagetool/components/ActivityView.tsx"), /<section key=\{g\.day\} aria-label=\{g\.day\}>/); assert.match(read("src/storagetool/components/AdminView.tsx"), /role="progressbar"/);
+});
+
 console.log(`\n${process.exitCode ? "SOME TESTS FAILED" : "All " + passed + " tests passed"}`);
