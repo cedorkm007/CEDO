@@ -142,7 +142,95 @@ test("the Storage Tool screens use readable text (13px and up, no pale greys, no
     assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(src), false, p);
   }
   const page = read("src/storagetool/pages/StorageToolPage.tsx");
-  for (const label of ["Grid view", "List view", "More actions", "Choose files to upload", "Choose a folder to upload"]) assert.ok(page.includes(label), label);
+  for (const label of ["Grid view", "List view", "Choose files to upload", "Choose a folder to upload"]) assert.ok(page.includes(label), label);
+  assert.ok(read("src/storagetool/components/ItemViews.tsx").includes("More actions for"), "More actions");
+});
+
+// ── Phase 2: organizing ──
+console.log("\nPhase 2: selecting, moving, copying, ZIP, Trash");
+test("item keys: a folder and a file with the same id are different keys, and a key can be read back", () => {
+  const id = "123e4567-e89b-42d3-a456-426614174000";
+  assert.notEqual(L.itemKey("folder", id), L.itemKey("file", id));
+  assert.deepEqual(L.parseItemKey(L.itemKey("folder", id)), { kind: "folder", id }); assert.deepEqual(L.parseItemKey(L.itemKey("file", id)), { kind: "file", id });
+  assert.equal(L.parseItemKey("x:abc"), null); assert.equal(L.parseItemKey("d:not-a-uuid"), null); assert.equal(L.parseItemKey(""), null);
+});
+const T = [{ id: "a", parentId: null, name: "Alpha" }, { id: "b", parentId: "a", name: "Beta" }, { id: "c", parentId: "b", name: "Gamma" }, { id: "d", parentId: null, name: "Docs 10" }, { id: "e", parentId: null, name: "Docs 2" }, { id: "f", parentId: "a", name: "alpha two" }];
+test("the folder tree nests folders and sorts siblings by name with numbers in order", () => {
+  const tree = L.buildFolderTree(T);
+  assert.deepEqual(tree.map(n => n.name), ["Alpha", "Docs 2", "Docs 10"]);
+  assert.deepEqual(tree[0].children.map(n => n.name), ["alpha two", "Beta"]); assert.deepEqual(tree[0].children[1].children.map(n => n.name), ["Gamma"]);
+});
+test("a folder cannot be moved into itself or into a folder inside it (the picker greys these out)", () => {
+  assert.deepEqual([...L.folderAndDescendants(T, "a")].sort(), ["a", "b", "c", "f"]);
+  assert.deepEqual([...L.blockedMoveTargets(T, ["b"])].sort(), ["b", "c"]); assert.deepEqual([...L.blockedMoveTargets(T, ["b", "d"])].sort(), ["b", "c", "d"]); assert.equal(L.blockedMoveTargets(T, []).size, 0);
+});
+test("names inside a ZIP: characters Windows does not allow become _, no trailing dots, never empty", () => {
+  assert.equal(L.zipSegment("a/b\\c:d*e?f\"g<h>i|j.txt"), "a_b_c_d_e_f_g_h_i_j.txt"); assert.equal(L.zipSegment("report. "), "report"); assert.equal(L.zipSegment("..."), "_"); assert.equal(L.zipSegment("ok name.pdf"), "ok name.pdf");
+});
+const SUB = { folders: [{ id: "r", parentId: null, name: "Reports" }, { id: "y", parentId: "r", name: "2026" }], files: [
+  { id: "1", folderId: "r", name: "a.pdf", sizeBytes: 10, mimeType: "application/pdf", storagePath: "u/1" }, { id: "2", folderId: "y", name: "b:c.pdf", sizeBytes: 20, mimeType: "application/pdf", storagePath: "u/2" }] };
+test("a folder becomes ZIP entries with its own name first and its structure kept", () => {
+  assert.deepEqual(L.zipEntriesForFolder("r", SUB).map(e => e.path), ["Reports/a.pdf", "Reports/2026/b_c.pdf"]); assert.deepEqual(L.zipEntriesForFolder("r", SUB).map(e => e.storagePath), ["u/1", "u/2"]);
+  assert.deepEqual(L.zipEntriesForFolder("y", { folders: [SUB.folders[1]], files: [SUB.files[1]] }).map(e => e.path), ["2026/b_c.pdf"]);
+});
+test("the ZIP name, and the 500 MB limit with a clear message", () => {
+  assert.equal(L.zipFileName([{ kind: "folder", name: "Reports" }]), "Reports.zip"); assert.equal(L.zipFileName([{ kind: "folder", name: "A" }, { kind: "file", name: "b.pdf" }]), "Storage Tool download.zip"); assert.equal(L.zipFileName([{ kind: "file", name: "b.pdf" }]), "Storage Tool download.zip");
+  assert.equal(L.ZIP_LIMIT_BYTES, 500 * MB); assert.equal(L.zipProblem([{ sizeBytes: 100 * MB }, { sizeBytes: 400 * MB }]), null); assert.match(L.zipProblem([{ sizeBytes: 300 * MB }, { sizeBytes: 300 * MB }]), /600 MB.*500 MB/);
+  assert.match(L.zipProblem([]), /no file to download/);
+});
+test("copying a folder: the folders are made parents first, the copy's top has no parent, and every file knows its folder", () => {
+  const plan = L.planFolderCopy("r", { folders: [SUB.folders[1], SUB.folders[0]], files: SUB.files });
+  assert.deepEqual(plan.folders.map(f => f.id), ["r", "y"]); assert.equal(plan.folders[0].parentId, null); assert.equal(plan.folders[1].parentId, "r"); assert.deepEqual(plan.files.map(f => f.id), ["1", "2"]);
+  assert.deepEqual(L.planFolderCopy("y", SUB).folders.map(f => f.id), ["y"], "copying a sub-folder takes only what is inside it");
+});
+test("the Trash says how long an item has left, in plain words", () => {
+  assert.equal(L.trashCountdown(30), "Deleted forever in 30 days"); assert.equal(L.trashCountdown(1), "Deleted forever tomorrow"); assert.equal(L.trashCountdown(0), "Deleted forever today"); assert.equal(L.trashCountdown(-2), "Deleted forever today");
+  assert.equal(L.countWords(1, "file", "files"), "1 file"); assert.equal(L.countWords(0, "file", "files"), "0 files"); assert.equal(L.countWords(5, "folder", "folders"), "5 folders");
+});
+test("every database function the Phase 2 screens call exists in the Phase 2 SQL file, and none writes a table directly", () => {
+  const sql = read("supabase_migration_storage_tool_p2.sql"), api = read("src/storagetool/storageToolOrganizeApi.ts");
+  const called = new Set([...api.matchAll(/rpc\("([a-z_]+)"/g)].map(m => m[1]));
+  assert.deepEqual([...called].sort(), ["storage_tool_details", "storage_tool_folder_tree", "storage_tool_forever_finish", "storage_tool_forever_prepare", "storage_tool_move", "storage_tool_rename", "storage_tool_restore", "storage_tool_search", "storage_tool_subtree", "storage_tool_trash", "storage_tool_trash_list"]);
+  for (const fn of called) assert.ok(new RegExp(`create or replace function public\\.${fn}\\(`).test(sql), fn);
+  for (const p of ["src/storagetool/storageToolOrganizeApi.ts", "src/storagetool/copyItems.ts", "src/storagetool/zipDownload.ts", "src/storagetool/pages/StorageToolPage.tsx", "src/storagetool/components/TrashView.tsx"]) assert.equal(/\.from\("storage_tool_[a-z_]+"\)\s*\.(insert|update|delete|upsert)/.test(read(p)), false, p);
+});
+test("every new function in the SQL file checks access first; the clean-up functions are for the service role only", () => {
+  const sql = read("supabase_migration_storage_tool_p2.sql");
+  for (const fn of ["storage_tool_rename", "storage_tool_move", "storage_tool_folder_tree", "storage_tool_subtree", "storage_tool_search", "storage_tool_details", "storage_tool_trash", "storage_tool_trash_list", "storage_tool_restore", "storage_tool_forever_prepare", "storage_tool_forever_finish"]) {
+    const body = new RegExp(`create or replace function public\\.${fn}\\([^]*?\\n\\$\\$;`).exec(sql)?.[0] ?? "";
+    assert.ok(body.includes("perform public._storage_tool_require();"), fn);
+  }
+  assert.match(sql, /revoke all on function public\.storage_tool_purge_claim\(integer\) from public, anon, authenticated;\s*grant execute on function public\.storage_tool_purge_claim\(integer\) to service_role;/);
+  assert.match(sql, /revoke all on function public\.storage_tool_purge_finish\(uuid\[\]\) from public, anon, authenticated;\s*grant execute on function public\.storage_tool_purge_finish\(uuid\[\]\) to service_role;/);
+  assert.equal(/to anon/.test(sql.replace(/--.*$/gm, "")), false);
+});
+test("'Delete forever' lists the stored files, removes them from storage, and only then removes the rows; a ZIP and a copy never go through the website's server", () => {
+  const api = read("src/storagetool/storageToolOrganizeApi.ts");
+  const forever = /export async function deleteForever[^]*?\n}\n/.exec(api)[0];
+  assert.ok(forever.indexOf("storage_tool_forever_prepare") < forever.indexOf(".remove(") && forever.indexOf(".remove(") < forever.indexOf("storage_tool_forever_finish"));
+  assert.match(api, /\.copy\(file\.storagePath, newPath\)/); assert.match(api, /registerFile\(newId, targetFolderId, file\.name, file\.mimeType\)/);
+  const zip = read("src/storagetool/zipDownload.ts");
+  assert.match(zip, /await import\("jszip"\)/, "the ZIP library is loaded only when needed"); assert.match(zip, /zipProblem\(entries\)/);
+});
+test("the automatic clean-up function checks its secret, removes the stored files first and the rows after", () => {
+  const fn = read("supabase/functions/storage-tool-purge/index.ts").replace(/^\s*\/\/.*$/gm, "");
+  assert.match(fn, /x-purge-secret/); assert.match(fn, /STORAGE_TOOL_PURGE_SECRET/); assert.match(fn, /secretMatches/); assert.match(fn, /\{ error: "Not allowed\." \}, 401/);
+  assert.ok(fn.indexOf("storage_tool_purge_claim") < fn.indexOf(".remove(") && fn.indexOf(".remove(") < fn.indexOf("storage_tool_purge_finish"));
+});
+test("dragging my own items uses its own drag type (so it is never mistaken for files dropped from the computer), and menus have names", () => {
+  const page = read("src/storagetool/pages/StorageToolPage.tsx"), views = read("src/storagetool/components/ItemViews.tsx");
+  assert.match(page, /DRAG_TYPE = "application\/x-storage-tool-items"/); assert.match(page, /Array\.from\(e\.dataTransfer\.types\)\.includes\("Files"\)/);
+  assert.match(views, /aria-label=\{`Select \$\{name\}`\}/); assert.match(views, /aria-label=\{`More actions for \$\{name\}`\}/); assert.match(views, /onContextMenu/);
+  for (const w of ["Move to…", "Copy to…", "Rename", "Details", "Delete"]) assert.ok(page.includes(w), w);
+});
+test("the Phase 2 screens use readable text (13px and up, no pale greys) and the question before deleting a folder says how much is inside", () => {
+  for (const p of ["src/storagetool/pages/StorageToolPage.tsx", "src/storagetool/components/ItemViews.tsx", "src/storagetool/components/Dialogs.tsx", "src/storagetool/components/FolderPickerModal.tsx", "src/storagetool/components/DetailsPanel.tsx", "src/storagetool/components/TrashView.tsx"]) {
+    const src = read(p);
+    assert.deepEqual([...src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], p);
+    assert.equal(/text-slate-400|text-slate-500|text-\[#0088cc\]/.test(src), false, p);
+  }
+  const page = read("src/storagetool/pages/StorageToolPage.tsx");
+  assert.match(page, /fetchDetails\("folder", e\.folder\.id\)/); assert.match(page, /everything goes to the Trash together/);
 });
 
 console.log(`\n${process.exitCode ? "SOME TESTS FAILED" : "All " + passed + " tests passed"}`);

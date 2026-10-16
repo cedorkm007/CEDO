@@ -251,6 +251,31 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
       return none(405, "Method not allowed");
     }
 
+    // Copy inside storage: POST /object/copy { bucketId, sourceKey, destinationKey } (the rules run as the caller: read the source, insert the copy)
+    if (p === "/object/copy" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)).toString("utf8") || "{}");
+      try {
+        await asCaller(async tx => {
+          const src = (await tx.query("select metadata from storage.objects where bucket_id = $1 and name = $2", [body.bucketId, body.sourceKey])).rows[0];
+          if (!src) throw Object.assign(new Error("Object not found"), { code: "404" });
+          await tx.query("insert into storage.objects (bucket_id, name, owner, metadata) values ($1, $2, nullif(current_setting('request.jwt.claim.sub', true), '')::uuid, $3::jsonb)", [body.bucketId, body.destinationKey, JSON.stringify(src.metadata)]);
+        });
+        return json(res, 200, { Key: `${body.bucketId}/${body.destinationKey}` });
+      } catch (e) { return none(e.code === "404" ? 404 : 403, e.code === "404" ? "Object not found" : "new row violates row-level security policy"); }
+    }
+    // Several signed links at once: POST /object/sign/<bucket> { expiresIn, paths }
+    const signMany = /^\/object\/sign\/([^/]+)$/.exec(p);
+    if (signMany && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)).toString("utf8") || "{}");
+      const out = [];
+      for (const name of body.paths ?? []) {
+        const found = await asCaller(async tx => (await tx.query("select 1 from storage.objects where bucket_id = $1 and name = $2", [signMany[1], name])).rows.length > 0).catch(() => false);
+        if (!found) { out.push({ error: "Object not found", path: name, signedURL: null }); continue; }
+        const token = sign({ url: `${signMany[1]}/${name}`, exp: Math.floor(Date.now() / 1000) + 3600 });
+        out.push({ error: null, path: name, signedURL: `/object/sign/${signMany[1]}/${name.split("/").map(encodeURIComponent).join("/")}?token=${token}` });
+      }
+      return json(res, 200, out);
+    }
     // Remove files: DELETE /object/<bucket> with { prefixes: [...] }
     let m = /^\/object\/([^/]+)$/.exec(p);
     if (m && req.method === "DELETE") {
@@ -376,6 +401,20 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
   // The stand-in for the real project's scheduler (pg_cron): once a minute, send due consultation reminders, notice INC deadlines that passed,
   // and send the INC / window-closing reminders.
+  // Stand-in for the storage-tool-purge function (the real one is called hourly by pg_cron): every minute, remove the stored files of items that were
+  // in the Trash longer than the setting, then their rows.
+  const runPurge = async () => {
+    try {
+      for (let round = 0; round < 5; round++) {
+        const due = (await db.query("select public.storage_tool_purge_claim(200) c")).rows[0].c ?? [];
+        if (due.length === 0) break;
+        for (const d of due) await db.query("delete from storage.objects where bucket_id = 'storage-tool' and name = $1", [d.path]);
+        await db.query("select public.storage_tool_purge_finish($1::uuid[])", [due.map(d => d.id)]);
+        if (due.length < 200) break;
+      }
+    } catch { /* the Storage Tool tables are not there (an older database): nothing to do */ }
+  };
+  const purgeTimer = setInterval(runPurge, 60_000);
   const runJobs = () => db.query("select public.renewal_run_scheduled_jobs()").catch(() => {});
   void runJobs();
   const jobsTimer = setInterval(runJobs, 60_000);
@@ -393,7 +432,7 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
   const pushTimer = setInterval(runPush, 15_000);
   return {
     url: `http://127.0.0.1:${port}`, port, rest,
-    close: () => new Promise(r => { clearInterval(jobsTimer); clearInterval(pushTimer); wss.close(); server.close(() => r()); server.closeAllConnections?.(); }),
+    close: () => new Promise(r => { clearInterval(jobsTimer); clearInterval(pushTimer); clearInterval(purgeTimer); wss.close(); server.close(() => r()); server.closeAllConnections?.(); }),
   };
 }
 

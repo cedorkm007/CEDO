@@ -141,3 +141,96 @@ export function queueSummary(jobs: { status: string }[]): string {
   if (total === 0) return "Nothing to upload";
   return `${done} of ${total} uploaded${failed ? ` · ${failed} failed` : ""}`;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Phase 2: selecting, moving, copying, ZIP downloads, Trash
+// ─────────────────────────────────────────────────────────────
+export type ItemKind = "file" | "folder";
+export interface ItemRef { kind: ItemKind; id: string }
+export const itemKey = (kind: ItemKind, id: string): string => `${kind === "folder" ? "d" : "f"}:${id}`;
+export function parseItemKey(key: string): ItemRef | null {
+  const m = /^([df]):([0-9a-f-]{36})$/i.exec(key);
+  return m ? { kind: m[1].toLowerCase() === "d" ? "folder" : "file", id: m[2] } : null;
+}
+
+/** A ZIP of more than this is refused (the ZIP is built in the browser's memory). */
+export const ZIP_LIMIT_BYTES = 500 * 1024 * 1024;
+
+export interface TreeFolder { id: string; parentId: string | null; name: string }
+export interface TreeNode extends TreeFolder { children: TreeNode[] }
+
+/** The flat list of folders as a tree (siblings by name, numbers in order). */
+export function buildFolderTree(rows: TreeFolder[]): TreeNode[] {
+  const nodes = new Map<string, TreeNode>(rows.map(r => [r.id, { ...r, children: [] }]));
+  const roots: TreeNode[] = [];
+  for (const n of nodes.values()) { const parent = n.parentId ? nodes.get(n.parentId) : undefined; (parent ? parent.children : roots).push(n); }
+  const sort = (list: TreeNode[]) => { list.sort((a, b) => byText(a.name, b.name)); list.forEach(n => sort(n.children)); };
+  sort(roots);
+  return roots;
+}
+
+/** The folder itself and every folder inside it. */
+export function folderAndDescendants(rows: TreeFolder[], rootId: string): Set<string> {
+  const out = new Set<string>([rootId]);
+  let grew = true;
+  while (grew) { grew = false; for (const r of rows) if (r.parentId && out.has(r.parentId) && !out.has(r.id)) { out.add(r.id); grew = true; } }
+  return out;
+}
+
+/** Folders that cannot be the target of a move: the folders being moved and everything inside them (the database refuses these too). */
+export function blockedMoveTargets(rows: TreeFolder[], movingFolderIds: string[]): Set<string> {
+  const blocked = new Set<string>();
+  for (const id of movingFolderIds) for (const x of folderAndDescendants(rows, id)) blocked.add(x);
+  return blocked;
+}
+
+/** One part of a path inside a ZIP: characters Windows does not allow become "_", and it never ends with a dot or space. */
+export function zipSegment(name: string): string {
+  const cleaned = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").replace(/[. ]+$/, "").trim();
+  return cleaned || "_";
+}
+
+export interface FlatFile { id: string; folderId: string | null; name: string; sizeBytes: number; mimeType: string; storagePath: string }
+export interface SubtreeData { folders: TreeFolder[]; files: FlatFile[] }
+export interface ZipEntry { path: string; storagePath: string; sizeBytes: number }
+
+/** The files of a folder as ZIP entries, with the folder's own name as the first part of every path ("Reports/2026/a.pdf"). */
+export function zipEntriesForFolder(rootId: string, data: SubtreeData, prefix: string[] = []): ZipEntry[] {
+  const byId = new Map(data.folders.map(f => [f.id, f]));
+  const pathOf = (folderId: string | null): string[] => {
+    const parts: string[] = [];
+    let cursor = folderId ? byId.get(folderId) : undefined;
+    while (cursor) { parts.unshift(zipSegment(cursor.name)); if (cursor.id === rootId) break; cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined; }
+    return [...prefix, ...parts];
+  };
+  return data.files.map(f => ({ path: [...pathOf(f.folderId), zipSegment(f.name)].join("/"), storagePath: f.storagePath, sizeBytes: f.sizeBytes }));
+}
+
+/** The name of the ZIP: the folder's name for a single folder, else a general name. */
+export function zipFileName(picked: { kind: ItemKind; name: string }[]): string {
+  if (picked.length === 1 && picked[0].kind === "folder") return `${zipSegment(picked[0].name)}.zip`;
+  return "Storage Tool download.zip";
+}
+
+export function zipProblem(entries: { sizeBytes: number }[]): string | null {
+  if (entries.length === 0) return "There is no file to download in what you chose.";
+  const total = entries.reduce((s, e) => s + e.sizeBytes, 0);
+  return total > ZIP_LIMIT_BYTES ? `Everything you chose is ${formatBytes(total)}, which is more than the ${formatBytes(ZIP_LIMIT_BYTES)} one ZIP can hold. Please download it in smaller parts.` : null;
+}
+
+/** What copying a folder needs: the folders to make (parents first, with the path of names inside the copy) and each file with its folder. */
+export function planFolderCopy(rootId: string, data: SubtreeData): { folders: { id: string; parentId: string | null; name: string }[]; files: FlatFile[] } {
+  const inside = folderAndDescendants(data.folders, rootId);
+  const depth = (id: string): number => { let d = 0, cur = data.folders.find(f => f.id === id); while (cur && cur.id !== rootId) { d++; cur = data.folders.find(f => f.id === cur!.parentId); } return d; };
+  const folders = data.folders.filter(f => inside.has(f.id)).sort((a, b) => depth(a.id) - depth(b.id) || byText(a.name, b.name));
+  return { folders: folders.map(f => ({ id: f.id, parentId: f.id === rootId ? null : f.parentId, name: f.name })), files: data.files.filter(f => f.folderId && inside.has(f.folderId)) };
+}
+
+/** How long an item stays in Trash: "Deleted forever today", "… tomorrow", "… in 12 days". */
+export function trashCountdown(daysLeft: number): string {
+  if (daysLeft <= 0) return "Deleted forever today";
+  if (daysLeft === 1) return "Deleted forever tomorrow";
+  return `Deleted forever in ${daysLeft} days`;
+}
+
+export function countWords(n: number, one: string, many: string): string { return `${n} ${n === 1 ? one : many}`; }
