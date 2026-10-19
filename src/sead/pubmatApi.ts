@@ -82,23 +82,47 @@ export async function uploadPubmat(
     // Never let a compression failure block the upload — fall back to the original file.
   }
 
-  const path = `${type}/${id}/pubmat.${extensionFor(toUpload)}`;
+  // A new name each time, so a replaced picture is never shown from the browser's or the CDN's copy of the old one.
+  const path = `${type}/${id}/pubmat-${Date.now()}.${extensionFor(toUpload)}`;
   if (previousPath && previousPath !== path) {
     await supabase.storage.from(PUBMAT_BUCKET).remove([previousPath]);
   }
   const { error: uploadError } = await supabase.storage.from(PUBMAT_BUCKET)
     .upload(path, toUpload, { contentType: toUpload.type, upsert: true });
-  if (uploadError) return { ok: false, error: uploadError.message };
-  const { error: updateError } = await supabase.from(TABLE_BY_TYPE[type]).update({ pubmat_path: path }).eq("id", id);
-  if (updateError) return { ok: false, error: updateError.message };
+  if (uploadError) return { ok: false, error: readableUploadError(uploadError.message) };
+  const saved = await savePubmatPath(type, id, path);
+  if (!saved.ok) return { ok: false, error: saved.error };
   return { ok: true, path };
 }
 
 export async function removePubmat(type: PubmatActivityType, id: string, path: string): Promise<{ ok: boolean; error?: string }> {
   const { error: removeError } = await supabase.storage.from(PUBMAT_BUCKET).remove([path]);
-  if (removeError) return { ok: false, error: removeError.message };
-  const { error: updateError } = await supabase.from(TABLE_BY_TYPE[type]).update({ pubmat_path: null }).eq("id", id);
-  return updateError ? { ok: false, error: updateError.message } : { ok: true };
+  if (removeError) return { ok: false, error: readableUploadError(removeError.message) };
+  return savePubmatPath(type, id, null);
+}
+
+/** The storage service answers a refused upload with a technical sentence; say what it means. */
+function readableUploadError(message: string): string {
+  if (/row-level security|violates|not authorized|unauthorized|403/i.test(message)) {
+    return "You are not allowed to upload a pubmat for this activity. Please ask the IT admin to run the latest database update (activity pubmats for SDP monitors).";
+  }
+  return message;
+}
+
+/**
+ * Saves (or clears) the picture's path on the activity. The database function checks who is asking and says so when it cannot save; if the function is
+ * not installed yet (the SQL file has not been run) it falls back to the old direct update, and even then reports an update that changed no row
+ * instead of pretending it worked.
+ */
+async function savePubmatPath(type: PubmatActivityType, id: string, path: string | null): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.rpc("set_activity_pubmat", { p_type: type, p_id: id, p_path: path });
+  if (!error) return { ok: true };
+  const missing = error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "");
+  if (!missing) return { ok: false, error: error.message };
+  const { data, error: updateError } = await supabase.from(TABLE_BY_TYPE[type]).update({ pubmat_path: path }).eq("id", id).select("id");
+  if (updateError) return { ok: false, error: updateError.message };
+  if (!data || data.length === 0) return { ok: false, error: "The picture was uploaded, but it could not be attached to the activity. Please ask the IT admin to run the latest database update (activity pubmats for SDP monitors)." };
+  return { ok: true };
 }
 
 /** Public URL for display — null-safe so callers can do `pubmatUrl(activity.pubmatPath)` directly. */

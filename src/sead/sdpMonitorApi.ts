@@ -166,6 +166,46 @@ export async function fetchAttendanceForActivity(activityId: string): Promise<At
   }));
 }
 
+export interface AttendedWithoutCredit { scholarIdNumber: string; scholarName: string; reason: string }
+
+/**
+ * Scholars who scanned this activity's QR codes but have NO credit row for it, with the reason: they are waiting for the survey, they had already
+ * completed the category (the credit is saved for a later semester instead of being counted again), the activity has no SDP category, or the credit
+ * is simply missing. The "Credited Scholars" list only shows credit rows, so without this these scholars looked as if their scan did not count.
+ */
+export async function fetchAttendedWithoutCredit(activityId: string, category: SDPCategory | null, credited: AttendanceEntry[]): Promise<AttendedWithoutCredit[]> {
+  const { data: session } = await supabase.from("attendance_sessions").select("id").eq("sdp_activity_id", activityId).maybeSingle();
+  if (!session) return [];
+  const records: { scholar_id_number: string; status: string }[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from("attendance_records").select("scholar_id_number, status")
+      .eq("session_id", session.id).in("status", ["present", "pending_survey"]).order("scholar_id_number").range(from, from + 999);
+    if (error || !data) break;
+    records.push(...(data as { scholar_id_number: string; status: string }[]));
+    if (data.length < 1000) break;
+  }
+  const creditedIds = new Set(credited.map(c => c.scholarIdNumber));
+  const missing = records.filter(r => !creditedIds.has(r.scholar_id_number));
+  if (missing.length === 0) return [];
+
+  const ids = missing.map(m => m.scholar_id_number);
+  const scholars = await fetchInChunks("scholars", "scholar_id_number, first_name, last_name", "scholar_id_number", ids);
+  const nameById = new Map(scholars.map(s => [String(s.scholar_id_number), `${s.first_name} ${s.last_name}`]));
+  const banked = new Set<string>();
+  if (category) {
+    const reserved = await fetchInChunks("sdp_reserved_credits", "scholar_id_number", "scholar_id_number", ids);
+    for (const r of reserved) banked.add(String(r.scholar_id_number));
+  }
+  return missing.map(m => ({
+    scholarIdNumber: m.scholar_id_number,
+    scholarName: nameById.get(m.scholar_id_number) ?? m.scholar_id_number,
+    reason: m.status === "pending_survey" ? "Waiting for the scholar to answer the survey; the credit is added once it is answered."
+      : !category ? "This activity has no SDP category, so it gives no credit."
+      : banked.has(m.scholar_id_number) ? "Had already completed this category, so the credit is saved for a later semester."
+      : "Attended, but no credit was recorded. Use Credit above to add it.",
+  })).sort((a, b) => a.scholarName.localeCompare(b.scholarName));
+}
+
 /** Credits one scholar as having completed this activity — this is what marks its category
  *  complete for them (see scholar_sdp_category_status). Points are no longer part of this. */
 export async function creditAttendance(
@@ -422,12 +462,17 @@ export async function enableAttendanceForActivity(
   return { ok: true, sessionId: session.id };
 }
 
-/** Generates additional single-use voucher codes when attendance exceeds the original estimate. */
+/**
+ * Generates additional single-use codes when attendance exceeds the original estimate, or when a recurring activity needs a fresh code for each
+ * day: vouchers for a Voucher session, and one time-in plus one time-out code per person for a Time-in / Time-out session.
+ */
 export async function addAttendanceVouchers(sessionId: string, participantCount: number): Promise<{ ok: boolean; error?: string }> {
   if (participantCount < 1) return { ok: false, error: "Enter a number greater than 0." };
+  const { data: sessionInfo } = await supabase.from("attendance_sessions").select("type").eq("id", sessionId).maybeSingle();
   const { data: latestBatch } = await supabase.from("attendance_codes").select("batch_number").eq("session_id", sessionId).order("batch_number", { ascending: false }).limit(1).maybeSingle();
   const batchNumber = Number(latestBatch?.batch_number ?? 0) + 1;
-  const codes = Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind: "voucher", batch_number: batchNumber }));
+  const kinds = sessionInfo?.type === "time_in_time_out" ? ["time_in", "time_out"] : ["voucher"];
+  const codes = kinds.flatMap(kind => Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind, batch_number: batchNumber })));
   const error = await insertAttendanceCodes(codes);
   if (error) return { ok: false, error };
   const { data: session, error: sessionError } = await supabase.from("attendance_sessions")
@@ -466,7 +511,9 @@ export interface AttendanceRosterEntry {
   timeInAt: string | null;
   timeOutAt: string | null;
   hoursEarned: number;
-  status: "incomplete" | "present";
+  status: "incomplete" | "present" | "pending_survey";
+  /** Time-in / Time-out: how many complete pairs (days) the scholar has. A recurring activity can have several. */
+  completedDays?: number;
 }
 
 /** Live roster of who's redeemed codes for a session — auto-maintained by a DB trigger. */
@@ -484,5 +531,6 @@ export async function fetchAttendanceRoster(sessionId: string): Promise<Attendan
     timeInAt: r.time_in_at, timeOutAt: r.time_out_at,
     hoursEarned: Number(r.hours_earned ?? 0),
     status: r.status,
+    completedDays: Math.min(Number(r.time_in_count ?? (r.time_in_at ? 1 : 0)), Number(r.time_out_count ?? (r.time_out_at ? 1 : 0))),
   }));
 }
