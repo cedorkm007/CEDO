@@ -140,7 +140,7 @@ check("a monitor can scan a recurring activity's time-in and time-out on each da
 console.log("\nOld records keep working");
 check("existing time-in / time-out records were given their counts", (await q("select count(*)::int n from attendance_records where time_in_at is not null and time_in_count = 0"))[0].n === 0 && (await q("select count(*)::int n from attendance_records where time_out_at is not null and time_out_count = 0"))[0].n === 0);
 check("the two SQL files can be run again without harm", await (async () => {
-  for (const f of ["supabase_migration_sdp_recurring_attendance_fix.sql", "supabase_migration_activity_pubmats_sdp_monitors.sql"]) await db.exec(fs.readFileSync(new URL(`../../${f}`, import.meta.url), "utf8"));
+  for (const f of ["supabase_migration_sdp_recurring_attendance_fix.sql", "supabase_migration_activity_pubmats_sdp_monitors.sql", "supabase_migration_sdp_credit_attended_scholars.sql"]) await db.exec(fs.readFileSync(new URL(`../../${f}`, import.meta.url), "utf8"));
   return (await allowed(a3)) === 2;
 })());
 
@@ -160,6 +160,24 @@ check("the function refuses a path of another activity, an unknown activity, a d
   && await fails(STORAGE2, "select public.set_activity_pubmat('sdp', $1, null)", [a1], /not allowed/));
 await rows(PLAIN, "select public.set_activity_pubmat('sdp', $1, null)", [a1]);
 check("a picture can be removed again", (await q("select pubmat_path from sdp_activities where id = $1", [a1]))[0].pubmat_path === null);
+
+console.log("\nCrediting scholars who attended but have no credit");
+// the situation found on the real project: an activity made without a category, scanned, the category chosen afterwards
+const late = await makeActivity("created without a category", "one_time", null, day(0, 9), day(0, 11));
+const sl = await makeSession(late, "time_in_time_out", 5);
+for (const n of [20, 21]) { await redeem(n, sl.codes.time_in[n - 20]); await redeem(n, sl.codes.time_out[n - 20]); }
+await redeem(22, sl.codes.time_in[2]);   // timed in only: not present
+await q("delete from sdp_attendance where activity_id = $1", [late]);   // present, but no credit row
+check("with no category the function refuses and says to choose one first", await fails(SEAD, "select public.credit_attended_scholars($1)", [late], /Choose an SDP category/));
+await q("update sdp_activities set category = 'community_service' where id = $1", [late]);
+const credited = (await rows(SEAD, "select public.credit_attended_scholars($1) n", [late]))[0].n;
+check("once the category is chosen, every present scholar is credited (2), the one who only timed in is not, in the current semester, marked as added by staff",
+  credited === 2 && (await creditRows(late, 20)).length === 1 && (await creditRows(late, 21)).length === 1 && (await creditRows(late, 22)).length === 0
+  && (await q("select created_by from sdp_attendance where activity_id = $1 and scholar_id_number = $2", [late, num(20)]))[0].created_by === SEAD
+  && (await q("select semester from sdp_attendance where activity_id = $1 and scholar_id_number = $2", [late, num(20)]))[0].semester === "2nd Semester");
+check("pressing it again credits nobody twice", (await rows(SEAD, "select public.credit_attended_scholars($1) n", [late]))[0].n === 0 && (await creditRows(late, 20)).length === 1);
+check("people who are not SDP / SEAD staff or monitors of the activity are refused, and an unknown activity is reported", await fails(STORAGE2, "select public.credit_attended_scholars($1)", [late], /not allowed/) && await fails(SEAD, "select public.credit_attended_scholars($1)", [crypto.randomUUID()], /not found/));
+check("the credited scholars now count in the category total", Number((await q("select public._sdp_period_credits($1, 'community_service', '2025-2026', '2nd Semester') n", [num(20)]))[0].n) >= 1);
 
 console.log(`\n${failed ? "SOME CHECKS FAILED" : "ALL SDP MONITORING DATABASE CHECKS PASSED"} — ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
