@@ -47,7 +47,7 @@ export function renewalAttention(windows: MyRenewalWindow[]): RenewalAttention |
     if (!w.record) {
       if (w.state === "open" || w.state === "late") {
         return { windowId: w.window.id, termLabel: term, actionNeeded: true,
-          headline: w.state === "open" ? `Renewal for ${term} is open. Apply by ${formatDay(w.window.closesOn)}.` : `Renewal for ${term} has closed, but you can still apply late.` };
+          headline: w.state === "open" ? `Renewal for ${term} is open. Renew your scholarship before ${formatDay(w.window.closesOn)}.` : `Renewal for ${term} has closed, but you can still apply late.` };
       }
       continue;
     }

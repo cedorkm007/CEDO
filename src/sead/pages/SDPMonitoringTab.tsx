@@ -4,7 +4,7 @@ import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
-  fetchAttendanceForActivity, creditAttendance, removeAttendance,
+  fetchAttendanceForActivity, fetchAttendedWithoutCredit, creditAttendance, removeAttendance, type AttendedWithoutCredit,
   fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
   type SDPActivity, type SDPCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
@@ -85,6 +85,7 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [attendanceCount, setAttendanceCount] = useState("");
   const [voucherHours, setVoucherHours] = useState(1);
   const [pubmatFile, setPubmatFile] = useState<File | null>(null);
+  const [createdWithoutPubmat, setCreatedWithoutPubmat] = useState(false);
 
   async function handleCreate() {
     if (!name.trim()) { setError("Enter an activity name."); return; }
@@ -117,7 +118,12 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
     }
     if (pubmatFile) {
       const pubmatResult = await uploadPubmat("sdp", result.id, pubmatFile, null);
-      if (!pubmatResult.ok) { setBusy(false); setError(`Activity created, but the pubmat upload failed: ${pubmatResult.error}`); return; }
+      if (!pubmatResult.ok) {
+        // The activity exists now: show it in the list, and do not let a second press of Create make a duplicate.
+        setBusy(false); setCreatedWithoutPubmat(true); onCreated();
+        setError(`The activity was created, but the pubmat could not be uploaded: ${pubmatResult.error} You can add the pubmat later by opening the activity.`);
+        return;
+      }
     }
     setBusy(false);
     onCreated();
@@ -237,9 +243,9 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
           </div>
 
           {error && <p className="text-[13px] text-red-600">{error}</p>}
-          <button onClick={handleCreate} disabled={busy}
+          <button onClick={createdWithoutPubmat ? onClose : handleCreate} disabled={busy}
             className="w-full bg-[#062444] text-white text-sm font-semibold rounded-lg py-2.5 disabled:opacity-50">
-            {busy ? "Creating…" : "Create Activity"}
+            {busy ? "Creating…" : createdWithoutPubmat ? "Close" : "Create Activity"}
           </button>
         </div>
       </div>
@@ -256,9 +262,13 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const [notCredited, setNotCredited] = useState<AttendedWithoutCredit[]>([]);
+
   async function load() {
     setLoading(true);
-    setAttendees(await fetchAttendanceForActivity(activity.id));
+    const credited = await fetchAttendanceForActivity(activity.id);
+    setAttendees(credited);
+    setNotCredited(await fetchAttendedWithoutCredit(activity.id, activity.category, credited));
     setLoading(false);
   }
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activity.id]);
@@ -284,7 +294,13 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
   return (
     <div>
       <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2 flex items-center gap-1.5"><UserCheck size={13} /> Credited Scholars</p>
-      <p className="text-[11px] text-slate-400 mb-3">Crediting a scholar here marks "{categoryLabel(activity.category)}" complete for them.</p>
+      {activity.category ? (
+        <p className="text-[11px] text-slate-400 mb-3">Crediting a scholar here marks "{categoryLabel(activity.category)}" complete for them.</p>
+      ) : (
+        <p role="status" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-950">
+          This activity has <strong>no SDP category</strong>. Scans and credits are recorded here, but they are not counted in any category of the SDP Checklist. Choose a category in “Activity Details” if they should count.
+        </p>
+      )}
 
       <div className="flex items-end gap-2 flex-wrap mb-4">
         <div>
@@ -319,6 +335,21 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
               </span>
             </div>
           ))}
+        </div>
+      )}
+
+      {!loading && notCredited.length > 0 && (
+        <div className="mt-5">
+          <p className="text-[12px] font-bold uppercase text-slate-700 mb-1">Scanned the QR code but not credited ({notCredited.length})</p>
+          <p className="text-[12.5px] text-slate-700 mb-2">These scholars attended, but no credit was added to this activity. The reason is shown for each one.</p>
+          <div className="space-y-1.5">
+            {notCredited.map(n => (
+              <div key={n.scholarIdNumber} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px]">
+                <p className="font-medium text-[#062444]">{n.scholarName} <span className="text-slate-700">({n.scholarIdNumber})</span></p>
+                <p className="text-amber-950">{n.reason}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -474,6 +505,9 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
             <input type="number" min={1} value={count} onChange={e => setCount(e.target.value)}
               placeholder="Number of participants, e.g. 50"
               className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
+            {activity.activityType === "recurring" && (
+              <p className="text-[12px] text-slate-700">This is a recurring activity: a scholar can scan once per day, and each scan uses its own code. Make codes for the participants of one day now; you can add more codes for the next days afterwards.</p>
+            )}
             {type === "voucher" && (
               <div>
                 <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Hour equivalent per voucher</label>
@@ -510,15 +544,20 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
 
       <p className="text-[12.5px] text-[#062444] font-semibold mb-2">{presentCount} of {roster.length || "0"} scholars present</p>
 
-      {session.type === "voucher" && (
-        <div className="mb-3 rounded-lg bg-[#f8fafd] p-3">
-          <p className="text-[11px] font-semibold text-slate-500 mb-2">More participants than expected?</p>
-          <div className="flex items-center gap-2">
-            <input type="number" min={1} value={extraVoucherCount} onChange={e => setExtraVoucherCount(e.target.value)} placeholder="Additional participants" className="w-44 border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" />
-            <button onClick={handleAddVouchers} disabled={busy} className="bg-[#062444] text-white text-[12px] font-semibold rounded-lg px-3 py-1.5 disabled:opacity-50">Add vouchers</button>
-          </div>
-        </div>
+      {activity.activityType === "recurring" && (
+        <p className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-[12.5px] text-sky-950">
+          This is a recurring activity: each scholar can scan once for every day of the activity, and every scan needs its own code. Add more codes below before each day if you are running low.
+          {session.type === "time_in_time_out" ? " Each scholar needs one time-in and one time-out code per day; a day counts when both were scanned." : ""}
+        </p>
       )}
+
+      <div className="mb-3 rounded-lg bg-[#f8fafd] p-3">
+        <p className="text-[11px] font-semibold text-slate-500 mb-2">{activity.activityType === "recurring" ? "Need more codes (more participants, or the next day)?" : "More participants than expected?"}</p>
+        <div className="flex items-center gap-2">
+          <input type="number" min={1} value={extraVoucherCount} onChange={e => setExtraVoucherCount(e.target.value)} placeholder="Additional participants" className="w-44 border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" />
+          <button onClick={handleAddVouchers} disabled={busy} className="bg-[#062444] text-white text-[12px] font-semibold rounded-lg px-3 py-1.5 disabled:opacity-50">{session.type === "voucher" ? "Add vouchers" : "Add time-in / time-out codes"}</button>
+        </div>
+      </div>
 
       {roster.length > 0 && (
         <div className="space-y-1 mb-3 max-h-40 overflow-y-auto">
@@ -527,10 +566,11 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
               <span className="text-[#062444] font-medium">{r.scholarName} <span className="text-slate-400">({r.scholarIdNumber})</span></span>
               {session.type === "time_in_time_out" ? (
                 <span className={r.status === "present" ? "text-green-600 font-semibold" : "text-orange-500 font-semibold"}>
-                  {r.status === "present" ? "Present" : r.timeInAt ? "Timed in only" : "Incomplete"}
+                  {r.status === "present" ? `Present${(r.completedDays ?? 0) > 1 ? ` · ${r.completedDays} days` : ""}`
+                    : r.status === "pending_survey" ? "Waiting for survey" : r.timeInAt ? "Timed in only" : "Incomplete"}
                 </span>
               ) : (
-                <span className="text-[#062444] font-semibold">{r.hoursEarned}h</span>
+                <span className="text-[#062444] font-semibold">{r.hoursEarned}h{r.status === "pending_survey" ? " · waiting for survey" : ""}</span>
               )}
             </div>
           ))}
@@ -1174,7 +1214,6 @@ function ChecklistSection() {
                   {!legacy && (
                     <td className="px-5 py-3">
                       <ComplianceBadge row={s} />
-                      {s.applicable && s.complied === false && s.missing && <p className="mt-1 text-[13px] text-slate-700">{s.missing}</p>}
                     </td>
                   )}
                   <td className="px-5 py-3 text-center">

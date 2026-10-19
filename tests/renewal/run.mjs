@@ -472,7 +472,7 @@ test("the study plan form is found by its title (the office adds it in Forms Man
 });
 test("the tile chips and the home banner say the most important thing first", () => {
   const apply = win(null);
-  assert.match(SUM.renewalAttention([apply]).headline, /Renewal for 1st Semester 2026-2027 is open\. Apply by Oct 31, 2026\./);
+  assert.match(SUM.renewalAttention([apply]).headline, /Renewal for 1st Semester 2026-2027 is open\. Renew your scholarship before Oct 31, 2026\./);
   assert.equal(SUM.renewalAttention([apply]).actionNeeded, true);
   assert.deepEqual(SUM.renewalTileChip([apply]), { text: "Action needed", tone: "action" });
   const waiting = win(rec("ready_for_confirmation", { required_documents: [] }));
