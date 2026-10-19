@@ -62,4 +62,11 @@ test("both new SQL files exist and say where they must be run", () => {
   assert.equal(/to anon/.test((a + b).replace(/--.*$/gm, "")), false);
 });
 
+test("the Credited Scholars tab has a button that credits the scholars who attended, through credit_attended_scholars, after a question", () => {
+  const tab = read("src/sead/pages/SDPMonitoringTab.tsx"), api = read("src/sead/sdpMonitorApi.ts"), sql = read("supabase_migration_sdp_credit_attended_scholars.sql");
+  assert.match(tab, /Credit these scholars \(/); assert.match(tab, /window\.confirm\(`Credit \$\{n\} scholar/); assert.match(tab, /creditAttendedScholars\(activity\.id\)/);
+  assert.match(api, /rpc\("credit_attended_scholars", \{ p_activity_id: activityId \}\)/); assert.match(api, /canCredit: m\.status === "present" && !!category/);
+  assert.match(sql, /r\.status = 'present'/); assert.match(sql, /not exists \(select 1 from public\.sdp_attendance c/); assert.equal(/to anon/.test(sql.replace(/--.*$/gm, "")), false);
+});
+
 console.log(`\n${process.exitCode ? "SOME TESTS FAILED" : "All " + passed + " tests passed"}`);

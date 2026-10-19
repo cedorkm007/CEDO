@@ -166,7 +166,7 @@ export async function fetchAttendanceForActivity(activityId: string): Promise<At
   }));
 }
 
-export interface AttendedWithoutCredit { scholarIdNumber: string; scholarName: string; reason: string }
+export interface AttendedWithoutCredit { scholarIdNumber: string; scholarName: string; reason: string; /** present, and the activity has a category, so "Credit these scholars" can credit them */ canCredit: boolean }
 
 /**
  * Scholars who scanned this activity's QR codes but have NO credit row for it, with the reason: they are waiting for the survey, they had already
@@ -199,11 +199,25 @@ export async function fetchAttendedWithoutCredit(activityId: string, category: S
   return missing.map(m => ({
     scholarIdNumber: m.scholar_id_number,
     scholarName: nameById.get(m.scholar_id_number) ?? m.scholar_id_number,
+    canCredit: m.status === "present" && !!category,
     reason: m.status === "pending_survey" ? "Waiting for the scholar to answer the survey; the credit is added once it is answered."
       : !category ? "This activity has no SDP category, so it gives no credit."
       : banked.has(m.scholar_id_number) ? "Had already completed this category, so the credit is saved for a later semester."
-      : "Attended, but no credit was recorded. Use Credit above to add it.",
+      : "Attended, but no credit was recorded (for example, the category was chosen after they scanned). Use “Credit these scholars” to add it.",
   })).sort((a, b) => a.scholarName.localeCompare(b.scholarName));
+}
+
+/**
+ * Credits every scholar who attended (is present) but has no credit for this activity: one credit per finished day, in the current grading period.
+ * Needs the activity to have an SDP category. Returns how many scholars were credited.
+ */
+export async function creditAttendedScholars(activityId: string): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("credit_attended_scholars", { p_activity_id: activityId });
+  if (error) {
+    const missing = error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "");
+    return { ok: false, error: missing ? "This needs the latest database update (credit attended scholars). Please ask the IT admin to run it." : error.message };
+  }
+  return { ok: true, count: Number(data ?? 0) };
 }
 
 /** Credits one scholar as having completed this activity — this is what marks its category

@@ -4,7 +4,7 @@ import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
-  fetchAttendanceForActivity, fetchAttendedWithoutCredit, creditAttendance, removeAttendance, type AttendedWithoutCredit,
+  fetchAttendanceForActivity, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, removeAttendance, type AttendedWithoutCredit,
   fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
   type SDPActivity, type SDPCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
@@ -263,6 +263,8 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
   const [error, setError] = useState("");
 
   const [notCredited, setNotCredited] = useState<AttendedWithoutCredit[]>([]);
+  const [crediting, setCrediting] = useState(false);
+  const [creditMessage, setCreditMessage] = useState("");
 
   async function load() {
     setLoading(true);
@@ -283,6 +285,17 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
     if (!result.ok) { setError(result.error || "Failed to credit — check the Scholar ID exists."); return; }
     setQuery("");
     setSelected(null);
+    load();
+  }
+
+  async function handleCreditAttended() {
+    const n = notCredited.filter(x => x.canCredit).length;
+    if (!window.confirm(`Credit ${n} scholar${n === 1 ? "" : "s"} who attended “${activity.name}” but have no credit? Their credit is counted in the current semester.`)) return;
+    setCrediting(true); setError(""); setCreditMessage("");
+    const r = await creditAttendedScholars(activity.id);
+    setCrediting(false);
+    if (!r.ok) { setError(r.error); return; }
+    setCreditMessage(`${r.count} scholar${r.count === 1 ? " was" : "s were"} credited.`);
     load();
   }
 
@@ -338,10 +351,14 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
         </div>
       )}
 
+      {creditMessage && <p role="status" className="mb-3 rounded-lg bg-green-50 px-3 py-2 text-[13px] text-green-900">{creditMessage}</p>}
       {!loading && notCredited.length > 0 && (
         <div className="mt-5">
           <p className="text-[12px] font-bold uppercase text-slate-700 mb-1">Scanned the QR code but not credited ({notCredited.length})</p>
           <p className="text-[12.5px] text-slate-700 mb-2">These scholars attended, but no credit was added to this activity. The reason is shown for each one.</p>
+          {notCredited.some(x => x.canCredit) && (
+            <button onClick={() => void handleCreditAttended()} disabled={crediting} className="mb-2 rounded-lg bg-[#062444] px-3.5 py-2 text-[13px] font-bold text-white disabled:opacity-60">{crediting ? "Crediting…" : `Credit these scholars (${notCredited.filter(x => x.canCredit).length})`}</button>
+          )}
           <div className="space-y-1.5">
             {notCredited.map(n => (
               <div key={n.scholarIdNumber} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px]">
