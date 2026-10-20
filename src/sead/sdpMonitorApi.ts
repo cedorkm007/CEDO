@@ -199,15 +199,19 @@ export interface AttendanceEntry {
   attendedDate: string;
   /** The day of the activity this credit is for ("2026-10-21"), or null when it is not tied to a day. */
   activityDay: string | null;
+  /** The school year and semester this credit counts in (null on very old credits that were never stamped). */
+  schoolYear: string | null;
+  semester: string | null;
 }
 
 /** Everyone currently credited for one activity — shown in that activity's detail modal. */
 export async function fetchAttendanceForActivity(activityId: string): Promise<AttendanceEntry[]> {
   // With the day of each credit when the database has it (supabase_migration_sdp_update_p4_day_labels.sql); without it exactly as before.
   const select = (cols: string) => supabase.from("sdp_attendance").select(cols).eq("activity_id", activityId).order("attended_date", { ascending: false }) as unknown as PromiseLike<{ data: Record<string, unknown>[] | null; error: unknown }>;
-  let { data: rawRows, error } = await select("id, scholar_id_number, attended_date, activity_day");
+  let { data: rawRows, error } = await select("id, scholar_id_number, attended_date, activity_day, school_year, semester");
+  if (error) ({ data: rawRows, error } = await select("id, scholar_id_number, attended_date, school_year, semester"));
   if (error) ({ data: rawRows, error } = await select("id, scholar_id_number, attended_date"));
-  const rows = (rawRows ?? []) as { id: string; scholar_id_number: string; attended_date: string; activity_day?: string | null }[];
+  const rows = (rawRows ?? []) as { id: string; scholar_id_number: string; attended_date: string; activity_day?: string | null; school_year?: string | null; semester?: string | null }[];
   if (error || rows.length === 0) return [];
 
   const scholarIds = [...new Set(rows.map(r => r.scholar_id_number))];
@@ -219,6 +223,8 @@ export async function fetchAttendanceForActivity(activityId: string): Promise<At
     scholarName: nameByScholarId.get(r.scholar_id_number) ?? r.scholar_id_number,
     attendedDate: r.attended_date,
     activityDay: r.activity_day ?? null,
+    schoolYear: r.school_year ?? null,
+    semester: r.semester ?? null,
   }));
 }
 
@@ -298,35 +304,48 @@ export async function fetchCreditHistory(activityId: string, limit = 300): Promi
   }));
 }
 
+/** A school year and semester a credit counts in. */
+export interface CreditPeriod { schoolYear: string; semester: string }
+
 /**
- * Credits every scholar who attended (is present) but has no credit for this activity: one credit per finished day, in the current grading period.
- * Needs the activity to have an SDP category. Returns how many scholars were credited.
+ * Credits every scholar who attended (is present) but has no credit for this activity: one credit per finished day, in the chosen semester
+ * (the current grading period when none is given). Needs the activity to have an SDP category. Returns how many scholars were credited.
  */
-export async function creditAttendedScholars(activityId: string): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
-  const { data, error } = await supabase.rpc("credit_attended_scholars", { p_activity_id: activityId });
+export async function creditAttendedScholars(activityId: string, period: CreditPeriod | null = null): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const { data, error } = period
+    ? await supabase.rpc("credit_attended_scholars", { p_activity_id: activityId, p_school_year: period.schoolYear, p_semester: period.semester })
+    : await supabase.rpc("credit_attended_scholars", { p_activity_id: activityId });
   if (error) {
     const missing = error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "");
-    return { ok: false, error: missing ? "This needs the latest database update (credit attended scholars). Please ask the IT admin to run it." : error.message };
+    return { ok: false, error: missing ? "This needs the latest database update (credit attended scholars, semester choice). Please ask the IT admin to run it." : error.message };
   }
   return { ok: true, count: Number(data ?? 0) };
+}
+
+/** Moves ONE credit to another semester (it only changes which semester it counts in; nothing is added or removed, and the move is written to the history). */
+export async function moveCreditSemester(creditId: string, period: CreditPeriod): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("move_sdp_credit_semester", { p_credit_id: creditId, p_school_year: period.schoolYear, p_semester: period.semester });
+  if (!error) return { ok: true };
+  const missing = error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "");
+  return { ok: false, error: missing ? "This needs the latest database update (move a credit to another semester). Please ask the IT admin to run it." : error.message };
 }
 
 /** Credits one scholar as having completed this activity — this is what marks its category
  *  complete for them (see scholar_sdp_category_status). Points are no longer part of this. */
 export async function creditAttendance(
-  activityId: string, scholarIdNumber: string, attendedDate: string
+  activityId: string, scholarIdNumber: string, attendedDate: string, period: CreditPeriod | null = null
 ): Promise<{ ok: boolean; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
   // Stamped with the current grading period (supabase_migration_sdp_reserved_credits.sql)
   // so this manual credit counts toward period-scoped totals — this path bypasses the
   // cap/reserved-credit banking in redeem_attendance_code() intentionally, same as before.
-  const { data: period } = await supabase.rpc("get_current_grading_period").maybeSingle();
-  const periodRow = period as { current_school_year: string | null; current_semester: string | null } | null;
+  const { data: currentPeriod } = await supabase.rpc("get_current_grading_period").maybeSingle();
+  const periodRow = period ? null : (currentPeriod as { current_school_year: string | null; current_semester: string | null } | null);
   const { error } = await supabase.from("sdp_attendance")
     .upsert(
       {
         activity_id: activityId, scholar_id_number: scholarIdNumber, attended_date: attendedDate, created_by: auth.user?.id ?? null,
-        school_year: periodRow?.current_school_year ?? null, semester: periodRow?.current_semester ?? null,
+        school_year: period?.schoolYear ?? periodRow?.current_school_year ?? null, semester: period?.semester ?? periodRow?.current_semester ?? null,
       },
       { onConflict: "activity_id,scholar_id_number,occurrence_number" }
     );
