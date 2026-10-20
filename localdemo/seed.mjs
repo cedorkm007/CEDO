@@ -193,6 +193,7 @@ export async function seedDb(db) {
     await db.query(`insert into sdp_activities (id, name, category, sub_category, activity_type, date_time, end_time, recurring_dates, sub_name, credits, all_year_levels, organization, venue, nature, source_of_fund, objectives, target_partners, specific_role, work_plan, program_flow, budget_items, target_year_levels, target_barangays, target_clusters)
       values ($1, 'TEST – Coastal Clean-up Series', 'community_service', 'community_based', 'recurring', $2, $3, $4::jsonb, 'Day 1 – Macabalan Beach', 1, true, 'TEST Org', 'Macabalan Beach', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', '{}') on conflict (id) do nothing`,
       [recurId, at(0, 9), at(0, 11), JSON.stringify(extra)]);
+    await db.query("insert into activity_monitors (activity_type, activity_id, staff_id) values ('sdp', $1, $2) on conflict do nothing", [recurId, id("staff:demo.monitor")]);   // demo.monitor also monitors this one
     const sessionId = id("session:coastal");
     await db.query("insert into attendance_sessions (id, sdp_activity_id, type, expected_attendees, duration_hours, created_by) values ($1, $2, 'voucher', 5, 1, $3) on conflict (id) do nothing", [sessionId, recurId, id("staff:demo.sead")]);
     for (const [batch, [prefix, offset]] of [["DAYONE", 0], ["DAYTWO", 1], ["DAYTHR", 2]].entries()) {
