@@ -50,11 +50,11 @@ const STAFF = [
 
 // ── SDP activities: category + credits each attendance is worth ──
 const ACTS = {
-  cs3: { name: "TEST – Community Service Day", category: "community_service", credits: 3 },
-  cv3: { name: "TEST – Volunteer Drive", category: "community_volunteerism", credits: 3 },
-  fp3: { name: "TEST – Formation Seminar", category: "formation_program", credits: 3 },
-  fp2: { name: "TEST – Short Formation Talk", category: "formation_program", credits: 2 },
-  fp3b: { name: "TEST – Second Formation Seminar", category: "formation_program", credits: 3 },
+  cs3: { name: "TEST – Community Service Day", category: "community_service", sub: "school_based", credits: 3 },
+  cv3: { name: "TEST – Volunteer Drive", category: "community_volunteerism", sub: "community_based", credits: 3 },
+  fp3: { name: "TEST – Formation Seminar", category: "formation_program", sub: "cedo_projects", credits: 3 },
+  fp2: { name: "TEST – Short Formation Talk", category: "formation_program", sub: "school_based", credits: 2 },
+  fp3b: { name: "TEST – Second Formation Seminar", category: "formation_program", sub: null, credits: 3 },   // no sub-category on purpose: shows the "No sub-category" column
 };
 const FULL_SDP = ["cs3", "cv3", "fp3"];
 
@@ -163,12 +163,21 @@ export async function seedDb(db) {
     for (const tag of u.tags) await db.query("insert into staff_account_tags (staff_id, tag_key) values ($1,$2)", [uid, tag]);
   }
 
+  // The live project lets SDP Monitoring staff add and change activities through a rule that is not in the project files; this stands in for it in the demo.
+  await db.query('drop policy if exists "demo: sdp monitoring staff manage activities" on public.sdp_activities');
+  await db.query("create policy \"demo: sdp monitoring staff manage activities\" on public.sdp_activities for all using (public.has_staff_tag('sdp_monitoring')) with check (public.has_staff_tag('sdp_monitoring'))");
+  // The live table also fills in the long text and list columns by itself when an activity is created from the screen; the demo's copy of the table does not, so it is told to.
+  for (const c of (await db.query("select column_name, data_type from information_schema.columns where table_schema = 'public' and table_name = 'sdp_activities' and is_nullable = 'NO' and column_default is null and column_name not in ('id', 'name')")).rows) {
+    const d = c.data_type === "ARRAY" ? "'{}'" : String(c.data_type).startsWith("json") ? "'[]'::jsonb" : c.data_type === "text" ? "''" : null;
+    if (d) await db.query(`alter table public.sdp_activities alter column ${c.column_name} set default ${d}`);
+  }
+
   // SDP activities
   const actId = {};
   for (const [key, a] of Object.entries(ACTS)) {
     actId[key] = id(`act:${key}`);
-    await db.query(`insert into sdp_activities (id, name, category, nature, source_of_fund, objectives, target_partners, specific_role, work_plan, program_flow, budget_items, recurring_dates, credits, all_year_levels, target_year_levels, target_barangays, target_clusters)
-      values ($1,$2,$3,'[]','[]','[]','[]','[]','[]','[]','[]','[]',$4,true,'{}','{}','{}') on conflict (id) do nothing`, [actId[key], a.name, a.category, a.credits]);
+    await db.query(`insert into sdp_activities (id, name, category, sub_category, nature, source_of_fund, objectives, target_partners, specific_role, work_plan, program_flow, budget_items, recurring_dates, credits, all_year_levels, target_year_levels, target_barangays, target_clusters)
+      values ($1,$2,$3,$5,'[]','[]','[]','[]','[]','[]','[]','[]','[]',$4,true,'{}','{}','{}') on conflict (id) do nothing`, [actId[key], a.name, a.category, a.credits, a.sub ?? null]);
   }
 
   // An activity monitor: no tools at all, but assigned to ONE SDP activity (the Volunteer Drive)

@@ -766,7 +766,7 @@ export interface ComprehensiveScholarProfileOptions {
     civilStatus: string
     contactNo: string
   }
-  sdpCompleted: { activityName: string; category: string; date: string }[]
+  sdpCompleted: { activityName: string; category: string; subCategory?: string; date: string }[]
   formationAttended: { activityName: string; dateTime: string; venue: string }[]
   questSubjects: { subjectName: string; topicCount: number; percentage: number; isCompleted: boolean }[]
   generatedAt: string
@@ -829,8 +829,8 @@ export async function generateComprehensiveScholarProfile(opts: ComprehensiveSch
 
         sectionHeading(`SDP â€” Completed Activities (${opts.sdpCompleted.length})`),
         ...simpleTable(
-          ['Activity', 'Category', 'Date'], [5288, 2200, 2000],
-          opts.sdpCompleted.map(a => [a.activityName, a.category || 'â€”', a.date || 'â€”']),
+          ['Activity', 'Category', 'Sub-category', 'Date'], [3488, 2000, 2000, 2000],
+          opts.sdpCompleted.map(a => [a.activityName, a.category || 'â€”', a.subCategory || '-', a.date || 'â€”']),
           'No completed SDP activities.',
         ),
 

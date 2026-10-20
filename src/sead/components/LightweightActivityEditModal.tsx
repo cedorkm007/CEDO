@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { X, Check } from "lucide-react";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
-import { updateSDPActivity, type SDPActivity } from "../sdpMonitorApi";
+import { updateSDPActivity, isSubCategorySupported, type SDPActivity, type SDPSubCategory } from "../sdpMonitorApi";
+import { SubCategorySelect } from "./SubCategorySelect";
 import { updateFormationActivity } from "../formationActivitiesApi";
 import type { FormationActivity } from "@/scholar/formationActivitiesApi";
 import type { ActivityType } from "../activityMonitorsApi";
@@ -46,6 +47,10 @@ export function LightweightActivityEditModal({ activityType, activity, onClose, 
   const [allYearLevels, setAllYearLevels] = useState(activity.allYearLevels);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // SDP only: a monitor can set the sub-category of an activity that already has a category (the category itself is chosen in SDP Monitoring).
+  const sdpActivity = activityType === "sdp" ? (activity as SDPActivity) : null;
+  const showSubCategory = !!sdpActivity && !!sdpActivity.category && isSubCategorySupported();
+  const [subCategory, setSubCategory] = useState<SDPSubCategory | null>(sdpActivity?.subCategory ?? null);
 
   function toggleYearLevel(level: string) {
     setYearLevels(levels => levels.includes(level) ? levels.filter(l => l !== level) : [...levels, level]);
@@ -55,13 +60,14 @@ export function LightweightActivityEditModal({ activityType, activity, onClose, 
     setError("");
     if (!name.trim()) { setError("Enter an activity name."); return; }
     if (!allYearLevels && yearLevels.length === 0) { setError("Select at least one eligible year level, or choose all year levels."); return; }
+    if (showSubCategory && !subCategory) { setError("Choose a sub-category: School-based, Community-based or CEDO Projects."); return; }
     if ((date || startTime || endTime) && (!date || !startTime)) { setError("Enter at least the date and From time together."); return; }
     const dateTimeIso = date && startTime ? new Date(`${date}T${startTime}`).toISOString() : null;
     const endTimeIso = date && endTime ? new Date(`${date}T${endTime}`).toISOString() : null;
 
     setBusy(true);
     const result = activityType === "sdp"
-      ? await updateSDPActivity(activity.id, { name: name.trim(), venue: venue.trim(), dateTime: dateTimeIso, endTime: endTimeIso, yearLevels, allYearLevels })
+      ? await updateSDPActivity(activity.id, { name: name.trim(), venue: venue.trim(), dateTime: dateTimeIso, endTime: endTimeIso, yearLevels, allYearLevels, ...(showSubCategory ? { subCategory } : {}) })
       : await updateFormationActivity(activity.id, {
           name: name.trim(), shortDescription: (activity as FormationActivity).shortDescription ?? "",
           venue: venue.trim(), dateTime: dateTimeIso ?? "", endTime: endTimeIso,
@@ -108,6 +114,13 @@ export function LightweightActivityEditModal({ activityType, activity, onClose, 
                 className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
             </div>
           </div>
+
+          {showSubCategory && (
+            <div className="border-t border-[#f0f3f8] pt-3">
+              <p className="mb-2 text-[12.5px] font-bold text-[#062444]">SDP sub-category</p>
+              <SubCategorySelect value={subCategory} onChange={setSubCategory} hasCategory />
+            </div>
+          )}
 
           <fieldset className="border-t border-[#f0f3f8] pt-3">
             <legend className="mb-2 text-[12.5px] font-bold text-[#062444]">Activity for scholars with year level</legend>

@@ -58,8 +58,8 @@ export function ScholarProfilePreviewModal({
 
             <DocSection title={`SDP — Completed Activities (${sections.sdpCompleted.length})`}>
               <DocTable
-                columns={["Activity", "Category", "Date"]}
-                rows={sections.sdpCompleted.map(a => [a.activityName, a.category || "—", a.date || "—"])}
+                columns={["Activity", "Category", "Sub-category", "Date"]}
+                rows={sections.sdpCompleted.map(a => [a.activityName, a.category || "—", a.subCategory || "—", a.date || "—"])}
                 emptyMessage="No completed SDP activities."
               />
             </DocSection>

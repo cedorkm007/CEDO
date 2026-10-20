@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { Calendar as CalendarIcon, ClipboardList, QrCode, ChevronLeft, ChevronRight, MapPin } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { AttendanceScanner } from "./AttendanceScanner";
-import { fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, SDP_CATEGORIES, type SDPActivity } from "../../sdpApi";
+import { fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, SDP_CATEGORIES, subCategoryLabel, type SDPActivity } from "../../sdpApi";
 import { fetchFormationActivitiesForScholar, fetchAttendedFormationActivityIds } from "../../formationActivitiesApi";
 import { SubmissionActivitiesList } from "./SubmissionActivitiesList";
 import { useUrlState } from "@/app/useUrlState";
@@ -21,6 +21,8 @@ type CalendarActivity = {
   endTime: string | null;
   venue: string;
   label: string;
+  /** The activity's sub-category (School-based, Community-based, CEDO Projects), or null. */
+  subLabel?: string | null;
   attendanceEnabled: boolean;
   pubmatUrl: string | null;
   attended: boolean;
@@ -179,6 +181,7 @@ function ActivitiesList({ activities }: { activities: CalendarActivity[] }) {
               {a.dateTime && <span>{new Date(a.dateTime).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}{a.endTime && ` – ${new Date(a.endTime).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}</span>}
               {a.venue && <span className="flex items-center gap-1"><MapPin size={11} /> {a.venue}</span>}
             </div>
+            {a.subLabel && <p className="mt-1 text-[10.5px] font-semibold text-[#0088cc]">{a.subLabel}</p>}
             {a.attendanceEnabled && <p className="mt-1 text-[10.5px] font-semibold text-[#0088cc]">Attendance monitoring included</p>}
             {a.shortDescription && <p className="mt-1 text-[11px] text-slate-500 line-clamp-2">{a.shortDescription}</p>}
           </div>
@@ -206,7 +209,7 @@ export function CalendarAndActivitiesPanel({ scholarIdNumber, onNavigateToForms 
       const sdp = sdpActivities.flatMap(activity => {
         const shared = {
           name: activity.name, shortDescription: activity.rationale ?? "", endTime: null,
-          label: categoryLabel(activity.category), attendanceEnabled: false, pubmatUrl: pubmatUrl(activity.pubmatPath),
+          label: categoryLabel(activity.category), subLabel: activity.subCategory ? subCategoryLabel(activity.subCategory) : null, attendanceEnabled: false, pubmatUrl: pubmatUrl(activity.pubmatPath),
           attended: attendedSdpIds.has(activity.id), isRecurring: activity.activityType === "recurring",
         };
         const entries: CalendarActivity[] = [];

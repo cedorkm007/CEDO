@@ -11,6 +11,17 @@ export const SDP_CATEGORIES: { key: SDPCategory; label: string }[] = [
   { key: "formation_program", label: "Formation Program" },
 ];
 
+/** Under every category an activity can also be School-based, Community-based or CEDO Projects. It has no effect on credits or on Complied / Not complied. */
+export type SDPSubCategory = "school_based" | "community_based" | "cedo_projects";
+export const SDP_SUBCATEGORIES: { key: SDPSubCategory; label: string }[] = [
+  { key: "school_based", label: "School-based" },
+  { key: "community_based", label: "Community-based" },
+  { key: "cedo_projects", label: "CEDO Projects" },
+];
+export function subCategoryLabel(key: SDPSubCategory | null | undefined): string {
+  return SDP_SUBCATEGORIES.find(s => s.key === key)?.label ?? "No sub-category";
+}
+
 export interface ObjectiveRow { objective: string; deliverable: string; }
 export interface WorkPlanRow { date: string; activity: string; }
 export interface ProgramFlowRow { time: string; segment: string; deliverables: string; personInCharge: string; }
@@ -21,6 +32,8 @@ export interface SDPActivity {
   name: string;
   submittedByScholarId: string | null; // null = staff-created, open to all scholars
   category: SDPCategory | null;
+  /** null = none chosen (activities made before sub-categories existed, or no category yet). */
+  subCategory: SDPSubCategory | null;
   nature: string[];
   organization: string;
   dateTime: string; // "" if unset — the start of the activity
@@ -58,6 +71,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     name: String(r.name),
     submittedByScholarId: (r.submitted_by_scholar_id as string | null) ?? null,
     category: (r.category as SDPCategory | null) ?? null,
+    subCategory: (r.sub_category as SDPSubCategory | null) ?? null,
     nature: (r.nature as string[]) ?? [],
     organization: String(r.organization ?? ""),
     dateTime: (r.date_time as string | null) ?? "",
