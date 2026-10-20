@@ -207,6 +207,41 @@ export async function fetchAttendedWithoutCredit(activityId: string, category: S
   })).sort((a, b) => a.scholarName.localeCompare(b.scholarName));
 }
 
+export interface CreditHistoryEntry {
+  id: string;
+  occurredAt: string;
+  eventType: "credit_added" | "credit_removed" | "credit_changed" | "category_changed";
+  source: string;
+  scholarIdNumber: string | null;
+  scholarName: string | null;
+  occurrenceNumber: number | null;
+  schoolYear: string | null;
+  semester: string | null;
+  actorName: string | null;
+  details: Record<string, unknown> | null;
+}
+
+/**
+ * The append-only record of every credit added / removed / moved and every category change for one activity, newest first
+ * (supabase_migration_sdp_update_p1_codes_history_speed.sql). Returns null when the table is not installed yet or the person may not read it,
+ * so the screen can simply leave the History section out instead of showing an error.
+ */
+export async function fetchCreditHistory(activityId: string, limit = 300): Promise<CreditHistoryEntry[] | null> {
+  const { data, error } = await supabase.from("sdp_credit_history")
+    .select("id, occurred_at, event_type, source, scholar_id_number, occurrence_number, school_year, semester, actor_name, details")
+    .eq("activity_id", activityId).order("occurred_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
+  if (error || !data) return null;
+  const ids = [...new Set(data.map(r => r.scholar_id_number).filter((x): x is string => !!x))];
+  const scholars = ids.length ? await fetchInChunks("scholars", "scholar_id_number, first_name, last_name", "scholar_id_number", ids) : [];
+  const nameById = new Map(scholars.map(s => [String(s.scholar_id_number), `${s.first_name} ${s.last_name}`]));
+  return data.map(r => ({
+    id: r.id, occurredAt: r.occurred_at, eventType: r.event_type, source: r.source,
+    scholarIdNumber: r.scholar_id_number, scholarName: r.scholar_id_number ? nameById.get(r.scholar_id_number) ?? null : null,
+    occurrenceNumber: r.occurrence_number, schoolYear: r.school_year, semester: r.semester, actorName: r.actor_name,
+    details: (r.details ?? null) as Record<string, unknown> | null,
+  }));
+}
+
 /**
  * Credits every scholar who attended (is present) but has no credit for this activity: one credit per finished day, in the current grading period.
  * Needs the activity to have an SDP category. Returns how many scholars were credited.

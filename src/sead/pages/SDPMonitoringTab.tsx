@@ -4,7 +4,7 @@ import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
-  fetchAttendanceForActivity, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, removeAttendance, type AttendedWithoutCredit,
+  fetchAttendanceForActivity, fetchCreditHistory, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, removeAttendance, type AttendedWithoutCredit, type CreditHistoryEntry,
   fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
   type SDPActivity, type SDPCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
@@ -33,6 +33,69 @@ function sameSet(a: string[], b: string[]): boolean {
 
 function categoryLabel(category: SDPCategory | null): string {
   return SDP_CATEGORIES.find(c => c.key === category)?.label ?? "No category set";
+}
+
+const HISTORY_SOURCE_LABELS: Record<string, string> = {
+  scholar_scan: "the scholar scanned the QR code",
+  monitor_scan: "a monitor scanned the scholar's ID card",
+  manual: "added by hand",
+  credit_attended: "“Credit these scholars”",
+  removed: "removed by staff",
+  category_edit: "category edited",
+  system: "by the system",
+};
+
+function historyLine(e: CreditHistoryEntry): string {
+  const who = e.scholarName ? `${e.scholarName} (${e.scholarIdNumber})` : e.scholarIdNumber ?? "";
+  const when = [e.schoolYear, e.semester].filter(Boolean).join(" · ");
+  const day = e.occurrenceNumber && e.occurrenceNumber > 1 ? `, day ${e.occurrenceNumber}` : "";
+  if (e.eventType === "category_changed") {
+    const d = (e.details ?? {}) as { from?: SDPCategory | null; to?: SDPCategory | null };
+    return `Category changed: ${categoryLabel(d.from ?? null)} → ${categoryLabel(d.to ?? null)}`;
+  }
+  if (e.eventType === "credit_changed") {
+    const d = (e.details ?? {}) as { from?: { semester?: string | null; school_year?: string | null }; to?: { semester?: string | null; school_year?: string | null } };
+    return `Credit moved for ${who}: ${[d.from?.school_year, d.from?.semester].filter(Boolean).join(" · ") || "no semester"} → ${[d.to?.school_year, d.to?.semester].filter(Boolean).join(" · ") || "no semester"}`;
+  }
+  return `${e.eventType === "credit_added" ? "Credit added" : "Credit removed"} for ${who}${day}${when ? ` (${when})` : ""}`;
+}
+
+/** The activity's append-only record of credits and category changes. Hidden when the database update has not been run yet. */
+function CreditHistorySection({ activityId, refreshKey }: { activityId: string; refreshKey: number }) {
+  const [entries, setEntries] = useState<CreditHistoryEntry[] | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchCreditHistory(activityId).then(r => { if (!cancelled) setEntries(r); });
+    return () => { cancelled = true; };
+  }, [activityId, refreshKey]);
+  if (entries === null) return null;
+  return (
+    <div className="mt-5">
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+        className="text-[12px] font-bold uppercase text-slate-700 hover:text-[#062444] underline-offset-2 hover:underline">
+        {open ? "Hide" : "Show"} history ({entries.length})
+      </button>
+      {open && (
+        entries.length === 0 ? (
+          <p className="mt-2 text-[12.5px] text-slate-500 italic">Nothing recorded yet. Every credit added or removed and every category change from now on is listed here, and cannot be edited.</p>
+        ) : (
+          <ul className="mt-2 space-y-1.5">
+            {entries.map(e => (
+              <li key={e.id} className="rounded-lg bg-[#f8fafd] px-3 py-2 text-[12.5px] text-[#062444]">
+                <p className="font-medium">{historyLine(e)}</p>
+                <p className="text-slate-600">
+                  {new Date(e.occurredAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}
+                  {e.actorName ? ` · by ${e.actorName}` : ""}
+                  {HISTORY_SOURCE_LABELS[e.source] ? ` · ${HISTORY_SOURCE_LABELS[e.source]}` : ""}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </div>
+  );
 }
 
 function localDatePart(value: string): string {
@@ -265,9 +328,11 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
   const [notCredited, setNotCredited] = useState<AttendedWithoutCredit[]>([]);
   const [crediting, setCrediting] = useState(false);
   const [creditMessage, setCreditMessage] = useState("");
+  const [historyKey, setHistoryKey] = useState(0);
 
   async function load() {
     setLoading(true);
+    setHistoryKey(k => k + 1);
     const credited = await fetchAttendanceForActivity(activity.id);
     setAttendees(credited);
     setNotCredited(await fetchAttendedWithoutCredit(activity.id, activity.category, credited));
@@ -369,6 +434,7 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
           </div>
         </div>
       )}
+      <CreditHistorySection activityId={activity.id} refreshKey={historyKey} />
     </div>
   );
 }
