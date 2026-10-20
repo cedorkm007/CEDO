@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { X, ClipboardList, Lightbulb, CheckCircle2 } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import {
-  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPProgress, SDP_CATEGORIES, subCategoryLabel,
+  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPProgress, SDP_CATEGORIES, subCategoryLabel, daySubName, manilaDay,
   type SDPActivity, type SDPCreditCounts,
 } from "../../sdpApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
@@ -67,6 +67,8 @@ function ActivityCard({ act, attended, onClick }: { act: SDPActivity; attended: 
   const pubmat = pubmatUrl(act.pubmatPath);
   const categoryLabel = act.category ? (SDP_CATEGORIES.find(c => c.key === act.category)?.label ?? act.category) : "General";
   const status = activityStatus(act);
+  // A recurring activity shows the sub-name of the day it is going to happen next ("Day 2 – Bonbon Shoreline"), if that day has one.
+  const nextDaySub = status.nextDate ? daySubName(act, manilaDay(status.nextDate)) : "";
   return (
     <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={onClick}
       className="w-full bg-white rounded-xl shadow-sm p-3 flex items-start gap-3 text-left hover:shadow-md transition-all border border-gray-100 min-h-[104px]">
@@ -78,6 +80,7 @@ function ActivityCard({ act, attended, onClick }: { act: SDPActivity; attended: 
 
       <div className="min-w-0 flex-1 self-center">
         <p className="font-bold text-[#062444] text-[12.5px] leading-snug line-clamp-2">{act.name}</p>
+        {nextDaySub && <p className="mt-1 text-[11px] font-semibold text-[#0077b6] line-clamp-1">{nextDaySub}</p>}
         {act.organization && <p className="mt-1 text-[11px] text-gray-500 line-clamp-1">{act.organization}</p>}
         {act.subCategory && <p className="mt-1 text-[11px] font-semibold text-[#0088cc] line-clamp-1">{subCategoryLabel(act.subCategory)}</p>}
         {/* A recurring activity with an upcoming occurrence shows THAT date here instead of the (possibly long-past) base dateTime — the next schedule is what a scholar actually needs to see. */}

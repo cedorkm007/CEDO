@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 export type SDPCategory = "community_service" | "community_volunteerism" | "formation_program";
 export type SDPActivityType = "one_time" | "recurring";
 /** endTime is optional — occurrences added before this field existed only have a start `date`. */
-export interface RecurringOccurrence { date: string; endTime?: string; venue: string; }
+export interface RecurringOccurrence { date: string; endTime?: string; venue: string; /** Optional label of this day, e.g. "Day 2 – Bonbon Shoreline". Only a label: it never changes how days or credits are counted. */ subName?: string; }
 
 export const SDP_CATEGORIES: { key: SDPCategory; label: string }[] = [
   { key: "community_service", label: "Institutional Volunteerism" },
@@ -22,6 +22,40 @@ export function subCategoryLabel(key: SDPSubCategory | null | undefined): string
   return SDP_SUBCATEGORIES.find(s => s.key === key)?.label ?? "No sub-category";
 }
 
+// ── The days of a recurring activity and their sub-names ──
+const manilaDayFormat = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" });
+/** The Philippine calendar day ("2026-10-21") of a date/time, "" if it is not a valid date. */
+export function manilaDay(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : manilaDayFormat.format(d);
+}
+export interface ScheduleDay { day: string; subName: string; venue: string; startIso: string; endIso: string }
+type ScheduleSource = Pick<SDPActivity, "dateTime" | "endTime" | "venue" | "subName" | "recurringDates">;
+/** Every day of an activity, its own date first and then each extra date, as Philippine calendar days. */
+export function scheduleDays(a: ScheduleSource): ScheduleDay[] {
+  const out: ScheduleDay[] = [];
+  if (a.dateTime) out.push({ day: manilaDay(a.dateTime), subName: (a.subName ?? "").trim(), venue: a.venue, startIso: a.dateTime, endIso: a.endTime });
+  for (const o of a.recurringDates ?? []) if (o.date) out.push({ day: manilaDay(o.date), subName: (o.subName ?? "").trim(), venue: o.venue, startIso: o.date, endIso: o.endTime ?? "" });
+  return out;
+}
+/** The sub-name of one day ("" if that day has none, or is not a day of the activity). */
+export function daySubName(a: ScheduleSource, day: string | null | undefined): string {
+  if (!day) return "";
+  return scheduleDays(a).find(d => d.day === day && d.subName)?.subName ?? "";
+}
+/** "Main name – Sub-name", or just the main name when the day has no sub-name. */
+export function dayLabel(a: ScheduleSource & { name: string }, day: string | null | undefined): string {
+  const sub = daySubName(a, day);
+  return sub ? `${a.name} – ${sub}` : a.name;
+}
+/** The day a credit is for: the day saved on it, or else the day it was scanned if that is one of the activity's days. */
+export function creditDay(a: ScheduleSource, activityDay: string | null | undefined, attendedDate: string | null | undefined): string | null {
+  if (activityDay) return activityDay;
+  const d = (attendedDate ?? "").slice(0, 10);
+  return d && scheduleDays(a).some(s => s.day === d) ? d : null;
+}
+
 export interface ObjectiveRow { objective: string; deliverable: string; }
 export interface WorkPlanRow { date: string; activity: string; }
 export interface ProgramFlowRow { time: string; segment: string; deliverables: string; personInCharge: string; }
@@ -34,6 +68,8 @@ export interface SDPActivity {
   category: SDPCategory | null;
   /** null = none chosen (activities made before sub-categories existed, or no category yet). */
   subCategory: SDPSubCategory | null;
+  /** The sub-name of the activity's own (first) date, "" if none. The sub-names of the other days are in recurringDates. */
+  subName: string;
   nature: string[];
   organization: string;
   dateTime: string; // "" if unset — the start of the activity
@@ -72,6 +108,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     submittedByScholarId: (r.submitted_by_scholar_id as string | null) ?? null,
     category: (r.category as SDPCategory | null) ?? null,
     subCategory: (r.sub_category as SDPSubCategory | null) ?? null,
+    subName: String(r.sub_name ?? ""),
     nature: (r.nature as string[]) ?? [],
     organization: String(r.organization ?? ""),
     dateTime: (r.date_time as string | null) ?? "",

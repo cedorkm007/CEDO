@@ -213,7 +213,9 @@ export async function updateOwnEmergencyContact(name: string, relationship: stri
 export async function redeemAttendanceCode(code: string): Promise<{ ok: boolean; error?: string; kind?: string; activityName?: string; surveyPending?: boolean; surveyId?: string; categoryCompleted?: boolean }> {
   const { data, error } = await supabase.rpc("redeem_attendance_code", { p_code: code.trim() });
   if (error) return { ok: false, error: error.message };
-  return { ok: true, kind: data?.kind, activityName: data?.activityName, surveyPending: data?.surveyPending, surveyId: data?.surveyId, categoryCompleted: data?.categoryCompleted };
+  // A code made for one day of a recurring activity: the answer names that day ("Main name – Sub-name").
+  const named = data?.daySubName ? `${data?.activityName} – ${data.daySubName}` : data?.activityName;
+  return { ok: true, kind: data?.kind, activityName: named, surveyPending: data?.surveyPending, surveyId: data?.surveyId, categoryCompleted: data?.categoryCompleted };
 }
 
 // ── Survey response (attendance-gating) ──────────────────────

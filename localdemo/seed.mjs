@@ -183,6 +183,24 @@ export async function seedDb(db) {
   // An activity monitor: no tools at all, but assigned to ONE SDP activity (the Volunteer Drive)
   await db.query("insert into activity_monitors (activity_type, activity_id, staff_id) values ('sdp', $1, $2) on conflict do nothing", [actId.cv3, id("staff:demo.monitor")]);
 
+  // A recurring activity for trying the sub-names of the days (SDP Monitoring update, Phase 4): three days (today, tomorrow, the day after), sub-names on the first two,
+  // a voucher session with codes made PER DAY. A scholar can scan DAYONE01 to DAYONE05 (day 1), DAYTWO01 to DAYTWO05 (day 2), DAYTHR01 to DAYTHR05 (day 3).
+  {
+    const at = (offset, hour) => { const b = new Date(); return new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate() + offset, hour - 8, 0, 0)).toISOString(); };
+    const manilaDay = iso => new Date(new Date(iso).getTime() + 8 * 3600e3).toISOString().slice(0, 10);
+    const recurId = id("act:coastal");
+    const extra = [{ date: at(1, 9), endTime: at(1, 11), venue: "Bonbon Shoreline", subName: "Day 2 – Bonbon Shoreline" }, { date: at(2, 9), endTime: at(2, 11), venue: "Cogon Market" }];
+    await db.query(`insert into sdp_activities (id, name, category, sub_category, activity_type, date_time, end_time, recurring_dates, sub_name, credits, all_year_levels, organization, venue, nature, source_of_fund, objectives, target_partners, specific_role, work_plan, program_flow, budget_items, target_year_levels, target_barangays, target_clusters)
+      values ($1, 'TEST – Coastal Clean-up Series', 'community_service', 'community_based', 'recurring', $2, $3, $4::jsonb, 'Day 1 – Macabalan Beach', 1, true, 'TEST Org', 'Macabalan Beach', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', '{}') on conflict (id) do nothing`,
+      [recurId, at(0, 9), at(0, 11), JSON.stringify(extra)]);
+    await db.query("insert into activity_monitors (activity_type, activity_id, staff_id) values ('sdp', $1, $2) on conflict do nothing", [recurId, id("staff:demo.monitor")]);   // demo.monitor also monitors this one
+    const sessionId = id("session:coastal");
+    await db.query("insert into attendance_sessions (id, sdp_activity_id, type, expected_attendees, duration_hours, created_by) values ($1, $2, 'voucher', 5, 1, $3) on conflict (id) do nothing", [sessionId, recurId, id("staff:demo.sead")]);
+    for (const [batch, [prefix, offset]] of [["DAYONE", 0], ["DAYTWO", 1], ["DAYTHR", 2]].entries()) {
+      for (let k = 1; k <= 5; k++) await db.query("insert into attendance_codes (session_id, code, kind, batch_number, day_date) values ($1, $2, 'voucher', $3, $4) on conflict (code) do nothing", [sessionId, `${prefix}${String(k).padStart(2, "0")}`, batch + 1, manilaDay(at(offset, 12))]);
+    }
+  }
+
   // Scholars
   for (const s of SCHOLARS) {
     const sch = SCHOOLS.find(x => x.key === s.school);
