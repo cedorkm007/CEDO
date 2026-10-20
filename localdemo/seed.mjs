@@ -45,6 +45,7 @@ const STAFF = [
   { username: "demo.storage", first: "TEST", last: "Storage Staff", role: "staff", sead: false, tags: ["storage_tool"], label: "Staff WITH the Storage Tool tag" },
   { username: "demo.storage2", first: "TEST", last: "Storage Staff Two", role: "staff", sead: false, tags: ["storage_tool"], label: "A second staff member WITH the Storage Tool tag" },
   { username: "demo.plain", first: "TEST", last: "Plain Staff", role: "staff", sead: false, tags: [], label: "Staff WITHOUT the Storage Tool tag (no special tools)" },
+  { username: "demo.monitor", first: "TEST", last: "Activity Monitor", role: "staff", sead: false, tags: [], label: "Staff with NO tools, assigned as monitor of the TEST – Volunteer Drive SDP activity only" },
 ];
 
 // ── SDP activities: category + credits each attendance is worth ──
@@ -169,6 +170,9 @@ export async function seedDb(db) {
     await db.query(`insert into sdp_activities (id, name, category, nature, source_of_fund, objectives, target_partners, specific_role, work_plan, program_flow, budget_items, recurring_dates, credits, all_year_levels, target_year_levels, target_barangays, target_clusters)
       values ($1,$2,$3,'[]','[]','[]','[]','[]','[]','[]','[]','[]',$4,true,'{}','{}','{}') on conflict (id) do nothing`, [actId[key], a.name, a.category, a.credits]);
   }
+
+  // An activity monitor: no tools at all, but assigned to ONE SDP activity (the Volunteer Drive)
+  await db.query("insert into activity_monitors (activity_type, activity_id, staff_id) values ('sdp', $1, $2) on conflict do nothing", [actId.cv3, id("staff:demo.monitor")]);
 
   // Scholars
   for (const s of SCHOLARS) {
