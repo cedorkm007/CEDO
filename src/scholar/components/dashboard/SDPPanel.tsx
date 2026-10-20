@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { X, ClipboardList, Lightbulb, CheckCircle2 } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import {
-  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPProgress, SDP_CATEGORIES,
+  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPProgress, SDP_CATEGORIES, subCategoryLabel,
   type SDPActivity, type SDPCreditCounts,
 } from "../../sdpApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
@@ -79,6 +79,7 @@ function ActivityCard({ act, attended, onClick }: { act: SDPActivity; attended: 
       <div className="min-w-0 flex-1 self-center">
         <p className="font-bold text-[#062444] text-[12.5px] leading-snug line-clamp-2">{act.name}</p>
         {act.organization && <p className="mt-1 text-[11px] text-gray-500 line-clamp-1">{act.organization}</p>}
+        {act.subCategory && <p className="mt-1 text-[11px] font-semibold text-[#0088cc] line-clamp-1">{subCategoryLabel(act.subCategory)}</p>}
         {/* A recurring activity with an upcoming occurrence shows THAT date here instead of the (possibly long-past) base dateTime — the next schedule is what a scholar actually needs to see. */}
         {(status.nextDate ?? act.dateTime) && <p className="mt-1 text-[11px] text-gray-400">{formatShortDate(status.nextDate ?? act.dateTime)}</p>}
       </div>

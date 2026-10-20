@@ -1,11 +1,19 @@
 import { supabase } from "@/lib/supabase";
-import type { SDPActivity, SDPCategory, SDPActivityType, RecurringOccurrence } from "@/scholar/sdpApi";
+import type { SDPActivity, SDPCategory, SDPSubCategory, SDPActivityType, RecurringOccurrence } from "@/scholar/sdpApi";
 
 // Re-export so consumers of this module don't also need to import from
 // src/scholar/sdpApi directly — same underlying `sdp_activities` table,
 // just accessed here with staff (sdp_monitoring tag) RLS instead of
 // scholar RLS.
-export type { SDPActivity, SDPCategory, SDPActivityType, RecurringOccurrence };
+export type { SDPActivity, SDPCategory, SDPSubCategory, SDPActivityType, RecurringOccurrence };
+
+/**
+ * Whether the database has the sub_category column yet (supabase_migration_sdp_update_p3_subcategory.sql). Until it is installed the sub-category
+ * choices are hidden and nothing about it is sent, so the rest of the page keeps working exactly as before.
+ */
+let subCategoryColumnPresent = true;
+export function isSubCategorySupported(): boolean { return subCategoryColumnPresent; }
+const mentionsSubCategory = (message: string | undefined) => /sub_category/i.test(message ?? "");
 
 function rowToActivity(r: Record<string, unknown>): SDPActivity {
   return {
@@ -13,6 +21,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     name: String(r.name),
     submittedByScholarId: (r.submitted_by_scholar_id as string | null) ?? null,
     category: (r.category as SDPCategory | null) ?? null,
+    subCategory: (r.sub_category as SDPSubCategory | null) ?? null,
     nature: (r.nature as string[]) ?? [],
     organization: String(r.organization ?? ""),
     dateTime: (r.date_time as string | null) ?? "",
@@ -49,12 +58,13 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
 export async function fetchAllSDPActivities(): Promise<SDPActivity[]> {
   const { data, error } = await supabase.from("sdp_activities").select("*").order("created_at", { ascending: false });
   if (error || !data) return [];
+  if (data.length > 0) subCategoryColumnPresent = "sub_category" in data[0];
   return data.map(rowToActivity);
 }
 
 export async function updateSDPActivity(
   id: string, fields: {
-    projectHead?: string; headCluster?: string; category?: SDPCategory | null; recurringDates?: RecurringOccurrence[]; credits?: number;
+    projectHead?: string; headCluster?: string; category?: SDPCategory | null; subCategory?: SDPSubCategory | null; recurringDates?: RecurringOccurrence[]; credits?: number;
     name?: string; organization?: string; venue?: string; dateTime?: string | null; endTime?: string | null;
     yearLevels?: string[]; allYearLevels?: boolean;
     /** Only sent when provided -- callers pass these only if the restriction actually changed. */
@@ -62,10 +72,11 @@ export async function updateSDPActivity(
   }
 ): Promise<{ ok: boolean; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
-  const { error } = await supabase.from("sdp_activities").update({
+  const payload: Record<string, unknown> = {
     project_head: fields.projectHead,
     head_cluster: fields.headCluster,
     category: fields.category,
+    ...(fields.subCategory !== undefined && subCategoryColumnPresent ? { sub_category: fields.subCategory } : {}),
     ...(fields.recurringDates ? { recurring_dates: fields.recurringDates } : {}),
     ...(fields.credits !== undefined ? { credits: fields.credits } : {}),
     ...(fields.name !== undefined ? { name: fields.name } : {}),
@@ -80,7 +91,14 @@ export async function updateSDPActivity(
     reviewed_by: auth.user?.id ?? null,
     reviewed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-  }).eq("id", id);
+  };
+  let { error } = await supabase.from("sdp_activities").update(payload).eq("id", id);
+  if (error && "sub_category" in payload && mentionsSubCategory(error.message)) {
+    // The database update for sub-categories has not been run yet: save everything else as before.
+    subCategoryColumnPresent = false;
+    delete payload.sub_category;
+    ({ error } = await supabase.from("sdp_activities").update(payload).eq("id", id));
+  }
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
@@ -95,6 +113,8 @@ export async function deleteSDPActivity(id: string): Promise<{ ok: boolean; erro
 export interface NewApprovedActivityInput {
   name: string;
   category: SDPCategory;
+  /** Required by the screen whenever the database supports it; optional here so the page also works before the database update. */
+  subCategory?: SDPSubCategory | null;
   organization: string;
   dateTime: string;
   endTime: string;
@@ -118,10 +138,11 @@ function localDateTimeToIso(value: string): string | null {
 /** Staff can create an activity directly — open to every scholar immediately, no review/approval step. */
 export async function createApprovedActivity(input: NewApprovedActivityInput): Promise<{ ok: boolean; error?: string; id?: string }> {
   const { data: auth } = await supabase.auth.getUser();
-  const { data, error } = await supabase.from("sdp_activities").insert({
+  const row: Record<string, unknown> = {
     name: input.name,
     submitted_by_scholar_id: null,
     category: input.category,
+    ...(input.subCategory && subCategoryColumnPresent ? { sub_category: input.subCategory } : {}),
     organization: input.organization,
     date_time: localDateTimeToIso(input.dateTime),
     end_time: localDateTimeToIso(input.endTime),
@@ -136,8 +157,14 @@ export async function createApprovedActivity(input: NewApprovedActivityInput): P
     ...(input.targetBarangays.length > 0 ? { target_barangays: input.targetBarangays } : {}),
     ...(input.targetClusters.length > 0 ? { target_clusters: input.targetClusters } : {}),
     created_by: auth.user?.id ?? null,
-  }).select("id").single();
-  return error ? { ok: false, error: error.message } : { ok: true, id: data.id };
+  };
+  let { data, error } = await supabase.from("sdp_activities").insert(row).select("id").single();
+  if (error && "sub_category" in row && mentionsSubCategory(error.message)) {
+    subCategoryColumnPresent = false;
+    delete row.sub_category;
+    ({ data, error } = await supabase.from("sdp_activities").insert(row).select("id").single());
+  }
+  return error || !data ? { ok: false, error: error?.message ?? "Failed to create." } : { ok: true, id: data.id };
 }
 
 // ── SDP checklist monitoring ─────────────────────────────────
@@ -413,22 +440,35 @@ export interface SDPHistoryRow {
   activityId: string;
   activityName: string;
   category: SDPCategory | null;
+  subCategory: SDPSubCategory | null;
   date: string; // "" if unset
 }
 
 /** Attended (credited) vs. Available (not yet attended) activities for one scholar. */
 export async function fetchScholarSDPHistory(scholarIdNumber: string): Promise<{ attended: SDPHistoryRow[]; available: SDPHistoryRow[] }> {
-  const [{ data: attendanceRows }, { data: openActivities }] = await Promise.all([
+  // With the sub_category column when the database has it; without it (database update not run yet) exactly as before.
+  type OpenRow = { id: string; name: string; category: SDPCategory | null; sub_category?: SDPSubCategory | null; date_time: string | null };
+  const withSub = () => Promise.all([
+    supabase.from("sdp_attendance").select("activity_id, attended_date, sdp_activities(name, category, sub_category)").eq("scholar_id_number", scholarIdNumber),
+    supabase.from("sdp_activities").select("id, name, category, sub_category, date_time"),
+  ]);
+  const withoutSub = () => Promise.all([
     supabase.from("sdp_attendance").select("activity_id, attended_date, sdp_activities(name, category)").eq("scholar_id_number", scholarIdNumber),
     supabase.from("sdp_activities").select("id, name, category, date_time"),
   ]);
+  let results = await withSub();
+  if (results[0].error || results[1].error) results = (await withoutSub()) as unknown as typeof results;
+  const [attendedResult, openResult] = results;
+  const attendanceRows = attendedResult.data as unknown as Record<string, unknown>[] | null;
+  const openActivities = openResult.data as unknown as OpenRow[] | null;
 
   const attended: SDPHistoryRow[] = (attendanceRows ?? []).map((r: Record<string, unknown>) => {
-    const act = r.sdp_activities as { name?: string; category?: SDPCategory } | null;
+    const act = r.sdp_activities as { name?: string; category?: SDPCategory; sub_category?: SDPSubCategory | null } | null;
     return {
       activityId: String(r.activity_id),
       activityName: String(act?.name ?? "—"),
       category: act?.category ?? null,
+      subCategory: act?.sub_category ?? null,
       date: String(r.attended_date ?? ""),
     };
   });
@@ -436,7 +476,7 @@ export async function fetchScholarSDPHistory(scholarIdNumber: string): Promise<{
   const attendedActivityIds = new Set(attended.map(a => a.activityId));
   const available: SDPHistoryRow[] = (openActivities ?? [])
     .filter(a => !attendedActivityIds.has(a.id))
-    .map(a => ({ activityId: a.id, activityName: a.name, category: (a.category as SDPCategory | null) ?? null, date: a.date_time ?? "" }));
+    .map(a => ({ activityId: a.id, activityName: a.name, category: (a.category as SDPCategory | null) ?? null, subCategory: a.sub_category ?? null, date: a.date_time ?? "" }));
 
   return { attended, available };
 }

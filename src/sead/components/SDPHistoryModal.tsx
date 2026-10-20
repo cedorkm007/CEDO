@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { X, ClipboardCheck, Clock } from "lucide-react";
 import { fetchScholarSDPHistory, type SDPHistoryRow } from "../sdpMonitorApi";
-import { SDP_CATEGORIES } from "@/scholar/sdpApi";
+import { SDP_CATEGORIES, subCategoryLabel } from "@/scholar/sdpApi";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
 
 interface SDPHistoryModalProps {
@@ -18,6 +18,7 @@ function HistoryTable({ rows, emptyLabel }: { rows: SDPHistoryRow[]; emptyLabel:
   const { sorted: sortedRows, sortState, toggleSort } = useSort<SDPHistoryRow>(rows, {
     activityName: r => r.activityName,
     category: r => categoryLabel(r.category),
+    subCategory: r => (r.subCategory ? subCategoryLabel(r.subCategory) : ""),
     date: r => r.date,
   });
 
@@ -31,6 +32,7 @@ function HistoryTable({ rows, emptyLabel }: { rows: SDPHistoryRow[]; emptyLabel:
           <tr className="bg-[#f8fafd] text-left text-[10.5px] uppercase tracking-wide text-[#0088cc]">
             <SortableTh label="Name of Activity" sortKey="activityName" sortState={sortState} onSort={toggleSort} className="px-3 py-2" />
             <SortableTh label="SDP Category" sortKey="category" sortState={sortState} onSort={toggleSort} className="px-3 py-2" />
+            <SortableTh label="Sub-category" sortKey="subCategory" sortState={sortState} onSort={toggleSort} className="px-3 py-2" />
             <SortableTh label="Date of Activity" sortKey="date" sortState={sortState} onSort={toggleSort} className="px-3 py-2" />
           </tr>
         </thead>
@@ -39,6 +41,7 @@ function HistoryTable({ rows, emptyLabel }: { rows: SDPHistoryRow[]; emptyLabel:
             <tr key={r.activityId} className="border-t border-[#f0f3f8]">
               <td className="px-3 py-2 text-[#062444] font-medium">{r.activityName}</td>
               <td className="px-3 py-2 text-[#062444] font-bold">{categoryLabel(r.category)}</td>
+              <td className="px-3 py-2 text-[#062444]">{r.subCategory ? subCategoryLabel(r.subCategory) : "—"}</td>
               <td className="px-3 py-2 text-slate-500">{r.date ? new Date(r.date).toLocaleDateString() : "—"}</td>
             </tr>
           ))}

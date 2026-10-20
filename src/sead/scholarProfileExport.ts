@@ -1,6 +1,7 @@
 import type { ScholarInformationRow } from "./seadApi";
 import { fetchScholarQuestProgress } from "./seadApi";
 import { fetchScholarSDPHistory } from "./sdpMonitorApi";
+import { subCategoryLabel } from "@/scholar/sdpApi";
 import { fetchScholarFormationAttendance } from "./formationActivitiesApi";
 import { toCsv, downloadCsv } from "./csvUtils";
 import { exportComprehensiveScholarProfilePdf } from "./pdfTableExport";
@@ -8,7 +9,7 @@ import { generateComprehensiveScholarProfile } from "@/lib/docGenerator";
 
 export interface ProfileSections {
   basicInfo: { label: string; value: string }[];
-  sdpCompleted: { activityName: string; category: string; date: string }[];
+  sdpCompleted: { activityName: string; category: string; subCategory: string; date: string }[];
   formationAttended: { activityName: string; dateTime: string; venue: string }[];
   questSubjects: { subjectName: string; topicCount: number; percentage: number; isCompleted: boolean }[];
 }
@@ -39,7 +40,7 @@ export async function loadProfileSections(r: ScholarInformationRow): Promise<Pro
       { label: "Civil Status", value: r.civilStatus || "" },
       { label: "Contact No.", value: r.contactNo || "" },
     ],
-    sdpCompleted: sdp.attended.map(a => ({ activityName: a.activityName, category: a.category || "", date: a.date })),
+    sdpCompleted: sdp.attended.map(a => ({ activityName: a.activityName, category: a.category || "", subCategory: a.subCategory ? subCategoryLabel(a.subCategory) : "", date: a.date })),
     formationAttended: formation.map(f => ({ activityName: f.activityName, dateTime: f.dateTime, venue: f.venue })),
     questSubjects: quest.map(q => ({ subjectName: q.subjectName, topicCount: q.topicCount, percentage: q.percentage, isCompleted: q.isCompleted })),
   };
@@ -62,8 +63,8 @@ export async function downloadScholarProfile(r: ScholarInformationRow, format: "
       sections: [
         {
           heading: `SDP — Completed Activities (${sections.sdpCompleted.length})`,
-          columns: ["Activity", "Category", "Date"],
-          rows: sections.sdpCompleted.map(a => [a.activityName, a.category || "—", a.date || "—"]),
+          columns: ["Activity", "Category", "Sub-category", "Date"],
+          rows: sections.sdpCompleted.map(a => [a.activityName, a.category || "—", a.subCategory || "—", a.date || "—"]),
           emptyMessage: "No completed SDP activities.",
         },
         {
@@ -83,7 +84,7 @@ export async function downloadScholarProfile(r: ScholarInformationRow, format: "
   } else {
     const blocks = [
       toCsv(["Field", "Value"], sections.basicInfo.map(b => [b.label, b.value])),
-      `SDP — Completed Activities (${sections.sdpCompleted.length})\r\n` + toCsv(["Activity", "Category", "Date"], sections.sdpCompleted.map(a => [a.activityName, a.category, a.date])),
+      `SDP — Completed Activities (${sections.sdpCompleted.length})\r\n` + toCsv(["Activity", "Category", "Sub-category", "Date"], sections.sdpCompleted.map(a => [a.activityName, a.category, a.subCategory, a.date])),
       `Formation Activities — Attended (${sections.formationAttended.length})\r\n` + toCsv(["Activity", "Date", "Venue"], sections.formationAttended.map(a => [a.activityName, a.dateTime, a.venue])),
       `Quest — Subjects (${sections.questSubjects.length})\r\n` + toCsv(["Subject", "Topics Completed", "Score", "Status"], sections.questSubjects.map(q => [q.subjectName, q.topicCount, `${q.percentage.toFixed(1)}%`, q.isCompleted ? "Completed" : "In Progress"])),
     ];
