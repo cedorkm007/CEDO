@@ -30,12 +30,13 @@ declare
   v_max_rounds integer := 50;
   v_round integer := 0;
   v_sdp_activity uuid;
+  v_formation_activity uuid;
 begin
   -- Who is calling? A visitor who is not signed in, or a scholar, must never create codes.
   if auth.uid() is null then
     raise exception 'Sign in to create attendance codes.';
   end if;
-  select s.sdp_activity_id into v_sdp_activity from public.attendance_sessions s where s.id = p_session_id;
+  select s.sdp_activity_id, s.formation_activity_id into v_sdp_activity, v_formation_activity from public.attendance_sessions s where s.id = p_session_id;
   if not found then
     raise exception 'Attendance session not found.';
   end if;
@@ -43,6 +44,7 @@ begin
     public.is_sead_staff()
     or public.has_staff_tag('sdp_monitoring')
     or (v_sdp_activity is not null and public.is_activity_monitor('sdp', v_sdp_activity))
+    or (v_formation_activity is not null and public.is_activity_monitor('formation', v_formation_activity))
   ) then
     raise exception 'You are not allowed to create attendance codes for this activity.';
   end if;

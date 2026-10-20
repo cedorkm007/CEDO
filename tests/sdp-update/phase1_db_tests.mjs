@@ -84,6 +84,12 @@ const other = await makeActivity("TEST – Someone else's activity", "one_time",
 const otherSess = await makeSession(other, "voucher", 1);
 check("inside the function: that same monitor is refused for ANOTHER activity", await failsInside(PLAIN, GEN_Q, [otherSess.id], /not allowed/i));
 await q("delete from activity_monitors where activity_id = $1", [act]);
+const fAct = (await q("insert into formation_activities (name, short_description, date_time, venue, target_year_levels, all_year_levels, attendance_enabled) values ('TEST – Formation for monitor', 'd', now(), 'v', '{}', true, true) returning id"))[0].id;
+const fSess = (await q("insert into attendance_sessions (formation_activity_id, type, expected_attendees, duration_hours, created_by) values ($1, 'voucher', 2, 1, $2) returning id", [fAct, SEAD]))[0].id;
+check("inside the function: staff with no tools are refused for a Formation session", await failsInside(PLAIN, "select public.generate_attendance_codes($1::uuid, 'voucher', 2, 5)", [fSess], /not allowed/i));
+await q("insert into activity_monitors (activity_type, activity_id, staff_id) values ('formation', $1, $2)", [fAct, PLAIN]);
+check("inside the function: a monitor of THAT Formation activity is allowed (this is how a monitor such as sead.saps keeps working)", !(await failsInside(PLAIN, "select public.generate_attendance_codes($1::uuid, 'voucher', 2, 5)", [fSess])));
+await q("delete from activity_monitors where activity_id = $1", [fAct]);
 check("a scholar cannot add codes straight into the table either", await fails(scholarUid(1), "insert into attendance_codes (session_id, code, kind, batch_number) values ($1, 'HACKED1', 'voucher', 1)", [sess.id], /row-level security|permission denied/i));
 check("a visitor cannot add codes straight into the table", await fails(null, "insert into attendance_codes (session_id, code, kind, batch_number) values ($1, 'HACKED2', 'voucher', 1)", [sess.id], /permission denied|row-level security/i, "anon"));
 
