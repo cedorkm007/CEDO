@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { X, Check } from "lucide-react";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
-import { updateSDPActivity, isSubCategorySupported, type SDPActivity, type SDPSubCategory } from "../sdpMonitorApi";
+import { updateSDPActivity, isSubCategorySupported, isDayLabelsSupported, type SDPActivity, type SDPSubCategory } from "../sdpMonitorApi";
+import { manilaDay } from "@/scholar/sdpApi";
 import { SubCategorySelect } from "./SubCategorySelect";
 import { updateFormationActivity } from "../formationActivitiesApi";
 import type { FormationActivity } from "@/scholar/formationActivitiesApi";
@@ -51,6 +52,10 @@ export function LightweightActivityEditModal({ activityType, activity, onClose, 
   const sdpActivity = activityType === "sdp" ? (activity as SDPActivity) : null;
   const showSubCategory = !!sdpActivity && !!sdpActivity.category && isSubCategorySupported();
   const [subCategory, setSubCategory] = useState<SDPSubCategory | null>(sdpActivity?.subCategory ?? null);
+  // Recurring SDP activity: the optional sub-name of each day (a label only).
+  const showDayNames = !!sdpActivity && sdpActivity.activityType === "recurring" && isDayLabelsSupported();
+  const [firstSubName, setFirstSubName] = useState(sdpActivity?.subName ?? "");
+  const [daySubNames, setDaySubNames] = useState<string[]>((sdpActivity?.recurringDates ?? []).map(o => o.subName ?? ""));
 
   function toggleYearLevel(level: string) {
     setYearLevels(levels => levels.includes(level) ? levels.filter(l => l !== level) : [...levels, level]);
@@ -67,7 +72,8 @@ export function LightweightActivityEditModal({ activityType, activity, onClose, 
 
     setBusy(true);
     const result = activityType === "sdp"
-      ? await updateSDPActivity(activity.id, { name: name.trim(), venue: venue.trim(), dateTime: dateTimeIso, endTime: endTimeIso, yearLevels, allYearLevels, ...(showSubCategory ? { subCategory } : {}) })
+      ? await updateSDPActivity(activity.id, { name: name.trim(), venue: venue.trim(), dateTime: dateTimeIso, endTime: endTimeIso, yearLevels, allYearLevels, ...(showSubCategory ? { subCategory } : {}),
+          ...(showDayNames && sdpActivity ? { subName: firstSubName, recurringDates: sdpActivity.recurringDates.map((o, i) => ({ ...o, subName: daySubNames[i]?.trim() || undefined })) } : {}) })
       : await updateFormationActivity(activity.id, {
           name: name.trim(), shortDescription: (activity as FormationActivity).shortDescription ?? "",
           venue: venue.trim(), dateTime: dateTimeIso ?? "", endTime: endTimeIso,
@@ -114,6 +120,23 @@ export function LightweightActivityEditModal({ activityType, activity, onClose, 
                 className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
             </div>
           </div>
+
+          {showDayNames && sdpActivity && (
+            <div className="border-t border-[#f0f3f8] pt-3">
+              <p className="mb-1 text-[12.5px] font-bold text-[#062444]">Sub-names of the days (optional)</p>
+              <p className="mb-2 text-[11.5px] text-slate-600">A label only, shown as “{sdpActivity.name} – sub-name”. It never changes how days or credits are counted.</p>
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold text-slate-600">{manilaDay(sdpActivity.dateTime) || "First day"}
+                  <input value={firstSubName} onChange={e => setFirstSubName(e.target.value)} placeholder="e.g. Day 1 – Macabalan Beach" className="mt-0.5 w-full rounded-lg border border-[#062444]/15 px-3 py-2 text-sm font-normal outline-none focus:border-[#0088cc]" />
+                </label>
+                {sdpActivity.recurringDates.map((o, i) => (
+                  <label key={i} className="block text-[11px] font-semibold text-slate-600">{manilaDay(o.date)}
+                    <input value={daySubNames[i] ?? ""} onChange={e => setDaySubNames(list => list.map((v, j) => (j === i ? e.target.value : v)))} placeholder="e.g. Day 2 – Bonbon Shoreline" className="mt-0.5 w-full rounded-lg border border-[#062444]/15 px-3 py-2 text-sm font-normal outline-none focus:border-[#0088cc]" />
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {showSubCategory && (
             <div className="border-t border-[#f0f3f8] pt-3">

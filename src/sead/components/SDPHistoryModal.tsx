@@ -38,7 +38,7 @@ function HistoryTable({ rows, emptyLabel }: { rows: SDPHistoryRow[]; emptyLabel:
         </thead>
         <tbody>
           {sortedRows.map(r => (
-            <tr key={r.activityId} className="border-t border-[#f0f3f8]">
+            <tr key={r.rowKey} className="border-t border-[#f0f3f8]">
               <td className="px-3 py-2 text-[#062444] font-medium">{r.activityName}</td>
               <td className="px-3 py-2 text-[#062444] font-bold">{categoryLabel(r.category)}</td>
               <td className="px-3 py-2 text-[#062444]">{r.subCategory ? subCategoryLabel(r.subCategory) : "—"}</td>

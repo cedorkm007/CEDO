@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { Calendar as CalendarIcon, ClipboardList, QrCode, ChevronLeft, ChevronRight, MapPin } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import { AttendanceScanner } from "./AttendanceScanner";
-import { fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, SDP_CATEGORIES, subCategoryLabel, type SDPActivity } from "../../sdpApi";
+import { fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, SDP_CATEGORIES, subCategoryLabel, dayLabel, manilaDay, type SDPActivity } from "../../sdpApi";
 import { fetchFormationActivitiesForScholar, fetchAttendedFormationActivityIds } from "../../formationActivitiesApi";
 import { SubmissionActivitiesList } from "./SubmissionActivitiesList";
 import { useUrlState } from "@/app/useUrlState";
@@ -213,13 +213,14 @@ export function CalendarAndActivitiesPanel({ scholarIdNumber, onNavigateToForms 
           attended: attendedSdpIds.has(activity.id), isRecurring: activity.activityType === "recurring",
         };
         const entries: CalendarActivity[] = [];
-        if (activity.dateTime) entries.push({ id: `sdp-${activity.id}`, dateTime: activity.dateTime, venue: activity.venue, ...shared });
+        // Each day shows "Main name – Sub-name" when that day has a sub-name.
+        if (activity.dateTime) entries.push({ id: `sdp-${activity.id}`, dateTime: activity.dateTime, venue: activity.venue, ...shared, name: dayLabel(activity, manilaDay(activity.dateTime)) });
         // Recurring activities can accumulate occurrence dates over time (added by
         // staff from the activity's details), each with its own venue since a
         // recurring activity's venue can change between sessions — each becomes
         // its own calendar entry alongside the original dateTime.
         activity.recurringDates.forEach((occurrence, index) => {
-          entries.push({ id: `sdp-${activity.id}-occ-${index}`, dateTime: occurrence.date, venue: occurrence.venue || activity.venue, ...shared });
+          entries.push({ id: `sdp-${activity.id}-occ-${index}`, dateTime: occurrence.date, venue: occurrence.venue || activity.venue, ...shared, name: dayLabel(activity, manilaDay(occurrence.date)) });
         });
         return entries;
       });
