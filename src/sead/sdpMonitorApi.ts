@@ -340,6 +340,50 @@ export async function fetchScholarsSdpCompliance(period: { schoolYear: string; s
   return { ok: true, rows };
 }
 
+export type ChecklistFilter = "all" | "complied" | "not_complied";
+export type ChecklistSortKey = "scholarIdNumber" | "name" | "communityService" | "communityVolunteerism" | "formationProgram" | "result";
+export interface ChecklistPageQuery {
+  schoolYear: string; semester: string; search: string; filter: ChecklistFilter;
+  sortKey: ChecklistSortKey | null; sortDir: "asc" | "desc"; page: number; pageSize: number;
+}
+const CHECKLIST_SORT_NAMES: Record<ChecklistSortKey, string> = {
+  scholarIdNumber: "id", name: "name", communityService: "community_service", communityVolunteerism: "community_volunteerism", formationProgram: "formation_program", result: "result",
+};
+const isMissingFunction = (error: { code?: string; message?: string }) => error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "");
+
+/**
+ * ONE PAGE of the SDP Checklist (scholars_sdp_checklist_page, supabase_migration_sdp_update_p2_checklist_paging.sql): the database searches, filters,
+ * sorts and cuts the page, and works out the result only for the scholars shown. `missing: true` means the database update has not been run yet,
+ * so the screen falls back to loading everyone (fetchScholarsSdpCompliance), as before.
+ */
+export async function fetchSdpChecklistPage(q: ChecklistPageQuery): Promise<{ ok: true; rows: ScholarSdpCompliance[]; total: number } | { ok: false; error: string; missing: boolean }> {
+  const { data, error } = await supabase.rpc("scholars_sdp_checklist_page", {
+    p_school_year: q.schoolYear, p_semester: q.semester, p_search: q.search, p_filter: q.filter,
+    p_sort: q.sortKey ? CHECKLIST_SORT_NAMES[q.sortKey] : "default", p_dir: q.sortDir, p_page: q.page, p_page_size: q.pageSize,
+  });
+  if (error) return { ok: false, error: error.message, missing: isMissingFunction(error) };
+  const page = (data ?? []) as Record<string, unknown>[];
+  return {
+    ok: true,
+    total: page.length > 0 ? Number(page[0].total_count ?? 0) : 0,
+    rows: page.map(r => ({
+      scholarIdNumber: String(r.scholar_id_number), name: String(r.name ?? ""),
+      communityService: Number(r.community_service ?? 0), communityVolunteerism: Number(r.community_volunteerism ?? 0), formationProgram: Number(r.formation_program ?? 0),
+      applicable: r.applicable !== false, complied: r.complied == null ? null : !!r.complied, missing: String(r.missing ?? ""),
+    })),
+  };
+}
+
+export interface ChecklistSummary { total: number; complied: number; notComplied: number; applicable: boolean }
+
+/** The three counts (everyone / complied / not complied) for one semester, from one small question that can load after the page is already showing. */
+export async function fetchSdpChecklistSummary(period: { schoolYear: string; semester: string }): Promise<{ ok: true; summary: ChecklistSummary } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("scholars_sdp_checklist_summary", { p_school_year: period.schoolYear, p_semester: period.semester }).maybeSingle();
+  if (error || !data) return { ok: false, error: error?.message ?? "No answer" };
+  const r = data as Record<string, unknown>;
+  return { ok: true, summary: { total: Number(r.total ?? 0), complied: Number(r.complied ?? 0), notComplied: Number(r.not_complied ?? 0), applicable: r.applicable !== false } };
+}
+
 /** Paginated via .range() because scholars_sdp_checklist() returns one row per scholar — PostgREST caps any single response (RPCs included) at 1000 rows, well under this project's scholar count. */
 export async function fetchAllScholarsSDPChecklist(): Promise<ScholarSDPChecklist[]> {
   const out: ScholarSDPChecklist[] = [];

@@ -13,7 +13,8 @@
     "seed:admins": "node scripts/create-admin-accounts.mjs",
     "postinstall": "node scripts/copy-ffmpeg-core.mjs && node scripts/download-vosk-model.mjs",
     "demo": "node scripts/localdemo/start.mjs",
-    "demo:reset": "node scripts/localdemo/start.mjs --reset"
+    "demo:reset": "node scripts/localdemo/start.mjs --reset",
+    "demo:many": "node scripts/localdemo/start.mjs --many=8000"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
