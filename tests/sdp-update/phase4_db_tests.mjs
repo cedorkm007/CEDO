@@ -152,7 +152,8 @@ check("a Formation activity is unaffected (no day, no label, scan works as befor
 check("staff with no tools cannot put a day on a code", await (async () => { try { return (await rows(PLAIN, "insert into attendance_codes (session_id, code, kind, batch_number, day_date) values ($1, 'HACKDAY1', 'voucher', 1, $2) returning id", [sess.id, D1])).length === 0; } catch { return true; } })());
 
 console.log("\nThe undo");
-await db.exec(read("undo_sdp_update_p4.sql"));
+// The real project gets the undo in parts (functions first, then one column per run), so the test runs exactly those files.
+for (const file of ["undo_p4_a_functions.sql", "undo_p4_b1_credits_column.sql", "undo_p4_b2_codes_column.sql", "undo_p4_b3_activities_column.sql"]) await db.exec(read(file));
 check("the three new columns and the helper functions are gone", (await q("select count(*) n from information_schema.columns where (table_name = 'sdp_activities' and column_name = 'sub_name') or (table_name = 'attendance_codes' and column_name = 'day_date') or (table_name = 'sdp_attendance' and column_name = 'activity_day')"))[0].n === 0 && (await q("select count(*) n from pg_proc where proname in ('_sdp_schedule_days', '_sdp_day_sub_name', '_sdp_redeemed_days')"))[0].n === 0);
 const undoAct = (await q(`insert into sdp_activities (name, category, activity_type, date_time, end_time, recurring_dates, credits, all_year_levels, created_by, organization, venue, nature, source_of_fund, objectives, target_partners, specific_role, work_plan, program_flow, budget_items, target_year_levels, target_barangays, target_clusters)
   values ('TEST – after undo', 'community_service', 'recurring', $1, $2, $3::jsonb, 1, true, $4, 'o', 'v', ${EMPTY}) returning id`, [dayIso(0, 9), dayIso(0, 11), JSON.stringify([occ(1, null)]), SEAD]))[0].id;
@@ -160,9 +161,11 @@ const us = (await q("insert into attendance_sessions (sdp_activity_id, type, exp
 for (const c of ["UNDO0001", "UNDO0002", "UNDO0003"]) await q("insert into attendance_codes (session_id, code, kind, batch_number) values ($1, $2, 'voucher', 1)", [us, c]);
 const u = [await redeem(42, "UNDO0001"), await redeem(42, "UNDO0002"), await redeem(42, "UNDO0003")];
 check("after the undo scanning works exactly as before (two days = two credits, the third scan refused)", u[0].ok && u[1].ok && !u[2].ok && /2 of 2 allowed/.test(u[2].error) && Number((await q("select count(*) n from sdp_attendance where activity_id = $1 and scholar_id_number = $2", [undoAct, num(42)]))[0].n) === 2);
-await db.exec(read("supabase_migration_sdp_update_p4_day_labels.sql"));
-await db.exec(read("supabase_migration_sdp_update_p4_day_labels.sql"));
-check("the SQL can be put back (and run twice)", (await q("select count(*) n from information_schema.columns where table_name = 'attendance_codes' and column_name = 'day_date'"))[0].n === 1);
+// ...and the SQL in 4 small steps, each touching one table, run twice to prove each step can be repeated.
+for (let round = 0; round < 2; round++) for (const file of ["p4_step1_activities_column.sql", "p4_step2_codes_column.sql", "p4_step3_credits_column.sql", "p4_step4_functions.sql"]) await db.exec(read(file));
+const again = await redeem(43, "UNDO0001").catch(() => ({ ok: false }));
+check("the SQL can be put back with the four small steps (each run twice) and scanning works with the day again", (await q("select count(*) n from information_schema.columns where table_name = 'attendance_codes' and column_name = 'day_date'"))[0].n === 1 && (await q("select count(*) n from pg_proc where proname = '_sdp_redeemed_days'"))[0].n === 1);
+check("the main (single-file) version is still identical in effect: the steps contain every statement of it", (() => { const main = read("supabase_migration_sdp_update_p4_day_labels.sql"); const steps = ["p4_step1_activities_column.sql", "p4_step2_codes_column.sql", "p4_step3_credits_column.sql", "p4_step4_functions.sql"].map(read).join("\n"); const stmts = main.split(/\n(?=create or replace function|alter table)/).slice(1).map(x => x.trim().split("\n")[0]); return stmts.every(line => steps.includes(line)); })());
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
