@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
   fetchAttendanceForActivity, fetchCreditHistory, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, removeAttendance, type AttendedWithoutCredit, type CreditHistoryEntry,
-  fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance,
+  fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpChecklistSummary,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
-  type SDPActivity, type SDPCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
+  type ChecklistSummary, type ChecklistSortKey, type SDPActivity, type SDPCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
 } from "../sdpMonitorApi";
 import { SDP_CATEGORIES } from "@/scholar/sdpApi";
@@ -1152,17 +1152,28 @@ function ComplianceBadge({ row }: { row: ScholarSdpCompliance }) {
   return <span className={`${base} border-red-300 bg-red-50 text-red-800`}><XCircle size={13} aria-hidden="true" /> Not complied</span>;
 }
 
+const CHECKLIST_PAGE_SIZE = 50;
+const EMPTY_ROWS: ScholarSdpCompliance[] = [];
+
 function ChecklistSection() {
+  // With the database update (supabase_migration_sdp_update_p2_checklist_paging.sql) the database searches, filters, sorts and cuts ONE page, and `rows`
+  // is just that page. Without it the screen falls back to the earlier way: load everyone, then search, filter, sort and page here.
   const [rows, setRows] = useState<ScholarSdpCompliance[]>([]);
+  const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<ChecklistSummary | null>(null);
+  const [serverPaging, setServerPaging] = useState(true);
   const [legacy, setLegacy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ComplianceFilter>("all");
   const [viewingScholar, setViewingScholar] = useState<{ scholarIdNumber: string; name: string } | null>(null);
   const [periods, setPeriods] = useState<AcademicPeriod[]>([]);
   const [current, setCurrent] = useState<GradingPeriod>({ schoolYear: "", semester: "" });
   const [viewKey, setViewKey] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const requestId = useRef(0);
 
   useEffect(() => {
     void Promise.all([fetchAcademicPeriods(), fetchCurrentGradingPeriod()]).then(([p, cur]) => {
@@ -1170,6 +1181,12 @@ function ChecklistSection() {
       setCurrent(cur);
     });
   }, []);
+
+  // Wait a moment after typing before asking the database.
+  useEffect(() => {
+    const t = window.setTimeout(() => setSearch(searchInput), 300);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
 
   // The semesters on record, plus the Current Grading Period if it is not listed yet. Summer is a normal option (no SDP requirement).
   const allPeriods = useMemo(() => {
@@ -1185,40 +1202,16 @@ function ChecklistSection() {
   const effectiveKey = viewKey && options.some(o => o.key === viewKey) ? viewKey : currentKey;
   const chosen = allPeriods.find(x => periodKey(x.schoolYear, x.term) === effectiveKey) ?? null;
 
-  const load = useCallback(async () => {
-    if (!chosen) { if (current.schoolYear === "") return; setRows([]); setLoading(false); return; }
-    setLoading(true);
-    setError("");
-    const result = await fetchScholarsSdpCompliance({ schoolYear: chosen.schoolYear, semester: chosen.term });
-    if (result.ok) {
-      setLegacy(false);
-      setRows(result.rows);
-    } else {
-      // The compliance function comes with a database update. Until it is applied, still show the credits (current period only), without the result.
-      setLegacy(true);
-      setError(result.error);
-      const old = await fetchAllScholarsSDPChecklist();
-      setRows(old.map(o => ({ scholarIdNumber: o.scholarIdNumber, name: o.name, communityService: o.communityService, communityVolunteerism: o.communityVolunteerism, formationProgram: o.formationProgram, applicable: true, complied: null, missing: "" })));
-    }
-    setLoading(false);
-  }, [chosen, current.schoolYear]);
-  useEffect(() => { void load(); }, [load]);
-
-  const counts = useMemo(() => ({
-    complied: rows.filter(r => r.applicable && r.complied === true).length,
-    notComplied: rows.filter(r => r.applicable && r.complied === false).length,
-  }), [rows]);
-  const summer = rows.length > 0 && rows.every(r => !r.applicable);
-
-  const filtered = rows.filter(s => {
+  // Sorting: the header arrows. In the earlier way the rows are sorted here; with the database update the choice is sent to the database.
+  const [fallbackRows, setFallbackRows] = useState<ScholarSdpCompliance[]>([]);
+  const clientFiltered = useMemo(() => fallbackRows.filter(s => {
     if (filter === "complied" && s.complied !== true) return false;
     if (filter === "not_complied" && s.complied !== false) return false;
     if (!search.trim()) return true;
     const q = search.trim().toLowerCase();
     return s.name.toLowerCase().includes(q) || s.scholarIdNumber.toLowerCase().includes(q);
-  });
-
-  const { sorted: sortedScholars, sortState, toggleSort } = useSort<ScholarSdpCompliance>(filtered, {
+  }), [fallbackRows, filter, search]);
+  const { sorted: clientSorted, sortState, toggleSort } = useSort<ScholarSdpCompliance>(serverPaging ? EMPTY_ROWS : clientFiltered, {
     scholarIdNumber: s => s.scholarIdNumber,
     name: s => s.name,
     communityService: s => s.communityService,
@@ -1227,12 +1220,63 @@ function ChecklistSection() {
     result: s => (s.complied === null ? 2 : s.complied ? 1 : 0),
   });
 
-  const [page, setPage] = useState(1);
-  const pageSize = 50;
-  const totalPages = Math.max(1, Math.ceil(sortedScholars.length / pageSize));
+  // With the database update: one page.
+  const loadPage = useCallback(async () => {
+    if (!chosen) { if (current.schoolYear === "") return; setRows([]); setTotal(0); setLoading(false); return; }
+    const id = ++requestId.current;
+    setLoading(true);
+    setError("");
+    const result = await fetchSdpChecklistPage({
+      schoolYear: chosen.schoolYear, semester: chosen.term, search, filter, sortKey: sortState.key as ChecklistSortKey | null, sortDir: sortState.direction, page, pageSize: CHECKLIST_PAGE_SIZE,
+    });
+    if (id !== requestId.current) return;   // a newer question was asked meanwhile
+    if (result.ok) { setLegacy(false); setRows(result.rows); setTotal(result.total); setLoading(false); return; }
+    if (result.missing) { setServerPaging(false); return; }   // the database update has not been run yet: use the earlier way
+    setError(result.error); setRows([]); setTotal(0); setLoading(false);
+  }, [chosen, current.schoolYear, search, filter, sortState.key, sortState.direction, page]);
+  useEffect(() => { if (serverPaging) void loadPage(); }, [serverPaging, loadPage]);
+
+  // The three counts load separately, so the page does not wait for them.
+  useEffect(() => {
+    if (!serverPaging || !chosen) return;
+    let cancelled = false;
+    setSummary(null);
+    void fetchSdpChecklistSummary({ schoolYear: chosen.schoolYear, semester: chosen.term }).then(r => { if (!cancelled && r.ok) setSummary(r.summary); });
+    return () => { cancelled = true; };
+  }, [serverPaging, chosen]);
+
+  // The earlier way (before the database update): everyone at once.
+  const loadAll = useCallback(async () => {
+    if (!chosen) { if (current.schoolYear === "") return; setFallbackRows([]); setLoading(false); return; }
+    setLoading(true);
+    setError("");
+    const result = await fetchScholarsSdpCompliance({ schoolYear: chosen.schoolYear, semester: chosen.term });
+    if (result.ok) {
+      setLegacy(false);
+      setFallbackRows(result.rows);
+    } else {
+      // The compliance function comes with a database update. Until it is applied, still show the credits (current period only), without the result.
+      setLegacy(true);
+      setError(result.error);
+      const old = await fetchAllScholarsSDPChecklist();
+      setFallbackRows(old.map(o => ({ scholarIdNumber: o.scholarIdNumber, name: o.name, communityService: o.communityService, communityVolunteerism: o.communityVolunteerism, formationProgram: o.formationProgram, applicable: true, complied: null, missing: "" })));
+    }
+    setLoading(false);
+  }, [chosen, current.schoolYear]);
+  useEffect(() => { if (!serverPaging) void loadAll(); }, [serverPaging, loadAll]);
+
+  const counts = useMemo(() => serverPaging
+    ? { all: summary?.total ?? null, complied: summary?.complied ?? null, notComplied: summary?.notComplied ?? null }
+    : { all: fallbackRows.length, complied: fallbackRows.filter(r => r.applicable && r.complied === true).length, notComplied: fallbackRows.filter(r => r.applicable && r.complied === false).length },
+  [serverPaging, summary, fallbackRows]);
+  const shown = (n: number | null) => (n === null ? "…" : n.toLocaleString());
+  const summer = serverPaging ? /summer/i.test(chosen?.term ?? "") : fallbackRows.length > 0 && fallbackRows.every(r => !r.applicable);
+
+  const matchCount = serverPaging ? total : clientFiltered.length;
+  const totalPages = Math.max(1, Math.ceil(matchCount / CHECKLIST_PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const paged = sortedScholars.slice((safePage - 1) * pageSize, safePage * pageSize);
-  useEffect(() => { setPage(1); }, [search, filter, effectiveKey]);
+  const paged = serverPaging ? rows : clientSorted.slice((safePage - 1) * CHECKLIST_PAGE_SIZE, safePage * CHECKLIST_PAGE_SIZE);
+  useEffect(() => { setPage(1); }, [search, filter, effectiveKey, sortState.key, sortState.direction]);
 
   return (
     <div>
@@ -1242,7 +1286,7 @@ function ChecklistSection() {
         <PeriodSelect label="Semester" options={options} value={effectiveKey} onChange={setViewKey} />
         <div className="flex items-center gap-2 bg-white border border-[#e6ecf5] rounded-lg px-3 py-2 w-full max-w-sm">
           <Search size={15} className="text-slate-500" aria-hidden="true" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or Scholar ID…" aria-label="Search by name or Scholar ID"
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search by name or Scholar ID…" aria-label="Search by name or Scholar ID"
             className="w-full text-sm outline-none" />
         </div>
       </div>
@@ -1250,9 +1294,9 @@ function ChecklistSection() {
       {!summer && !legacy && (
         <div role="group" aria-label="Filter by SDP result" className="flex items-center gap-1 bg-[#f8fafd] border border-[#e6ecf5] rounded-lg p-1 mb-4 w-fit max-w-full flex-wrap">
           {([
-            ["all", `All (${rows.length.toLocaleString()})`],
-            ["complied", `Complied (${counts.complied.toLocaleString()})`],
-            ["not_complied", `Not complied (${counts.notComplied.toLocaleString()})`],
+            ["all", `All (${shown(counts.all)})`],
+            ["complied", `Complied (${shown(counts.complied)})`],
+            ["not_complied", `Not complied (${shown(counts.notComplied)})`],
           ] as const).map(([value, label]) => (
             <button key={value} onClick={() => setFilter(value)} aria-pressed={filter === value}
               className={`text-[13px] font-semibold px-3 py-1.5 rounded-md ${filter === value ? "bg-[#062444] text-white" : "text-slate-600 hover:bg-white"}`}>
@@ -1268,7 +1312,7 @@ function ChecklistSection() {
       )}
 
       <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" aria-busy={loading}>
           <caption className="sr-only">Scholars' SDP credits and result for the chosen semester</caption>
           <thead>
             <tr className="bg-[#f8fafd] text-left text-[11px] uppercase tracking-wide text-[#00709f]">
@@ -1283,8 +1327,14 @@ function ChecklistSection() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="px-5 py-10 text-center text-slate-600">Loading…</td></tr>
-            ) : filtered.length === 0 ? (
+              Array.from({ length: 8 }, (_, i) => (
+                <tr key={i} className="border-t border-[#f0f3f8]" aria-hidden="true">
+                  {Array.from({ length: 7 }, (_, j) => <td key={j} className="px-5 py-3"><div className="h-4 rounded bg-slate-200 animate-pulse" style={{ width: j === 1 ? "9rem" : "4rem" }} /></td>)}
+                </tr>
+              ))
+            ) : error && serverPaging ? (
+              <tr><td colSpan={7} role="alert" className="px-5 py-10 text-center text-red-700">Could not load the checklist: {error}</td></tr>
+            ) : matchCount === 0 ? (
               <tr><td colSpan={7} className="px-5 py-10 text-center text-slate-600">No scholars found.</td></tr>
             ) : (
               paged.map(s => (
@@ -1308,7 +1358,7 @@ function ChecklistSection() {
           </tbody>
         </table>
       </div>
-      <ListPagination page={safePage} totalPages={totalPages} onPageChange={setPage} filteredCount={filtered.length} pageSize={pageSize} />
+      <ListPagination page={safePage} totalPages={totalPages} onPageChange={setPage} filteredCount={matchCount} pageSize={CHECKLIST_PAGE_SIZE} />
 
       {viewingScholar && (
         <SDPHistoryModal scholarIdNumber={viewingScholar.scholarIdNumber} scholarName={viewingScholar.name} onClose={() => setViewingScholar(null)} />

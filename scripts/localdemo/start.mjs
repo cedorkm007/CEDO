@@ -8,12 +8,15 @@ import path from "node:path";
 import { createServer } from "vite";
 import { buildDb, openDb, DATA_DIR, ROOT } from "../../localdemo/build.mjs";
 import { seedDb, ACCOUNTS } from "../../localdemo/seed.mjs";
+import { addManyScholars } from "../../localdemo/many.mjs";
 import { startServer } from "../../localdemo/server.mjs";
 import { ANON_KEY } from "../../localdemo/jwt.mjs";
 
 const API_PORT = 54321;
 const WEB_PORT = 5173;
-const reset = process.argv.includes("--reset");
+const manyArg = process.argv.find(a => a.startsWith("--many"));
+const many = manyArg ? Number(manyArg.split("=")[1] || 8000) : 0;   // --many=8000: also add that many made-up TEST scholars (try the SDP Checklist at your real size)
+const reset = process.argv.includes("--reset") || many > 0;
 
 // ── Safety: the website is pointed ONLY at this computer; refuse to run otherwise ──
 const API_URL = `http://127.0.0.1:${API_PORT}`;
@@ -33,6 +36,8 @@ if (reset || !fs.existsSync(path.join(DATA_DIR, "PG_VERSION"))) {
   ({ db } = await buildDb({ onProgress: m => process.stdout.write(`\r  ${m}                    `) }));
   process.stdout.write("\r  Loading the TEST data…                                   \n");
   await seedDb(db);
+  if (many > 0) { process.stdout.write(`  Adding ${many.toLocaleString()} made-up TEST scholars…            
+`); await addManyScholars(db, many); }
   console.log(`  Done in ${((Date.now() - t0) / 1000).toFixed(0)} seconds.`);
 } else {
   db = openDb(); await db.waitReady;
