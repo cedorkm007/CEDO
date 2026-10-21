@@ -93,6 +93,30 @@ check("nobody on the website can read the held list", await db.transaction(async
 await db.exec(DROP);
 check("deleting the held list leaves no password stored", Number((await q("select count(*) n from pg_tables where tablename = 'p6_held_temporary_passwords'"))[0].n) === 0);
 
+console.log("\nThe shared starting password 123456 (step 3e) and its end (step 3f)");
+const SET123 = read("sql_oneoff/p6_step3e_SET_123456_for_reset_scholars.sql"), END14 = read("sql_oneoff/p6_step3f_END_123456_after_14_days.sql");
+// state here: the reissue section left the (re-issued) scholars flagged 'first_sign_in_reissue'; the held table was dropped
+const targetsBefore = Number((await q("select count(*) n from account_password_flags f join auth.users au on au.id = f.user_id join scholars s on s.id = f.user_id where f.reason in ('first_sign_in_reset','first_sign_in_reissue') and au.last_sign_in_at is null"))[0].n);
+const setResult = await run(SET123);
+check("it reports how many scholars now use 123456, and that is everyone still unclaimed", Number(setResult[0].scholars_now_using_123456) === targetsBefore && targetsBefore > 0, JSON.stringify(setResult));
+const some = (await q("select s.scholar_id_number id from scholars s join account_password_flags f on f.user_id = s.id where f.reason = 'shared_start_password' limit 1"))[0].id;
+check("those accounts accept 123456 (and no longer the earlier random password)", await matches(some, "123456") && !(await matches(some, re.find(r => r.login === some)?.temporary_password ?? "x")));
+const someUid = (await q("select id from scholars where scholar_id_number = $1", [some]))[0].id;
+check("they are still made to choose a new password at first sign-in", await db.transaction(async tx => {
+  await tx.exec("set local role authenticated");
+  await tx.query("select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true)", [someUid]);
+  return (await tx.query("select public.my_password_change_required() r")).rows[0].r === true;
+}));
+check("a scholar who signed in meanwhile is untouched", !(await matches(signedInLater, "123456")));
+check("running it again changes nobody", Number((await run(SET123))[0].scholars_now_using_123456) === 0);
+check("before 14 days, step 3f shows nothing and changes nothing", (await run(END14)).length === 0 && await matches(some, "123456"));
+await q("update account_password_flags set created_at = now() - interval '15 days' where reason = 'shared_start_password'");
+await q("update auth.users set last_sign_in_at = now() where id = (select s.id from scholars s join account_password_flags f on f.user_id = s.id where f.reason = 'shared_start_password' and s.scholar_id_number <> $1 limit 1)", [some]);
+const ended = await run(END14);
+check("after 14 days, the scholars still unclaimed get a new random password; 123456 stops working", ended.length === targetsBefore - 1 && ended.every(r => /^[A-Za-z2-9]{4}-[A-Za-z2-9]{4}-[A-Za-z2-9]{4}$/.test(r.temporary_password)) && !(await matches(some, "123456")) && await matches(some, ended.find(r => r.login === some).temporary_password));
+check("a scholar who signed in during the 14 days is not touched", ended.length === targetsBefore - 1);
+await db.exec(read("sql_oneoff/p6_step3d_DELETE_held_list.sql"));
+
 console.log("\nIn rounds (more accounts than one round holds)");
 await db.exec("delete from account_password_flags where reason = 'first_sign_in_reset'");
 await q("update auth.users set last_sign_in_at = null where id = any($1::uuid[])", [scholars.map(s => s.id)]);
