@@ -91,6 +91,23 @@ check("the IT administrator can add a line with their own account as 'changed by
 check("a line made to look as if somebody else changed it, or added by other staff, is refused", await refused(IT, "insert into division_change_log (staff_id, old_division, new_division, changed_by, changed_by_name) values ($1, 'A', 'B', $2, 'x')", [PLAIN, SEAD]) && await refused(PLAIN, "insert into division_change_log (staff_id, old_division, new_division, changed_by, changed_by_name) values ($1, 'A', 'B', $1, 'x')", [PLAIN]));
 check("nobody can edit or delete a line through the website", (await rows(IT, "update division_change_log set new_division = 'Z' returning id")).length === 0 && (await rows(IT, "delete from division_change_log returning id")).length === 0 && await count("select count(*) n from division_change_log") === divTotal + 1);
 
+console.log("\nE. The undone column (makes Undo upload work)");
+const BATCH = "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f";
+const undoneCol = async () => Number((await q("select count(*) n from information_schema.columns where table_name = 'sead_scholar_account_log' and column_name = 'undone'"))[0].n);
+check("after the file, the column exists, is yes/no and every existing line says no", await undoneCol() === 1 && await count("select count(*) n from sead_scholar_account_log where undone is not false") === 0);
+await q("insert into sead_scholar_account_log (action, scholar_id_number, scholar_name, performed_by, performed_by_name, source, batch_id) values ('added', 'TEST-9999', 'T T', $1, 'x', 'bulk', $2)", [SEAD, BATCH]);
+const pending = await rows(null, "select id from sead_scholar_account_log where batch_id = $1 and action = 'added' and undone = false", [BATCH], "service_role");
+check("the Undo upload function's own look-up (lines of that upload not yet undone) now works", pending.length === 1);
+await rows(null, "update sead_scholar_account_log set undone = true where id = $1", [pending[0].id], "service_role");
+check("after it marks the line, the line no longer shows as pending", (await rows(null, "select id from sead_scholar_account_log where batch_id = $1 and undone = false", [BATCH], "service_role")).length === 0);
+check("staff still cannot mark or change a line through the website", (await rows(SEAD, "update sead_scholar_account_log set undone = false returning id")).length === 0);
+await db.exec(read("supabase_migration_sdp_update_p7_e_undone_column.sql"));
+check("run twice it changes nothing (the marked line stays marked)", (await q("select undone from sead_scholar_account_log where id = $1", [pending[0].id]))[0].undone === true);
+await db.exec(read("undo_sdp_update_p7_e.sql"));
+check("the undo removes the column", await undoneCol() === 0);
+await db.exec(read("supabase_migration_sdp_update_p7_e_undone_column.sql"));
+await q("delete from sead_scholar_account_log where scholar_id_number = 'TEST-9999'");
+
 console.log("\nThe undo files and running twice");
 for (const k of ["a", "b", "c", "d"]) { await db.exec(read(UNDO[k])); }
 check("after the undo files the live rule is back (any staff account can again change tags, roles and history)",
@@ -105,7 +122,7 @@ for (const k of ["a", "b", "c", "d"]) { await db.exec(read(FILES[k])); await db.
 check("run twice, the files put the new rules back (and only once)", await count("select count(*) n from pg_policies where tablename = 'staff_account_tags'") === 2 && await count("select count(*) n from pg_policies where tablename = 'users'") === 4
   && await count("select count(*) n from pg_policies where tablename = 'sead_scholar_account_log'") === 2 && await count("select count(*) n from pg_policies where tablename = 'division_change_log'") === 2);
 check("…and they refuse again", await refused(PLAIN, "insert into staff_account_tags (staff_id, tag_key) values ($1, 'sdp_monitoring')", [PLAIN]));
-check("every file sets a short wait limit so it cannot hold up the live site", Object.values(FILES).concat(Object.values(UNDO)).every(f => /set lock_timeout = '5s'/.test(read(f))));
+check("every file sets a short wait limit so it cannot hold up the live site", Object.values(FILES).concat(Object.values(UNDO), ["supabase_migration_sdp_update_p7_e_undone_column.sql", "undo_sdp_update_p7_e.sql"]).every(f => /set lock_timeout = '5s'/.test(read(f))));
 check("each file changes only its own table", Object.entries(FILES).every(([k, f]) => { const t = { a: "staff_account_tags", b: "users", c: "sead_scholar_account_log", d: "division_change_log" }[k]; return [...read(f).matchAll(/(?:alter table|\bon) public\.([a-z_]+)/g)].every(m => m[1] === t); }));
 
 console.log(`\n${passed} passed, ${failed} failed`);
