@@ -1,6 +1,6 @@
 -- UNDO for supabase_migration_sdp_update_p6_password_security.sql
 -- Puts the three sign-in look-ups back as they were (they say plainly whether an account exists, and are not limited), and removes the new tables and
--- functions. NOTE: the staff look-up is restored to its simple form (the user name's email); if your live one did more, tell me before running this.
+-- functions. CHECKED against the live project on 2026-10-21 (step 0): all three are restored exactly as they were there.
 -- Accounts that were marked "must choose a new password" are no longer marked. No account, password or credit is touched.
 set lock_timeout = '5s';
 create or replace function public.resolve_scholar_login_email(
