@@ -230,6 +230,19 @@ export async function seedDb(db) {
         values ($1,'Probationary','Regular',false,'2025-2026','1st Semester','manual','TEST – earlier probation', '2025-12-01')`, [num]);
     }
   }
+  // The "TestQR" situation (SDP Monitoring update, Phase 5): scholars 0002 and 0003 were present but never credited, and scholar 0004's manual credit was
+  // stamped with the CURRENT semester although it belongs to the 1st Semester of 2025-2026. The Credited Scholars tab shows how to fix both.
+  {
+    const testqr = id("act:testqr");
+    await db.query(`insert into sdp_activities (id, name, category, sub_category, activity_type, date_time, end_time, credits, all_year_levels, organization, venue, nature, source_of_fund, objectives, target_partners, specific_role, work_plan, program_flow, budget_items, recurring_dates, target_year_levels, target_barangays, target_clusters)
+      values ($1, 'TEST – TestQR (Not Credited in SDP)', 'community_volunteerism', 'cedo_projects', 'one_time', now(), now() + interval '2 hours', 1, true, 'TEST Org', 'TEST venue', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', '{}') on conflict (id) do nothing`, [testqr]);
+    const sessionId = id("session:testqr");
+    await db.query("insert into attendance_sessions (id, sdp_activity_id, type, expected_attendees, duration_hours, created_by) values ($1, $2, 'voucher', 5, 1, $3) on conflict (id) do nothing", [sessionId, testqr, id("staff:demo.sead")]);
+    for (const n of [2, 3]) await db.query("insert into attendance_records (session_id, scholar_id_number, hours_earned, status, voucher_redemption_count) values ($1, $2, 1, 'present', 1) on conflict do nothing", [sessionId, sidNum(n)]);
+    const cur = (await db.query("select current_school_year sy, current_semester sem from grading_period_settings where id = true")).rows[0];
+    if (cur) await db.query("insert into sdp_attendance (activity_id, scholar_id_number, attended_date, school_year, semester, occurrence_number) values ($1, $2, current_date, $3, $4, 1) on conflict do nothing", [testqr, sidNum(4), cur.sy, cur.sem]);
+  }
+
   // ── Phase 2: renewal windows, an earlier semester for the late-application scholar, and a few applications made through the real functions ──
   const day = n => { const d = new Date(Date.now() + 8 * 3600 * 1000 + n * 86400000); return d.toISOString().slice(0, 10); };   // Manila date, n days from today
   const windows = { w1: ["2026-2027", "1st Semester", day(-12), day(18)], w2: ["2025-2026", "Summer", day(-12), day(18)], w3: ["2025-2026", "1st Semester", day(-120), day(-100)] };

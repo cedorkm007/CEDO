@@ -4,7 +4,7 @@ import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
-  fetchAttendanceForActivity, fetchCreditHistory, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, removeAttendance, type AttendedWithoutCredit, type CreditHistoryEntry,
+  fetchAttendanceForActivity, fetchCreditHistory, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, removeAttendance, moveCreditSemester, type CreditPeriod, type AttendedWithoutCredit, type CreditHistoryEntry,
   fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpChecklistSummary,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
   isSubCategorySupported, isDayLabelsSupported, type ChecklistSummary, type ChecklistSortKey, type SDPActivity, type SDPCategory, type SDPSubCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
@@ -19,7 +19,7 @@ import { ListPagination } from "@/app/components/PaginatedList";
 import { PeriodSelect } from "@/app/components/PeriodSelect";
 import { fetchAcademicPeriods } from "@/lib/academicPeriodsApi";
 import { fetchCurrentGradingPeriod, type GradingPeriod } from "../scholarsGradesMonitoringApi";
-import { normalizeTerm, periodKey, periodOptions, type AcademicPeriod } from "@/lib/academicPeriods";
+import { normalizeTerm, periodKey, periodOptions, termLabel, type AcademicPeriod } from "@/lib/academicPeriods";
 import { useUrlState } from "@/app/useUrlState";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
 import { ExportButton } from "@/app/components/ExportButtons";
@@ -47,6 +47,30 @@ function csvCell(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
+/** The semesters on record plus the current grading period, as dropdown options (newest first, the current one marked). */
+function useSdpPeriods() {
+  const [periods, setPeriods] = useState<AcademicPeriod[]>([]);
+  const [current, setCurrent] = useState<GradingPeriod>({ schoolYear: "", semester: "" });
+  useEffect(() => {
+    void Promise.all([fetchAcademicPeriods(), fetchCurrentGradingPeriod()]).then(([p, cur]) => {
+      if (p.ok) setPeriods(p.periods);
+      setCurrent(cur);
+    });
+  }, []);
+  const all = useMemo(() => {
+    const list = [...periods];
+    const term = normalizeTerm(current.semester);
+    if (current.schoolYear && term && !list.some(x => periodKey(x.schoolYear, x.term) === periodKey(current.schoolYear, term))) {
+      list.push({ id: periodKey(current.schoolYear, term), schoolYear: current.schoolYear, term, status: "open", deadline: null });
+    }
+    return list;
+  }, [periods, current]);
+  const options = useMemo(() => periodOptions(all, current), [all, current]);
+  const currentKey = current.schoolYear ? periodKey(current.schoolYear, current.semester) : "";
+  const toPeriod = (key: string): CreditPeriod | null => { const p = all.find(x => periodKey(x.schoolYear, x.term) === key); return p ? { schoolYear: p.schoolYear, semester: p.term } : null; };
+  return { options, currentKey, toPeriod };
+}
+
 function categoryLabel(category: SDPCategory | null): string {
   return SDP_CATEGORIES.find(c => c.key === category)?.label ?? "No category set";
 }
@@ -58,6 +82,7 @@ const HISTORY_SOURCE_LABELS: Record<string, string> = {
   credit_attended: "“Credit these scholars”",
   removed: "removed by staff",
   category_edit: "category edited",
+  semester_move: "semester changed",
   system: "by the system",
 };
 
@@ -366,6 +391,14 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
   const [crediting, setCrediting] = useState(false);
   const [creditMessage, setCreditMessage] = useState("");
   const [historyKey, setHistoryKey] = useState(0);
+  // The semester new credits count in (the current grading period unless another is chosen), and the credit whose semester is being changed.
+  const sdpPeriods = useSdpPeriods();
+  const [creditKey, setCreditKey] = useState<string | null>(null);
+  const effectiveCreditKey = creditKey && sdpPeriods.options.some(o => o.key === creditKey) ? creditKey : sdpPeriods.currentKey;
+  const creditPeriodLabel = sdpPeriods.options.find(o => o.key === effectiveCreditKey)?.label.replace(" (current)", "") ?? "the current semester";
+  const [moving, setMoving] = useState<{ id: string; key: string } | null>(null);
+  // The current semester is the default, so it is sent as "no choice": that way crediting works exactly as before even if the database update for the semester choice has not been run.
+  const chosenPeriod = (): CreditPeriod | null => (effectiveCreditKey === sdpPeriods.currentKey ? null : sdpPeriods.toPeriod(effectiveCreditKey));
 
   async function load() {
     setLoading(true);
@@ -382,7 +415,7 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
     const scholarIdNumber = selected?.scholarIdNumber ?? query.trim();
     if (!scholarIdNumber) { setError("Enter or pick a scholar."); return; }
     setBusy(true);
-    const result = await creditAttendance(activity.id, scholarIdNumber, newDate);
+    const result = await creditAttendance(activity.id, scholarIdNumber, newDate, chosenPeriod());
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to credit — check the Scholar ID exists."); return; }
     setQuery("");
@@ -392,9 +425,9 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
 
   async function handleCreditAttended() {
     const n = notCredited.filter(x => x.canCredit).length;
-    if (!window.confirm(`Credit ${n} scholar${n === 1 ? "" : "s"} who attended “${activity.name}” but have no credit? Their credit is counted in the current semester.`)) return;
+    if (!window.confirm(`Credit ${n} scholar${n === 1 ? "" : "s"} who attended “${activity.name}” but have no credit? Their credit is counted in ${creditPeriodLabel}.`)) return;
     setCrediting(true); setError(""); setCreditMessage("");
-    const r = await creditAttendedScholars(activity.id);
+    const r = await creditAttendedScholars(activity.id, chosenPeriod());
     setCrediting(false);
     if (!r.ok) { setError(r.error); return; }
     setCreditMessage(`${r.count} scholar${r.count === 1 ? " was" : "s were"} credited.`);
@@ -403,6 +436,20 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
 
   async function handleRemove(id: string) {
     await removeAttendance(id);
+    load();
+  }
+
+  async function handleMove(entry: AttendanceEntry) {
+    if (!moving) return;
+    const target = sdpPeriods.toPeriod(moving.key);
+    const targetLabel = sdpPeriods.options.find(o => o.key === moving.key)?.label.replace(" (current)", "") ?? "";
+    const fromLabel = entry.schoolYear && entry.semester ? `${entry.schoolYear} · ${termLabel(entry.semester)}` : "no semester";
+    if (!target) { setError("Choose a semester."); return; }
+    if (!window.confirm(`Move ${entry.scholarName}'s credit for “${activity.name}” from ${fromLabel} to ${targetLabel}? It then counts in ${targetLabel} instead. Nothing is added or removed, and the change is written to the history.`)) return;
+    setError("");
+    const r = await moveCreditSemester(entry.id, target);
+    if (!r.ok) { setError(r.error || "Could not move the credit."); return; }
+    setMoving(null);
     load();
   }
 
@@ -428,6 +475,7 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
           <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)}
             className="border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" />
         </div>
+        <PeriodSelect label="Counts in" options={sdpPeriods.options} value={effectiveCreditKey} onChange={setCreditKey} />
         <button onClick={handleAdd} disabled={busy}
           className="bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-3 py-1.5 disabled:opacity-50">
           {busy ? "…" : "Credit"}
@@ -442,13 +490,22 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
       ) : (
         <div className="space-y-1.5">
           {attendees.map(a => (
-            <div key={a.id} className="flex items-center justify-between bg-[#f8fafd] rounded-lg px-3 py-2 text-[12.5px]">
+            <div key={a.id} className="flex flex-wrap items-center justify-between gap-y-1 bg-[#f8fafd] rounded-lg px-3 py-2 text-[12.5px]">
               <span className="text-[#062444] font-medium">{a.scholarName} <span className="text-slate-400">({a.scholarIdNumber})</span></span>
-              <span className="flex items-center gap-3">
+              <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
                 {activity.activityType === "recurring" && (() => { const sub = daySubName(activity, creditDay(activity, a.activityDay, a.attendedDate)); return sub ? <span className="text-[12px] font-semibold text-[#0077b6]">{activity.name} – {sub}</span> : null; })()}
-                <span className="text-slate-400">{a.attendedDate ? new Date(a.attendedDate).toLocaleDateString() : "—"}</span>
-                <button onClick={() => handleRemove(a.id)} className="text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
+                <span className="text-slate-600">{a.attendedDate ? new Date(a.attendedDate).toLocaleDateString() : "—"}</span>
+                <span className="rounded-full bg-white border border-[#e6ecf5] px-2 py-0.5 text-[11.5px] font-semibold text-[#062444]">{a.schoolYear && a.semester ? `${a.schoolYear} · ${termLabel(a.semester)}` : "No semester"}</span>
+                <button type="button" onClick={() => setMoving(m => (m?.id === a.id ? null : { id: a.id, key: effectiveCreditKey }))} className="text-[12px] font-semibold text-[#0077b6] hover:underline">Change semester</button>
+                <button onClick={() => handleRemove(a.id)} aria-label={`Remove ${a.scholarName}'s credit`} className="text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
               </span>
+              {moving?.id === a.id && (
+                <div className="basis-full mt-2 flex flex-wrap items-center gap-2 border-t border-[#e6ecf5] pt-2">
+                  <PeriodSelect label="Move to" options={sdpPeriods.options} value={moving.key} onChange={key => setMoving({ id: a.id, key })} />
+                  <button type="button" onClick={() => void handleMove(a)} className="rounded-lg bg-[#062444] px-3 py-1.5 text-[12px] font-bold text-white">Move</button>
+                  <button type="button" onClick={() => setMoving(null)} className="text-[12px] font-semibold text-slate-600">Cancel</button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -459,6 +516,11 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
         <div className="mt-5">
           <p className="text-[12px] font-bold uppercase text-slate-700 mb-1">Scanned the QR code but not credited ({notCredited.length})</p>
           <p className="text-[12.5px] text-slate-700 mb-2">These scholars attended, but no credit was added to this activity. The reason is shown for each one.</p>
+          {notCredited.some(x => x.canCredit) && (
+            <div className="mb-2 flex flex-wrap items-center gap-3">
+              <PeriodSelect label="Count them in" options={sdpPeriods.options} value={effectiveCreditKey} onChange={setCreditKey} />
+            </div>
+          )}
           {notCredited.some(x => x.canCredit) && (
             <button onClick={() => void handleCreditAttended()} disabled={crediting} className="mb-2 rounded-lg bg-[#062444] px-3.5 py-2 text-[13px] font-bold text-white disabled:opacity-60">{crediting ? "Crediting…" : `Credit these scholars (${notCredited.filter(x => x.canCredit).length})`}</button>
           )}
@@ -1435,6 +1497,13 @@ function ChecklistSection() {
             className="w-full text-sm outline-none" />
         </div>
       </div>
+
+      {chosen && currentKey && effectiveKey !== currentKey && (
+        <p role="status" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13.5px] text-amber-950">
+          You are viewing <strong>{termLabel(chosen.term)} {chosen.schoolYear}</strong>. The current period is <strong>{termLabel(current.semester)} {current.schoolYear}</strong>.{" "}
+          <button type="button" onClick={() => setViewKey(currentKey)} className="font-bold underline underline-offset-2">Show the current period</button>
+        </p>
+      )}
 
       {!summer && !legacy && (
         <div role="group" aria-label="Filter by SDP result" className="flex items-center gap-1 bg-[#f8fafd] border border-[#e6ecf5] rounded-lg p-1 mb-4 w-fit max-w-full flex-wrap">
