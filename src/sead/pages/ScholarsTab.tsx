@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, Pencil, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw, UserX } from "lucide-react";
 import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, removeScholarAccount, updateScholarStatus, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, fetchAllScholarsInformationForExport, type ScholarInformationRow, type ScholarInformationFilters, type ScholarInformationEmptyableField } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
+import { TemporaryPasswordNotice, type TemporaryCredential } from "@/app/components/TemporaryPasswordNotice";
 import { EditScholarModal } from "../components/EditScholarModal";
 import { BulkScholarUploadModal } from "../components/BulkScholarUploadModal";
 import { BulkScholarUpdateModal } from "../components/BulkScholarUpdateModal";
@@ -56,6 +57,8 @@ function ScholarsAccountSubtab() {
   const [removeBusyId, setRemoveBusyId] = useState<string | null>(null);
   const [showResetAll, setShowResetAll] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Temporary passwords made by a reset, shown ONCE and then forgotten (Phase 6); each scholar chooses their own at next sign-in.
+  const [notice, setNotice] = useState<{ title: string; credentials: TemporaryCredential[]; warning?: string } | null>(null);
   const { sortState, toggleSort } = useSortState();
 
   const totalPages = Math.max(1, Math.ceil(total / SCHOLARS_PAGE_SIZE));
@@ -99,7 +102,10 @@ function ScholarsAccountSubtab() {
     const result = await resetScholarPassword(scholarIdNumber);
     setResetBusyId(null);
     setConfirmResetId(null);
-    setToast(result.ok ? `Password reset to 123456 for ${result.name}.` : (result.error || "Failed to reset password."));
+    if (result.ok && result.temporaryPassword) {
+      setNotice({ title: `New temporary password for ${result.name}`, credentials: [{ who: String(result.name ?? ""), login: scholarIdNumber, password: result.temporaryPassword }], warning: result.warning });
+    }
+    setToast(result.ok ? `A new temporary password was made for ${result.name}. The scholar will choose their own at next sign-in.` : (result.error || "Failed to reset password."));
     setTimeout(() => setToast(null), 4000);
   }
 
@@ -123,8 +129,9 @@ function ScholarsAccountSubtab() {
     if (result.ok) load(page);
   }
 
-  function handleAllPasswordsReset(message: string) {
+  function handleAllPasswordsReset(message: string, credentials: TemporaryCredential[]) {
     setShowResetAll(false);
+    if (credentials.length) setNotice({ title: "Temporary passwords for all scholars", credentials });
     setToast(message);
     setTimeout(() => setToast(null), 6000);
   }
@@ -219,7 +226,7 @@ function ScholarsAccountSubtab() {
                       </span>
                     ) : confirmResetId === s.scholarIdNumber ? (
                       <span className="inline-flex items-center gap-2">
-                        <span className="text-[12px] text-slate-500">Reset to 123456?</span>
+                        <span className="text-[12px] text-slate-500">Make a new temporary password?</span>
                         <button onClick={() => handleResetPassword(s.scholarIdNumber)} disabled={resetBusyId === s.scholarIdNumber}
                           className="text-[12px] font-bold text-red-600 hover:underline">
                           {resetBusyId === s.scholarIdNumber ? "…" : "Confirm"}
@@ -264,6 +271,7 @@ function ScholarsAccountSubtab() {
       )}
       {showBulkUpload && <BulkScholarUploadModal onClose={() => setShowBulkUpload(false)} onDone={() => load(page)} />}
       {showBulkUpdate && <BulkScholarUpdateModal onClose={() => setShowBulkUpdate(false)} onDone={() => load(page)} />}
+      {notice && <TemporaryPasswordNotice title={notice.title} credentials={notice.credentials} warning={notice.warning} onClose={() => setNotice(null)} />}
       {showResetAll && <ResetAllPasswordsModal onClose={() => setShowResetAll(false)} onDone={handleAllPasswordsReset} />}
     </div>
   );
@@ -976,7 +984,7 @@ function ScholarsInformationSubtab() {
   );
 }
 
-function ResetAllPasswordsModal({ onClose, onDone }: { onClose: () => void; onDone: (message: string) => void }) {
+function ResetAllPasswordsModal({ onClose, onDone }: { onClose: () => void; onDone: (message: string, credentials: TemporaryCredential[]) => void }) {
   const [confirmText, setConfirmText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -995,9 +1003,9 @@ function ResetAllPasswordsModal({ onClose, onDone }: { onClose: () => void; onDo
     const succeeded = result.succeeded ?? 0;
     const failed = result.failed ?? 0;
     const message = failed === 0
-      ? `Reset ${succeeded} scholar password${succeeded === 1 ? "" : "s"} to 123456.`
-      : `Reset ${succeeded} of ${total} scholar passwords to 123456 — ${failed} failed. Check the account log or try again for the ones that failed.`;
-    onDone(message);
+      ? `Made new temporary passwords for ${succeeded} scholar${succeeded === 1 ? "" : "s"}. Download the list now: it is shown only once.`
+      : `Made new temporary passwords for ${succeeded} of ${total} scholars — ${failed} failed. Check the account log or try again for the ones that failed.`;
+    onDone(message, (result.credentials ?? []).map(c => ({ who: c.name, login: c.scholarIdNumber, password: c.temporaryPassword })));
   }
 
   return (
@@ -1012,7 +1020,7 @@ function ResetAllPasswordsModal({ onClose, onDone }: { onClose: () => void; onDo
           <div className="flex items-start gap-2.5 bg-red-50 border border-red-100 rounded-lg px-3.5 py-3 mb-4">
             <AlertTriangle size={16} className="text-red-500 shrink-0 mt-0.5" />
             <p className="text-[12.5px] text-red-700 leading-relaxed">
-              This resets <strong>every scholar's</strong> password to <strong>123456</strong> — not just the ones on this page or matching your search. It cannot be undone, and every scholar will need to sign in with the default password again.
+              This makes a new random <strong>temporary password for every scholar</strong> — not just the ones on this page or matching your search. It cannot be undone. You will get a list to download once; every scholar must then sign in with their temporary password and choose a new one.
             </p>
           </div>
 

@@ -1,8 +1,10 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { requireSeadStaff } from "../_shared/verifySeadStaff.ts";
 import { getStaffName, logScholarChange } from "../_shared/scholarLog.ts";
+import { issueTemporaryPassword } from "../_shared/temporaryPassword.ts";
 
-const DEFAULT_PASSWORD = "123456";
+// Every scholar gets their OWN random temporary password (never one shared password), marked "must choose a new password". Each batch returns the
+// list for the staff member's screen; the website keeps them in memory and offers one download at the end. They are never logged or stored.
 const CONCURRENCY = 10; // resets within a batch run in small parallel groups
 const BATCH_SIZE = 200; // scholars processed per invocation — keeps every single call fast regardless of roster size, so it can't hit an execution-time limit
 
@@ -56,19 +58,21 @@ Deno.serve(async (req: Request) => {
     const total = count ?? rows.length;
     let succeeded = 0;
     const failures: { scholarIdNumber: string; error: string }[] = [];
+    const credentials: { scholarIdNumber: string; name: string; temporaryPassword: string }[] = [];
     const staffName = await getStaffName(admin, callerId);
 
     for (let i = 0; i < rows.length; i += CONCURRENCY) {
       const batch = rows.slice(i, i + CONCURRENCY);
       const results = await Promise.all(batch.map(async (scholar) => {
-        const { error } = await admin.auth.admin.updateUserById(scholar.id, { password: DEFAULT_PASSWORD });
-        return { scholar, error };
+        const issued = await issueTemporaryPassword(admin, scholar.id);
+        return { scholar, issued };
       }));
-      for (const { scholar, error } of results) {
-        if (error) {
-          failures.push({ scholarIdNumber: scholar.scholar_id_number, error: error.message });
+      for (const { scholar, issued } of results) {
+        if (!issued.ok) {
+          failures.push({ scholarIdNumber: scholar.scholar_id_number, error: issued.error });
         } else {
           succeeded++;
+          credentials.push({ scholarIdNumber: scholar.scholar_id_number, name: `${scholar.first_name} ${scholar.last_name}`, temporaryPassword: issued.password });
           await logScholarChange(admin, {
             action: "reset",
             scholarId: scholar.id,
@@ -78,7 +82,7 @@ Deno.serve(async (req: Request) => {
             performedByName: staffName,
             batchId,
             source: "bulk",
-            description: `Password reset to the default (${DEFAULT_PASSWORD}) as part of a reset-all-scholars action.`,
+            description: "Password reset to a new temporary password as part of a reset-all-scholars action.",
           });
         }
       }
@@ -89,7 +93,7 @@ Deno.serve(async (req: Request) => {
 
     return new Response(JSON.stringify({
       ok: true, total, processed: rows.length, succeeded, failed: failures.length, failures,
-      nextOffset, done, newPassword: DEFAULT_PASSWORD, batchId,
+      nextOffset, done, credentials, batchId,
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (thrown) {
     if (thrown instanceof Response) return thrown;

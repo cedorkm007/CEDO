@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Users, Building2 } from "lucide-react";
 import { StaffAccountsPage } from "./StaffAccountsPage";
 import { SchoolAccountsPage } from "./SchoolAccountsPage";
+import { TwoStepSetup } from "./TwoStepSetup";
 
 type AccountsSubtab = "staff" | "schools";
 
@@ -22,6 +23,8 @@ export function AccountsPage() {
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Accounts</h1>
       <p className="text-sm text-muted-foreground mb-5">Create staff and school logins. Self-registration is retired — this is the only way new accounts get made.</p>
+
+      <TwoStepSetup />
 
       <div className="flex w-full gap-1 border-b border-border mb-5">
         {TABS.map(t => (

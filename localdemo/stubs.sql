@@ -60,6 +60,7 @@ $$;
 
 create schema if not exists extensions;
 create extension if not exists pg_trgm;
+create extension if not exists pgcrypto with schema extensions;   -- password hashing (crypt, gen_salt) and digest, as on the real project
 
 -- Functions the real database has but no migration file defines (they were created by hand there).
 create or replace function public.has_staff_tag(p_tag_key text) returns boolean language plpgsql stable security definer set search_path = public as $$

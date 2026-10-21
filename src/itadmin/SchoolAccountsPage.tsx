@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Building2, KeyRound, Trash2, Eye, EyeOff } from "lucide-react";
+import { UserPlus, Building2, KeyRound, Trash2 } from "lucide-react";
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
+import { TemporaryPasswordNotice, type TemporaryCredential } from "@/app/components/TemporaryPasswordNotice";
 import {
   fetchSchoolsList, createSchoolAccount, fetchSchoolAccountsList, deleteSchoolAccount, resetSchoolPassword,
   setSchoolUsername, fetchResetRequests, markResetHandled,
-  validateSchoolUsername, validateSchoolPassword, SCHOOL_PASSWORD_MIN,
+  validateSchoolUsername,
   type SchoolOption, type SchoolAccountListItem,
 } from "./schoolAccountsApi";
 
@@ -19,8 +20,8 @@ export function SchoolAccountsPage() {
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState("");
   const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  // A temporary password shown ONCE after an account is created or reset (Phase 6): never typed by the administrator, never kept.
+  const [notice, setNotice] = useState<{ title: string; credentials: TemporaryCredential[]; warning?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<string | null>(null);
@@ -65,17 +66,16 @@ export function SchoolAccountsPage() {
     setError("");
     if (!selectedSchoolId) { setError("Choose a school."); return; }
     const normalizedUsername = username.trim().toLowerCase();
-    const problem = validateSchoolUsername(normalizedUsername) ?? validateSchoolPassword(password);
+    const problem = validateSchoolUsername(normalizedUsername);
     if (problem) { setError(problem); return; }
     setBusy(true);
-    const result = await createSchoolAccount(selectedSchoolId, normalizedUsername, password);
+    const result = await createSchoolAccount(selectedSchoolId, normalizedUsername);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to create account."); return; }
-    setSuccess(`Account for "${result.schoolName}" created. Username: ${result.username ?? normalizedUsername} · Password: ${password}`);
+    setSuccess(`Account for "${result.schoolName}" created. Username: ${result.username ?? normalizedUsername}`);
+    if (result.temporaryPassword) setNotice({ title: `Temporary password for ${result.schoolName}`, credentials: [{ who: String(result.schoolName ?? ""), login: result.username ?? normalizedUsername, password: result.temporaryPassword }] });
     setSelectedSchoolId("");
     setUsername("");
-    setPassword("");
-    setShowPassword(false);
     loadData();
   }
 
@@ -88,7 +88,8 @@ export function SchoolAccountsPage() {
     }
     setRowBusyId(null);
     setConfirmAction(null);
-    setToast(result.ok ? `Password reset to 123456 for ${result.name}. Tell the school to change it after signing in (Account menu, Change password).` : (result.error || "Failed to reset password."));
+    if (result.ok && result.temporaryPassword) setNotice({ title: `New temporary password for ${result.name}`, credentials: [{ who: String(result.name ?? ""), password: result.temporaryPassword }], warning: result.warning });
+    setToast(result.ok ? `A new temporary password was made for ${result.name}. The school will choose its own when it signs in.` : (result.error || "Failed to reset password."));
     setTimeout(() => setToast(null), 6000);
   }
 
@@ -110,6 +111,7 @@ export function SchoolAccountsPage() {
   return (
     <div>
       {toast && <div className="mb-4 bg-primary text-primary-foreground text-sm rounded-lg px-4 py-2.5">{toast}</div>}
+      {notice && <TemporaryPasswordNotice title={notice.title} credentials={notice.credentials} warning={notice.warning} onClose={() => setNotice(null)} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-6">
         {/* Create form */}
@@ -147,18 +149,7 @@ export function SchoolAccountsPage() {
                 <p className="text-[11.5px] text-muted-foreground mt-1.5">The school signs in with this. Lowercase letters and numbers, with dots, dashes, or underscores between them.</p>
               </div>
 
-              <div className="mb-5">
-                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Password</label>
-                <div className="flex items-center border border-border rounded-lg bg-input-background focus-within:ring-2 focus-within:ring-accent/50">
-                  <input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)}
-                    placeholder={`At least ${SCHOOL_PASSWORD_MIN} characters`} autoComplete="new-password"
-                    className="w-full bg-transparent px-3 py-2 text-sm outline-none" />
-                  <button type="button" onClick={() => setShowPassword(s => !s)} aria-label={showPassword ? "Hide password" : "Show password"}
-                    style={{ cursor: "pointer" }} className="px-3 text-muted-foreground hover:text-foreground">
-                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-              </div>
+              <p className="mb-5 text-[12.5px] text-muted-foreground">A random temporary password is made for you and shown once. The school chooses its own password the first time it signs in.</p>
 
               {error && <p className="text-sm text-destructive mb-3">{error}</p>}
 
@@ -210,7 +201,7 @@ export function SchoolAccountsPage() {
                   {confirmAction?.id === a.id ? (
                     <div className="flex items-center gap-2 text-xs">
                       <span className="text-muted-foreground">
-                        {confirmAction.kind === "reset" ? "Reset password to 123456?" : `Delete ${a.schoolName}'s account permanently?`}
+                        {confirmAction.kind === "reset" ? "Make a new temporary password?" : `Delete ${a.schoolName}'s account permanently?`}
                       </span>
                       <button
                         onClick={() => confirmAction.kind === "reset" ? handleResetPassword(a.id) : handleDelete(a.id)}

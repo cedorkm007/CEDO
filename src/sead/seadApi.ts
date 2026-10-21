@@ -1453,10 +1453,11 @@ export interface NewScholarInput {
   birthday: string; address: string; school: string; course: string; civilStatus: string; contactNo: string;
 }
 
-export async function createScholarAccount(input: NewScholarInput): Promise<{ ok: boolean; error?: string; defaultPassword?: string }> {
-  const result = await invokeEdgeFunction<{ defaultPassword?: string }>("sead-create-scholar-account", input);
+/** `temporaryPassword` is random and is shown ONCE to the administrator; the scholar must choose their own at first sign-in (Phase 6). */
+export async function createScholarAccount(input: NewScholarInput): Promise<{ ok: boolean; error?: string; temporaryPassword?: string }> {
+  const result = await invokeEdgeFunction<{ temporaryPassword?: string; defaultPassword?: string }>("sead-create-scholar-account", input);
   if (!result.ok) return { ok: false, error: result.error };
-  return { ok: true, defaultPassword: result.data?.defaultPassword };
+  return { ok: true, temporaryPassword: result.data?.temporaryPassword ?? result.data?.defaultPassword };
 }
 
 /**
@@ -1717,10 +1718,10 @@ export async function updateScholarStatus(scholarIdNumber: string, status: Schol
   return { ok: true };
 }
 
-export async function resetScholarPassword(scholarIdNumber: string): Promise<{ ok: boolean; error?: string; name?: string }> {
-  const result = await invokeEdgeFunction<{ name?: string }>("sead-reset-scholar-password", { scholarIdNumber });
+export async function resetScholarPassword(scholarIdNumber: string): Promise<{ ok: boolean; error?: string; name?: string; temporaryPassword?: string; warning?: string }> {
+  const result = await invokeEdgeFunction<{ name?: string; temporaryPassword?: string; newPassword?: string; warning?: string }>("sead-reset-scholar-password", { scholarIdNumber });
   if (!result.ok) return { ok: false, error: result.error };
-  return { ok: true, name: result.data?.name };
+  return { ok: true, name: result.data?.name, temporaryPassword: result.data?.temporaryPassword ?? result.data?.newPassword, warning: result.data?.warning };
 }
 
 export interface ResetAllPasswordsResult {
@@ -1730,6 +1731,8 @@ export interface ResetAllPasswordsResult {
   succeeded?: number;
   failed?: number;
   failures?: { scholarIdNumber: string; error: string }[];
+  /** Every new temporary password made in this run, kept only in memory so the administrator can download the list ONCE. */
+  credentials?: { scholarIdNumber: string; name: string; temporaryPassword: string }[];
 }
 
 interface ResetAllPasswordsBatchResponse {
@@ -1738,6 +1741,7 @@ interface ResetAllPasswordsBatchResponse {
   succeeded?: number;
   failed?: number;
   failures?: { scholarIdNumber: string; error: string }[];
+  credentials?: { scholarIdNumber: string; name: string; temporaryPassword: string }[];
   nextOffset?: number;
   done?: boolean;
 }
@@ -1763,6 +1767,7 @@ export async function resetAllScholarPasswords(
   let succeeded = 0;
   let failed = 0;
   const failures: { scholarIdNumber: string; error: string }[] = [];
+  const credentials: { scholarIdNumber: string; name: string; temporaryPassword: string }[] = [];
   // Generated once and sent on every batch call, so every 'reset' log
   // entry this whole run produces shares one batch_id — Account History
   // can group the entire reset-all action together even though it's
@@ -1778,9 +1783,10 @@ export async function resetAllScholarPasswords(
     const result = await invokeEdgeFunction<ResetAllPasswordsBatchResponse>(
       "sead-reset-all-scholar-passwords", { offset, batchId }
     );
-    if (!result.ok) return { ok: false, error: result.error, total, succeeded, failed, failures };
+    if (!result.ok) return { ok: false, error: result.error, total, succeeded, failed, failures, credentials };
 
     const data = result.data ?? {};
+    if (data.credentials?.length) credentials.push(...data.credentials);
     total = data.total ?? total;
     succeeded += data.succeeded ?? 0;
     failed += data.failed ?? 0;
@@ -1793,7 +1799,7 @@ export async function resetAllScholarPasswords(
     offset = data.nextOffset ?? offset + data.processed;
   }
 
-  return { ok: true, total, succeeded, failed, failures };
+  return { ok: true, total, succeeded, failed, failures, credentials };
 }
 
 // ── Scholar account history (audit log) ──────────────────────

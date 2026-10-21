@@ -1,10 +1,10 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { requireItAdmin } from "../_shared/verifyItAdmin.ts";
+import { issueTemporaryPassword, markMustChangePassword } from "../_shared/temporaryPassword.ts";
+import { generateTemporaryPassword } from "../_shared/passwordPolicy.ts";
 
-// New staff accounts start on this password — same convention as scholar
-// accounts. Staff should change it after first login (Change Password in
-// their profile). No forced-change enforcement yet.
-const DEFAULT_PASSWORD = "123456";
+// New staff accounts start on a RANDOM temporary password, shown once to the administrator who creates the account. The person must choose their own
+// password the first time they sign in (the account is marked: see supabase_migration_sdp_update_p6_password_security.sql).
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -54,8 +54,9 @@ Deno.serve(async (req: Request) => {
     // email_confirm: true — the account is created already-confirmed, so no
     // confirmation email is ever sent (this is what sidesteps Supabase's
     // built-in email rate limit entirely, same fix as scholar accounts).
+    const temporaryPassword = generateTemporaryPassword();
     const { data: authUser, error: createError } = await admin.auth.admin.createUser({
-      email, password: DEFAULT_PASSWORD, email_confirm: true,
+      email, password: temporaryPassword, email_confirm: true,
       user_metadata: { username, division, role },
     });
     if (createError || !authUser?.user) {
@@ -79,7 +80,18 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    return new Response(JSON.stringify({ ok: true, username, defaultPassword: DEFAULT_PASSWORD }), {
+    const markError = await markMustChangePassword(admin, authUser.user.id);
+    if (markError) {
+      // Never leave an account with a temporary password that does not have to be changed.
+      await admin.from("users").delete().eq("id", authUser.user.id);
+      await admin.auth.admin.deleteUser(authUser.user.id);
+      return new Response(JSON.stringify({ error: "The account could not be marked to choose a new password at sign-in, so it was not created. Run the Phase 6 database update first." }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // `defaultPassword` is the old name of this field; it carries the same temporary password so an older copy of the website still shows the right one.
+    return new Response(JSON.stringify({ ok: true, username, temporaryPassword, defaultPassword: temporaryPassword }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (thrown) {

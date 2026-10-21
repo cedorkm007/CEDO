@@ -1,8 +1,7 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { requireSeadStaff } from "../_shared/verifySeadStaff.ts";
 import { getStaffName, logScholarChange } from "../_shared/scholarLog.ts";
-
-const DEFAULT_PASSWORD = "123456";
+import { issueTemporaryPassword } from "../_shared/temporaryPassword.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -30,9 +29,10 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { error: updateError } = await admin.auth.admin.updateUserById(scholar.id, { password: DEFAULT_PASSWORD });
-    if (updateError) {
-      return new Response(JSON.stringify({ error: updateError.message }), {
+    // A random temporary password, shown once, that the scholar must replace at their next sign-in.
+    const issued = await issueTemporaryPassword(admin, scholar.id);
+    if (!issued.ok) {
+      return new Response(JSON.stringify({ error: issued.error }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -46,10 +46,10 @@ Deno.serve(async (req: Request) => {
       performedBy: callerId,
       performedByName: staffName,
       source: "single",
-      description: `Password reset to the default (${DEFAULT_PASSWORD}).`,
+      description: "Password reset to a new temporary password (shown once to the staff member; the scholar must choose their own at sign-in).",
     });
 
-    return new Response(JSON.stringify({ ok: true, name: `${scholar.first_name} ${scholar.last_name}`, newPassword: DEFAULT_PASSWORD }), {
+    return new Response(JSON.stringify({ ok: true, name: `${scholar.first_name} ${scholar.last_name}`, temporaryPassword: issued.password, newPassword: issued.password, warning: issued.warning }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (thrown) {

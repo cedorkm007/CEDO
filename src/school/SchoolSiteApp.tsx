@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { SchoolLoginPage } from "./pages/SchoolLoginPage";
 import { SchoolPortalPage } from "./pages/SchoolPortalPage";
+import { ForcePasswordChange } from "@/app/components/ForcePasswordChange";
+import { usePasswordChangeRequired } from "@/lib/passwordGate";
 
 type SiteView = "login" | "portal";
 
@@ -16,6 +18,8 @@ type SiteView = "login" | "portal";
 export function SchoolSiteApp() {
   const [view, setView] = useState<SiteView>("login");
   const [checkingSession, setCheckingSession] = useState(true);
+  // A school given a TEMPORARY password (new account, or reset by IT) must choose its own before anything else (Phase 6).
+  const passwordGate = usePasswordChangeRequired(view === "portal" ? "school" : null);
 
   useEffect(() => {
     (async () => {
@@ -32,6 +36,10 @@ export function SchoolSiteApp() {
 
   if (checkingSession) {
     return <div className="min-h-screen flex items-center justify-center text-slate-700 text-[15px]">Loading…</div>;
+  }
+
+  if (view === "portal" && passwordGate.required) {
+    return <ForcePasswordChange who="your school username" avoid={[]} onDone={passwordGate.clear} onSignOut={() => { void supabase.auth.signOut(); setView("login"); }} />;
   }
 
   return (

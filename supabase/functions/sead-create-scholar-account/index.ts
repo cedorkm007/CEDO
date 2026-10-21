@@ -1,14 +1,11 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { requireSeadStaff } from "../_shared/verifySeadStaff.ts";
 import { getStaffName, logScholarChange } from "../_shared/scholarLog.ts";
+import { generateTemporaryPassword } from "../_shared/passwordPolicy.ts";
+import { markMustChangePassword } from "../_shared/temporaryPassword.ts";
 
-// New scholar accounts created from the SEAD UI start on the office's
-// standard default password, same convention as the one-click reset.
-// Scholars should be told to change it after first login (there's no
-// forced-change enforcement yet — see scripts/import-scholars-from-csv.mjs
-// for the alternative random-per-scholar-password approach used for bulk
-// CSV imports, which is more secure for large batches).
-const DEFAULT_PASSWORD = "123456";
+// New scholar accounts start on a RANDOM temporary password, shown once to the staff member who adds the scholar. The scholar must choose their own
+// password (and set a security question) the first time they sign in.
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -44,8 +41,9 @@ Deno.serve(async (req: Request) => {
 
     const email = `${scholarIdNumber.toLowerCase()}@scholars.cedo.local`;
 
+    const temporaryPassword = generateTemporaryPassword();
     const { data: authUser, error: createError } = await admin.auth.admin.createUser({
-      email, password: DEFAULT_PASSWORD, email_confirm: true,
+      email, password: temporaryPassword, email_confirm: true,
       user_metadata: { scholarIdNumber, kind: "scholar" },
     });
     if (createError || !authUser?.user) {
@@ -77,6 +75,18 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (!asRemoved) {
+      const markError = await markMustChangePassword(admin, authUser.user.id);
+      if (markError) {
+        // Never leave an account with a temporary password that does not have to be changed.
+        await admin.from("scholars").delete().eq("id", authUser.user.id);
+        await admin.auth.admin.deleteUser(authUser.user.id);
+        return new Response(JSON.stringify({ error: "The account could not be marked to choose a new password at sign-in, so it was not created. Run the Phase 6 database update first." }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     if (asRemoved) {
       // Historical record only — ban immediately so this account never has a working login.
       const { error: banError } = await admin.auth.admin.updateUserById(authUser.user.id, { ban_duration: "876000h" });
@@ -100,7 +110,8 @@ Deno.serve(async (req: Request) => {
       description: asRemoved ? "Added directly as Removed — no working login was ever issued." : undefined,
     });
 
-    return new Response(JSON.stringify({ ok: true, scholarIdNumber, defaultPassword: DEFAULT_PASSWORD }), {
+    // `defaultPassword` is the old name of this field; it carries the same temporary password so an older copy of the website still shows the right one.
+    return new Response(JSON.stringify({ ok: true, scholarIdNumber, ...(asRemoved ? {} : { temporaryPassword, defaultPassword: temporaryPassword }) }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (thrown) {

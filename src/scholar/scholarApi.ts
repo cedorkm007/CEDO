@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { supabase } from "@/lib/supabase";
+import { validateNewPassword } from "@/lib/passwordPolicy";
 import type { ScholarProfile, SubjectGrade, QuestScore } from "./types";
 
 export interface ExistingScholarLoginInput {
@@ -34,8 +35,13 @@ export async function scholarSignIn(input: ExistingScholarLoginInput): Promise<{
     p_scholar_id_number: input.mode === "id" ? (input.scholarIdNumber ?? null) : null,
   });
 
+  if (rpcError && /too many attempts/i.test(rpcError.message)) {
+    return { ok: false, error: "Too many attempts. Please wait a few minutes and try again." };
+  }
+  // The look-up answers the same way for every set of details (an unknown scholar simply gets an address that cannot sign in), so the message below is
+  // the same whether the details or the password were wrong: nothing tells a visitor which scholars exist.
   if (rpcError || !email) {
-    return { ok: false, error: "We couldn't find a scholar account matching those details." };
+    return { ok: false, error: "Incorrect details or password." };
   }
 
   const { error: authError } = await supabase.auth.signInWithPassword({ email, password: input.password });
@@ -344,6 +350,9 @@ export async function changeOwnPassword(currentPassword: string, newPassword: st
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.email) return { ok: false, error: "Not signed in." };
 
+  const problem = validateNewPassword(newPassword, { avoid: [user.email.split("@")[0]], differentFrom: [currentPassword] });
+  if (problem) return { ok: false, error: problem };
+
   const { error: verifyError } = await supabase.auth.signInWithPassword({ email: user.email, password: currentPassword });
   if (verifyError) return { ok: false, error: "Current password is incorrect." };
 
@@ -400,11 +409,13 @@ export interface SelfResetPasswordInput {
   scholarIdNumber: string;
   lastName: string;
   firstName: string;
+  /** Step 2 only: the answer to the security question, and the new password the scholar chose. */
   securityAnswer?: string;
+  newPassword?: string;
 }
 
 export type SelfResetPasswordResult =
-  | { ok: true; reset: true; newPassword: string }
+  | { ok: true; reset: true }
   | { ok: true; needsAnswer: true; question: string }
   | { ok: false; error: string; needsAnswer?: true; question?: string };
 
@@ -417,13 +428,13 @@ export type SelfResetPasswordResult =
  * and the caller re-invokes with `securityAnswer` filled in.
  */
 export async function selfResetScholarPassword(input: SelfResetPasswordInput): Promise<SelfResetPasswordResult> {
-  const result = await invokeSignedOutEdgeFunction<{ reset?: true; newPassword?: string; needsAnswer?: true; question?: string }>(
+  const result = await invokeSignedOutEdgeFunction<{ reset?: true; needsAnswer?: true; question?: string }>(
     "scholar-self-reset-password", input
   );
   if (!result.ok) {
     return { ok: false, error: result.error || "Couldn't reset your password.", needsAnswer: result.data?.needsAnswer, question: result.data?.question };
   }
-  if (result.data?.reset) return { ok: true, reset: true, newPassword: result.data.newPassword ?? "123456" };
+  if (result.data?.reset) return { ok: true, reset: true };
   if (result.data?.needsAnswer) return { ok: true, needsAnswer: true, question: result.data.question ?? "" };
   return { ok: false, error: "Unexpected response." };
 }

@@ -27,6 +27,8 @@ import { SecurityQuestionSetupModal } from "../components/dashboard/SecurityQues
 import { NewlyUnlockedModal } from "../components/dashboard/NewlyUnlockedModal";
 import { syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormUnlockNotification } from "../formsApi";
 import { useUrlState } from "@/app/useUrlState";
+import { ForcePasswordChange } from "@/app/components/ForcePasswordChange";
+import { usePasswordChangeRequired } from "@/lib/passwordGate";
 import type { DashPanelKey } from "../components/dashboard/types";
 import type { ScholarProfile, SubjectGrade, QuestScore } from "../types";
 
@@ -63,6 +65,7 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
   const [pendingSurveys, setPendingSurveys] = useState<PendingSurvey[]>([]);
   const [finalizedNotifications, setFinalizedNotifications] = useState<AttendanceFinalizedNotification[]>([]);
   const [openSurveyId, setOpenSurveyId] = useState<string | null>(null);
+  const passwordGate = usePasswordChangeRequired(profile?.id);
 
   function goToForms() { setPanel("services"); }
 
@@ -131,6 +134,11 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
 
   if (loading) {
     return <div className="min-h-[calc(100vh-64px)] flex items-center justify-center text-slate-400 text-sm">Loading your profile…</div>;
+  }
+
+  // A scholar given a temporary password (new account, or reset by staff) must choose their own first.
+  if (profile && passwordGate.required) {
+    return <ForcePasswordChange who="your Scholar ID" avoid={[profile.scholarIdNumber, profile.firstName, profile.lastName]} onDone={passwordGate.clear} onSignOut={() => void handleSignOut()} />;
   }
 
   if (!profile) {
@@ -239,7 +247,6 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
       {showSecurityQuestionSetup && (
         <SecurityQuestionSetupModal
-          onClose={() => setShowSecurityQuestionSetup(false)}
           onSaved={() => { setShowSecurityQuestionSetup(false); setProfile(p => p ? { ...p, hasSecurityQuestion: true } : p); }}
         />
       )}

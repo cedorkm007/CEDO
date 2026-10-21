@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { WebSocketServer } from "ws";
 import { RestApi } from "./postgrest.mjs";
 import { sign, verify, ANON_KEY, SERVICE_KEY, hashPassword, checkPassword } from "./jwt.mjs";
+import { makePhase6Functions } from "./phase6fns.mjs";
 
 if (!globalThis.crypto) globalThis.crypto = crypto.webcrypto;   // the public-upload stand-in uses the standard Web Crypto (older Node versions have no global one)
 
@@ -17,8 +18,23 @@ const json = (res, status, body, headers = {}) => {
   res.end(body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body));
 };
 
+// Two-step sign-in (authenticator app) stand-in: a code-checking factor per account, kept in memory only (a fresh demo start has none).
+const FACTORS = new Map();   // userId -> [{ id, status, secret, friendly_name }]
+const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+function base32(buf) { let bits = "", out = ""; for (const b of buf) bits += b.toString(2).padStart(8, "0"); for (let i = 0; i < bits.length; i += 5) out += B32[parseInt(bits.slice(i, i + 5).padEnd(5, "0"), 2)]; return out; }
+function unbase32(str) { let bits = ""; for (const ch of str) bits += B32.indexOf(ch).toString(2).padStart(5, "0"); const bytes = []; for (let i = 0; i + 8 <= bits.length; i += 8) bytes.push(parseInt(bits.slice(i, i + 8), 2)); return Buffer.from(bytes); }
+export function totp(secret, atMs = Date.now()) {
+  const counter = Buffer.alloc(8); counter.writeBigUInt64BE(BigInt(Math.floor(atMs / 30000)));
+  const h = crypto.createHmac("sha1", unbase32(secret)).update(counter).digest(); const o = h[h.length - 1] & 15;
+  return String(((h.readUInt32BE(o) & 0x7fffffff) % 1000000)).padStart(6, "0");
+}
+const codeOk = (secret, code) => [-1, 0, 1].some(d => totp(secret, Date.now() + d * 30000) === String(code));
+const factorsOf = id => FACTORS.get(id) ?? [];
+export const hasVerifiedFactor = id => factorsOf(id).some(f => f.status === "verified");
+
 function userObject(u) {
   return {
+    factors: factorsOf(u.id).map(f => ({ id: f.id, friendly_name: f.friendly_name, factor_type: "totp", status: f.status, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })),
     id: u.id, aud: "authenticated", role: "authenticated", email: u.email, email_confirmed_at: u.email_confirmed_at,
     phone: "", confirmed_at: u.email_confirmed_at, last_sign_in_at: u.last_sign_in_at,
     app_metadata: { provider: "email", providers: ["email"], ...(u.raw_app_meta_data ?? {}) }, user_metadata: u.raw_user_meta_data ?? {},
@@ -26,13 +42,13 @@ function userObject(u) {
   };
 }
 
-function sessionFor(u) {
+function sessionFor(u, aal = "aal1") {
   const now = Math.floor(Date.now() / 1000);
-  const claims = { aud: "authenticated", role: "authenticated", sub: u.id, email: u.email, iat: now, iss: "localdemo", app_metadata: u.raw_app_meta_data ?? {}, user_metadata: u.raw_user_meta_data ?? {} };
+  const claims = { aal, amr: [{ method: aal === "aal2" ? "totp" : "password", timestamp: now }], aud: "authenticated", role: "authenticated", sub: u.id, email: u.email, iat: now, iss: "localdemo", app_metadata: u.raw_app_meta_data ?? {}, user_metadata: u.raw_user_meta_data ?? {} };
   return {
     access_token: sign({ ...claims, exp: now + ACCESS_SECONDS }),
     token_type: "bearer", expires_in: ACCESS_SECONDS, expires_at: now + ACCESS_SECONDS,
-    refresh_token: sign({ typ: "refresh", sub: u.id, iat: now, exp: now + REFRESH_SECONDS, jti: crypto.randomUUID() }),
+    refresh_token: sign({ typ: "refresh", aal, sub: u.id, iat: now, exp: now + REFRESH_SECONDS, jti: crypto.randomUUID() }),
     user: userObject(u),
   };
 }
@@ -40,6 +56,7 @@ function sessionFor(u) {
 export async function startServer({ db, port = 54321, log = () => {} }) {
   const rest = new RestApi(db);
   await rest.loadMeta();
+  const phase6 = makePhase6Functions({ db, hasVerifiedFactor, sessionLevel: who => who.claims.aal });   // stand-ins for the account functions Phase 6 changed (random temporary passwords, scholar self-reset)
 
   /** Who is calling: the key / token in the request headers. */
   function caller(req) {
@@ -80,7 +97,7 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
         if (!c || c.typ !== "refresh") return json(res, 400, { code: 400, error_code: "refresh_token_not_found", msg: "Invalid Refresh Token: Refresh Token Not Found" });
         const u = (await db.query("select * from auth.users where id = $1", [c.sub])).rows[0];
         if (!u || (u.banned_until && new Date(u.banned_until) > new Date())) return json(res, 400, { code: 400, error_code: "refresh_token_not_found", msg: "Invalid Refresh Token: Refresh Token Not Found" });
-        return json(res, 200, sessionFor(u));
+        return json(res, 200, sessionFor(u, c.aal === "aal2" ? "aal2" : "aal1"));
       }
       return json(res, 400, { code: 400, msg: "Unsupported grant type" });
     }
@@ -98,6 +115,33 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
       }
       return json(res, 200, userObject(u));
     }
+    const factorPath = new RegExp("^/factors(?:/([^/]+))?(?:/(challenge|verify))?$").exec(p);
+    if (factorPath) {
+      const who = caller(req);
+      if (who.role !== "authenticated") return json(res, 401, { code: 401, error_code: "bad_jwt", msg: "invalid JWT" });
+      const userId = who.claims.sub, list = FACTORS.get(userId) ?? [];
+      const [, factorId, action] = factorPath;
+      if (!factorId && req.method === "POST") {
+        const secret = base32(crypto.randomBytes(20)), id = crypto.randomUUID();
+        FACTORS.set(userId, [...list, { id, status: "unverified", secret, friendly_name: body.friendly_name ?? "" }]);
+        const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><rect width='160' height='160' fill='white'/><text x='80' y='84' text-anchor='middle' font-size='13' fill='black'>(demo picture)</text></svg>";
+        return json(res, 200, { id, type: "totp", friendly_name: body.friendly_name ?? "", totp: { qr_code: "data:image/svg+xml;utf-8," + svg, secret, uri: "otpauth://totp/CEDO?secret=" + secret } });
+      }
+      const factor = list.find(x => x.id === factorId);
+      if (!factor) return json(res, 404, { code: 404, error_code: "mfa_factor_not_found", msg: "MFA factor not found" });
+      if (action === "challenge") return json(res, 200, { id: crypto.randomUUID(), type: "totp", expires_at: Math.floor(Date.now() / 1000) + 300 });
+      if (action === "verify") {
+        if (!codeOk(factor.secret, body.code)) return json(res, 400, { code: 400, error_code: "mfa_verification_failed", msg: "Invalid TOTP code entered" });
+        factor.status = "verified";
+        const u = (await db.query("select * from auth.users where id = $1", [userId])).rows[0];
+        return json(res, 200, sessionFor(u, "aal2"));
+      }
+      if (req.method === "DELETE") {
+        if (factor.status === "verified" && who.claims.aal !== "aal2") return json(res, 400, { code: 400, error_code: "insufficient_aal", msg: "AAL2 required to unenroll verified factor" });
+        FACTORS.set(userId, list.filter(x => x.id !== factorId));
+        return json(res, 200, { id: factorId });
+      }
+    }
     if (p === "/logout") return json(res, 204, undefined);
     if (p === "/settings") return json(res, 200, { external: {}, disable_signup: true, mailer_autoconfirm: true });
     if (p === "/recover" || p === "/signup" || p === "/otp" || p === "/verify") return json(res, 400, { code: 400, msg: "Not available in the local demo" });
@@ -109,10 +153,18 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
     const name = url.pathname.replace(/^\/functions\/v1\//, "");
     const who = caller(req);
     if (name === "storage-tool-public") return await storageToolPublic(req, res, body);   // no sign-in: the public upload page
+    if (name === "scholar-self-reset-password") {   // no sign-in: reaching someone who cannot sign in is the point
+      try { const out = await phase6[name](body, String(req.socket.remoteAddress ?? "unknown")); return json(res, out.status, out.json); }
+      catch (e) { return json(res, 500, { error: String(e.message ?? e) }); }
+    }
     if (who.role !== "authenticated" && who.role !== "service_role") return json(res, 200, { error: "Please sign in first." });
     const notInDemo = () => json(res, 200, { error: "This action is not available in the local demo." });
     switch (name) {
       case "csr-issue": return await csrIssue(res, who, body);
+      case "it-reset-staff-password": case "it-create-staff-account": case "sead-reset-scholar-password": {
+        try { const out = await phase6[name](body, who); return json(res, out.status, out.json); }
+        catch (e) { return json(res, 500, { error: String(e.message ?? e) }); }
+      }
       default: return notInDemo();
     }
   }

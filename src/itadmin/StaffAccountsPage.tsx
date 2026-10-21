@@ -3,6 +3,7 @@ import { UserPlus, Users, KeyRound, Trash2, Tag, Building2, History } from "luci
 import { DIVISION_LIST, DIVISIONS, type DivisionCode, type UserRole } from "@/app/App";
 import { STAFF_TOOL_TAGS } from "@/app/staffToolTags";
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
+import { TemporaryPasswordNotice, type TemporaryCredential } from "@/app/components/TemporaryPasswordNotice";
 import {
   createStaffAccount, fetchStaffList, deleteStaffAccount, resetStaffPassword, fetchAllStaffTags, setStaffTags,
   changeStaffDivision, fetchDivisionChangeLog,
@@ -31,6 +32,8 @@ export function StaffAccountsPage() {
   const [confirmAction, setConfirmAction] = useState<{ id: string; kind: "reset" | "delete" } | null>(null);
   const [rowBusyId, setRowBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // A temporary password shown ONCE after an account is created or reset (Phase 6): never kept anywhere.
+  const [notice, setNotice] = useState<{ title: string; credentials: TemporaryCredential[]; warning?: string } | null>(null);
   const [staffTags, setStaffTagsState] = useState<Record<string, string[]>>({});
   const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
   const [tagDraft, setTagDraft] = useState<string[]>([]);
@@ -105,7 +108,8 @@ export function StaffAccountsPage() {
     const result = await createStaffAccount(form);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to create account."); return; }
-    setSuccess(`Account "${form.username}" created. Default password: ${result.defaultPassword}`);
+    setSuccess(`Account "${form.username}" created. A temporary password was made for it (shown once).`);
+    if (result.temporaryPassword) setNotice({ title: `Temporary password for ${form.username}`, credentials: [{ who: `${form.firstName} ${form.lastName}`.trim(), login: form.username, password: result.temporaryPassword }] });
     setForm(EMPTY_FORM);
     loadStaff();
   }
@@ -115,7 +119,8 @@ export function StaffAccountsPage() {
     const result = await resetStaffPassword(id);
     setRowBusyId(null);
     setConfirmAction(null);
-    setToast(result.ok ? `Password reset to 123456 for ${result.name}.` : (result.error || "Failed to reset password."));
+    if (result.ok && result.temporaryPassword) setNotice({ title: `New temporary password for ${result.name}`, credentials: [{ who: String(result.name ?? ""), password: result.temporaryPassword }], warning: result.warning });
+    setToast(result.ok ? `A new temporary password was made for ${result.name}. They will choose their own when they next sign in.` : (result.error || "Failed to reset password."));
     setTimeout(() => setToast(null), 4000);
   }
 
@@ -135,6 +140,7 @@ export function StaffAccountsPage() {
   return (
     <div>
       {toast && <div className="mb-4 bg-primary text-primary-foreground text-sm rounded-lg px-4 py-2.5">{toast}</div>}
+      {notice && <TemporaryPasswordNotice title={notice.title} credentials={notice.credentials} warning={notice.warning} onClose={() => setNotice(null)} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-6">
         {/* Create form */}
@@ -289,7 +295,7 @@ export function StaffAccountsPage() {
                   {confirmAction?.id === s.id ? (
                     <div className="flex items-center gap-2 text-xs">
                       <span className="text-muted-foreground">
-                        {confirmAction.kind === "reset" ? "Reset password to 123456?" : `Delete ${s.firstName}'s account permanently?`}
+                        {confirmAction.kind === "reset" ? "Make a new temporary password?" : `Delete ${s.firstName}'s account permanently?`}
                       </span>
                       <button
                         onClick={() => confirmAction.kind === "reset" ? handleResetPassword(s.id) : handleDelete(s.id)}

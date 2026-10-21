@@ -6,11 +6,21 @@ export interface NewStaffInput {
   email: string; division: string; role: "staff" | "division_admin" | "super_admin";
 }
 
-export async function createStaffAccount(input: NewStaffInput): Promise<{ ok: boolean; error?: string; defaultPassword?: string }> {
+/** `temporaryPassword` is a random password shown ONCE to the administrator; the person must choose their own at first sign-in. */
+export async function createStaffAccount(input: NewStaffInput): Promise<{ ok: boolean; error?: string; temporaryPassword?: string }> {
   const { data, error } = await supabase.functions.invoke("it-create-staff-account", { body: input });
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: await functionErrorText(error) };
   if (data?.error) return { ok: false, error: data.error };
-  return { ok: true, defaultPassword: data?.defaultPassword };
+  return { ok: true, temporaryPassword: data?.temporaryPassword ?? data?.defaultPassword };
+}
+
+/** supabase-js reports any 4xx/5xx as a generic message; the real reason is in the response body. */
+async function functionErrorText(error: { message: string; context?: unknown }): Promise<string> {
+  const context = (error as { context?: Response }).context;
+  if (context && typeof context.json === "function") {
+    try { const body = await context.clone().json(); if (body?.error) return String(body.error); } catch { /* not JSON */ }
+  }
+  return error.message;
 }
 
 export interface StaffListItem {
@@ -100,9 +110,9 @@ export async function deleteStaffAccount(id: string): Promise<{ ok: boolean; err
   return { ok: true, name: data?.name };
 }
 
-export async function resetStaffPassword(id: string): Promise<{ ok: boolean; error?: string; name?: string }> {
+export async function resetStaffPassword(id: string): Promise<{ ok: boolean; error?: string; name?: string; temporaryPassword?: string; warning?: string }> {
   const { data, error } = await supabase.functions.invoke("it-reset-staff-password", { body: { id } });
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: await functionErrorText(error) };
   if (data?.error) return { ok: false, error: data.error };
-  return { ok: true, name: data?.name };
+  return { ok: true, name: data?.name, temporaryPassword: data?.temporaryPassword ?? data?.newPassword, warning: data?.warning };
 }
