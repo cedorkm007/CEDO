@@ -32,8 +32,9 @@ export function validateSchoolPassword(password: string): string | null {
   return null;
 }
 
-export async function createSchoolAccount(schoolId: string, username: string, password: string): Promise<{ ok: boolean; error?: string; schoolName?: string; username?: string }> {
-  const { data, error } = await supabase.functions.invoke("it-create-school-account", { body: { schoolId, username, password } });
+/** No password is typed any more: the function makes a random temporary one (`temporaryPassword`), shown ONCE to the administrator. */
+export async function createSchoolAccount(schoolId: string, username: string): Promise<{ ok: boolean; error?: string; schoolName?: string; username?: string; temporaryPassword?: string }> {
+  const { data, error } = await supabase.functions.invoke("it-create-school-account", { body: { schoolId, username } });
   if (error) {
     // supabase-js reports any 4xx/5xx as the generic "Edge Function returned a
     // non-2xx status code"; the real reason ("username already taken", ...)
@@ -50,7 +51,7 @@ export async function createSchoolAccount(schoolId: string, username: string, pa
     return { ok: false, error: message };
   }
   if (data?.error) return { ok: false, error: data.error };
-  return { ok: true, schoolName: data?.schoolName, username: data?.username };
+  return { ok: true, schoolName: data?.schoolName, username: data?.username, temporaryPassword: data?.temporaryPassword ?? data?.defaultPassword };
 }
 
 export interface SchoolAccountListItem {
@@ -82,11 +83,11 @@ export async function deleteSchoolAccount(id: string): Promise<{ ok: boolean; er
   return { ok: true, name: data?.name };
 }
 
-export async function resetSchoolPassword(id: string): Promise<{ ok: boolean; error?: string; name?: string }> {
+export async function resetSchoolPassword(id: string): Promise<{ ok: boolean; error?: string; name?: string; temporaryPassword?: string; warning?: string }> {
   const { data, error } = await supabase.functions.invoke("it-reset-school-password", { body: { id } });
   if (error) return { ok: false, error: error.message };
   if (data?.error) return { ok: false, error: data.error };
-  return { ok: true, name: data?.name };
+  return { ok: true, name: data?.name, temporaryPassword: data?.temporaryPassword ?? data?.newPassword, warning: data?.warning };
 }
 
 /** Gives an existing account a username (or changes it). A school signs in with its username or login email, never its school name. IT administrator only — checked by the database. */

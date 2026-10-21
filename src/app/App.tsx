@@ -44,6 +44,10 @@ import { MyPresentationsPage } from "@/presentations/pages/MyPresentationsPage";
 import { StorageToolPage } from "@/storagetool/pages/StorageToolPage";
 import { MySurveysPage } from "@/mysurveys/pages/MySurveysPage";
 import { AccountsPage } from "@/itadmin/AccountsPage";
+import { ForcePasswordChange } from "@/app/components/ForcePasswordChange";
+import { TwoStepCodeEntry } from "@/app/components/TwoStepCodeEntry";
+import { usePasswordChangeRequired } from "@/lib/passwordGate";
+import { validateNewPassword } from "@/lib/passwordPolicy";
 import { TopNav } from "@/app/components/TopNav";
 import { AppSidebar } from "@/app/components/Sidebar";
 import { SidebarProvider, SidebarInset } from "@/app/components/ui/sidebar";
@@ -441,18 +445,28 @@ function leaveDisplayStatus(status: string): string {
 // ─────────────────────────────────────────────────────────────
 function SignInPage({ users, onSignIn }: { users: UserProfile[]; onSignIn: (u: UserProfile) => void }) {
   const [username, setUsername] = useState(""); const [password, setPassword] = useState(""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  // An account with an authenticator app set up must also give the 6-digit code before it is let in (Phase 6).
+  const [needsCode, setNeedsCode] = useState<string | null>(null);
+  async function finishSignIn(userId: string) {
+    const profile = await fetchUserProfile(userId);
+    if (!profile) { setError("Signed in, but no profile was found for this account. Contact an administrator."); setNeedsCode(null); await supabase.auth.signOut(); return; }
+    onSignIn(profile);
+  }
   async function handleSignIn() {
     if (!username || !password) { setError("Please enter your username/email and password."); return; }
     setBusy(true); setError("");
     try {
       let resolvedEmail: string | undefined = username;
       if (!username.includes("@")) {
-        const { data: lookedUpEmail } = await supabase.rpc("resolve_staff_login_email", { p_username: username });
+        const { data: lookedUpEmail, error: lookupError } = await supabase.rpc("resolve_staff_login_email", { p_username: username });
+        if (lookupError && /too many attempts/i.test(lookupError.message)) { setError("Too many attempts. Please wait a few minutes and try again."); setBusy(false); return; }
         resolvedEmail = lookedUpEmail ?? undefined;
       }
       if (!resolvedEmail) { setError("Incorrect username or password."); setBusy(false); return; }
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email: resolvedEmail, password });
       if (authError || !data.user) { setError("Incorrect username or password."); setBusy(false); return; }
+      const { data: level } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (level && level.nextLevel === "aal2" && level.currentLevel !== "aal2") { setNeedsCode(data.user.id); setBusy(false); return; }
       const profile = await fetchUserProfile(data.user.id);
       if (!profile) { setError("Signed in, but no profile was found for this account. Contact an administrator."); setBusy(false); return; }
       onSignIn(profile);
@@ -473,6 +487,9 @@ function SignInPage({ users, onSignIn }: { users: UserProfile[]; onSignIn: (u: U
           <p className="text-sm text-muted-foreground mt-1">Division Task & Accomplishment Tracker</p>
         </div>
         <div className="bg-card rounded-2xl shadow-lg border border-border p-7">
+          {needsCode ? (
+            <TwoStepCodeEntry onVerified={() => void finishSignIn(needsCode)} onCancel={() => { setNeedsCode(null); setPassword(""); void supabase.auth.signOut(); }} />
+          ) : (<>
           <h2 className="text-base font-semibold text-foreground mb-5">Sign In to Your Account</h2>
           {error && <div className="flex items-center gap-2 text-sm text-destructive bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 mb-4"><AlertCircle size={14} className="flex-shrink-0" /> {error}</div>}
           <form onSubmit={(e) => { e.preventDefault(); handleSignIn(); }}>
@@ -485,6 +502,7 @@ function SignInPage({ users, onSignIn }: { users: UserProfile[]; onSignIn: (u: U
               <p className="text-center text-xs text-muted-foreground">Need an account? Contact your IT administrator.</p>
             </div>
           </form>
+          </>)}
 
         </div>
       </div>
@@ -1226,9 +1244,9 @@ function ChangePasswordModal({ user, onDone, onClose }: { user: UserProfile; onD
 
   async function handleSubmit() {
     if (!currentPassword || !newPassword || !confirmPassword) { setError("Please fill in all fields."); return; }
-    if (newPassword.length < 6) { setError("New password must be at least 6 characters."); return; }
+    const passwordProblem = validateNewPassword(newPassword, { avoid: [user.username, user.firstName, user.lastName], differentFrom: [currentPassword] });
+    if (passwordProblem) { setError(passwordProblem); return; }
     if (newPassword !== confirmPassword) { setError("New password and confirmation do not match."); return; }
-    if (newPassword === currentPassword) { setError("New password must be different from your current password."); return; }
     setError(""); setBusy(true);
     try {
       // Re-authenticate with the current password first — this is how we verify
@@ -1256,7 +1274,7 @@ function ChangePasswordModal({ user, onDone, onClose }: { user: UserProfile; onD
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">New Password</label>
-          <input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="At least 6 characters" className="w-full px-3 py-2.5 rounded-xl border border-border bg-input-background text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 transition-all" />
+          <input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="At least 10 characters" className="w-full px-3 py-2.5 rounded-xl border border-border bg-input-background text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 transition-all" />
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">Confirm New Password</label>
@@ -2904,6 +2922,8 @@ export default function App() {
       return { ...parsed, tags: parsed.tags ?? [] };
     } catch { return null; }
   });
+  // An account that was given a TEMPORARY password (new account, or reset by IT) must choose its own before anything else (Phase 6).
+  const passwordGate = usePasswordChangeRequired(currentUser?.id);
   // Restored from the URL on first render (see the page-restore effect
   // below, which re-validates once currentUser has actually loaded — the
   // static list check here only guards against an unrecognized/garbage
@@ -3468,6 +3488,10 @@ export default function App() {
 
   if(!currentUser){
     return <SignInPage users={users} onSignIn={handleSignIn}/>;
+  }
+
+  if(passwordGate.required){
+    return <ForcePasswordChange who="your username" avoid={[currentUser.username, currentUser.firstName, currentUser.lastName]} onDone={passwordGate.clear} onSignOut={handleSignOut}/>;
   }
 
 

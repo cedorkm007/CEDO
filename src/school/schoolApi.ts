@@ -5,6 +5,7 @@
 // (public.school_accounts / public.schools), same Supabase Auth system.
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
+import { validateNewPassword } from "@/lib/passwordPolicy";
 import type { SchoolProfile, GradingConfig, LetterGrade, SchoolScholarRow, SchoolSubjectGrade } from "./types";
 import type { GradingPeriod } from "@/sead/scholarsGradesMonitoringApi";
 
@@ -16,7 +17,10 @@ import type { GradingPeriod } from "@/sead/scholarsGradesMonitoringApi";
  */
 export async function schoolSignIn(usernameOrEmail: string, password: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const { data: email, error: rpcError } = await supabase.rpc("resolve_school_login_email", { p_school_name: usernameOrEmail });
-  if (rpcError || !email) return { ok: false, error: "We couldn't find a school account with that username or email." };
+  if (rpcError && /too many attempts/i.test(rpcError.message)) return { ok: false, error: "Too many attempts. Please wait a few minutes and try again." };
+  // The look-up answers the same way for every name (an unknown one gets an address that cannot sign in), so this message is the same whether the
+  // username or the password was wrong.
+  if (rpcError || !email) return { ok: false, error: "Incorrect username or password." };
 
   const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
   if (authError) return { ok: false, error: "Incorrect username or password." };
@@ -218,6 +222,8 @@ export async function fetchSchoolAccountUsername(): Promise<string | null> {
 export async function changeSchoolPassword(currentPassword: string, newPassword: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || !user.email) return { ok: false, error: "You are not signed in. Please sign in again." };
+  const problem = validateNewPassword(newPassword, { avoid: [user.email.split("@")[0]], differentFrom: [currentPassword] });
+  if (problem) return { ok: false, error: problem };
   const check = await supabase.auth.signInWithPassword({ email: user.email, password: currentPassword });
   if (check.error) return { ok: false, error: "The current password is not correct." };
   const { error } = await supabase.auth.updateUser({ password: newPassword });

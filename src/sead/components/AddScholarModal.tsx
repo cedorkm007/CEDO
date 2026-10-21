@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X, UserPlus } from "lucide-react";
 import { createScholarAccount, addRemovedScholar, type NewScholarInput } from "../seadApi";
 import { SchoolSelect } from "./SchoolSelect";
+import { TemporaryPasswordNotice, type TemporaryCredential } from "@/app/components/TemporaryPasswordNotice";
 
 const CIVIL_STATUS_OPTIONS = ["Single", "Single Parent", "Married", "Widow", "Separated"];
 
@@ -14,6 +15,8 @@ export function AddScholarModal({ onClose, onCreated, asRemoved = false }: { onC
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<string | null>(null);
+  // The random temporary password, shown ONCE (never kept); the scholar chooses their own at first sign-in.
+  const [notice, setNotice] = useState<TemporaryCredential[] | null>(null);
 
   function set<K extends keyof NewScholarInput>(key: K, value: string) {
     setForm(f => ({ ...f, [key]: value }));
@@ -30,11 +33,17 @@ export function AddScholarModal({ onClose, onCreated, asRemoved = false }: { onC
     const result = asRemoved ? await addRemovedScholar(form) : await createScholarAccount(form);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to create account."); return; }
-    setSuccess(asRemoved ? "Added to Removed Scholars." : `Account created. Default password: ${"defaultPassword" in result ? result.defaultPassword : ""}`);
+    setSuccess(asRemoved ? "Added to Removed Scholars." : "Account created. A temporary password was made for this scholar (shown once). The scholar chooses their own password at first sign-in.");
+    const temporaryPassword = (result as { temporaryPassword?: string }).temporaryPassword;
+    if (!asRemoved && temporaryPassword) {
+      setNotice([{ who: `${form.firstName} ${form.lastName}`.trim(), login: form.scholarIdNumber, password: temporaryPassword }]);
+    }
     onCreated();
   }
 
   return (
+    <>
+    {notice && <TemporaryPasswordNotice title="Temporary password" credentials={notice} onClose={() => setNotice(null)} />}
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
       <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4 rounded-t-2xl">
@@ -93,6 +102,7 @@ export function AddScholarModal({ onClose, onCreated, asRemoved = false }: { onC
         </div>
       </div>
     </div>
+    </>
   );
 }
 
