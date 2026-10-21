@@ -9,6 +9,17 @@ import { throwJsonError } from "./cors.ts";
  */
 const IT_ADMIN_USERNAME = "it.admin1";
 
+/** The "authenticator assurance level" Supabase puts in a session token: "aal2" means the person also entered their authenticator code. */
+function sessionAssuranceLevel(authHeader: string): string | null {
+  try {
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, "="))).aal ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function requireItAdmin(req: Request): Promise<{ admin: SupabaseClient; callerId: string }> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) {
@@ -36,6 +47,15 @@ export async function requireItAdmin(req: Request): Promise<{ admin: SupabaseCli
 
   if (profileError || !profile || profile.username.toLowerCase() !== IT_ADMIN_USERNAME) {
     throwJsonError("This account is not authorized to create staff accounts.", 403);
+  }
+
+  // Two-step sign-in (authenticator app). Once this account has set one up, every action here needs the session to have passed the code check too, so a
+  // stolen password alone is not enough. Setting IT_ADMIN_REQUIRE_MFA=true (an Edge Function secret) requires it even before one is set up.
+  const { data: factorList } = await admin.auth.admin.mfa.listFactors({ userId: user.id });
+  const hasVerifiedFactor = (factorList?.factors ?? []).some((factor: { factor_type?: string; status?: string }) => factor.factor_type === "totp" && factor.status === "verified");
+  const mustHaveTwoStep = hasVerifiedFactor || Deno.env.get("IT_ADMIN_REQUIRE_MFA") === "true";
+  if (mustHaveTwoStep && sessionAssuranceLevel(authHeader) !== "aal2") {
+    throwJsonError("Two-step sign-in is required. Sign out, sign in again, and enter the code from your authenticator app.", 403);
   }
 
   return { admin, callerId: user.id };

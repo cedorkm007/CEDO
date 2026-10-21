@@ -1,27 +1,15 @@
-// Scholar Portal instant self-service password reset. Deliberately
-// public/unauthenticated (deployed with --no-verify-jwt): the whole point
-// is reaching someone who can't log in, so there's no session to verify.
+// Scholar Portal "I forgot my password" (self-service). Deliberately public/unauthenticated (deployed with --no-verify-jwt): the whole point is
+// reaching someone who can't sign in, so there is no session to check.
 //
-// Two-step, stateless protocol (the frontend just resends everything each
-// call — no token/session needed between steps):
-//   1. { scholarIdNumber, lastName, firstName } — if the three match a
-//      scholar AND that scholar has no security question set yet, resets
-//      immediately. If they DO have a security question, responds with
-//      needsAnswer + the question text instead of resetting.
-//   2. { scholarIdNumber, lastName, firstName, securityAnswer } — same
-//      identity check, plus the answer must match
-//      (verify_scholar_security_answer, service-role only).
-//
-// Every failure path (scholar not found, name mismatch, wrong answer)
-// returns the same shape of generic error — this never reveals which part
-// was wrong, to avoid helping someone enumerate valid Scholar IDs or narrow
-// down a security answer by trial and error against error text.
+// SDP Monitoring update, Phase 6: the scholar CHOOSES THEIR OWN new password. Nothing here ever sets or shows a fixed password.
+//   1. { scholarIdNumber, lastName, firstName }                    -> the security question (a made-up one for an ID that does not exist)
+//   2. { ..., securityAnswer, newPassword }                       -> checks the answer (5 wrong per hour at most) and saves the new password
+// A scholar who never set a security question cannot use this: they ask the SEAD office. Every failure looks the same from the outside.
+// All the rules live in ../_shared/scholarSelfReset.ts (and are tested there); this file only connects them to Supabase.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
 import { logScholarChange } from "../_shared/scholarLog.ts";
-
-const DEFAULT_PASSWORD = "123456";
-const GENERIC_ERROR = "We couldn't verify your identity with those details.";
+import { handleScholarSelfReset, type SelfResetDeps } from "../_shared/scholarSelfReset.ts";
 
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -38,75 +26,44 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Invalid request." }, 400);
     }
 
-    const scholarIdNumber = String(body.scholarIdNumber ?? "").trim();
-    const lastName = String(body.lastName ?? "").trim();
-    const firstName = String(body.firstName ?? "").trim();
-    const securityAnswer = typeof body.securityAnswer === "string" ? body.securityAnswer.trim() : "";
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
 
-    if (!scholarIdNumber || !lastName || !firstName) {
-      return jsonResponse({ error: "Please fill in your Scholar ID, Last Name, and First Name." }, 400);
-    }
+    const deps: SelfResetDeps = {
+      async gate(identity, address) {
+        const { error } = await admin.rpc("scholar_reset_gate", { p_identity: identity, p_ip: address });
+        return error ? "Too many attempts. Please wait a while and try again, or ask the SEAD office to reset your password." : null;
+      },
+      async isLocked(identity) {
+        const { data } = await admin.rpc("scholar_reset_is_locked", { p_identity: identity });
+        return data === true;
+      },
+      async registerFailure(identity, address) { await admin.rpc("scholar_reset_register_failure", { p_identity: identity, p_ip: address }); },
+      async clearFailures(identity) { await admin.rpc("scholar_reset_clear", { p_identity: identity }); },
+      async findScholar(scholarIdNumber) {
+        const { data } = await admin.from("scholars").select("id, first_name, last_name, security_question").eq("scholar_id_number", scholarIdNumber).maybeSingle();
+        return data ?? null;
+      },
+      async verifyAnswer(scholarId, answer) {
+        const { data, error } = await admin.rpc("verify_scholar_security_answer", { p_scholar_id: scholarId, p_answer: answer });
+        if (error) { console.error("verify_scholar_security_answer error:", error.message); return false; }
+        return data === true;
+      },
+      async setPassword(scholarId, password) {
+        const { error } = await admin.auth.admin.updateUserById(scholarId, { password });
+        return error ? error.message : null;
+      },
+      async log(entry) {
+        await logScholarChange(admin, {
+          action: "reset", scholarId: entry.scholarId, scholarIdNumber: entry.scholarIdNumber, scholarName: entry.scholarName,
+          performedBy: null, performedByName: "Scholar (self-service)", source: "self_service",
+          description: "Self-service password reset: the scholar answered their security question and chose their own new password.",
+        });
+      },
+    };
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-
-    const { data: scholar, error: lookupError } = await admin
-      .from("scholars")
-      .select("id, first_name, last_name, security_question")
-      .eq("scholar_id_number", scholarIdNumber)
-      .maybeSingle();
-
-    if (lookupError || !scholar) {
-      return jsonResponse({ error: GENERIC_ERROR }, 404);
-    }
-
-    const nameMatches =
-      String(scholar.last_name ?? "").trim().toLowerCase() === lastName.toLowerCase() &&
-      String(scholar.first_name ?? "").trim().toLowerCase() === firstName.toLowerCase();
-    if (!nameMatches) {
-      return jsonResponse({ error: GENERIC_ERROR }, 404);
-    }
-
-    async function performReset(descriptionSuffix: string): Promise<Response> {
-      const { error: updateError } = await admin.auth.admin.updateUserById(scholar!.id, { password: DEFAULT_PASSWORD });
-      if (updateError) {
-        return jsonResponse({ error: updateError.message }, 500);
-      }
-      await logScholarChange(admin, {
-        action: "reset",
-        scholarId: scholar!.id,
-        scholarIdNumber,
-        scholarName: `${scholar!.first_name} ${scholar!.last_name}`,
-        performedBy: null,
-        performedByName: "Scholar (self-service)",
-        source: "self_service",
-        description: `Instant self-service reset to the default (${DEFAULT_PASSWORD}) — ${descriptionSuffix}.`,
-      });
-      return jsonResponse({ ok: true, reset: true, newPassword: DEFAULT_PASSWORD }, 200);
-    }
-
-    if (!scholar.security_question) {
-      return await performReset("verified by Scholar ID + name match, no security question set yet");
-    }
-
-    if (!securityAnswer) {
-      return jsonResponse({ ok: true, needsAnswer: true, question: scholar.security_question }, 200);
-    }
-
-    const { data: answerMatches, error: verifyError } = await admin.rpc("verify_scholar_security_answer", {
-      p_scholar_id: scholar.id,
-      p_answer: securityAnswer,
-    });
-    if (verifyError) {
-      console.error("verify_scholar_security_answer error:", verifyError.message);
-      return jsonResponse({ error: "Unexpected error while checking your answer." }, 500);
-    }
-    if (!answerMatches) {
-      return jsonResponse({ error: "That answer doesn't match. Please try again.", needsAnswer: true, question: scholar.security_question }, 401);
-    }
-
-    return await performReset("verified by security question answer");
+    const result = await handleScholarSelfReset(body, ip, deps);
+    return jsonResponse(result.body, result.status);
   } catch (thrown) {
     if (thrown instanceof Response) return thrown;
     console.error("scholar-self-reset-password unexpected error:", thrown);

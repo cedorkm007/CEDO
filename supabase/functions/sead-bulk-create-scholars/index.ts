@@ -1,16 +1,15 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { requireSeadStaff } from "../_shared/verifySeadStaff.ts";
 import { getStaffName, logScholarChange } from "../_shared/scholarLog.ts";
+import { generateTemporaryPassword } from "../_shared/passwordPolicy.ts";
+import { markMustChangePassword } from "../_shared/temporaryPassword.ts";
 
 // Bulk version of sead-create-scholar-account, driven by the "Bulk Upload"
 // button on the Scholars tab (staff downloads a CSV template, fills it in,
 // uploads it — the frontend parses it into rows and posts them here).
 //
-// Unlike the single-add flow (one shared default password, "123456", meant
-// to be changed by the scholar on first login), each row here gets its own
-// random password. Handing the same default password to a whole freshly
-// created batch at once is a bigger exposure than a single manually-created
-// account — same reasoning scripts/import-scholars-from-csv.mjs uses.
+// Every row gets its own RANDOM temporary password (the same kind the single-add flow now gives: shown once to staff, and the scholar must choose
+// their own at first sign-in, because each account is marked). There is no shared default password any more.
 //
 // Runs row-by-row rather than in parallel: keeps behavior predictable. Each
 // row is wrapped in its own try/catch — a genuinely unexpected failure on
@@ -20,14 +19,6 @@ import { getStaffName, logScholarChange } from "../_shared/scholarLog.ts";
 
 const MAX_ROWS = 500;
 
-function generatePassword(length = 12): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  let out = "";
-  for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
-  return out;
-}
 
 interface ScholarRow {
   scholarIdNumber?: string;
@@ -103,7 +94,7 @@ Deno.serve(async (req: Request) => {
         }
 
         const email = `${scholarIdNumber.toLowerCase()}@scholars.cedo.local`;
-        const password = generatePassword();
+        const password = generateTemporaryPassword();
 
         const { data: authUser, error: createError } = await admin.auth.admin.createUser({
           email, password, email_confirm: true,
@@ -142,6 +133,17 @@ Deno.serve(async (req: Request) => {
           if (banError) {
             await admin.auth.admin.deleteUser(authUser.user.id);
             results.push({ index: i, scholarIdNumber, ok: false, error: banError.message });
+            continue;
+          }
+        }
+
+        if (!asRemoved) {
+          const markError = await markMustChangePassword(admin, authUser.user.id);
+          if (markError) {
+            // Never leave an account with a temporary password that does not have to be changed.
+            await admin.from("scholars").delete().eq("id", authUser.user.id);
+            await admin.auth.admin.deleteUser(authUser.user.id);
+            results.push({ index: i, scholarIdNumber, ok: false, error: "Could not mark the account to choose a new password at sign-in (run the Phase 6 database update first)." });
             continue;
           }
         }

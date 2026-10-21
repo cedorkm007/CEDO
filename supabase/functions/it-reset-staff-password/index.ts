@@ -1,7 +1,6 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { requireItAdmin } from "../_shared/verifyItAdmin.ts";
-
-const DEFAULT_PASSWORD = "123456";
+import { issueTemporaryPassword } from "../_shared/temporaryPassword.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -25,14 +24,15 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { error: updateError } = await admin.auth.admin.updateUserById(targetId, { password: DEFAULT_PASSWORD });
-    if (updateError) {
-      return new Response(JSON.stringify({ error: updateError.message }), {
+    // A random temporary password, shown once, that the person must replace at their next sign-in.
+    const issued = await issueTemporaryPassword(admin, targetId);
+    if (!issued.ok) {
+      return new Response(JSON.stringify({ error: issued.error }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(JSON.stringify({ ok: true, name: `${target.first_name} ${target.last_name}`, newPassword: DEFAULT_PASSWORD }), {
+    return new Response(JSON.stringify({ ok: true, name: `${target.first_name} ${target.last_name}`, temporaryPassword: issued.password, newPassword: issued.password, warning: issued.warning }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (thrown) {

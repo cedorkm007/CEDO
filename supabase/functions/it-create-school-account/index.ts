@@ -1,9 +1,9 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { requireItAdmin } from "../_shared/verifyItAdmin.ts";
+import { issueTemporaryPassword, markMustChangePassword } from "../_shared/temporaryPassword.ts";
+import { generateTemporaryPassword } from "../_shared/passwordPolicy.ts";
 
-// Legacy path only (a request that still sends an `email` and no username):
-// schools created that way get the same default password as before.
-const DEFAULT_PASSWORD = "123456";
+// Every new school account starts on a RANDOM temporary password, shown once to the administrator. Any password typed in the request is ignored.
 
 // Must match the format check in supabase_migration_school_account_username.sql
 // and validateSchoolUsername() in src/itadmin/schoolAccountsApi.ts. The
@@ -12,8 +12,6 @@ const DEFAULT_PASSWORD = "123456";
 const USERNAME_PATTERN = /^[a-z0-9]+([._-][a-z0-9]+)*$/;
 const USERNAME_MIN = 3;
 const USERNAME_MAX = 30;
-const PASSWORD_MIN = 6;  // Supabase Auth's own default minimum
-const PASSWORD_MAX = 72; // bcrypt's input limit
 
 // Same placeholder-email convention as scholars (<id>@scholars.cedo.local):
 // nobody types or receives mail here, it only gives Supabase Auth an email.
@@ -32,7 +30,6 @@ Deno.serve(async (req: Request) => {
 
     const schoolId = String(body.schoolId ?? "").trim();
     const username = String(body.username ?? "").trim().toLowerCase();
-    const password = String(body.password ?? "");
     const legacyEmail = String(body.email ?? "").trim();
     const usingUsername = username.length > 0;
 
@@ -44,16 +41,13 @@ Deno.serve(async (req: Request) => {
       if (username.length < USERNAME_MIN || username.length > USERNAME_MAX || !USERNAME_PATTERN.test(username)) {
         return json({ error: `Username must be ${USERNAME_MIN}-${USERNAME_MAX} characters: lowercase letters and numbers, with single dots, dashes, or underscores between them.` }, 400);
       }
-      if (password.length < PASSWORD_MIN || password.length > PASSWORD_MAX) {
-        return json({ error: `Password must be ${PASSWORD_MIN}-${PASSWORD_MAX} characters.` }, 400);
-      }
       loginEmail = `${username}@${SCHOOL_LOGIN_EMAIL_DOMAIN}`;
-      accountPassword = password;
+      accountPassword = generateTemporaryPassword();
     } else if (legacyEmail) {
       loginEmail = legacyEmail;
-      accountPassword = DEFAULT_PASSWORD;
+      accountPassword = generateTemporaryPassword();
     } else {
-      return json({ error: "School, username, and password are required." }, 400);
+      return json({ error: "School and username are required." }, 400);
     }
 
     const { data: school, error: schoolLookupError } = await admin.from("schools").select("id, name").eq("id", schoolId).maybeSingle();
@@ -88,9 +82,17 @@ Deno.serve(async (req: Request) => {
       return json({ error: insertError.message }, 500);
     }
 
+    const markError = await markMustChangePassword(admin, authUser.user.id);
+    if (markError) {
+      // Never leave an account with a temporary password that does not have to be changed.
+      await admin.from("school_accounts").delete().eq("id", authUser.user.id);
+      await admin.auth.admin.deleteUser(authUser.user.id);
+      return json({ error: "The account could not be marked to choose a new password at sign-in, so it was not created. Run the Phase 6 database update first." }, 500);
+    }
+
     return json({
-      ok: true, schoolName: school.name,
-      ...(usingUsername ? { username } : { defaultPassword: DEFAULT_PASSWORD }),
+      ok: true, schoolName: school.name, ...(usingUsername ? { username } : {}),
+      temporaryPassword: accountPassword, defaultPassword: accountPassword,
     }, 200);
   } catch (thrown) {
     if (thrown instanceof Response) return thrown;

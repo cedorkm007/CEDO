@@ -5,6 +5,7 @@
 // hand) from localdemo/schema/tables.json -> retry whatever failed along the way. Nothing here touches the real project.
 import { PGlite } from "@electric-sql/pglite";
 import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm";
+import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -21,7 +22,7 @@ const VIEWS = new Set(["scholar_subject_progress"]);
 const SKIP = [ /^select\s+cron\./i, /^(begin|commit|rollback)$/i, /^create\s+extension\s+(if\s+not\s+exists\s+)?(pg_cron|pg_net)\b/i];
 
 export function openDb(dir = DATA_DIR) {
-  return new PGlite(dir, { extensions: { pg_trgm } });
+  return new PGlite(dir, { extensions: { pg_trgm, pgcrypto } });
 }
 
 /** Migration files oldest first: the order they were first committed, files not committed yet by modification time. */
