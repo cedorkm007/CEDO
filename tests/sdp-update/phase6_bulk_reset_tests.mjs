@@ -70,6 +70,29 @@ console.log("\nRunning it again");
 check("a second run finds nothing left to do", (await run(RESET)).length === 0);
 check("the count now says none are waiting", (await run(COUNT)).every(r => Number(r.will_get_a_new_temporary_password) === 0));
 
+console.log("\nRe-issuing when the list from step 3 was lost");
+const REISSUE = read("sql_oneoff/p6_step3b_REISSUE_lost_list_run_until_empty.sql"), SHOW = read("sql_oneoff/p6_step3c_SHOW_held_list_readonly.sql"), DROP = read("sql_oneoff/p6_step3d_DELETE_held_list.sql");
+const firstList = list.filter(r => r.kind === "Scholar");
+const hashOfScholar = async id => (await q("select au.encrypted_password h from auth.users au join scholars s on s.id = au.id where s.scholar_id_number = $1", [id]))[0].h;
+const matches = async (id, pw) => Number((await q("select count(*) n from auth.users au join scholars s on s.id = au.id where s.scholar_id_number = $1 and au.encrypted_password = extensions.crypt($2, au.encrypted_password)", [id, pw]))[0].n) === 1;
+// one of the reset scholars signs in meanwhile: they must be skipped
+const signedInLater = firstList[0].login;
+await q("update auth.users set last_sign_in_at = now() where id = (select id from scholars where scholar_id_number = $1)", [signedInLater]);
+const hashBeforeSkip = await hashOfScholar(signedInLater);
+const re = await run(REISSUE);
+check("it re-issues exactly the scholars step 3 reset that have still never signed in", re.length === firstList.length - 1 && !re.some(r => r.login === signedInLater), re.length + " vs " + (firstList.length - 1));
+check("each gets a NEW password in the same readable shape", re.every(r => /^[A-Za-z2-9]{4}-[A-Za-z2-9]{4}-[A-Za-z2-9]{4}$/.test(r.temporary_password)) && re.every(r => !firstList.some(o => o.login === r.login && o.temporary_password === r.temporary_password)));
+const sample = re[0];
+check("the new password is the one the account now checks against, and the old one is gone", await matches(sample.login, sample.temporary_password) && !(await matches(sample.login, firstList.find(o => o.login === sample.login).temporary_password)));
+check("the person is still made to choose a new password", Number((await q("select count(*) n from account_password_flags f join scholars s on s.id = f.user_id where s.scholar_id_number = any($1::text[]) and f.reason = 'first_sign_in_reissue' and f.temp_hash = (select encrypted_password from auth.users where id = f.user_id)", [re.map(r => r.login)]))[0].n) === re.length);
+check("someone who signed in meanwhile is untouched", (await hashOfScholar(signedInLater)) === hashBeforeSkip);
+const shown = await run(SHOW);
+check("the same list is held, so it can be shown again", shown.length === re.length && shown.every(r => re.some(x => x.login === r.login && x.temporary_password === r.temporary_password)));
+check("running it again finds nothing left", (await run(REISSUE)).length === 0);
+check("nobody on the website can read the held list", await db.transaction(async tx => { await tx.exec("set local role authenticated"); try { await tx.query("select * from public.p6_held_temporary_passwords"); return false; } catch (e) { return /permission denied/i.test(String(e.message)); } }));
+await db.exec(DROP);
+check("deleting the held list leaves no password stored", Number((await q("select count(*) n from pg_tables where tablename = 'p6_held_temporary_passwords'"))[0].n) === 0);
+
 console.log("\nIn rounds (more accounts than one round holds)");
 await db.exec("delete from account_password_flags where reason = 'first_sign_in_reset'");
 await q("update auth.users set last_sign_in_at = null where id = any($1::uuid[])", [scholars.map(s => s.id)]);
