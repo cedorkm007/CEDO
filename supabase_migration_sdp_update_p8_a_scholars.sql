@@ -11,6 +11,8 @@
 --   • Scholars still read their own record, and a school still reads its own scholars (unchanged).
 -- Safe to run twice. Undo: undo_sdp_update_p8_a.sql.  Changes ONE table's rules; run it on its own.
 -- ─────────────────────────────────────────────────────────────
+-- Speed note: every rule below wraps its check in (select …), so the database asks "is this person allowed?" ONCE per request instead of once per row. Without it a page that reads
+-- thousands of rows (for example the submissions review list, which reads scholar records) could take seconds and hit the database's 8-second limit.
 set lock_timeout = '5s';
 
 create or replace function public._p8_can_read_scholars()
@@ -41,7 +43,7 @@ drop policy if exists "p8 staff with a scholar tool read scholars" on public.sch
 drop policy if exists "p8 scholar management manages scholars" on public.scholars;
 
 create policy "p8 staff with a scholar tool read scholars" on public.scholars
-  for select to authenticated using (public._p8_can_read_scholars());
+  for select to authenticated using ((select public._p8_can_read_scholars()));
 
 create policy "p8 scholar management manages scholars" on public.scholars
-  for all to authenticated using (public.is_sead_staff()) with check (public.is_sead_staff());
+  for all to authenticated using ((select public.is_sead_staff())) with check ((select public.is_sead_staff()));
