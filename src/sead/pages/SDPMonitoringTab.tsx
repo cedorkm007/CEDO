@@ -4,13 +4,13 @@ import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
-  fetchAttendanceForActivity, fetchCreditHistory, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, removeAttendance, moveCreditSemester, type CreditPeriod, type AttendedWithoutCredit, type CreditHistoryEntry,
+  fetchAttendanceForActivity, fetchCreditHistory, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, creditScholarForDay, removeAttendance, moveCreditSemester, type CreditPeriod, type AttendedWithoutCredit, type CreditHistoryEntry,
   fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpChecklistSummary,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
   isSubCategorySupported, isDayLabelsSupported, type ChecklistSummary, type ChecklistSortKey, type SDPActivity, type SDPCategory, type SDPSubCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
 } from "../sdpMonitorApi";
-import { SDP_CATEGORIES, SDP_SUBCATEGORIES, subCategoryLabel, scheduleDays, daySubName, creditDay } from "@/scholar/sdpApi";
+import { SDP_CATEGORIES, SDP_SUBCATEGORIES, subCategoryLabel, scheduleDays, daySubName, creditDay, manilaDay } from "@/scholar/sdpApi";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { uploadPubmat, pubmatUrl } from "../pubmatApi";
 import { ScholarSearchField, type ScholarSearchResult } from "../components/ScholarSearchField";
@@ -410,12 +410,27 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
   }
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activity.id]);
 
+  // A recurring activity can credit a scholar once for EACH of its days: the day being credited is chosen, and days the scholar already has are not offered.
+  const isRecurring = activity.activityType === "recurring";
+  const days = useMemo(() => { const seen = new Set<string>(); return scheduleDays(activity).filter(d => d.day && !seen.has(d.day) && seen.add(d.day)); }, [activity]);
+  const typedId = (selected?.scholarIdNumber ?? query).trim().toLowerCase();
+  const scholarCredits = typedId ? attendees.filter(a => a.scholarIdNumber.toLowerCase() === typedId) : [];
+  const creditedDays = new Set(scholarCredits.map(a => creditDay(activity, a.activityDay, a.attendedDate)).filter((d): d is string => !!d));
+  const [dayChoice, setDayChoice] = useState("");
+  const today = manilaDay(new Date().toISOString());
+  const defaultDay = days.find(d => d.day === today && !creditedDays.has(d.day)) ?? days.find(d => !creditedDays.has(d.day));
+  const effectiveDay = dayChoice && days.some(d => d.day === dayChoice) && !creditedDays.has(dayChoice) ? dayChoice : defaultDay?.day ?? "";
+  const useDayChoice = isRecurring && days.length > 0;
+
   async function handleAdd() {
     setError("");
     const scholarIdNumber = selected?.scholarIdNumber ?? query.trim();
     if (!scholarIdNumber) { setError("Enter or pick a scholar."); return; }
+    if (useDayChoice && !effectiveDay) { setError(`This scholar already has a credit for every day of this activity (${days.length} of ${days.length}).`); return; }
     setBusy(true);
-    const result = await creditAttendance(activity.id, scholarIdNumber, newDate, chosenPeriod());
+    const result = useDayChoice
+      ? await creditScholarForDay(activity.id, scholarIdNumber, effectiveDay, chosenPeriod())
+      : await creditAttendance(activity.id, scholarIdNumber, newDate, chosenPeriod());
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to credit — check the Scholar ID exists."); return; }
     setQuery("");
@@ -470,17 +485,33 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
           <ScholarSearchField query={query} setQuery={setQuery} selected={selected}
             onSelect={setSelected} onClear={() => setSelected(null)} />
         </div>
-        <div>
-          <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Date</label>
-          <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)}
-            className="border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" />
-        </div>
+        {useDayChoice ? (
+          <div>
+            <label htmlFor="credit-day" className="block text-[10.5px] font-semibold text-slate-400 mb-1">Day being credited</label>
+            <select id="credit-day" value={effectiveDay} onChange={e => setDayChoice(e.target.value)}
+              className="border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc] max-w-[260px]">
+              {days.map(d => <option key={d.day} value={d.day} disabled={creditedDays.has(d.day)}>{dayText(activity, d.day)}{creditedDays.has(d.day) ? " (already credited)" : ""}</option>)}
+            </select>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Date</label>
+            <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)}
+              className="border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" />
+          </div>
+        )}
         <PeriodSelect label="Counts in" options={sdpPeriods.options} value={effectiveCreditKey} onChange={setCreditKey} />
         <button onClick={handleAdd} disabled={busy}
           className="bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-3 py-1.5 disabled:opacity-50">
           {busy ? "…" : "Credit"}
         </button>
       </div>
+      {useDayChoice && (
+        <p className="text-[11px] text-slate-400 -mt-2 mb-3">
+          A scholar can be credited once for each day of this recurring activity ({days.length} day{days.length === 1 ? "" : "s"}).
+          {scholarCredits.length > 0 && <> This scholar has <strong>{scholarCredits.length} of {days.length}</strong>.</>}
+        </p>
+      )}
       {error && <p className="text-[12px] text-red-600 mb-3">{error}</p>}
 
       {loading ? (
@@ -758,7 +789,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
 
       {activity.activityType === "recurring" && (
         <p className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-[12.5px] text-sky-950">
-          This is a recurring activity: each scholar can scan once for every day of the activity, and every scan needs its own code. Add more codes below before each day if you are running low.
+          This is a recurring activity: each scholar can scan once for every day of the activity, and every scan needs its own code. A scholar can scan only ONE code from each batch, so make a new batch (below) for each day, with that day chosen.
           {session.type === "time_in_time_out" ? " Each scholar needs one time-in and one time-out code per day; a day counts when both were scanned." : ""}
         </p>
       )}
