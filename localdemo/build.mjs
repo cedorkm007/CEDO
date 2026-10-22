@@ -162,6 +162,14 @@ export async function buildDb({ onProgress = () => {}, dataDir = DATA_DIR, write
     if (!progress) break;
   }
 
+  // Security rules that tighten what older files opened up (SDP Monitoring update, Phases 7 and 8) are applied once more at the very end: an older file whose
+  // first attempt had to wait for a table or function is retried above, which would otherwise put its broad rule back AFTER the tightening. They can run any number of times.
+  for (const file of files.filter(f => /^supabase_migration_sdp_update_p[78]_/.test(f))) {
+    for (const stmt of splitSql(fs.readFileSync(path.join(ROOT, file), "utf8"))) {
+      try { await execTolerant(db, stmt); } catch (e) { failed.push({ file, stmt, error: e.message }); }
+    }
+  }
+
   const lines = [
     `Local demo database built ${new Date().toISOString()}`,
     `migration files: ${files.length}; statements applied: ${ok}; skipped (live-service only): ${skipped}; still failing: ${failed.length}`,

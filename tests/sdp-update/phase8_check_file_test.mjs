@@ -19,6 +19,11 @@ const kind = r => r.detail.split(" | ")[0];
 check("it sorts every rule into a group", rules.length > 50 && rules.every(r => ["ANY SIGNED-IN", "ANY STAFF", "TAG", "OWN", "OTHER"].includes(kind(r))));
 check("the Phase 7 'staff full access' replacement and the SDP tag rule are sorted correctly", rules.some(r => r.thing === "staff_account_tags" && kind(r) === "ANY STAFF") && rules.some(r => r.thing === "sdp_activities" && kind(r) === "TAG"));
 check("it lists the helper functions and the tags", rows.some(r => r.part === "4. HELPER" && /is_cedo_staff/.test(r.thing)) && rows.some(r => r.part === "5. TAG"));
+const fnRes = await db.exec(fs.readFileSync("sql_oneoff/p8_step1_functions_that_use_the_tables_readonly.sql", "utf8"));
+const fnRows = fnRes[fnRes.length - 1].rows;
+check("the functions check runs, changes nothing and lists functions with the tables each uses", fnRows.length > 5 && fnRows.every(r => r.tables_used) && before === await fingerprint());
+check("it tells owner-rights functions from caller-rights functions", fnRows.some(r => /owner rights/.test(r.runs_with)) && fnRows.every(r => /owner rights|CALLER rights/.test(r.runs_with)));
+if (process.argv.includes("--show")) { for (const r of fnRows.filter(r => /CALLER/.test(r.runs_with))) console.log("   caller-rights:", r.function_name, "→", r.tables_used); }
 if (process.argv.includes("--show")) {
   const by = {};
   for (const r of rules) if (["ANY STAFF", "ANY SIGNED-IN"].includes(kind(r))) (by[r.thing] ??= []).push(kind(r) + " " + r.detail.split(" | ")[2]);
