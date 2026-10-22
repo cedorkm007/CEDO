@@ -29,7 +29,9 @@ check("none contains a character that is easy to mix up (0, O, 1, l, I)", sample
 check("every one has capitals, small letters and numbers", samples.every(p => /[A-Z]/.test(p) && /[a-z]/.test(p) && /\d/.test(p)));
 check("every one is accepted by the password rules", samples.every(p => policy.validateNewPassword(p) === null));
 check("they are random: 2,000 made, no two the same, and the first character varies", new Set(samples).size === 2000 && new Set(samples.map(p => p[0])).size > 20);
-const counts = {}; for (const p of samples) for (const ch of p.replace(/-/g, "")) counts[ch] = (counts[ch] ?? 0) + 1;
+// a bigger sample for the fairness check only: with 2,000 the ratio between the most and least common character can pass 1.25 by chance (about 1 run in 50)
+const fairSamples = Array.from({ length: 20000 }, () => policy.generateTemporaryPassword());
+const counts = {}; for (const p of fairSamples) for (const ch of p.replace(/-/g, "")) counts[ch] = (counts[ch] ?? 0) + 1;
 const within = chars => { const v = chars.map(c => counts[c] ?? 0); return Math.max(...v) / Math.min(...v); };
 check("within each kind (capitals, small letters, numbers) no character is much more likely than another (fair choice, no bias to the first letters)", within([..."ABCDEFGHJKLMNPQRSTUVWXYZ"]) < 1.25 && within([..."abcdefghijkmnpqrstuvwxyz"]) < 1.25 && within([..."23456789"]) < 1.25 && Object.keys(counts).length === 56);
 check("a fixed random source gives a fixed answer (so the generator really uses the source it is given)", (() => { const fixed = n => new Uint8Array(n).fill(7); return policy.generateTemporaryPassword(fixed) === policy.generateTemporaryPassword(fixed); })());
