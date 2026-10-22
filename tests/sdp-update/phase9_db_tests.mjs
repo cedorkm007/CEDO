@@ -16,7 +16,8 @@ const FILE = "supabase_migration_sdp_update_p9_a_close_functions.sql", UNDO = "u
 const VISITOR = ["resolve_staff_login_email", "resolve_scholar_login_email", "resolve_school_login_email", "request_school_password_reset", "get_public_scholar_emergency_info", "join_presentation_session", "submit_presentation_response", "get_presentation_session_state", "get_financial_assistance_status", "get_public_survey", "submit_my_survey_response"];
 const BY_DESIGN = `select oid::regprocedure::text s from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prokind = 'f' and ((p.prorettype = 'trigger'::regtype)
   or exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
-  or exists (select 1 from pg_policies pol where coalesce(pol.qual,'') || ' ' || coalesce(pol.with_check,'') ~ ('\\m' || p.proname || '\\(')))`;
+  or exists (select 1 from pg_policies pol where coalesce(pol.qual,'') || ' ' || coalesce(pol.with_check,'') ~ ('\\m' || p.proname || '\\('))
+  or exists (select 1 from pg_depend d where d.refclassid = 'pg_proc'::regclass and d.refobjid = p.oid and d.deptype in ('n', 'a') and d.classid in ('pg_attrdef'::regclass, 'pg_constraint'::regclass, 'pg_rewrite'::regclass, 'pg_class'::regclass, 'pg_policy'::regclass)))`;
 const execSet = async role => new Set((await q(`select oid::regprocedure::text s from pg_proc where pronamespace = 'public'::regnamespace and prokind = 'f' and has_function_privilege('${role}', oid, 'execute')`)).map(r => r.s));
 async function as(uid, fn, role = "authenticated") {
   return db.transaction(async tx => {
@@ -45,6 +46,7 @@ const SEAD = seedId("staff:demo.sead"), SCHOLAR = seedId("scholar:5"), PLAIN = s
 check("the server functions (service key) can still run a closed function", await notDenied(null, "select public._sdp_period_totals('2025-2026', '1st Semester')", "service_role"));
 check("staff keep the functions their screens use", await notDenied(SEAD, "select * from public.scholars_sdp_checklist_page('2025-2026', '1st Semester', '', 'all', 'name', 'asc', 1, 10)") && await notDenied(PLAIN, "select public.is_cedo_staff()") && await notDenied(SEAD, "select public.get_current_grading_period()"));
 check("a scholar keeps their own functions", await notDenied(SCHOLAR, "select public.my_password_change_required()") && await notDenied(SCHOLAR, "select public.current_scholar_id_number()"));
+check("a helper that a table definition uses (a column default) stays open, so saves keep working", await notDenied(SEAD, "select public._school_key('Some School')"));
 check("internal helpers (underscore names) are closed to signed-in people too", await denied(SEAD, "select public._sdp_period_totals('2025-2026', '1st Semester')") && await denied(SCHOLAR, "select public._scholar_subject_pct('TEST-0001', gen_random_uuid())"));
 const names = rpcNamesInWebsite();
 const auth = await execSet("authenticated"); const authNames = new Set([...auth].map(s => s.replace(/^public\./, "").split("(")[0]));

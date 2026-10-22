@@ -5,7 +5,8 @@
 -- calling, but some helpers hand out data when given a Scholar ID. This file takes the "run" permission away from visitors for every function EXCEPT:
 --   (a) the eleven that a visitor page really calls: the three sign-in look-ups, the school password request, the scholar emergency page, the audience page of a live
 --       presentation (join, answer, state), the financial-assistance status page, and the public survey page (read and answer);
---   (b) functions that a table rule uses (closing them could turn an empty answer into an error);
+--   (b) functions that a table rule or a table definition uses (a rule, a default value, a check, an index: closing them could turn an empty answer into an error
+--       or stop a save);
 --   (c) triggers and extension functions.
 -- Internal helpers (names starting with an underscore, which the database calls itself and the website never calls) are also closed to signed-in people.
 -- Signed-in people keep access to every function they use today. Server functions (service key) and the database's own calls are not affected.
@@ -36,7 +37,10 @@ begin
              (p.prorettype = 'trigger'::regtype) as is_trigger,
              exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e') as in_extension,
              exists (select 1 from pg_policies pol
-                     where coalesce(pol.qual, '') || ' ' || coalesce(pol.with_check, '') ~ ('\m' || p.proname || '\(')) as used_in_rule
+                     where coalesce(pol.qual, '') || ' ' || coalesce(pol.with_check, '') ~ ('\m' || p.proname || '\('))
+             -- also: used by a table definition (a default value, a check, an index, a view): closing it could stop a save
+             or exists (select 1 from pg_depend d where d.refclassid = 'pg_proc'::regclass and d.refobjid = p.oid and d.deptype in ('n', 'a')
+                        and d.classid in ('pg_attrdef'::regclass, 'pg_constraint'::regclass, 'pg_rewrite'::regclass, 'pg_class'::regclass, 'pg_policy'::regclass)) as used_in_rule
       from pg_proc p
       where p.pronamespace = 'public'::regnamespace and p.prokind = 'f'
     )

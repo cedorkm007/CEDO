@@ -18,7 +18,10 @@ with fn as (
          (p.prorettype = 'trigger'::regtype) as is_trigger,
          exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e') as in_extension,
          exists (select 1 from pg_policies pol
-                 where coalesce(pol.qual, '') || ' ' || coalesce(pol.with_check, '') ~ ('\m' || p.proname || '\(')) as used_in_rule
+                 where coalesce(pol.qual, '') || ' ' || coalesce(pol.with_check, '') ~ ('\m' || p.proname || '\('))
+         -- also: used by a table definition (a default value, a check, an index, a view): closing it could stop a save
+         or exists (select 1 from pg_depend d where d.refclassid = 'pg_proc'::regclass and d.refobjid = p.oid and d.deptype in ('n', 'a')
+                    and d.classid in ('pg_attrdef'::regclass, 'pg_constraint'::regclass, 'pg_rewrite'::regclass, 'pg_class'::regclass, 'pg_policy'::regclass)) as used_in_rule
   from pg_proc p
   where p.pronamespace = 'public'::regnamespace and p.prokind = 'f'
 ),
@@ -32,7 +35,7 @@ decided as (
 select case
          when is_trigger or in_extension then 'KEEP (trigger or extension)'
          when visitor_page then 'KEEP (a visitor page calls it)'
-         when used_in_rule then 'KEEP (a table rule uses it)'
+         when used_in_rule then 'KEEP (a table rule or table definition uses it)'
          when anon_exec then 'CLOSE to visitors' || case when proname like '\_%' and auth_exec then ' AND to signed-in people (internal helper)' else '' end
          when proname like '\_%' and auth_exec then 'CLOSE to signed-in people (internal helper)'
          else 'already closed to visitors' end as decision,
