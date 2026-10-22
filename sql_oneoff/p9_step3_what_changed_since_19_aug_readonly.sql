@@ -61,10 +61,10 @@ do $$ begin
   group by u.username order by u.username;
 exception when others then insert into _rv (part, thing, detail) values ('6. CREDITS BY SOMEONE WITHOUT THE TOOL', 'skipped', sqlerrm); end $$;
 
--- 7. The credit history (installed in Phase 1): what it recorded, by day, kind of change, source and the person named.
+-- 7. The credit history (installed in Phase 1): what it recorded, by day, kind of change and source (a scholar's own scan is source scholar_scan; the person is NOT shown, because for a scan it is the scholar).
 do $$ begin
   insert into _rv (part, thing, detail)
-  select '7. CREDIT HISTORY', to_char(h.occurred_at, 'YYYY-MM-DD') || ' | ' || coalesce(h.event_type, '?') || ' | ' || coalesce(h.source, '?') || ' | by ' || coalesce(nullif(h.actor_name, ''), 'no account named'), count(*)::text
+  select '7. CREDIT HISTORY', to_char(h.occurred_at, 'YYYY-MM-DD') || ' | ' || coalesce(h.event_type, '?') || ' | ' || coalesce(h.source, '?'), count(*)::text
   from public.sdp_credit_history h where h.occurred_at >= timestamptz '2026-08-19 00:00:00+08' group by 2 order by 2;
 exception when others then insert into _rv (part, thing, detail) values ('7. CREDIT HISTORY', 'skipped', sqlerrm); end $$;
 
