@@ -15,7 +15,9 @@ select (select count(*) from public.submission_uploads) as uploads,
        (select count(*) from public.scholars) as scholars,
        (select count(*) from public.users) as staff,
        (select count(*) from public.schools) as schools,
-       (select count(*) from public.submission_activities) as activities;
+       (select count(*) from public.submission_activities) as activities,
+       (select count(*) from public.staff_account_tags) as tags,
+       (select count(*) from public.submission_uploads u join public.scholars s on s.id = u.scholar_id) as joined;
 grant select on _who, _totals to authenticated;
 
 select set_config('request.jwt.claim.sub', (select uid::text from _who), true);
@@ -28,6 +30,9 @@ union all select '2. helper says: Scholar Management (is_sead_staff)', public.is
 union all select '2. helper says: Forms Management tag', public.has_staff_tag('forms_management')::text, ''
 union all select '3. submission activities readable', (select count(*) from public.submission_activities)::text, (select activities::text from _totals)
 union all select '4. submissions (uploads) readable', (select count(*) from public.submission_uploads)::text, (select uploads::text from _totals)
+union all select '4b. submissions readable together with their scholar (the list joins to scholars)', (select count(*) from public.submission_uploads u join public.scholars s on s.id = u.scholar_id)::text, (select joined::text from _totals)
+union all select '4c. the rule that lets staff read submissions says', coalesce((select regexp_replace(p.qual, 's+', ' ', 'g') from pg_policies p where p.schemaname = 'public' and p.tablename = 'submission_uploads' and p.policyname = 'staff read'), '(no such rule)'), ''
+union all select '4d. tool tags this person can read (the rule above needs to read them)', (select count(*) from public.staff_account_tags)::text, (select tags::text from _totals)
 union all select '5. stored files openable (bucket submission-uploads)', (select count(*) from storage.objects where bucket_id = 'submission-uploads')::text, (select files::text from _totals)
 union all select '6. scholar records readable (the list joins to them)', (select count(*) from public.scholars)::text, (select scholars::text from _totals)
 union all select '7. staff records readable', (select count(*) from public.users)::text, (select staff::text from _totals)
