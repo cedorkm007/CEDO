@@ -12,7 +12,6 @@ select au.id,
        to_char(au.created_at, 'YYYY-MM-DD HH24:MI') as created,
        coalesce(to_char(au.last_sign_in_at, 'YYYY-MM-DD HH24:MI'), 'never') as last_sign_in,
        case when au.email_confirmed_at is null then 'NOT confirmed' else 'confirmed' end as email_status,
-       case when au.confirmation_sent_at is not null and au.email_confirmed_at is not null and au.confirmation_sent_at < au.email_confirmed_at then 'a confirmation message was sent' else 'no confirmation message' end as confirmation,
        case when au.raw_user_meta_data ?| array['username', 'division', 'role', 'scholarIdNumber', 'kind'] then 'made by our server functions' else 'no details' end as how_it_was_made,
        (select string_agg(k, ', ' order by k) from jsonb_object_keys(coalesce(au.raw_user_meta_data, '{}'::jsonb)) k) as detail_names,
        coalesce(au.banned_until::text, '') as switched_off_until
