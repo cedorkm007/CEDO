@@ -43,7 +43,7 @@ async function makeSession(activityId, type, n) {
   const s = (await q("insert into attendance_sessions (sdp_activity_id, type, expected_attendees, duration_hours, created_by) values ($1, $2, $3, $4, $5) returning id", [activityId, type, n, type === "voucher" ? 1 : null, SEAD]))[0].id;
   const codes = { time_in: [], time_out: [], voucher: [] };
   for (const kind of type === "voucher" ? ["voucher"] : ["time_in", "time_out"]) {
-    for (let i = 0; i < n; i++) { const code = crypto.randomBytes(5).toString("hex").toUpperCase(); codes[kind].push(code); await q("insert into attendance_codes (session_id, code, kind, batch_number) values ($1, $2, $3, 1)", [s, code, kind]); }
+    for (let i = 0; i < n; i++) { const code = crypto.randomBytes(5).toString("hex").toUpperCase(); codes[kind].push(code); await q("insert into attendance_codes (session_id, code, kind, batch_number) values ($1, $2, $3, $4)", [s, code, kind, i + 1]); }
   }
   return { id: s, codes };
 }

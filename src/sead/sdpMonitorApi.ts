@@ -352,6 +352,22 @@ export async function creditAttendance(
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+/**
+ * Credits one scholar for ONE chosen day of a recurring activity (supabase_migration_sdp_manual_credit_by_day.sql). The database allows a day only once per
+ * scholar, only a real day of the activity, and never more credits than the activity has days.
+ */
+export async function creditScholarForDay(
+  activityId: string, scholarIdNumber: string, day: string, period: CreditPeriod | null = null
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("credit_scholar_for_day", {
+    p_activity_id: activityId, p_scholar_id_number: scholarIdNumber, p_day: day,
+    p_school_year: period?.schoolYear ?? null, p_semester: period?.semester ?? null,
+  });
+  if (!error) return { ok: true };
+  const missing = error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "");
+  return { ok: false, error: missing ? "Crediting a scholar for another day needs the latest database update. Please ask the IT admin to run it." : error.message };
+}
+
 export async function removeAttendance(attendanceId: string): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.from("sdp_attendance").delete().eq("id", attendanceId);
   return error ? { ok: false, error: error.message } : { ok: true };

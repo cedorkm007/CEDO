@@ -82,9 +82,9 @@ check("another scholar can use the same day's other codes (the rule is per schol
 
 console.log("\nSub-names are only labels: counting is identical without them");
 const ctl = await makeActivity("TEST – Control without sub-names", "recurring", null, [occ(1, null), occ(2, null)]);
-const ctlSess = await makeSession(ctl, "voucher", [{ day: null, n: 5 }]);
+const ctlSess = await makeSession(ctl, "voucher", [{ day: null, n: 2 }, { day: null, n: 2 }, { day: null, n: 2 }, { day: null, n: 2 }]);   // four batches: one scan per batch (supabase_migration_sdp_scan_one_per_batch.sql)
 const ctlRuns = [];
-for (let i = 0; i < 4; i++) ctlRuns.push(await redeem(34, ctlSess.pick("voucher", null, i)));
+for (let i = 0; i < 4; i++) ctlRuns.push(await redeem(34, ctlSess.pick("voucher", null, i * 2)));
 check("an identical activity with no sub-names and no day codes gives the same result: three credits and a refused fourth", ctlRuns.slice(0, 3).every(x => x.ok) && !ctlRuns[3].ok && (await credits(ctl, 34)).length === 3 && c30.length === 3);
 const before = JSON.stringify(await rows(SEAD, "select * from public.scholars_sdp_compliance('2025-2026', '2nd Semester')"));
 await q("update sdp_activities set sub_name = 'a brand new sub-name', recurring_dates = (select jsonb_agg(e || '{\"subName\": \"changed\"}'::jsonb) from jsonb_array_elements(recurring_dates) e) where id = $1", [act]);
