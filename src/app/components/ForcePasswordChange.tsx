@@ -41,7 +41,7 @@ export function ForcePasswordChange({ who, avoid, onDone, onSignOut }: {
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <p className="text-[14px] text-[#062444]">
-            You signed in with a temporary password. Before you continue, choose a password that only you know. You will use it, with {who}, from now on.
+            You signed in with a temporary or old standard password (such as 123456). Before you continue, choose a password that only you know. You will use it, with {who}, from now on.
           </p>
 
           <div>
