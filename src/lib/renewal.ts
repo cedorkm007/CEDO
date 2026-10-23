@@ -464,3 +464,30 @@ export function validateStudyPlanTemplate(file: { name: string; size: number }):
 export function isStudyPlanFormTitle(title: string): boolean {
   return /study[\s_-]*plan/i.test(title);
 }
+
+/** What the "Not applied" list says in the SDP column: "Complied", "Not complied" with what is missing underneath, or that there is no SDP requirement (Summer). */
+export function sdpStatusText(s: { applicable: boolean; complied: boolean | null; missing: string | null }): { text: string; detail: string | null; tone: "good" | "bad" | "plain" } {
+  if (!s.applicable) return { text: "No SDP requirement", detail: null, tone: "plain" };
+  if (s.complied === true) return { text: "Complied", detail: null, tone: "good" };
+  if (s.complied === false) return { text: "Not complied", detail: s.missing || null, tone: "bad" };
+  return { text: "Not checked", detail: null, tone: "plain" };
+}
+/** What the "Not applied" list says in the Grades column: all passed, "2 failed · 1 INC", waiting for grades, no grades, or needs review. */
+export function gradesStatusText(g: { state: string | null; failed: number; inc: number; review: number }): { text: string; tone: "good" | "bad" | "warn" | "plain" } {
+  if (g.state === "no_grades") return { text: "No grades recorded", tone: "plain" };
+  if (g.state === "waiting") return { text: "Waiting for grades", tone: "warn" };
+  if (g.state === "review") return { text: "Needs review", tone: "warn" };
+  if (g.state !== "ready") return { text: "Not checked", tone: "plain" };
+  const parts = [g.failed > 0 ? `${g.failed} failed` : "", g.inc > 0 ? `${g.inc} INC` : "", g.review > 0 ? `${g.review} to review` : ""].filter(Boolean);
+  return parts.length ? { text: parts.join(" · "), tone: g.failed > 0 ? "bad" : "warn" } : { text: "All passed", tone: "good" };
+}
+/** The consultation referral column: nothing, or where the open referral stands. */
+export function referralStatusText(status: string | null): string | null {
+  switch (status) {
+    case null: case undefined: case "": return null;
+    case "pending": return "Referred: waiting for the consultation";
+    case "forwarded_to_division_head": return "With the Division Head";
+    case "reconsideration_requested": return "Reconsideration requested";
+    default: return "Referred";
+  }
+}
