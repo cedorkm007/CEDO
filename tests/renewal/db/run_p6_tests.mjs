@@ -7,12 +7,14 @@ import { buildDb } from "../../../localdemo/build.mjs";
 import { seedDb, seedId } from "../../../localdemo/seed.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { useLegacySlots } from "./legacy_slots.mjs";
 
 let passed = 0, failed = 0;
 const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok   ${name}`); } else { failed++; console.log(`  FAIL ${name} ${extra}`); } };
 
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+await useLegacySlots(db);   // these tests cover the original 10-minute-slot booking model (see legacy_slots.mjs)
 
 const num = n => `TEST-${String(n).padStart(4, "0")}`;
 const scholarUid = n => seedId(`scholar:${n}`);

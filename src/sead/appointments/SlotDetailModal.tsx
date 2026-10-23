@@ -47,6 +47,7 @@ export function SlotDetailModal({ slot, onClose, onChanged }: { slot: CalendarSl
       <div className="space-y-1 text-[14px] text-slate-800">
         <p className="text-[16px] font-bold text-[#062444]">{slot.scholarName}</p>
         <p>{slot.scholarIdNumber} · {formatSlot(slot.startsAt)}</p>
+        <p>{slot.typeLabel ?? "Consultation"} · {slot.minutes ?? 10} minutes</p>
         <p>{slot.termLabel ? `Renewal for ${slot.termLabel}` : ""}{slot.caseSummary ? ` · ${slot.caseSummary}` : ""}</p>
         {slot.stage && <div className="pt-1"><RenewalStageBadge stage={slot.stage} full /></div>}
         {slot.noShowCount > 0 && <p className="text-red-800 font-semibold">Missed {slot.noShowCount} earlier consultation{slot.noShowCount === 1 ? "" : "s"} for this renewal.</p>}
@@ -63,7 +64,7 @@ export function SlotDetailModal({ slot, onClose, onChanged }: { slot: CalendarSl
               {busy === "no_show" ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <UserX size={15} aria-hidden="true" />} No-show
             </button>
           </div>
-          {!started && <p className="mt-1.5 text-[13.5px] text-slate-700">No-show can be marked once the appointment time has started.</p>}
+          {!started && <p className="mt-1.5 text-[13.5px] text-slate-700">No-show can be marked once the booked morning or afternoon has started.</p>}
           <p className="mt-1.5 text-[13.5px] text-slate-700">“Attended” opens the Daily Record, already filled in from the scholar's grades.</p>
         </div>
       )}

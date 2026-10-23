@@ -31,7 +31,7 @@ export function ConsultationPanel() {
 
   return (
     <div className="space-y-5">
-      <p className="text-[14px] text-slate-700">Face-to-face consultations at the CEDO office. Each one is 10 minutes. You can change or cancel as often as you need, up to {CONSULT_CHANGE_CUTOFF_HOURS} hours before it starts.</p>
+      <p className="text-[14px] text-slate-700">Face-to-face consultations at the CEDO office. You choose what it is about, a day, and morning or afternoon. You can change or cancel as often as you need, up to {CONSULT_CHANGE_CUTOFF_HOURS} hours before it starts.</p>
 
       {needing.length === 0 && upcoming.length === 0 && (
         <div className="rounded-xl border border-[#e6ecf5] bg-[#f7f9fc] px-4 py-5 text-[14px] text-slate-800">
@@ -56,6 +56,7 @@ export function ConsultationPanel() {
                 {a.state === "attended" ? <CalendarCheck size={16} className="text-green-700" aria-hidden="true" /> : a.state === "no_show" ? <UserX size={16} className="text-red-700" aria-hidden="true" /> : <CalendarX size={16} aria-hidden="true" />}
                 <span className="font-semibold">{formatSlot(a.startsAt)}</span> with {a.staffName}
                 <span className={`rounded-full border px-2 py-0.5 text-[13px] font-bold ${a.state === "attended" ? "border-green-300 bg-green-50 text-green-900" : "border-red-300 bg-red-50 text-red-800"}`}>{a.state === "attended" ? "Attended" : "Missed"}</span>
+                {a.typeLabel && <span className="text-slate-600">· {a.typeLabel}</span>}
                 {a.termLabel && <span className="text-slate-600">· {a.termLabel}</span>}
               </li>
             ))}

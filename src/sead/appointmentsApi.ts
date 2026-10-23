@@ -13,18 +13,26 @@ const str = (v: unknown) => (v == null ? "" : String(v));
 const strOrNull = (v: unknown) => (v == null ? null : String(v));
 const num = (v: unknown) => (v == null ? 0 : Number(v));
 
-export interface AvailabilityRange { id: string; startsAt: string; endsAt: string; slotCount: number; bookedCount: number; staffId?: string; staffName?: string }
+/** One availability range: its minutes and how many of them are booked. (Before the database update the old slot counts are turned into minutes.) */
+export interface AvailabilityRange { id: string; startsAt: string; endsAt: string; minutes: number; bookedMinutes: number; staffId?: string; staffName?: string }
+const rangeFrom = (r: Row): AvailabilityRange => ({
+  id: str(r.id), startsAt: str(r.starts_at), endsAt: str(r.ends_at),
+  minutes: r.minutes != null ? num(r.minutes) : num(r.slot_count) * 10, bookedMinutes: r.booked_minutes != null ? num(r.booked_minutes) : num(r.booked_count) * 10,
+  ...(r.staff_id != null ? { staffId: str(r.staff_id), staffName: str(r.staff_name) } : {}),
+});
 
 export async function fetchMyAvailability(fromIso: string, toIso: string): Promise<{ ok: true; rows: AvailabilityRange[] } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("counseling_my_availability", { p_from: fromIso, p_to: toIso });
   if (error) return { ok: false, error: error.message };
-  return { ok: true, rows: ((data ?? []) as Row[]).map(r => ({ id: str(r.id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), slotCount: num(r.slot_count), bookedCount: num(r.booked_count) })) };
+  return { ok: true, rows: ((data ?? []) as Row[]).map(rangeFrom) };
 }
 
 export type SlotState = "open" | "booked" | "attended" | "no_show";
 export interface CalendarSlot {
   slotId: string; availabilityId: string; startsAt: string; endsAt: string; state: SlotState; scholarIdNumber: string | null; scholarName: string | null;
   recordId: string | null; termLabel: string | null; stage: RenewalStage | null; caseSummary: string | null; noShowCount: number; isSummer: boolean; hardCopy: boolean; dailyRecordId: string | null;
+  /** The consultation type and its minutes (empty on a booking made before types existed: it counts as 10 minutes). */
+  typeLabel: string | null; minutes: number | null;
   staffId?: string; staffName?: string;
 }
 
@@ -37,6 +45,7 @@ export async function fetchMySlots(fromIso: string, toIso: string): Promise<{ ok
       slotId: str(r.slot_id), availabilityId: str(r.availability_id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), state: r.state as SlotState,
       scholarIdNumber: strOrNull(r.scholar_id_number), scholarName: strOrNull(r.scholar_name), recordId: strOrNull(r.record_id), termLabel: strOrNull(r.term_label),
       stage: (r.stage ?? null) as RenewalStage | null, caseSummary: strOrNull(r.case_summary), noShowCount: num(r.no_show_count), isSummer: !!r.is_summer, hardCopy: !!r.hard_copy, dailyRecordId: strOrNull(r.daily_record_id),
+      typeLabel: strOrNull(r.type_label), minutes: r.minutes == null ? null : num(r.minutes),
     })),
   };
 }
@@ -52,7 +61,7 @@ export async function fetchCalendarStaff(): Promise<{ ok: true; rows: CalendarSt
 export async function fetchCalendarAvailability(fromIso: string, toIso: string, staffId: string | null): Promise<{ ok: true; rows: AvailabilityRange[] } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("renewal_calendar_availability", { p_from: fromIso, p_to: toIso, p_staff: staffId });
   if (error) return { ok: false, error: error.message };
-  return { ok: true, rows: ((data ?? []) as Row[]).map(r => ({ id: str(r.id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), slotCount: num(r.slot_count), bookedCount: num(r.booked_count), staffId: str(r.staff_id), staffName: str(r.staff_name) })) };
+  return { ok: true, rows: ((data ?? []) as Row[]).map(rangeFrom) };
 }
 export async function fetchCalendarSlots(fromIso: string, toIso: string, staffId: string | null): Promise<{ ok: true; rows: CalendarSlot[] } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("renewal_calendar_slots", { p_from: fromIso, p_to: toIso, p_staff: staffId });
@@ -63,6 +72,7 @@ export async function fetchCalendarSlots(fromIso: string, toIso: string, staffId
       slotId: str(r.slot_id), availabilityId: str(r.availability_id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), state: r.state as SlotState,
       scholarIdNumber: strOrNull(r.scholar_id_number), scholarName: strOrNull(r.scholar_name), recordId: strOrNull(r.record_id), termLabel: strOrNull(r.term_label),
       stage: (r.stage ?? null) as RenewalStage | null, caseSummary: strOrNull(r.case_summary), noShowCount: num(r.no_show_count), isSummer: false, hardCopy: false, dailyRecordId: null,
+      typeLabel: strOrNull(r.type_label), minutes: r.minutes == null ? null : num(r.minutes),
       staffId: str(r.staff_id), staffName: str(r.staff_name),
     })),
   };

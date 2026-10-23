@@ -159,13 +159,21 @@ export function daysLeftText(days: number | null): string {
 export const CONSULT_CHANGE_CUTOFF_HOURS = 12;
 export const SLOT_MINUTES = 10;
 
-/** "Mon, Oct 20 · 9:10 AM" in Philippine time. */
+/** A consultation is booked for a morning (AM, before noon) or an afternoon (PM), Philippine time. The database uses the same rule (_consult_half). */
+export type ConsultHalf = "AM" | "PM";
+const manilaHourFormat = new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: MANILA });
+export function consultHalf(iso: string): ConsultHalf {
+  return Number(manilaHourFormat.format(new Date(iso))) < 12 ? "AM" : "PM";
+}
+export const HALF_WORD: Record<ConsultHalf, string> = { AM: "morning (AM)", PM: "afternoon (PM)" };
+
+/** "Mon, Oct 20 · morning (AM)" in Philippine time (a booking has a day and a morning or afternoon, not an exact time). */
 export function formatSlot(startIso: string | null | undefined): string {
   if (!startIso) return "—";
   const d = new Date(startIso);
   if (Number.isNaN(d.getTime())) return "—";
   const day = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: MANILA });
-  return `${day} · ${formatTimeOnly(startIso)}`;
+  return `${day} · ${HALF_WORD[consultHalf(startIso)]}`;
 }
 /** "9:10 AM" in Philippine time. */
 export function formatTimeOnly(iso: string): string {
@@ -199,7 +207,18 @@ export function manilaInstant(dateYmd: string, hhmm: string): string | null {
   const d = new Date(`${dateYmd}T${hhmm}:00+08:00`);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
-/** How many 10-minute slots a range makes, or null when it is not a whole number of slots. */
+/** The minutes of an availability range that fall in one morning or afternoon of one Philippine day (mirrors _consult_blocks in the database). */
+export function rangeMinutesIn(startIso: string, endIso: string, ymd: string, half: ConsultHalf): number {
+  const ws = new Date(`${ymd}T${half === "AM" ? "00:00" : "12:00"}:00+08:00`).getTime();
+  const we = ws + 12 * 3600000;
+  const s = Math.max(new Date(startIso).getTime(), ws), e = Math.min(new Date(endIso).getTime(), we);
+  return e > s ? Math.round((e - s) / 60000) : 0;
+}
+/** Total minutes of a range. */
+export function rangeMinutes(startIso: string, endIso: string): number {
+  return Math.max(0, Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000));
+}
+/** How many 10-minute steps a range has, or null when it is not a whole number of steps (the staff form keeps its 10-minute steps). */
 export function slotCount(startIso: string, endIso: string): number | null {
   const mins = (new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000;
   return mins > 0 && mins % SLOT_MINUTES === 0 ? mins / SLOT_MINUTES : null;
@@ -250,12 +269,12 @@ export function consultBlockedBy(state: ConsultState): "study plan" | "INC lette
   return state === "study_plan_missing" || state === "study_plan_pending" ? "study plan" : state === "inc_letter_missing" || state === "inc_letter_pending" ? "INC letter" : null;
 }
 
-/** "Oct 20, 9:10 AM" in Philippine time (short form used in the next-step sentences). */
+/** "Oct 20, morning (AM)" in Philippine time (short form used in the next-step sentences). */
 export function formatSlotShort(startIso: string | null | undefined): string {
   if (!startIso) return "—";
   const d = new Date(startIso);
   if (Number.isNaN(d.getTime())) return "—";
-  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: MANILA })}, ${formatTimeOnly(startIso)}`;
+  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: MANILA })}, ${HALF_WORD[consultHalf(startIso)]}`;
 }
 
 /** Credits needed in each SDP category in a semester (the database's sdp_category_credit_required()). Used only to word "1 more credit". */

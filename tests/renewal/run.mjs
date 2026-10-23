@@ -319,12 +319,45 @@ test("the Scholar Renewal tool is gated by its own tag, in the same places as th
 
 
 console.log("Appointments: wording and helpers (Phase 3)");
-test("slot times are shown in Philippine time", () => {
+test("a booking is shown as a day and a morning or afternoon in Philippine time (never an exact time)", () => {
   assert.equal(R.formatTimeOnly("2026-10-20T01:10:00Z"), "9:10 AM");
-  assert.equal(R.formatSlot("2026-10-20T01:10:00Z"), "Tue, Oct 20 · 9:10 AM");
-  assert.equal(R.formatSlot("2026-10-20T17:30:00Z"), "Wed, Oct 21 · 1:30 AM", "late evening UTC is already the next day in Manila");
+  assert.equal(R.formatSlot("2026-10-20T01:10:00Z"), "Tue, Oct 20 · morning (AM)");
+  assert.equal(R.formatSlot("2026-10-20T04:00:00Z"), "Tue, Oct 20 · afternoon (PM)", "12:00 noon in Manila is the afternoon");
+  assert.equal(R.formatSlot("2026-10-20T03:59:00Z"), "Tue, Oct 20 · morning (AM)", "11:59 in Manila is still the morning");
+  assert.equal(R.formatSlot("2026-10-20T17:30:00Z"), "Wed, Oct 21 · morning (AM)", "late evening UTC is already the next day (1:30 AM) in Manila");
+  assert.equal(R.formatSlot("2026-10-20T16:00:00Z"), "Wed, Oct 21 · morning (AM)", "midnight in Manila is the morning of the new day, not 24:00");
+  assert.equal(R.formatSlotShort("2026-10-20T07:00:00Z"), "Oct 20, afternoon (PM)");
   assert.equal(R.formatSlot(null), "—");
   assert.equal(R.manilaDay("2026-10-20T17:30:00Z"), "2026-10-21");
+});
+test("the morning / afternoon rule and the minutes of a range match the database (_consult_half, _consult_blocks)", () => {
+  assert.equal(R.consultHalf("2026-10-20T03:59:59Z"), "AM");
+  assert.equal(R.consultHalf("2026-10-20T04:00:00Z"), "PM");
+  assert.equal(R.consultHalf("2026-10-20T16:00:00Z"), "AM");
+  // 9:00 to 11:00 is 120 morning minutes; 11:00 to 13:00 is 60 + 60; 12:00 to 14:00 is all afternoon
+  assert.equal(R.rangeMinutesIn("2026-10-20T01:00:00.000Z", "2026-10-20T03:00:00.000Z", "2026-10-20", "AM"), 120);
+  assert.equal(R.rangeMinutesIn("2026-10-20T01:00:00.000Z", "2026-10-20T03:00:00.000Z", "2026-10-20", "PM"), 0);
+  assert.equal(R.rangeMinutesIn("2026-10-20T03:00:00.000Z", "2026-10-20T05:00:00.000Z", "2026-10-20", "AM"), 60);
+  assert.equal(R.rangeMinutesIn("2026-10-20T03:00:00.000Z", "2026-10-20T05:00:00.000Z", "2026-10-20", "PM"), 60);
+  assert.equal(R.rangeMinutesIn("2026-10-20T04:00:00.000Z", "2026-10-20T06:00:00.000Z", "2026-10-20", "PM"), 120);
+  assert.equal(R.rangeMinutesIn("2026-10-20T01:00:00.000Z", "2026-10-20T03:00:00.000Z", "2026-10-21", "AM"), 0, "another day");
+  assert.equal(R.rangeMinutes("2026-10-20T01:00:00.000Z", "2026-10-20T03:00:00.000Z"), 120);
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_consultation_types_b_booking.sql"), "utf8");
+  assert.match(sql, /< 12 then 'AM' else 'PM'/, "the database splits morning and afternoon at 12:00 noon Philippine time");
+  assert.match(sql, /\('AM', interval '0 hours', interval '12 hours'\), \('PM', interval '12 hours', interval '24 hours'\)/);
+});
+test("the consultation types and their minutes are what the owner set", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_consultation_types_b_booking.sql"), "utf8");
+  for (const row of ["'inc', 'INC (incomplete)', 8", "'ip', 'IP (in progress)', 5", "'gwa', 'GWA (did not reach the minimum threshold)', 5", "'one_failed', '1 Failed', 10",
+                     "'two_plus_failed', '2 or more Failed', 15", "'personal', 'Personal concern', 25", "'ethical', 'Ethical concern (e.g., bullying)', 20"]) assert.ok(sql.includes(row), row);
+});
+test("the scholar's booking screen asks the database for the types and the open mornings and afternoons, and falls back to the old picker when the update has not been run", () => {
+  const api = fs.readFileSync(path.join(root, "src/scholar/renewalApi.ts"), "utf8");
+  for (const fn of ["renewal_consult_types", "renewal_open_blocks", "renewal_book_consultation", "renewal_reschedule_consultation"]) assert.ok(api.includes(`"${fn}"`), fn);
+  assert.match(api, /PGRST202/, "a missing function is recognised");
+  const section = fs.readFileSync(path.join(root, "src/scholar/components/dashboard/ConsultationSection.tsx"), "utf8");
+  assert.match(section, /ConsultationBlockPicker/);
+  assert.match(section, /legacy/, "the old picker stays as the fallback");
 });
 test("the 12-hour rule: 13 hours before can still change, 11 hours cannot, exactly 12 can", () => {
   const now = new Date("2026-10-20T00:00:00Z");
@@ -356,7 +389,7 @@ test("the staff form builds Manila instants and counts whole 10-minute slots", (
 test("next steps with a booking, without one, after a no-show, and once the consultation is done", () => {
   const ev = { required_documents: [], sdp: { applicable: true, complied: true, missing: null }, grades: { reason: "" } };
   const booked = R.scholarNextSteps("needs_study_plan_consultation", ev, { consultNeeded: true, booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } });
-  assert.match(booked.join(" "), /Come to your face-to-face consultation on Oct 20, 9:10 AM, with Ms\. Cruz/);
+  assert.match(booked.join(" "), /Come to your face-to-face consultation on Oct 20, morning [(]AM[)], with Ms\. Cruz/);
   assert.match(R.scholarNextSteps("needs_study_plan_consultation", ev, { consultNeeded: true })[0], /Book your consultation/);
   assert.match(R.scholarNextSteps("needs_study_plan_consultation", ev, { consultNeeded: true, noShow: true })[0], /You missed your consultation/);
   const summer = R.scholarNextSteps("summer_requirements", ev, { consultNeeded: true, isSummer: true, booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } });
@@ -417,7 +450,7 @@ test("the example sentences from the owner's list, word for word", () => {
   assert.deepEqual(R.scholarNextSteps("needs_inc_letter_consultation", ev([{ kind: "inc_letter", label: "INC letter from your dean", satisfied: false, approved: false }]), { consultState: "inc_letter_missing" }).slice(0, 1), ["Upload the INC letter from your dean."]);
   assert.deepEqual(R.scholarNextSteps("summer_requirements", ev([{ kind: "prospectus", label: "Prospectus", satisfied: false }]), { consultState: "ok" }).slice(0, 1), ["Upload your prospectus."]);
   assert.match(R.scholarNextSteps("summer_requirements", ev([{ kind: "prospectus", label: "Prospectus", satisfied: true }]), { consultState: "ok" }).join(" "), /Book your consultation/);
-  assert.match(R.scholarNextSteps("summer_requirements", ev([{ kind: "prospectus", label: "Prospectus", satisfied: true }]), { consultState: "ok", isSummer: true, booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } })[0], /^Bring your prospectus hard copy to your consultation on Oct 20, 9:10 AM/);
+  assert.match(R.scholarNextSteps("summer_requirements", ev([{ kind: "prospectus", label: "Prospectus", satisfied: true }]), { consultState: "ok", isSummer: true, booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } })[0], /^Bring your prospectus hard copy to your consultation on Oct 20, morning [(]AM[)]/);
   const now = new Date();
   const dl = new Date(now.getTime() + 12 * 86400000).toISOString().slice(0, 10);
   assert.match(R.scholarNextSteps("inc_waiting_compliance", ev([]), { incDeadlines: [{ subject: "Math", deadline: dl }] })[0], /^Complete your INC in Math by .+: (11|12|13) days left\.$/);
@@ -484,7 +517,7 @@ test("the tile chips and the home banner say the most important thing first", ()
   const bookedAndWaiting = win(rec("needs_study_plan_consultation", { required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: true, approved: true }] }), { booking: { slotId: "s", startsAt: "2026-10-20T01:10:00Z", endsAt: "2026-10-20T01:20:00Z", staffName: "Ms. Cruz", canChange: true }, consultState: "ok", consultNeeded: true });
   assert.equal(SUM.scholarActsNow(bookedAndWaiting), false, "a booked consultation is not something to do right now");
   assert.equal(SUM.renewalAttention([bookedAndWaiting]).actionNeeded, false);
-  assert.match(SUM.renewalAttention([bookedAndWaiting]).headline, /^Come to your face-to-face consultation on Oct 20, 9:10 AM/);
+  assert.match(SUM.renewalAttention([bookedAndWaiting]).headline, /^Come to your face-to-face consultation on Oct 20, morning [(]AM[)]/);
   assert.equal(SUM.scholarActsNow(win(rec("needs_study_plan_consultation", { required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: true, approved: true }] }), { consultState: "ok", consultNeeded: true })), true, "approved plan, nothing booked yet: book");
   assert.equal(SUM.scholarActsNow(win(rec("needs_study_plan_consultation", { required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: true, approved: false }] }), { consultState: "study_plan_pending" })), false, "waiting for approval is not an action");
   assert.equal(SUM.scholarActsNow(win(rec("inc_waiting_compliance", { required_documents: [] }))), true, "complete your INC");
@@ -494,7 +527,7 @@ test("the tile chips and the home banner say the most important thing first", ()
   assert.equal(SUM.renewalAttention([]), null);
   assert.equal(SUM.renewalTileChip([]), null);
   const booked = win(rec("needs_study_plan_consultation", { required_documents: [] }), { booking: { slotId: "s", startsAt: "2026-10-20T01:10:00Z", endsAt: "2026-10-20T01:20:00Z", staffName: "Ms. Cruz", canChange: true }, consultState: "ok", consultNeeded: true });
-  assert.deepEqual(SUM.consultationTileChip([booked]), { text: "Booked: Oct 20, 9:10 AM", tone: "done" });
+  assert.deepEqual(SUM.consultationTileChip([booked]), { text: "Booked: Oct 20, morning (AM)", tone: "done" });
   assert.deepEqual(SUM.consultationTileChip([win(rec("needs_study_plan_consultation", {}), { consultState: "ok", consultNeeded: true })]), { text: "Book your consultation", tone: "action" });
   assert.deepEqual(SUM.consultationTileChip([win(rec("needs_study_plan_consultation", {}), { consultState: "study_plan_pending" })]), { text: "Waiting for approval", tone: "waiting" });
   assert.equal(SUM.consultationTileChip([waiting]), null);
@@ -924,7 +957,7 @@ test("the appointment screens only ask the database (no direct writes to slots, 
 test("the Appointments subtab sits inside the existing Consultation Tool (same tag), and every function the website calls exists in the migration", () => {
   const page = fs.readFileSync(path.join(root, "src/sead/ScholarCounselingToolPage.tsx"), "utf8");
   assert.match(page, /key: "appointments"/);
-  const sql = ["p2_application", "p3_appointments", "p4_tracker", "p8b_test_windows"].map(n => fs.readFileSync(path.join(root, "supabase_migration_renewal_" + n + ".sql"), "utf8")).join("\n");
+  const sql = [...["p2_application", "p3_appointments", "p4_tracker", "p8b_test_windows"].map(n => "supabase_migration_renewal_" + n + ".sql"), "supabase_migration_consultation_types_b_booking.sql"].map(n => fs.readFileSync(path.join(root, n), "utf8")).join("\n");
   const called = new Set();
   for (const p of ["src/sead/appointmentsApi.ts", "src/scholar/renewalApi.ts", "src/sead/renewalApi.ts"]) for (const m of fs.readFileSync(path.join(root, p), "utf8").matchAll(/rpc\("([a-z_]+)"/g)) called.add(m[1]);
   const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql));
