@@ -104,6 +104,12 @@ const p1 = fs.readFileSync(R + "supabase_migration_renewal_p1_foundations.sql", 
 await db.exec(p1);
 await db.exec(p1);
 check("Phase 1 migration runs and re-runs without error", true);
+// The school's own non-numeric marks (F, D/F...): this harness has no Phase 2 file, so the renewal-viewer helper its policy asks about is a stand-in.
+await db.exec("create or replace function public.can_view_renewals() returns boolean language sql stable as $$ select false $$;");
+const marksSql = fs.readFileSync(R + "supabase_migration_school_non_numeric_marks.sql", "utf8");
+await db.exec(marksSql);
+await db.exec(marksSql);
+check("the non-numeric marks migration runs and re-runs without error", true);
 await db.exec("grant usage on schema public to authenticated, anon; grant all on all tables in schema public to authenticated; grant select on all tables in schema public to anon;");
 
 const cases = JSON.parse(fs.readFileSync(R + "tests/renewal/outcome_cases.json", "utf8"));
@@ -171,7 +177,10 @@ for (const [name, s] of Object.entries(cases.schools)) {
   outcomeSchools[name] = id;
   await db.query("insert into schools(id, name) values ($1, $2)", [id, "OUTCOME " + name]);
   await db.query("insert into school_grading_configs(school_id, scale_min, scale_max, direction, uses_letter_grades, passing_mark) values ($1,$2,$3,$4,$5,$6)", [id, s.scaleMin, s.scaleMax, s.direction, s.usesLetterGrades, s.passingMark]);
-  for (const l of s.letters) await db.query("insert into school_letter_grades(school_id, letter, numeric_value) values ($1,$2,$3)", [id, l.letter, l.numericValue]);
+  for (const l of s.letters) {
+    if (l.outcome) await db.query("insert into school_marks(school_id, mark, meaning, outcome) values ($1,$2,$3,$4)", [id, l.letter, l.meaning, l.outcome]);   // the school's own non-numeric marks
+    else await db.query("insert into school_letter_grades(school_id, letter, numeric_value) values ($1,$2,$3)", [id, l.letter, l.numericValue]);
+  }
 }
 const wrong = [];
 for (const c of cases.cases) {

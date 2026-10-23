@@ -9,7 +9,15 @@
         { "letter": "D", "numericValue": 4 }, { "letter": "F", "numericValue": 5 },
         { "letter": "W", "numericValue": null }, { "letter": "INC", "numericValue": null }
       ] },
-    "nomark": { "scaleMin": 1, "scaleMax": 5, "direction": "lower_is_better", "usesLetterGrades": false, "passingMark": null, "letters": [] }
+    "nomark": { "scaleMin": 1, "scaleMax": 5, "direction": "lower_is_better", "usesLetterGrades": false, "passingMark": null, "letters": [] },
+    "marks": { "scaleMin": 1, "scaleMax": 5, "direction": "lower_is_better", "usesLetterGrades": false, "passingMark": 3,
+      "letters": [ { "letter": "F", "numericValue": null, "outcome": "failed", "meaning": "Failed" }, { "letter": "D/F", "numericValue": null, "outcome": "failed", "meaning": "Dropped, failed" },
+        { "letter": "P", "numericValue": null, "outcome": "passed", "meaning": "Passed (no number)" }, { "letter": "NG", "numericValue": null, "outcome": "review", "meaning": "No grade" },
+        { "letter": "IP", "numericValue": null, "outcome": "incomplete", "meaning": "In progress" } ] },
+    "marksnomark": { "scaleMin": 1, "scaleMax": 5, "direction": "lower_is_better", "usesLetterGrades": false, "passingMark": null,
+      "letters": [ { "letter": "F", "numericValue": null, "outcome": "failed", "meaning": "Failed" }, { "letter": "D/F", "numericValue": null, "outcome": "failed", "meaning": "Dropped, failed" },
+        { "letter": "P", "numericValue": null, "outcome": "passed", "meaning": "Passed (no number)" }, { "letter": "NG", "numericValue": null, "outcome": "review", "meaning": "No grade" },
+        { "letter": "IP", "numericValue": null, "outcome": "incomplete", "meaning": "In progress" } ] }
   },
   "cases": [
     { "school": "lower", "grade": "", "outcome": "ungraded" },
@@ -49,6 +57,23 @@
     { "school": "nomark", "grade": "W", "outcome": "no_passing_mark" },
     { "school": "nomark", "grade": "INC", "outcome": "inc" },
     { "school": "nomark", "grade": "DRP", "outcome": "drp" },
-    { "school": "nomark", "grade": "", "outcome": "ungraded" }
+    { "school": "nomark", "grade": "", "outcome": "ungraded" },
+    { "school": "marks", "grade": "F", "outcome": "failed" },
+    { "school": "marks", "grade": "f", "outcome": "failed" },
+    { "school": "marks", "grade": " D/F ", "outcome": "failed" },
+    { "school": "marks", "grade": "P", "outcome": "passed" },
+    { "school": "marks", "grade": "NG", "outcome": "review" },
+    { "school": "marks", "grade": "IP", "outcome": "inc" },
+    { "school": "marks", "grade": "ip", "outcome": "inc" },
+    { "school": "marks", "grade": "INC", "outcome": "inc" },
+    { "school": "marks", "grade": "DRP", "outcome": "drp" },
+    { "school": "marks", "grade": "W", "outcome": "review" },
+    { "school": "marks", "grade": "2.0", "outcome": "passed" },
+    { "school": "marks", "grade": "3.5", "outcome": "failed" },
+    { "school": "marksnomark", "grade": "F", "outcome": "failed" },
+    { "school": "marksnomark", "grade": "P", "outcome": "passed" },
+    { "school": "marksnomark", "grade": "IP", "outcome": "inc" },
+    { "school": "marksnomark", "grade": "2.0", "outcome": "no_passing_mark" },
+    { "school": "marksnomark", "grade": "W", "outcome": "no_passing_mark" }
   ]
 }

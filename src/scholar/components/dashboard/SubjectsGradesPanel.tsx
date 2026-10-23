@@ -1,7 +1,8 @@
+import { MarksGuide } from "@/app/components/MarksGuide";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, BookMarked, Info } from "lucide-react";
 import { SectionCard } from "./SectionCard";
-import { fetchMyGradingConfig, fetchMyLetterGrades, fetchCurrentGradingPeriod } from "../../scholarApi";
+import { fetchMyGradingConfig, fetchMyLetterGrades, fetchMySchoolMarks, fetchCurrentGradingPeriod } from "../../scholarApi";
 import { PeriodSelect } from "@/app/components/PeriodSelect";
 import { ALL_PERIODS_KEY, normalizeTerm, periodKey, periodOptions, termLabel, type AcademicPeriod, type PeriodRef } from "@/lib/academicPeriods";
 import { computeGwa, formatGwa, type GradingConfig, type LetterGrade } from "@/lib/gwa";
@@ -24,7 +25,7 @@ export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
   useEffect(() => {
     fetchMyGradingConfig().then(c => {
       setConfig(c);
-      if (c?.usesLetterGrades) fetchMyLetterGrades().then(setLetterGrades);
+      Promise.all([c?.usesLetterGrades ? fetchMyLetterGrades() : Promise.resolve([]), fetchMySchoolMarks()]).then(([table, marks]) => setLetterGrades([...table, ...marks]));
     });
     fetchCurrentGradingPeriod().then(setCurrent);
   }, []);
@@ -79,6 +80,7 @@ export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
       ) : (
         <>
         <PeriodSelect label="Period" options={options} value={effectiveKey} onChange={setSelectedKey} className="mb-4" />
+        <MarksGuide marks={letterGrades} className="mb-3" />
         {groups.length === 0 && (
           <p className="text-sm text-slate-600 flex items-center gap-2 mb-3">
             <Info size={14} /> No subjects or grades for this period yet. Pick another period, or "All periods".

@@ -3,7 +3,7 @@ import { X, Upload, AlertTriangle, CheckCircle2, UploadCloud, Download, XCircle,
 import { downloadCsv } from "@/sead/csvUtils";
 import { downloadGradeTemplate } from "../templateDownload";
 import { PeriodSelect } from "@/app/components/PeriodSelect";
-import { fetchGradingConfig, fetchLetterGrades, fetchGradesForScholars, bulkUpsertGrades } from "../schoolApi";
+import { fetchGradingConfig, fetchLetterGrades, fetchSchoolMarksAsLetters, fetchGradesForScholars, bulkUpsertGrades } from "../schoolApi";
 import {
   parseGradeUpload, countRows, rowsToSave, summaryText, buildErrorReport,
   type ParseResult, type PreviewRow, type SaveOutcome,
@@ -93,7 +93,7 @@ export function BulkGradeUploadModal({
       // Fresh copies of what is already saved and of the school's scale, so warnings and range checks are current.
       const [existing, config] = await Promise.all([fetchGradesForScholars(scholars.map(s => s.scholarIdNumber), periodRefOf(period)), fetchGradingConfig()]);
       if (!existing.ok) { setProblem(`Couldn't compare the file with your saved grades: ${existing.error}`); setBusy(""); return; }
-      const letters = config?.usesLetterGrades ? await fetchLetterGrades(schoolId) : [];
+      const letters = [...(config?.usesLetterGrades ? await fetchLetterGrades(schoolId) : []), ...(await fetchSchoolMarksAsLetters(schoolId))];
       const result = parseGradeUpload(text, {
         period: periodRefOf(period), periodStatus: period.status, scholars, existing: existing.rows, config, letters,
       });

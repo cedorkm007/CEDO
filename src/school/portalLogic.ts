@@ -181,7 +181,8 @@ export function breadcrumbs(drill: Drill): Crumb[] {
 export function gradeInputHint(config: GradingConfig | null, letters: LetterGrade[]): string {
   if (!config) return "Set up your grading scale first.";
   const range = `${config.scaleMin} to ${config.scaleMax}`;
-  const letterList = config.usesLetterGrades ? letters.map(l => l.letter.trim()).filter(Boolean) : [];
+  // The letter table counts only when the school uses letter grades; the school's own other marks (F, D/F...) are always accepted.
+  const letterList = letters.filter(l => config.usesLetterGrades || l.outcome).map(l => l.letter.trim()).filter(Boolean);
   // INC and DRP are reserved marks every school may enter, so they are always listed (once).
   const accepted = [...letterList, ...["INC", "DRP"].filter(m => !letterList.some(l => l.toUpperCase() === m))];
   return `Allowed: ${range}, or ${accepted.join(", ")}`;

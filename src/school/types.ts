@@ -23,7 +23,19 @@ export interface GradingConfig {
 export interface LetterGrade {
   letter: string;
   numericValue: number | null;
+  /** Set on a school's own non-numeric mark (F, D/F...): what it means for renewal. */
+  outcome?: "passed" | "failed" | "incomplete" | "review";
+  /** What the mark stands for. */
+  meaning?: string;
 }
+
+/** One of a school's own non-numeric marks (F, D/F...): what it stands for and what it means for renewal. */
+export type MarkOutcome = "passed" | "failed" | "incomplete" | "review";
+export interface SchoolMark { mark: string; meaning: string; outcome: MarkOutcome }
+export const MARK_OUTCOME_LABEL: Record<MarkOutcome, string> = { passed: "Passed", failed: "Failed", incomplete: "Incomplete (like INC)", review: "Needs review" };
+
+/** A mark in the shape the grade helpers read (the letter-table shape, with no number, so it never enters the GWA). */
+export const markAsLetter = (m: SchoolMark): LetterGrade => ({ letter: m.mark, numericValue: null, outcome: m.outcome, meaning: m.meaning });
 
 export interface SchoolScholarRow {
   scholarIdNumber: string;
