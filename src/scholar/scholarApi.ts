@@ -135,6 +135,13 @@ export async function fetchMyLetterGrades(): Promise<{ letter: string; numericVa
   return (data as Record<string, unknown>[]).map(r => ({ letter: String(r.letter), numericValue: r.numeric_value == null ? null : Number(r.numeric_value) }));
 }
 
+/** The non-numeric marks (F, D/F...) the scholar's own school uses, with what they stand for. Empty until the database update has been run. */
+export async function fetchMySchoolMarks(): Promise<{ letter: string; numericValue: null; outcome: "passed" | "failed" | "incomplete" | "review"; meaning: string }[]> {
+  const { data, error } = await supabase.rpc("get_scholar_school_marks");
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({ letter: String(r.mark), numericValue: null, outcome: r.outcome as "passed" | "failed" | "incomplete" | "review", meaning: String(r.meaning ?? "") }));
+}
+
 /** The Current Grading Period CEDO has set — the default period shown on the Subjects and Grades panel. Blank strings when none is set. */
 export async function fetchCurrentGradingPeriod(): Promise<{ schoolYear: string; semester: string }> {
   const { data, error } = await supabase.rpc("get_current_grading_period").maybeSingle();

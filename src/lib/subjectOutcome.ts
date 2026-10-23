@@ -11,6 +11,7 @@
 //   * blank                         -> ungraded
 //   * INC (any case)                -> inc   (tracked separately; NOT failed by itself)
 //   * DRP (any case)                -> drp   (counts as FAILED)
+//   * a school's own mark (F, D/F...) -> what the school said it means: passed / failed / incomplete (= inc) / review
 //   * no passing mark set           -> no_passing_mark (nothing is guessed)
 //   * a grade or letter value worse than the passing mark -> failed; equal to it passes
 //   * a mark that cannot be read (e.g. "W") -> review (the evaluator looks at it)
@@ -44,6 +45,8 @@ export function classifyGrade(grade: string, config: GradingConfig | null | unde
   const reserved = reservedMark(g);
   if (reserved === "INC") return "inc";
   if (reserved === "DRP") return "drp";
+  const own = letters.find(l => l.outcome && l.letter.trim().toLowerCase() === g.toLowerCase());
+  if (own?.outcome) return own.outcome === "incomplete" ? "inc" : own.outcome;
   if (!config || config.passingMark == null) return "no_passing_mark";
 
   let value: number | null = null;

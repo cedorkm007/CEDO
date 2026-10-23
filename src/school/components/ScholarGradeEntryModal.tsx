@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { X, Plus, Trash2, Save, CheckCircle2, AlertTriangle, Lock } from "lucide-react";
 import { fetchScholarGradesChecked, upsertGrade, deleteGradeRows } from "../schoolApi";
 import { validateEntryRows, findUnconfirmed, savedMessage, periodLabel, type SavedRow } from "../gradeSaveLogic";
+import { MarksGuide } from "@/app/components/MarksGuide";
 import { gwaDetail, formatGwa, needsUnits, type LetterGrade } from "@/lib/gwa";
 import { validateGradeValue } from "../bulkGradeLogic";
 import { gradeInputHint } from "../portalLogic";
@@ -293,6 +294,7 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
                 })}
               </div>
               {rows.length > 0 && <p className="text-[14px] text-slate-700 mb-2">{allowedHint}. Leave the grade blank until it is available.</p>}
+              {rows.length > 0 && <MarksGuide marks={letterGrades} className="mb-3" />}
               {canEdit && !locked && (
                 <button onClick={addRow} className="flex items-center gap-1 text-[14px] font-semibold text-[#0077b6]">
                   <Plus size={13} /> Add subject

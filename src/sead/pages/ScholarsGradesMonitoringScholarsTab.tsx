@@ -3,7 +3,7 @@ import { Search, Paperclip } from "lucide-react";
 import { Modal } from "../components/Modal";
 import { ScholarGradesTable } from "../components/ScholarGradesTable";
 import {
-  fetchScholarGradesForStaff, fetchScholarGradingConfigForStaff, fetchScholarLetterGradesForStaff,
+  fetchScholarGradesForStaff, fetchScholarGradingConfigForStaff, fetchScholarLetterGradesForStaff, fetchScholarSchoolMarksForStaff,
   type MonitoringScholarRow, type LetterGrade, type GradingPeriod, type GradingConfig,
 } from "../scholarsGradesMonitoringApi";
 import {
@@ -268,10 +268,11 @@ function ScholarGradesModal({ scholar, period, periodId, onClose }: { scholar: M
       fetchScholarGradesForStaff(scholar.scholarIdNumber),
       fetchScholarGradingConfigForStaff(scholar.scholarIdNumber),
       fetchScholarLetterGradesForStaff(scholar.scholarIdNumber),
-    ]).then(([g, config, letters]) => {
+      fetchScholarSchoolMarksForStaff(scholar.scholarIdNumber),
+    ]).then(([g, config, letters, marks]) => {
       setGrades(g);
       setConfig(config);
-      setLetterGrades(config?.usesLetterGrades ? letters : []);
+      setLetterGrades([...(config?.usesLetterGrades ? letters : []), ...marks]);
       setLoading(false);
     });
   }, [scholar.scholarIdNumber]);

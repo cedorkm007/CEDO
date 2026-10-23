@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchMySubmission, fetchMyCorrections } from "./submissionApi";
 import { buildLockInfo, type CorrectionRequest, type GradeLockInfo, type Submission } from "./submissionLogic";
-import { fetchOwnScholars, fetchCurrentGradingPeriod, fetchGradingConfig, fetchLetterGrades, fetchGradesForScholars } from "./schoolApi";
+import { fetchOwnScholars, fetchCurrentGradingPeriod, fetchGradingConfig, fetchLetterGrades, fetchSchoolMarksAsLetters, fetchGradesForScholars } from "./schoolApi";
 import { fetchAcademicPeriods } from "@/lib/academicPeriodsApi";
 import { groupByScholar, summarizeScholarGrades } from "./gradeSaveLogic";
 import { countOutcomes } from "@/lib/subjectOutcome";
@@ -108,10 +108,10 @@ export function useSchoolData(schoolId: string): SchoolData {
     let cancelled = false;
     (async () => {
       const c = await fetchGradingConfig();
-      const l = c?.usesLetterGrades ? await fetchLetterGrades(schoolId) : [];
+      const [table, marks] = await Promise.all([c?.usesLetterGrades ? fetchLetterGrades(schoolId) : Promise.resolve([] as LetterGrade[]), fetchSchoolMarksAsLetters(schoolId)]);
       if (cancelled) return;
       setConfig(c);
-      setLetters(l);
+      setLetters([...table, ...marks]);
       setConfigLoaded(true);
     })();
     return () => { cancelled = true; };

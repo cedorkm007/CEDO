@@ -6,7 +6,8 @@
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
 import { validateNewPassword } from "@/lib/passwordPolicy";
-import type { SchoolProfile, GradingConfig, LetterGrade, SchoolScholarRow, SchoolSubjectGrade } from "./types";
+import type { SchoolProfile, GradingConfig, LetterGrade, SchoolMark, MarkOutcome, SchoolScholarRow, SchoolSubjectGrade } from "./types";
+import { markAsLetter } from "./types";
 import type { GradingPeriod } from "@/sead/scholarsGradesMonitoringApi";
 
 /**
@@ -61,6 +62,22 @@ export async function fetchLetterGrades(schoolId: string): Promise<LetterGrade[]
   const { data, error } = await supabase.from("school_letter_grades").select("letter, numeric_value").eq("school_id", schoolId).order("letter");
   if (error || !data) return [];
   return data.map(r => ({ letter: String(r.letter), numericValue: r.numeric_value == null ? null : Number(r.numeric_value) }));
+}
+
+/** The school's own non-numeric marks (F, D/F...) and what they stand for. */
+export async function fetchSchoolMarks(schoolId: string): Promise<SchoolMark[]> {
+  const { data, error } = await supabase.from("school_marks").select("mark, meaning, outcome").eq("school_id", schoolId).order("mark");
+  if (error || !data) return [];
+  return data.map(r => ({ mark: String(r.mark), meaning: String(r.meaning ?? ""), outcome: r.outcome as MarkOutcome }));
+}
+/** The same marks in the shape the grade helpers read. */
+export const fetchSchoolMarksAsLetters = async (schoolId: string): Promise<LetterGrade[]> => (await fetchSchoolMarks(schoolId)).map(markAsLetter);
+
+export async function saveSchoolMarks(marks: SchoolMark[]): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("set_school_marks", { p_marks: marks.map(m => ({ mark: m.mark, meaning: m.meaning, outcome: m.outcome })) });
+  if (!error) return { ok: true };
+  const missing = error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "");
+  return { ok: false, error: missing ? "Saving other marks needs the latest database update. Please ask CEDO to run it." : error.message };
 }
 
 export async function saveGradingConfig(config: GradingConfig): Promise<{ ok: boolean; error?: string }> {

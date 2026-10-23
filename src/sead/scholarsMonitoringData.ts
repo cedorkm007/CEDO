@@ -86,10 +86,18 @@ export interface SchoolSetup {
 
 /** Every school's grading scale, letters and retention requirement, keyed by school id (staff can read them all). */
 export async function fetchSchoolSetups(): Promise<Map<string, SchoolSetup>> {
-  const [cfg, lets] = await Promise.all([
+  const [cfg, lets, marksRes] = await Promise.all([
     supabase.from("school_grading_configs").select("school_id, scale_min, scale_max, direction, uses_letter_grades, retention_threshold, passing_mark"),
     supabase.from("school_letter_grades").select("school_id, letter, numeric_value"),
+    supabase.from("school_marks").select("school_id, mark, meaning, outcome"),   // empty until the "other marks" database update has been run
   ]);
+  const marks = new Map<string, LetterGrade[]>();
+  for (const r of marksRes.data ?? []) {
+    const id = String(r.school_id);
+    const list = marks.get(id) ?? [];
+    list.push({ letter: String(r.mark), numericValue: null, outcome: r.outcome as LetterGrade["outcome"], meaning: String(r.meaning ?? "") });
+    marks.set(id, list);
+  }
   const letters = new Map<string, LetterGrade[]>();
   for (const r of lets.data ?? []) {
     const id = String(r.school_id);
@@ -107,7 +115,7 @@ export async function fetchSchoolSetups(): Promise<Map<string, SchoolSetup>> {
         retentionThreshold: r.retention_threshold == null ? null : Number(r.retention_threshold),
         passingMark: r.passing_mark == null ? null : Number(r.passing_mark),
       },
-      letters: usesLetterGrades ? letters.get(id) ?? [] : [],
+      letters: [...(usesLetterGrades ? letters.get(id) ?? [] : []), ...(marks.get(id) ?? [])],
     });
   }
   return out;

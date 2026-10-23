@@ -76,9 +76,9 @@ export function validateGradeValue(grade: string, config: GradingConfig, letters
     if (n >= config.scaleMin && n <= config.scaleMax) return null;
     return `Grade ${g} is outside your grading scale (${range}).`;
   }
-  if (config.usesLetterGrades && letters.some(l => l.letter.trim().toLowerCase() === g.toLowerCase())) return null;
+  if (letters.some(l => (config.usesLetterGrades || l.outcome) && l.letter.trim().toLowerCase() === g.toLowerCase())) return null;
   if (/^\d+,\d+$/.test(g)) return `Grade "${g}" uses a comma — write it with a decimal point (for example ${g.replace(",", ".")}).`;
-  return `Grade "${g}" is not on your grading scale (${range})${config.usesLetterGrades ? " or in your letter-grade table" : ""}.`;
+  return `Grade "${g}" is not on your grading scale (${range})${config.usesLetterGrades ? " or in your letter-grade table" : ""}${letters.some(l => l.outcome) ? " or in your list of other marks" : ""}.`;
 }
 
 // ── Parsing + validation ─────────────────────────────────────

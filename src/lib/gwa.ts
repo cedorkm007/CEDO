@@ -19,9 +19,16 @@ export interface GradingConfig {
   passingMark?: number | null;
 }
 
+/** What a school's own non-numeric mark (F, D/F, W...) means for renewal. */
+export type MarkOutcome = "passed" | "failed" | "incomplete" | "review";
+
 export interface LetterGrade {
   letter: string;
   numericValue: number | null;
+  /** Set on a school's own non-numeric mark (the "other marks" list): what it means for renewal. Letter-table entries leave it empty. */
+  outcome?: MarkOutcome;
+  /** What the mark stands for, in the school's words (only on the school's own marks). */
+  meaning?: string;
 }
 
 export interface GradeLike {

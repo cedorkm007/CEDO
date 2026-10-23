@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2, Save, Info } from "lucide-react";
-import { fetchGradingConfig, fetchLetterGrades, saveGradingConfig, saveLetterGrades } from "../schoolApi";
+import { fetchGradingConfig, fetchLetterGrades, fetchSchoolMarks, saveGradingConfig, saveLetterGrades, saveSchoolMarks } from "../schoolApi";
 import { fieldClass, focusRing } from "./portalParts";
 import { atRiskExplanation, retentionSentence } from "@/lib/standing";
-import type { GradingConfig, LetterGrade } from "../types";
+import { MARK_OUTCOME_LABEL, markAsLetter, type GradingConfig, type LetterGrade, type MarkOutcome, type SchoolMark } from "../types";
+import { MarksGuide } from "@/app/components/MarksGuide";
 
 const DEFAULT_CONFIG: GradingConfig = { scaleMin: 1, scaleMax: 5, direction: "lower_is_better", usesLetterGrades: false, retentionThreshold: null, passingMark: null };
 
@@ -29,6 +30,8 @@ function parseThreshold(text: string): number | null {
 export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; onSaved?: () => void }) {
   const [config, setConfig] = useState<GradingConfig>(DEFAULT_CONFIG);
   const [letters, setLetters] = useState<LetterGrade[]>([]);
+  const [marks, setMarks] = useState<SchoolMark[]>([]);
+  const [savedMarkCount, setSavedMarkCount] = useState(0);   // marks stored today: when there are none and none are added, nothing is sent (so saving still works before the database update has been run)
   const [alreadySaved, setAlreadySaved] = useState(true);
   const [retentionText, setRetentionText] = useState("");
   const [passingText, setPassingText] = useState("");
@@ -38,7 +41,9 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
   const [error, setError] = useState("");
 
   useEffect(() => {
-    Promise.all([fetchGradingConfig(), fetchLetterGrades(schoolId)]).then(([c, l]) => {
+    Promise.all([fetchGradingConfig(), fetchLetterGrades(schoolId), fetchSchoolMarks(schoolId)]).then(([c, l, m]) => {
+      setMarks(m);
+      setSavedMarkCount(m.length);
       if (c) {
         setConfig(c);
         setRetentionText(c.retentionThreshold == null ? "" : String(c.retentionThreshold));
@@ -56,9 +61,23 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
       : l));
   }
 
+  function updateMark(index: number, patch: Partial<SchoolMark>) {
+    setMarks(prev => prev.map((m, i) => (i === index ? { ...m, ...patch } : m)));
+  }
+
   async function handleSave() {
     setError("");
     setSaved(false);
+    // The school's own other marks: a row needs all three parts, and a mark is not a number, INC or DRP, and not listed twice.
+    const filled = marks.filter(m => m.mark.trim() || m.meaning.trim());
+    for (const m of filled) {
+      if (!m.mark.trim()) { setError("Every other mark needs the mark itself (for example F)."); return; }
+      if (/^\d+([.,]\d+)?$/.test(m.mark.trim())) { setError(`"${m.mark.trim()}" is a number. Numbers are graded on your scale; add only letters or codes here.`); return; }
+      if (["INC", "DRP"].includes(m.mark.trim().toUpperCase())) { setError("INC and DRP are built in for every school; they do not need to be added."); return; }
+      if (!m.meaning.trim()) { setError(`Say what "${m.mark.trim()}" stands for.`); return; }
+    }
+    const keys = filled.map(m => m.mark.trim().toLowerCase());
+    if (new Set(keys).size !== keys.length) { setError("A mark is listed twice in the other marks."); return; }
     if (!(config.scaleMax > config.scaleMin)) { setError("The scale maximum must be higher than the minimum."); return; }
     const threshold = parseThreshold(retentionText);
     if (threshold !== null && (Number.isNaN(threshold) || threshold < config.scaleMin || threshold > config.scaleMax)) {
@@ -77,6 +96,12 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
       const letterResult = await saveLetterGrades(letters.filter(l => l.letter.trim()));
       if (!letterResult.ok) { setSaving(false); setError(letterResult.error || "Couldn't save the letter grades."); return; }
     }
+    if (filled.length > 0 || savedMarkCount > 0) {
+      const markResult = await saveSchoolMarks(filled.map(m => ({ mark: m.mark.trim(), meaning: m.meaning.trim(), outcome: m.outcome })));
+      if (!markResult.ok) { setSaving(false); setError(markResult.error || "Couldn't save the other marks."); return; }
+      setSavedMarkCount(filled.length);
+    }
+    setMarks(filled.map(m => ({ ...m, mark: m.mark.trim(), meaning: m.meaning.trim() })));
     setSaving(false);
     setSaved(true);
     setAlreadySaved(true);
@@ -181,6 +206,26 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
           </button>
         </div>
       )}
+
+      <div className="mb-5 bg-[#f7f9fc] rounded-lg p-3.5">
+        <p className="text-[14px] font-semibold text-[#062444] mb-1">Other marks (not numbers)</p>
+        <p className="text-[14px] text-slate-700 mb-3">Add the marks your school uses that are not numbers, for example F or D/F, say what each stands for, and what it means for renewal. INC and DRP are already built in. These marks are never part of the GWA.</p>
+        {marks.map((m, i) => (
+          <div key={i} className="grid grid-cols-1 sm:grid-cols-[6rem_minmax(0,1fr)_11rem_auto] items-center gap-2 mb-2">
+            <input value={m.mark} onChange={e => updateMark(i, { mark: e.target.value })} placeholder="e.g. F" maxLength={12} aria-label={`Other mark ${i + 1}`} className={fieldClass} />
+            <input value={m.meaning} onChange={e => updateMark(i, { meaning: e.target.value })} placeholder="Stands for, e.g. Failed" maxLength={120} aria-label={`What other mark ${i + 1} stands for`} className={fieldClass} />
+            <select value={m.outcome} onChange={e => updateMark(i, { outcome: e.target.value as MarkOutcome })} aria-label={`What other mark ${i + 1} means for renewal`} className={fieldClass}>
+              {(Object.keys(MARK_OUTCOME_LABEL) as MarkOutcome[]).map(o => <option key={o} value={o}>{MARK_OUTCOME_LABEL[o]}</option>)}
+            </select>
+            <button onClick={() => setMarks(prev => prev.filter((_, j) => j !== i))} aria-label={`Remove other mark ${i + 1}`} className={`text-slate-700 hover:text-red-700 p-1 ${focusRing} rounded justify-self-start`}><Trash2 size={16} /></button>
+          </div>
+        ))}
+        <button onClick={() => setMarks(prev => [...prev, { mark: "", meaning: "", outcome: "failed" }])}
+          className={`flex items-center gap-1 text-[14.5px] font-semibold text-[#0077b6] hover:underline ${focusRing} rounded`}>
+          <Plus size={14} aria-hidden="true" /> Add mark
+        </button>
+        <MarksGuide marks={[...letters.filter(l => config.usesLetterGrades && l.letter.trim()), ...marks.filter(m => m.mark.trim()).map(markAsLetter)]} className="mt-3" />
+      </div>
 
       {error && <p role="alert" className="text-[14.5px] text-red-800 bg-red-50 border border-red-300 rounded-lg px-3 py-2 mb-3">{error}</p>}
       <div className="flex flex-wrap items-center gap-3">

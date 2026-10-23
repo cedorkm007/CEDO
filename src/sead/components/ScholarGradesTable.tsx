@@ -1,3 +1,4 @@
+import { MarksGuide } from "@/app/components/MarksGuide";
 import { useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { computeGwa, formatGwa, type GradingConfig, type LetterGrade } from "@/lib/gwa";
@@ -36,6 +37,7 @@ export function ScholarGradesTable({ grades, letterGrades, config = null }: { gr
 
   return (
     <div>
+      <MarksGuide marks={letterGrades} className="mb-3" />
       {groups.map(([key, rows]) => {
         const open = openKey === key;
         const gwa = computeGwa(rows, letterGrades);

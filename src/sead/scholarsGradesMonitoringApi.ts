@@ -90,6 +90,9 @@ export interface GradingConfig {
 export interface LetterGrade {
   letter: string;
   numericValue: number | null;
+  /** Set on a school's own non-numeric mark (F, D/F...): what it means for renewal. */
+  outcome?: "passed" | "failed" | "incomplete" | "review";
+  meaning?: string;
 }
 
 export async function fetchScholarGradingConfigForStaff(scholarIdNumber: string): Promise<GradingConfig | null> {
@@ -108,6 +111,13 @@ export async function fetchScholarLetterGradesForStaff(scholarIdNumber: string):
   const { data, error } = await supabase.rpc("get_scholar_letter_grades_for_staff", { p_scholar_id_number: scholarIdNumber });
   if (error || !data) return [];
   return (data as Record<string, unknown>[]).map(r => ({ letter: String(r.letter), numericValue: r.numeric_value == null ? null : Number(r.numeric_value) }));
+}
+
+/** The school's own non-numeric marks (F, D/F...) for one scholar's school, with what they stand for. Empty until the database update has been run. */
+export async function fetchScholarSchoolMarksForStaff(scholarIdNumber: string): Promise<LetterGrade[]> {
+  const { data, error } = await supabase.rpc("get_scholar_school_marks_for_staff", { p_scholar_id_number: scholarIdNumber });
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({ letter: String(r.mark), numericValue: null, outcome: r.outcome as LetterGrade["outcome"], meaning: String(r.meaning ?? "") }));
 }
 
 /** Staff already has full SELECT on scholar_subjects_grades via RLS — no RPC needed for this read. */
