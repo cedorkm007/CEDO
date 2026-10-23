@@ -79,6 +79,41 @@ export async function fetchNotApplied(schoolYear: string, term: string): Promise
   return { ok: true, rows: ((data ?? []) as Row[]).map(r => ({ scholarIdNumber: str(r.scholar_id_number), name: str(r.name), school: str(r.school), program: str(r.program), yearLevel: str(r.year_level), status: str(r.status) })) };
 }
 
+/** One scholar on the "Not applied" list, with the checks the renewal makes (null = not known, for example before the database update). */
+export interface NotAppliedPageRow extends NotAppliedRow {
+  sdpApplicable: boolean; sdpComplied: boolean | null; sdpMissing: string | null;
+  gradesState: string | null; failedCount: number; incCount: number; reviewCount: number;
+  referralStatus: string | null;
+}
+export const NOT_APPLIED_PAGE_SIZE = 25;
+/**
+ * The "Not applied" list one page at a time, searched by the database (supabase_migration_renewal_not_applied_columns.sql). Before that file has been run, the
+ * older list is used and cut into pages here, with the SDP / grades / referral columns empty (`legacy: true`).
+ */
+export async function fetchNotAppliedPage(schoolYear: string, term: string, query: string, page: number): Promise<{ ok: true; rows: NotAppliedPageRow[]; total: number; legacy: boolean } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("renewal_not_applied_page", { p_school_year: schoolYear, p_term: term, p_query: query.trim() || null, p_limit: NOT_APPLIED_PAGE_SIZE, p_offset: (page - 1) * NOT_APPLIED_PAGE_SIZE });
+  if (!error) {
+    const list = (data ?? []) as Row[];
+    return {
+      ok: true, legacy: false, total: list.length ? num(list[0].total_rows) : 0,
+      rows: list.map(r => ({
+        scholarIdNumber: str(r.scholar_id_number), name: str(r.name), school: str(r.school), program: str(r.program), yearLevel: str(r.year_level), status: str(r.status),
+        sdpApplicable: r.sdp_applicable == null ? true : !!r.sdp_applicable, sdpComplied: r.sdp_complied == null ? null : !!r.sdp_complied, sdpMissing: strOrNull(r.sdp_missing),
+        gradesState: strOrNull(r.grades_state), failedCount: num(r.failed_count), incCount: num(r.inc_count), reviewCount: num(r.review_count), referralStatus: strOrNull(r.referral_status),
+      })),
+    };
+  }
+  if (!(error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? ""))) return { ok: false, error: error.message };
+  const old = await fetchNotApplied(schoolYear, term);
+  if (!old.ok) return old;
+  const q = query.trim().toLowerCase();
+  const all = old.rows.filter(r => !q || r.name.toLowerCase().includes(q) || r.scholarIdNumber.toLowerCase().includes(q) || r.school.toLowerCase().includes(q));
+  return {
+    ok: true, legacy: true, total: all.length,
+    rows: all.slice((page - 1) * NOT_APPLIED_PAGE_SIZE, page * NOT_APPLIED_PAGE_SIZE).map(r => ({ ...r, sdpApplicable: true, sdpComplied: null, sdpMissing: null, gradesState: null, failedCount: 0, incCount: 0, reviewCount: 0, referralStatus: null })),
+  };
+}
+
 export async function markNotRequired(scholarIdNumber: string, schoolYear: string, term: string, reason: string): Promise<Done> {
   const { error } = await supabase.rpc("renewal_mark_not_required", { p_scholar_id_number: scholarIdNumber, p_school_year: schoolYear, p_term: term, p_reason: reason });
   return error ? { ok: false, error: error.message } : { ok: true };

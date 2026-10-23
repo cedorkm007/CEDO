@@ -960,7 +960,7 @@ test("the Appointments subtab sits inside the existing Consultation Tool (same t
   const sql = [...["p2_application", "p3_appointments", "p4_tracker", "p8b_test_windows"].map(n => "supabase_migration_renewal_" + n + ".sql"), "supabase_migration_consultation_types_b_booking.sql"].map(n => fs.readFileSync(path.join(root, n), "utf8")).join("\n");
   const called = new Set();
   for (const p of ["src/sead/appointmentsApi.ts", "src/scholar/renewalApi.ts", "src/sead/renewalApi.ts"]) for (const m of fs.readFileSync(path.join(root, p), "utf8").matchAll(/rpc\("([a-z_]+)"/g)) called.add(m[1]);
-  const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql));
+  const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql + fs.readFileSync(path.join(root, "supabase_migration_renewal_not_applied_columns.sql"), "utf8")));
   assert.deepEqual(missing, []);
 });
 test("the scholar-facing messages never show a time in UTC or the browser's own time zone", () => {
@@ -1125,6 +1125,53 @@ test("the 8b file: the new functions exist, the older ones keep their other text
   assert.match(sql, /drop function if exists public\.renewal_window_save\(uuid, text, text, date, date, boolean, text\)/);
   const p7 = fs.readFileSync(path.join(root, "supabase_migration_renewal_p7_reports.sql"), "utf8");
   assert.equal(/_renewal_window_includes/.test(p7), false, "the Phase 7 file is untouched, so it works without 8b");
+});
+
+
+console.log("Scholar Renewal > Not applied: SDP status, grades status and the consultation referral");
+test("the SDP column says Complied, Not complied (with what is missing), no requirement for Summer, or not checked", () => {
+  assert.deepEqual(R.sdpStatusText({ applicable: true, complied: true, missing: null }), { text: "Complied", detail: null, tone: "good" });
+  assert.deepEqual(R.sdpStatusText({ applicable: true, complied: false, missing: "Formation Program (2 of 3)" }), { text: "Not complied", detail: "Formation Program (2 of 3)", tone: "bad" });
+  assert.deepEqual(R.sdpStatusText({ applicable: true, complied: false, missing: null }), { text: "Not complied", detail: null, tone: "bad" });
+  assert.equal(R.sdpStatusText({ applicable: false, complied: null, missing: null }).text, "No SDP requirement");
+  assert.equal(R.sdpStatusText({ applicable: true, complied: null, missing: null }).text, "Not checked");
+});
+test("the grades column says all passed, how many failed / INC, waiting for grades, no grades, or needs review", () => {
+  assert.deepEqual(R.gradesStatusText({ state: "ready", failed: 0, inc: 0, review: 0 }), { text: "All passed", tone: "good" });
+  assert.deepEqual(R.gradesStatusText({ state: "ready", failed: 2, inc: 1, review: 0 }), { text: "2 failed · 1 INC", tone: "bad" });
+  assert.deepEqual(R.gradesStatusText({ state: "ready", failed: 0, inc: 1, review: 0 }), { text: "1 INC", tone: "warn" });
+  assert.equal(R.gradesStatusText({ state: "waiting", failed: 0, inc: 0, review: 0 }).text, "Waiting for grades");
+  assert.equal(R.gradesStatusText({ state: "no_grades", failed: 0, inc: 0, review: 0 }).text, "No grades recorded");
+  assert.equal(R.gradesStatusText({ state: "review", failed: 0, inc: 0, review: 2 }).text, "Needs review");
+  assert.equal(R.gradesStatusText({ state: null, failed: 0, inc: 0, review: 0 }).text, "Not checked");
+});
+test("the referral column says nothing until someone is referred, then where the referral stands", () => {
+  assert.equal(R.referralStatusText(null), null);
+  assert.equal(R.referralStatusText("pending"), "Referred: waiting for the consultation");
+  assert.equal(R.referralStatusText("forwarded_to_division_head"), "With the Division Head");
+  assert.equal(R.referralStatusText("reconsideration_requested"), "Reconsideration requested");
+});
+test("the For Consultation column is gone from the Scholars tab and is on the Not applied list, which shows every column and pages through the database", () => {
+  const scholars = fs.readFileSync(path.join(root, "src/sead/pages/ScholarsTab.tsx"), "utf8");
+  assert.equal(/For Consultation|ReferralFormModal|fetchOpenReferralStatuses/.test(scholars), false, "the Scholars tab no longer has the referral column");
+  const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalNotAppliedTab.tsx"), "utf8");
+  for (const h of ["SDP status", "Grades status", "Referral", "Program · Year", "Mark not required"]) assert.ok(tab.includes(h), h);
+  assert.match(tab, /ReferralFormModal/);
+  assert.match(tab, /fetchNotAppliedPage/);
+  assert.match(tab, /hidden lg:block/, "a table on a wide screen");
+  assert.match(tab, /lg:hidden/, "a card for each scholar on a narrow screen, so no column is ever hidden");
+  assert.equal(/overflow-x-auto/.test(tab), false, "no sideways scrolling to find a column");
+  assert.deepEqual([...tab.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], "no small text");
+  assert.equal(/text-slate-400|text-slate-500/.test(tab), false, "no pale text");
+});
+test("the Not applied list asks the database for one page at a time and falls back to the older list until the update has been run", () => {
+  const api = fs.readFileSync(path.join(root, "src/sead/renewalApi.ts"), "utf8");
+  assert.match(api, /rpc\("renewal_not_applied_page"/);
+  assert.match(api, /PGRST202/);
+  assert.match(api, /legacy: true/);
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_not_applied_columns.sql"), "utf8");
+  assert.match(sql, /_renewal_evaluate\(b\.sid, p_school_year, p_term\)/, "the list uses the same renewal check an application does");
+  assert.match(sql, /least\(coalesce\(p_limit, 25\), 100\)/, "a page is at most 100 scholars");
 });
 
 console.log(`\n${process.exitCode ? "SOME TESTS FAILED" : "All " + passed + " tests passed"}`);
