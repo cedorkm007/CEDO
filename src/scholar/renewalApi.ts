@@ -20,7 +20,7 @@ export interface MyRenewalRecord {
   id: string; stage: RenewalStage; isLate: boolean; lateReason: string | null; appliedAt: string | null; ruleCode: string | null; ruleText: string | null;
   evaluation: RenewalEvaluation; scholarNote: string; evaluatorComment: string | null; result: string | null; confirmedAt: string | null; noShowFlag: boolean;
 }
-export interface MyBooking { slotId: string; startsAt: string; endsAt: string; staffName: string; canChange: boolean }
+export interface MyBooking { slotId: string; startsAt: string; endsAt: string; staffName: string; canChange: boolean; typeLabel: string | null; minutes: number | null; consultType: string | null }
 export interface OpenSlot { slotId: string; startsAt: string; endsAt: string; staffName: string }
 export interface MyRenewalWindow {
   window: RenewalWindow; state: WindowState; record: MyRenewalRecord | null;
@@ -65,7 +65,7 @@ export async function fetchMyRenewals(): Promise<{ ok: true; overview: MyRenewal
     record: w.record ? toRecord(w.record as Row) : null,
     documents: ((w.documents ?? []) as Row[]).map(toDocument),
     history: ((w.history ?? []) as Row[]).map(h => ({ at: str(h.at), toStage: str(h.to_stage), actor: str(h.actor), note: str(h.note) })),
-    booking: w.booking ? (() => { const b = w.booking as Row; return { slotId: str(b.slot_id), startsAt: str(b.starts_at), endsAt: str(b.ends_at), staffName: str(b.staff_name), canChange: !!b.can_change }; })() : null,
+    booking: w.booking ? (() => { const b = w.booking as Row; return { slotId: str(b.slot_id), startsAt: str(b.starts_at), endsAt: str(b.ends_at), staffName: str(b.staff_name), canChange: !!b.can_change, typeLabel: strOrNull(b.type_label), minutes: b.minutes == null ? null : Number(b.minutes), consultType: strOrNull(b.consult_type) }; })() : null,
     consultNeeded: !!w.consult_needed,
     consultState: ((w.consult_state as string | null) ?? "not_needed") as MyRenewalWindow["consultState"],
     incItems: ((w.inc_items ?? []) as Row[]).map(i => ({
@@ -105,6 +105,32 @@ export async function fetchOpenSlots(recordId: string): Promise<{ ok: true; slot
   if (error) return { ok: false, error: error.message };
   return { ok: true, slots: ((data ?? []) as Row[]).map(r => ({ slotId: str(r.slot_id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), staffName: str(r.staff_name) })) };
 }
+// ── Consultation booking by TYPE and morning / afternoon (supabase_migration_consultation_types_b_booking.sql) ──
+export interface ConsultType { key: string; label: string; minutes: number; suggested: boolean }
+export interface OpenBlock { day: string; half: "AM" | "PM"; spots: number; freeMinutes: number }
+const functionMissing = (e: { code?: string; message?: string }) => e.code === "PGRST202" || /could not find the function|does not exist/i.test(e.message ?? "");
+
+/** The consultation types (each with its minutes). `legacy: true` means the database update has not been run yet, so the old 10-minute picker is used. */
+export async function fetchConsultTypes(recordId: string): Promise<{ ok: true; types: ConsultType[] } | { ok: false; error: string; legacy?: boolean }> {
+  const { data, error } = await supabase.rpc("renewal_consult_types", { p_record_id: recordId });
+  if (error) return { ok: false, error: error.message, legacy: functionMissing(error) };
+  return { ok: true, types: ((data ?? []) as Row[]).map(r => ({ key: str(r.key), label: str(r.label), minutes: Number(r.minutes ?? 0), suggested: !!r.suggested })) };
+}
+/** The mornings and afternoons that still have room for this type. */
+export async function fetchOpenBlocks(recordId: string, type: string): Promise<{ ok: true; blocks: OpenBlock[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("renewal_open_blocks", { p_record_id: recordId, p_type: type });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, blocks: ((data ?? []) as Row[]).map(r => ({ day: str(r.day).slice(0, 10), half: r.half as "AM" | "PM", spots: Number(r.spots ?? 0), freeMinutes: Number(r.free_minutes ?? 0) })) };
+}
+export async function bookConsultationBlock(recordId: string, type: string, day: string, half: "AM" | "PM"): Promise<Done> {
+  const { error } = await supabase.rpc("renewal_book_consultation", { p_record_id: recordId, p_type: type, p_day: day, p_half: half });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+export async function rescheduleConsultationBlock(recordId: string, type: string, day: string, half: "AM" | "PM"): Promise<Done> {
+  const { error } = await supabase.rpc("renewal_reschedule_consultation", { p_record_id: recordId, p_type: type, p_day: day, p_half: half });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 export async function bookConsultation(recordId: string, slotId: string): Promise<Done> {
   const { error } = await supabase.rpc("renewal_book_slot", { p_record_id: recordId, p_slot_id: slotId });
   return error ? { ok: false, error: error.message } : { ok: true };
@@ -181,7 +207,7 @@ export async function fetchMyStudyPlanFormUrl(form: MyStudyPlanForm): Promise<st
 }
 
 // ── The Consultation tile: the scholar's own appointments (upcoming and past) ──
-export interface MyAppointment { slotId: string; startsAt: string; endsAt: string; staffName: string; state: "booked" | "attended" | "no_show"; recordId: string | null; termLabel: string | null; canChange: boolean }
+export interface MyAppointment { slotId: string; startsAt: string; endsAt: string; staffName: string; state: "booked" | "attended" | "no_show"; recordId: string | null; termLabel: string | null; canChange: boolean; typeLabel: string | null; minutes: number | null }
 
 export async function fetchMyAppointments(): Promise<{ ok: true; rows: MyAppointment[] } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("consultation_my_appointments");
@@ -190,7 +216,7 @@ export async function fetchMyAppointments(): Promise<{ ok: true; rows: MyAppoint
     ok: true,
     rows: ((data ?? []) as Row[]).map(r => ({
       slotId: str(r.slot_id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), staffName: str(r.staff_name), state: r.state as MyAppointment["state"],
-      recordId: strOrNull(r.record_id), termLabel: strOrNull(r.term_label), canChange: !!r.can_change,
+      recordId: strOrNull(r.record_id), termLabel: strOrNull(r.term_label), canChange: !!r.can_change, typeLabel: strOrNull(r.type_label), minutes: r.minutes == null ? null : Number(r.minutes),
     })),
   };
 }

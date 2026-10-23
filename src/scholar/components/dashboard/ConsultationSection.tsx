@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, CalendarPlus, Loader2 } from "lucide-react";
 import { CONSULT_CHANGE_CUTOFF_HOURS, consultBlockedBy, formatSlot, formatTimeOnly, groupSlotsByDay } from "@/lib/renewal";
+import { ConsultationBlockPicker } from "./ConsultationBlockPicker";
 import { bookConsultation, cancelConsultation, fetchOpenSlots, rescheduleConsultation, type MyRenewalWindow, type OpenSlot } from "../../renewalApi";
 
-/** Book, change or cancel the face-to-face consultation (10-minute slots offered by all consultation staff; changes allowed up to 12 hours before). */
+/** Book, change or cancel the face-to-face consultation: pick the type (each takes its own minutes), a day and morning or afternoon; changes allowed up to 12 hours before. */
 export function ConsultationSection({ data, onChanged }: { data: MyRenewalWindow; onChanged: () => Promise<void> }) {
   const record = data.record!;
   const [picking, setPicking] = useState(false);
+  // The old 10-minute picker is kept for a database that has not had the consultation-types update yet.
+  const [legacy, setLegacy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const booking = data.booking;
@@ -40,7 +43,7 @@ export function ConsultationSection({ data, onChanged }: { data: MyRenewalWindow
       {record.noShowFlag && !booking && <p className="text-[14px] text-red-800 mb-2">You missed your last consultation, so please book a new time.</p>}
       {booking ? (
         <div>
-          <p className="text-[14px] text-slate-800"><strong>{formatSlot(booking.startsAt)}</strong> with {booking.staffName}, at the CEDO office.{data.window.term === "Summer" ? " Bring the hard copy of your prospectus." : ""}</p>
+          <p className="text-[14px] text-slate-800"><strong>{formatSlot(booking.startsAt)}</strong>{booking.typeLabel ? ` (${booking.typeLabel}, ${booking.minutes ?? 10} minutes)` : ""} with {booking.staffName}, at the CEDO office. Please come during those hours.{data.window.term === "Summer" ? " Bring the hard copy of your prospectus." : ""}</p>
           {booking.canChange ? (
             <div className="mt-2 flex flex-wrap gap-2">
               <button onClick={() => setPicking(v => !v)} disabled={busy} className="rounded-lg border border-[#062444]/25 px-3.5 py-2 text-[14px] font-semibold text-[#062444] hover:bg-[#f7f9fc]">{picking ? "Keep this time" : "Change the time"}</button>
@@ -53,13 +56,17 @@ export function ConsultationSection({ data, onChanged }: { data: MyRenewalWindow
         </div>
       ) : (
         <div>
-          <p className="text-[14px] text-slate-800">A face-to-face consultation with CEDO is needed for your case. Each time is 10 minutes. Pick a day and a time.</p>
+          <p className="text-[14px] text-slate-800">A face-to-face consultation with CEDO is needed for your case. Choose what it is about, then a day and morning or afternoon. Each type of consultation takes its own number of minutes.</p>
           {!picking && (
             <button onClick={() => setPicking(true)} className="mt-2 inline-flex items-center gap-2 rounded-lg bg-[#062444] px-4 py-2.5 text-[14px] font-bold text-white hover:bg-[#0a3a6e]"><CalendarPlus size={15} aria-hidden="true" /> Book a time</button>
           )}
         </div>
       )}
-      {picking && (
+      {picking && !legacy && (
+        <ConsultationBlockPicker recordId={record.id} reschedule={!!booking} currentType={booking?.consultType ?? null} onLegacy={() => setLegacy(true)} onCancel={() => setPicking(false)}
+          onDone={async () => { setPicking(false); await onChanged(); }} />
+      )}
+      {picking && legacy && (
         <SlotPicker recordId={record.id} reschedule={!!booking} onCancel={() => setPicking(false)} onDone={async () => { setPicking(false); await onChanged(); }} />
       )}
       {error && <p role="alert" className="mt-2 text-[14px] text-red-700">{error}</p>}
