@@ -109,6 +109,13 @@ check("school grading settings: Grades Monitoring staff read and change; no-tool
 check("everybody signed in still reads the current grading period; only Grades Monitoring / Scholar Management staff change it", (await n(P.plain, "grading_period_settings")) === 1 && (await n(SCHOLAR, "grading_period_settings")) === 1 && (await n(schoolUid, "grading_period_settings")) === 1
   && await changes(P.sead, "update grading_period_settings set current_semester = current_semester returning id") === 1 && await changes(P.plain, "update grading_period_settings set current_semester = current_semester returning id") === 0 && await changes(P.storage, "update grading_period_settings set current_semester = current_semester returning id") === 0);
 
+console.log("\nSpeed: each rule asks \"is this person allowed?\" once per request, not once per row");
+const p8Rules = await q("select tablename, policyname, coalesce(qual, '') || ' ' || coalesce(with_check, '') as t from pg_policies where policyname like 'p8 %'");
+check("every Phase 8 rule wraps its check in (select …) so the database evaluates it once", p8Rules.length >= 14 && p8Rules.every(r => /\(\s*SELECT/i.test(r.t)), p8Rules.filter(r => !/\(\s*SELECT/i.test(r.t)).map(r => r.policyname).join(", "));
+const plan = (await rows(P.plain, "explain select count(*) from scholars")).map(r => r["QUERY PLAN"]).join("\n");
+check("reading the scholar list as a staff member shows a single up-front check in the query plan (InitPlan), not a check on every row", /InitPlan/.test(plan), plan.slice(0, 300));
+check("the files say why", Object.values(FILES).every(f => /Speed note/.test(read(f))));
+
 console.log("\nThe undo files and running twice");
 for (const k of KEYS) await db.exec(read(UNDO[k]));
 check("after the undo files the live rule is back (any staff account reads and changes scholar data again)", (await n(P.plain, "scholars")) === N && (await n(P.plain, "scholar_subjects_grades")) === G && (await n(P.plain, "scholar_quest_scores")) === QS
