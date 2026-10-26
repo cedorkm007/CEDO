@@ -9,7 +9,7 @@ import { fetchRenewalReferralInfo, type RenewalReferralInfo } from "../divisionH
 import {
   PREVIOUS_SEMESTER_STATUSES, ENDORSED_FOR_OPTIONS, type PreviousSemesterStatus, type EndorsedFor,
   type SubjectMatrixRow, type StaffOption, type QueuedReferral,
-  fetchCounselingStaffOptions, fetchMyStaffName, createReferral, fetchReferralById,
+  fetchCounselingStaffOptions, fetchMyStaffName, createReferral, fetchReferralById, fetchReferralReasons, isReasonReferralAvailable, createReasonReferral, type ReferralReason,
   forwardReferralToDivisionHead, approveReferral, requestReferralReconsideration, fetchSignatureUrl,
 } from "../referralApi";
 
@@ -56,6 +56,11 @@ export function ReferralFormPanel({
   const [failedSubjects, setFailedSubjects] = useState<SubjectMatrixRow[]>([]);
   const [lackingGrades, setLackingGrades] = useState<SubjectMatrixRow[]>([]);
   const [referredTo, setReferredTo] = useState("");
+  // The reason for the consultation (one of the consultation types). When the referral-by-reason database update has been run it replaces "Refer to": the scholar
+  // chooses the day and morning / afternoon, and the booking decides which counselor holds it. Before that, the older form (naming a counselor) is used.
+  const [reasons, setReasons] = useState<ReferralReason[]>([]);
+  const [reason, setReason] = useState("");
+  const [reasonMode, setReasonMode] = useState(false);
   const [endorsedFor, setEndorsedFor] = useState<EndorsedFor>("On Probation Status");
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -88,6 +93,7 @@ export function ReferralFormPanel({
       setPreviousSemesterStatus(defaultPreviousSemesterStatus(scholar.status));
       fetchCounselingStaffOptions().then(setStaffOptions);
       fetchMyStaffName().then(setMyName);
+      void Promise.all([isReasonReferralAvailable(), fetchReferralReasons()]).then(([ok, list]) => { setReasons(list); setReasonMode(ok && list.length > 0); });
     } else if (referralId) {
       setLoading(true);
       fetchRenewalReferralInfo(referralId).then(setRenewalInfo);
@@ -105,15 +111,16 @@ export function ReferralFormPanel({
   }, [mode, referralId]);
 
   async function handleCreate() {
-    if (!scholar || !referredTo) { setError("Choose who to refer this scholar to."); return; }
+    if (!scholar || (reasonMode ? !reason : !referredTo)) { setError(reasonMode ? "Choose the reason for the consultation." : "Choose who to refer this scholar to."); return; }
     setBusy(true);
     setError("");
-    const result = await createReferral({
-      scholarIdNumber: scholar.scholarIdNumber, referredTo, previousSemesterStatus,
+    const matrix = {
       failedSubjects: failedSubjects.filter(r => r.subjectCode || r.semesterAcademicYear || r.yearLevel),
       lackingGrades: lackingGrades.filter(r => r.subjectCode || r.semesterAcademicYear || r.yearLevel),
-      endorsedFor,
-    });
+    };
+    const result = reasonMode
+      ? await createReasonReferral({ scholarIdNumber: scholar.scholarIdNumber, reason, previousSemesterStatus, ...matrix, endorsedFor })
+      : await createReferral({ scholarIdNumber: scholar.scholarIdNumber, referredTo, previousSemesterStatus, ...matrix, endorsedFor });
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to create the referral."); return; }
     setShowConfirm(false);
@@ -203,8 +210,17 @@ export function ReferralFormPanel({
         onChange={setLackingGrades} readOnly={mode !== "create"} />
 
       <div>
-        {fieldLabel("Refer To")}
-        {mode === "create" ? (
+        {fieldLabel(mode === "create" && reasonMode ? "Reason for Consultation" : "Refer To")}
+        {mode === "create" && reasonMode ? (
+          <>
+            <select value={reason} onChange={e => setReason(e.target.value)} aria-label="Reason for the consultation"
+              className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none bg-white">
+              <option value="">Select the reason for the consultation…</option>
+              {reasons.map(r => <option key={r.key} value={r.key}>{r.label} — {r.minutes} minutes</option>)}
+            </select>
+            <p className="mt-1 text-[12.5px] text-slate-600">You do not choose a counselor or a time. The scholar is notified and chooses a day and morning or afternoon; the booking decides who the consultation is with.</p>
+          </>
+        ) : mode === "create" ? (
           <select value={referredTo} onChange={e => setReferredTo(e.target.value)}
             className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none bg-white">
             <option value="">Select a consultation staff member…</option>
@@ -280,7 +296,7 @@ export function ReferralFormPanel({
       {mode === "create" && (
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onCancel} className="px-4 py-2.5 rounded-lg border border-[#062444]/15 text-[#062444] text-[13px] font-semibold hover:bg-[#f8fafd]">Cancel</button>
-          <button type="button" onClick={() => setShowConfirm(true)} disabled={!referredTo}
+          <button type="button" onClick={() => setShowConfirm(true)} disabled={reasonMode ? !reason : !referredTo}
             className="px-5 py-2.5 rounded-lg bg-gradient-to-br from-[#062444] to-[#0a3a6b] disabled:opacity-50 text-white text-[13px] font-semibold">Done</button>
         </div>
       )}
@@ -326,7 +342,7 @@ export function ReferralFormPanel({
         <div className="fixed inset-0 z-[110] bg-black/40 flex items-center justify-center px-4" onClick={() => setShowConfirm(false)}>
           <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-5" onClick={e => e.stopPropagation()}>
             <p className="text-[14px] font-bold text-[#062444] mb-1.5">Refer {name}?</p>
-            <p className="text-[13px] text-slate-500 mb-4">This will notify {staffOptions.find(s => s.id === referredTo)?.name ?? "the selected staff member"} to begin consultation.</p>
+            <p className="text-[13px] text-slate-500 mb-4">{reasonMode ? `The scholar will be notified (reason: ${reasons.find(r => r.key === reason)?.label ?? "the chosen reason"}) and will choose a day and morning or afternoon for the consultation.` : `This will notify ${staffOptions.find(s => s.id === referredTo)?.name ?? "the selected staff member"} to begin consultation.`}</p>
             {error && <p className="text-[12.5px] text-red-600 mb-3">{error}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setShowConfirm(false)} className="px-4 py-2 rounded-lg border border-[#062444]/15 text-[13px] font-semibold text-[#062444] hover:bg-[#f8fafd]">Cancel</button>

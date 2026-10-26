@@ -960,7 +960,7 @@ test("the Appointments subtab sits inside the existing Consultation Tool (same t
   const sql = [...["p2_application", "p3_appointments", "p4_tracker", "p8b_test_windows"].map(n => "supabase_migration_renewal_" + n + ".sql"), "supabase_migration_consultation_types_b_booking.sql"].map(n => fs.readFileSync(path.join(root, n), "utf8")).join("\n");
   const called = new Set();
   for (const p of ["src/sead/appointmentsApi.ts", "src/scholar/renewalApi.ts", "src/sead/renewalApi.ts"]) for (const m of fs.readFileSync(path.join(root, p), "utf8").matchAll(/rpc\("([a-z_]+)"/g)) called.add(m[1]);
-  const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql + fs.readFileSync(path.join(root, "supabase_migration_renewal_not_applied_columns.sql"), "utf8")));
+  const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql + fs.readFileSync(path.join(root, "supabase_migration_renewal_not_applied_columns.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_referral_reason_c_functions.sql"), "utf8")));
   assert.deepEqual(missing, []);
 });
 test("the scholar-facing messages never show a time in UTC or the browser's own time zone", () => {
@@ -1147,7 +1147,9 @@ test("the grades column says all passed, how many failed / INC, waiting for grad
 });
 test("the referral column says nothing until someone is referred, then where the referral stands", () => {
   assert.equal(R.referralStatusText(null), null);
-  assert.equal(R.referralStatusText("pending"), "Referred: waiting for the consultation");
+  assert.equal(R.referralStatusText("awaiting_booking"), "Referred: waiting for the scholar to book");
+  assert.equal(R.referralStatusText("booked"), "Referred: consultation booked");
+  assert.equal(R.referralStatusText("pending"), "Consultation held: with the counselor");
   assert.equal(R.referralStatusText("forwarded_to_division_head"), "With the Division Head");
   assert.equal(R.referralStatusText("reconsideration_requested"), "Reconsideration requested");
 });
@@ -1172,6 +1174,53 @@ test("the Not applied list asks the database for one page at a time and falls ba
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_not_applied_columns.sql"), "utf8");
   assert.match(sql, /_renewal_evaluate\(b\.sid, p_school_year, p_term\)/, "the list uses the same renewal check an application does");
   assert.match(sql, /least\(coalesce\(p_limit, 25\), 100\)/, "a page is at most 100 scholars");
+});
+
+
+console.log("Consultation referral by reason");
+test("the Referral Form asks for the REASON (the consultation types) instead of a counselor, and keeps the older form until the database update is run", () => {
+  const panel = fs.readFileSync(path.join(root, "src/sead/components/ReferralFormPanel.tsx"), "utf8");
+  assert.match(panel, /Reason for Consultation/);
+  assert.match(panel, /isReasonReferralAvailable/);
+  assert.match(panel, /createReasonReferral/);
+  assert.match(panel, /reasonMode/);
+  assert.match(panel, /Refer To/, "the older form (naming a counselor) is still there for a database that has not been updated");
+  assert.match(panel, /do not choose a counselor or a time/i, "staff are told they neither pick a counselor nor book a time");
+  const api = fs.readFileSync(path.join(root, "src/sead/referralApi.ts"), "utf8");
+  for (const fn of ["create_consultation_referral", "consultation_referral_enabled"]) assert.ok(api.includes(`"${fn}"`), fn);
+  assert.match(api, /from\("consultation_types"\)/, "the reasons are the consultation types");
+});
+test("the scholar sees the referral in the Consultation tile and books a morning or afternoon through the database; the reason is fixed", () => {
+  const api = fs.readFileSync(path.join(root, "src/scholar/renewalApi.ts"), "utf8");
+  for (const fn of ["consultation_my_referrals", "referral_open_blocks", "referral_book_consultation", "referral_reschedule_consultation", "referral_cancel_booking"]) assert.ok(api.includes(`"${fn}"`), fn);
+  const panel = fs.readFileSync(path.join(root, "src/scholar/components/dashboard/ConsultationPanel.tsx"), "utf8");
+  assert.match(panel, /ReferralConsultationSection/);
+  assert.match(panel, /fetchMyReferrals/);
+  const picker = fs.readFileSync(path.join(root, "src/scholar/components/dashboard/ConsultationBlockPicker.tsx"), "utf8");
+  assert.match(picker, /referral\?: \{/, "the same picker serves a referral");
+  assert.match(picker, /disabled=\{!!referral\}/, "the reason cannot be changed by the scholar");
+  const section = fs.readFileSync(path.join(root, "src/scholar/components/dashboard/ReferralConsultationSection.tsx"), "utf8");
+  assert.match(section, /CEDO referred you for a consultation/);
+  for (const file of [section, picker]) {
+    assert.deepEqual([...file.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], "no small text");
+    assert.equal(/text-slate-400|text-slate-500/.test(file), false, "no pale text");
+  }
+});
+test("the counselor's calendar says a booking is a referral, and the referral statuses read plainly", () => {
+  const modal = fs.readFileSync(path.join(root, "src/sead/appointments/SlotDetailModal.tsx"), "utf8");
+  assert.match(modal, /Referred for a consultation/);
+  assert.match(fs.readFileSync(path.join(root, "src/sead/appointments/AppointmentsTab.tsx"), "utf8"), /Referral/);
+  const referralApi = fs.readFileSync(path.join(root, "src/sead/referralApi.ts"), "utf8");
+  assert.match(referralApi, /"awaiting_booking" \| "booked" \| "pending"/);
+});
+test("the three referral files: A changes only the referrals table, B only the bookings table, C replaces the counselor-side functions and keeps the 12-hour rule and the minutes", () => {
+  const read = n => fs.readFileSync(path.join(root, n), "utf8").replace(/--.*$/gm, "");
+  assert.equal(/alter table public\.(?!scholar_counseling_referrals)/i.test(read("supabase_migration_referral_reason_a_referrals.sql")), false);
+  assert.equal(/alter table public\.(?!counseling_slots)/i.test(read("supabase_migration_referral_reason_b_slots.sql")), false);
+  const c = read("supabase_migration_referral_reason_c_functions.sql");
+  assert.equal(/\balter table\b|\bdrop table\b|\btruncate\b/i.test(c), false, "file C changes no table");
+  assert.ok((c.match(/interval '12 hours'/g) ?? []).length >= 5, "the 12-hour rule");
+  assert.match(c, /_consult_blocks\(/, "the minutes of the reason are counted against the staff's available minutes");
 });
 
 console.log(`\n${process.exitCode ? "SOME TESTS FAILED" : "All " + passed + " tests passed"}`);

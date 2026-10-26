@@ -148,7 +148,7 @@ export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?:
                             <button onClick={() => { if (readOnly) { if (s.recordId) onOpenRecord?.(s.recordId); } else setSelected(s); }}
                               className={`w-full rounded-md border px-2 py-1.5 text-left text-[14px] ${STATE_STYLE[s.state]} hover:shadow-sm`}>
                               <span className="font-bold">{s.scholarName}</span> <span className="font-semibold">({STATE_LABEL[s.state]})</span>
-                              <span className="block text-[13px] text-slate-700">{s.typeLabel ?? "Consultation"} · {s.minutes ?? 10} min{readOnly && s.staffName ? ` · ${s.staffName}` : ""}</span>
+                              <span className="block text-[13px] text-slate-700">{s.typeLabel ?? "Consultation"} · {s.minutes ?? 10} min{!s.recordId ? " · Referral" : ""}{readOnly && s.staffName ? ` · ${s.staffName}` : ""}</span>
                               {s.caseSummary && <span className="block text-[13px] text-slate-700">{s.termLabel} · {s.caseSummary}</span>}
                             </button>
                           </li>

@@ -504,7 +504,9 @@ export function gradesStatusText(g: { state: string | null; failed: number; inc:
 export function referralStatusText(status: string | null): string | null {
   switch (status) {
     case null: case undefined: case "": return null;
-    case "pending": return "Referred: waiting for the consultation";
+    case "awaiting_booking": return "Referred: waiting for the scholar to book";
+    case "booked": return "Referred: consultation booked";
+    case "pending": return "Consultation held: with the counselor";
     case "forwarded_to_division_head": return "With the Division Head";
     case "reconsideration_requested": return "Reconsideration requested";
     default: return "Referred";
