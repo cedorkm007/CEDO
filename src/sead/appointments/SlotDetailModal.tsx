@@ -48,7 +48,7 @@ export function SlotDetailModal({ slot, onClose, onChanged }: { slot: CalendarSl
         <p className="text-[16px] font-bold text-[#062444]">{slot.scholarName}</p>
         <p>{slot.scholarIdNumber} · {formatSlot(slot.startsAt)}</p>
         <p>{slot.typeLabel ?? "Consultation"} · {slot.minutes ?? 10} minutes</p>
-        <p>{slot.termLabel ? `Renewal for ${slot.termLabel}` : ""}{slot.caseSummary ? ` · ${slot.caseSummary}` : ""}</p>
+        <p>{slot.termLabel ? `Renewal for ${slot.termLabel}` : !slot.recordId ? "Referred for a consultation" : ""}{slot.caseSummary ? ` · ${slot.caseSummary}` : ""}</p>
         {slot.stage && <div className="pt-1"><RenewalStageBadge stage={slot.stage} full /></div>}
         {slot.noShowCount > 0 && <p className="text-red-800 font-semibold">Missed {slot.noShowCount} earlier consultation{slot.noShowCount === 1 ? "" : "s"} for this renewal.</p>}
         {slot.isSummer && <p>Summer renewal: the prospectus hard copy should be brought. Hard copy received: <strong>{slot.hardCopy ? "yes" : "not yet"}</strong>.</p>}

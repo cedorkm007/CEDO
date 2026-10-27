@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarCheck, CalendarX, Loader2, UserX } from "lucide-react";
 import { CONSULT_CHANGE_CUTOFF_HOURS, formatSlot, termLabelOf } from "@/lib/renewal";
-import { fetchMyAppointments, fetchMyRenewals, type MyAppointment, type MyRenewalOverview } from "../../renewalApi";
+import { fetchMyAppointments, fetchMyReferrals, fetchMyRenewals, type MyAppointment, type MyReferral, type MyRenewalOverview } from "../../renewalApi";
+import { ReferralConsultationSection } from "./ReferralConsultationSection";
 import { ConsultationSection } from "./ConsultationSection";
 import { NOTIFICATIONS_CHANGED } from "./NotificationBell";
 
@@ -12,12 +13,13 @@ import { NOTIFICATIONS_CHANGED } from "./NotificationBell";
 export function ConsultationPanel() {
   const [overview, setOverview] = useState<MyRenewalOverview | null>(null);
   const [appointments, setAppointments] = useState<MyAppointment[] | null>(null);
+  const [referrals, setReferrals] = useState<MyReferral[]>([]);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    const [o, a] = await Promise.all([fetchMyRenewals(), fetchMyAppointments()]);
+    const [o, a, rf] = await Promise.all([fetchMyRenewals(), fetchMyAppointments(), fetchMyReferrals()]);
     if (!o.ok) setError(o.error); else if (!a.ok) setError(a.error);
-    else { setOverview(o.overview); setAppointments(a.rows); setError(""); }
+    else { setOverview(o.overview); setAppointments(a.rows); setReferrals(rf.ok ? rf.rows : []); setError(""); }
     window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED));
   }, []);
   useEffect(() => { void load(); }, [load]);
@@ -33,7 +35,13 @@ export function ConsultationPanel() {
     <div className="space-y-5">
       <p className="text-[14px] text-slate-700">Face-to-face consultations at the CEDO office. You choose what it is about, a day, and morning or afternoon. You can change or cancel as often as you need, up to {CONSULT_CHANGE_CUTOFF_HOURS} hours before it starts.</p>
 
-      {needing.length === 0 && upcoming.length === 0 && (
+      {referrals.length > 0 && (
+        <section aria-label="Consultations CEDO referred you for" className="space-y-3">
+          {referrals.map(r => <ReferralConsultationSection key={r.referralId} referral={r} onChanged={load} />)}
+        </section>
+      )}
+
+      {needing.length === 0 && upcoming.length === 0 && referrals.length === 0 && (
         <div className="rounded-xl border border-[#e6ecf5] bg-[#f7f9fc] px-4 py-5 text-[14px] text-slate-800">
           <p className="font-bold text-[#062444] mb-1">You have no consultation to book right now</p>
           <p>If your renewal needs a consultation, it will appear here and you can book it. We will also tell you in your notifications.</p>

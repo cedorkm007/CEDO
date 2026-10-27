@@ -12,7 +12,8 @@ export const PREVIOUS_SEMESTER_STATUSES: PreviousSemesterStatus[] = ["Retained",
 export type EndorsedFor = "On Probation Status" | "Removal" | "Renewal";
 export const ENDORSED_FOR_OPTIONS: EndorsedFor[] = ["On Probation Status", "Removal", "Renewal"];
 
-export type ReferralStatus = "pending" | "forwarded_to_division_head" | "reconsideration_requested" | "approved";
+/** awaiting_booking: the scholar was referred and has not booked yet; booked: the scholar booked; pending: the consultation happened (the counselor's queue); then the Division Head's steps. */
+export type ReferralStatus = "awaiting_booking" | "booked" | "pending" | "forwarded_to_division_head" | "reconsideration_requested" | "approved";
 
 export interface StaffOption {
   id: string;
@@ -24,6 +25,36 @@ export async function fetchCounselingStaffOptions(): Promise<StaffOption[]> {
   const { data, error } = await supabase.rpc("list_scholar_counseling_staff");
   if (error || !data) return [];
   return (data as Record<string, unknown>[]).map(r => ({ id: String(r.id), name: String(r.name ?? "") }));
+}
+
+/** The reasons a referral can have: the consultation types, each with its minutes. Empty until the consultation-types database update has been run. */
+export interface ReferralReason { key: string; label: string; minutes: number }
+export async function fetchReferralReasons(): Promise<ReferralReason[]> {
+  const { data, error } = await supabase.from("consultation_types").select("key, label, minutes").eq("active", true).order("sort");
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({ key: String(r.key), label: String(r.label), minutes: Number(r.minutes ?? 0) }));
+}
+/** Can a referral be made by reason (the referral-by-reason database update has been run)? When not, the form keeps the older "Refer to" choice. */
+export async function isReasonReferralAvailable(): Promise<boolean> {
+  const { data, error } = await supabase.rpc("consultation_referral_enabled");
+  return !error && data === true;
+}
+export interface NewReasonReferralInput {
+  scholarIdNumber: string;
+  reason: string;
+  previousSemesterStatus: PreviousSemesterStatus;
+  failedSubjects: SubjectMatrixRow[];
+  lackingGrades: SubjectMatrixRow[];
+  endorsedFor: EndorsedFor;
+}
+/** Refers a scholar for a consultation by REASON: no counselor is chosen and no time is booked; the scholar is told and chooses a morning or afternoon. */
+export async function createReasonReferral(input: NewReasonReferralInput): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("create_consultation_referral", {
+    p_scholar_id_number: input.scholarIdNumber, p_reason: input.reason, p_previous_semester_status: input.previousSemesterStatus,
+    p_failed_subjects: input.failedSubjects, p_lacking_grades: input.lackingGrades, p_endorsed_for: input.endorsedFor,
+    p_referral_date: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }),
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 export interface NewReferralInput {

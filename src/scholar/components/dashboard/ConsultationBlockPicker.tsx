@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { HALF_WORD, type ConsultHalf } from "@/lib/renewal";
-import { bookConsultationBlock, fetchConsultTypes, fetchOpenBlocks, rescheduleConsultationBlock, type ConsultType, type OpenBlock } from "../../renewalApi";
+import {
+  bookConsultationBlock, bookReferralConsultation, fetchConsultTypes, fetchOpenBlocks, fetchReferralBlocks, rescheduleConsultationBlock, rescheduleReferralConsultation,
+  type ConsultType, type OpenBlock,
+} from "../../renewalApi";
 
 const MANILA = "Asia/Manila";
 /** "Tue, Oct 20" for a Philippine calendar day ("2026-10-20"). */
@@ -12,8 +15,11 @@ const dayText = (ymd: string) => new Date(`${ymd}T12:00:00+08:00`).toLocaleDateS
  * and morning (AM) or afternoon (PM). The database picks the staff member and decides how many fit (the staff's available minutes). `legacy` is reported to the
  * caller when the database update has not been run yet, so the old 10-minute picker can be used instead.
  */
-export function ConsultationBlockPicker({ recordId, reschedule, currentType, onLegacy, onCancel, onDone }: {
-  recordId: string; reschedule: boolean; currentType: string | null; onLegacy: () => void; onCancel: () => void; onDone: () => Promise<void>;
+export function ConsultationBlockPicker({ recordId, reschedule, currentType, referral, onLegacy, onCancel, onDone }: {
+  recordId: string; reschedule: boolean; currentType: string | null;
+  /** When the consultation comes from a CEDO referral, the reason is fixed (staff chose it) and the booking belongs to the referral, not to a renewal. */
+  referral?: { id: string; reasonLabel: string; minutes: number };
+  onLegacy: () => void; onCancel: () => void; onDone: () => Promise<void>;
 }) {
   const [types, setTypes] = useState<ConsultType[] | null>(null);
   const [typeKey, setTypeKey] = useState<string>("");
@@ -24,6 +30,7 @@ export function ConsultationBlockPicker({ recordId, reschedule, currentType, onL
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    if (referral) { setTypes([{ key: "referral", label: referral.reasonLabel, minutes: referral.minutes, suggested: true }]); setTypeKey("referral"); return; }
     let cancelled = false;
     void fetchConsultTypes(recordId).then(r => {
       if (cancelled) return;
@@ -34,15 +41,15 @@ export function ConsultationBlockPicker({ recordId, reschedule, currentType, onL
     });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordId]);
+  }, [recordId, referral?.id]);
 
   useEffect(() => {
     if (!typeKey) { setBlocks(null); return; }
     let cancelled = false;
     setBlocks(null); setDay(null); setHalf(null); setError("");
-    void fetchOpenBlocks(recordId, typeKey).then(r => { if (cancelled) return; if (r.ok) setBlocks(r.blocks); else { setBlocks([]); setError(r.error); } });
+    void (referral ? fetchReferralBlocks(referral.id) : fetchOpenBlocks(recordId, typeKey)).then(r => { if (cancelled) return; if (r.ok) setBlocks(r.blocks); else { setBlocks([]); setError(r.error); } });
     return () => { cancelled = true; };
-  }, [recordId, typeKey]);
+  }, [recordId, typeKey, referral?.id]);
 
   const days = useMemo(() => Array.from(new Set((blocks ?? []).map(b => b.day))), [blocks]);
   const shownDay = day ?? days[0] ?? null;
@@ -52,11 +59,13 @@ export function ConsultationBlockPicker({ recordId, reschedule, currentType, onL
   async function confirm() {
     if (!typeKey || !shownDay || !half) return;
     setBusy(true); setError("");
-    const r = reschedule ? await rescheduleConsultationBlock(recordId, typeKey, shownDay, half) : await bookConsultationBlock(recordId, typeKey, shownDay, half);
+    const r = referral
+      ? (reschedule ? await rescheduleReferralConsultation(referral.id, shownDay, half) : await bookReferralConsultation(referral.id, shownDay, half))
+      : (reschedule ? await rescheduleConsultationBlock(recordId, typeKey, shownDay, half) : await bookConsultationBlock(recordId, typeKey, shownDay, half));
     setBusy(false);
     if (!r.ok) {
       setError(r.error); setHalf(null);
-      const again = await fetchOpenBlocks(recordId, typeKey); if (again.ok) setBlocks(again.blocks);
+      const again = referral ? await fetchReferralBlocks(referral.id) : await fetchOpenBlocks(recordId, typeKey); if (again.ok) setBlocks(again.blocks);
       return;
     }
     await onDone();
@@ -67,10 +76,10 @@ export function ConsultationBlockPicker({ recordId, reschedule, currentType, onL
       {!types && !error && <p className="text-[14px] text-slate-600 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading…</p>}
       {types && (
         <>
-          <p className="text-[14px] font-semibold text-[#062444] mb-1.5">1. What is the consultation about?</p>
+          <p className="text-[14px] font-semibold text-[#062444] mb-1.5">{referral ? "1. The reason CEDO gave for this consultation" : "1. What is the consultation about?"}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3" role="radiogroup" aria-label="Type of consultation">
             {types.map(t => (
-              <button key={t.key} role="radio" aria-checked={typeKey === t.key} onClick={() => setTypeKey(t.key)}
+              <button key={t.key} role="radio" aria-checked={typeKey === t.key} disabled={!!referral} onClick={() => setTypeKey(t.key)}
                 className={`rounded-lg border px-3 py-2 text-left text-[14px] ${typeKey === t.key ? "border-[#062444] bg-sky-50 ring-2 ring-[#062444]" : "border-[#062444]/25 bg-white hover:bg-[#f7f9fc]"}`}>
                 <span className="block font-bold text-[#062444]">{t.label}</span>
                 <span className="block text-[13px] text-slate-700">{t.minutes} minutes{t.suggested ? " · matches your case" : ""}</span>
