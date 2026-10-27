@@ -15,19 +15,32 @@ const strOrNull = (v: unknown) => (v == null ? null : String(v));
 const num = (v: unknown) => (v == null ? 0 : Number(v));
 
 /** testers: scholar IDs when the window is TESTERS ONLY (nobody else sees it, is alerted or counted); an empty list = a normal window for everyone. */
-export interface RenewalWindowRow { id: string; schoolYear: string; term: string; opensOn: string; closesOn: string; lateAllowed: boolean; note: string; testers: string[] }
+export interface RenewalWindowRow { id: string; schoolYear: string; term: string; opensOn: string; closesOn: string; lateAllowed: boolean; note: string; testers: string[];
+  /** The schools whose scholars can renew in this window; empty = all schools. */
+  schoolIds: string[] }
 
 export async function fetchRenewalWindows(): Promise<Loaded<RenewalWindowRow>> {
   const { data, error } = await supabase.from("renewal_windows").select("*").order("opens_on", { ascending: false });
   if (error) return { ok: false, error: error.message };
-  return { ok: true, rows: ((data ?? []) as Row[]).map(r => ({ id: str(r.id), schoolYear: str(r.school_year), term: str(r.term), opensOn: str(r.opens_on), closesOn: str(r.closes_on), lateAllowed: !!r.late_allowed, note: str(r.note), testers: Array.isArray(r.testers) ? (r.testers as unknown[]).map(str) : [] })) };
+  return { ok: true, rows: ((data ?? []) as Row[]).map(r => ({ id: str(r.id), schoolYear: str(r.school_year), term: str(r.term), opensOn: str(r.opens_on), closesOn: str(r.closes_on), lateAllowed: !!r.late_allowed, note: str(r.note), testers: Array.isArray(r.testers) ? (r.testers as unknown[]).map(str) : [], schoolIds: Array.isArray(r.school_ids) ? (r.school_ids as unknown[]).map(str) : [] })) };
 }
 
-/** `testers`: the scholar IDs for a testers-only window, [] to open the window to everyone, undefined to leave it as it is (the call then also works before the Phase 8b SQL is installed). */
-export async function saveRenewalWindow(w: { id: string | null; schoolYear: string; term: string; opensOn: string; closesOn: string; lateAllowed: boolean; note: string; testers?: string[] }): Promise<Done> {
+/** A school to tick for a window, with how many active scholars are enrolled in it. `schoolId: null` is the row for scholars with no school set. */
+export interface WindowSchool { schoolId: string | null; name: string; scholars: number }
+/** The schools to tick. `legacy: true` = the choose-schools database update has not been run yet (the screen then hides the choice). */
+export async function fetchWindowSchools(): Promise<{ ok: true; schools: WindowSchool[] } | { ok: false; error: string; legacy?: boolean }> {
+  const { data, error } = await supabase.rpc("renewal_window_schools");
+  if (error) return { ok: false, error: error.message, legacy: error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "") };
+  return { ok: true, schools: ((data ?? []) as Row[]).map(r => ({ schoolId: r.school_id == null ? null : str(r.school_id), name: str(r.name), scholars: num(r.scholars) })) };
+}
+
+/** `testers`: the scholar IDs for a testers-only window, [] to open the window to everyone, undefined to leave it as it is (the call then also works before the Phase 8b SQL is installed). `schools`: the ids of the schools whose scholars can renew, [] for all schools, undefined to leave it as it is. */
+export async function saveRenewalWindow(w: { id: string | null; schoolYear: string; term: string; opensOn: string; closesOn: string; lateAllowed: boolean; note: string; testers?: string[]; schools?: string[] }): Promise<Done> {
   const { error } = await supabase.rpc("renewal_window_save", {
     p_id: w.id, p_school_year: w.schoolYear.trim(), p_term: w.term, p_opens_on: w.opensOn, p_closes_on: w.closesOn, p_late_allowed: w.lateAllowed, p_note: w.note,
-    ...(w.testers === undefined ? {} : { p_testers: w.testers }),
+    // The schools are sent only when they matter (a list of school ids, or [] for all schools), so the call also works before the choose-schools SQL is installed. With the
+    // schools the testers are sent too (null = leave them as they are): that is the form of the save that takes the schools.
+    ...(w.schools === undefined ? (w.testers === undefined ? {} : { p_testers: w.testers }) : { p_testers: w.testers ?? null, p_schools: w.schools }),
   });
   return error ? { ok: false, error: error.message } : { ok: true };
 }

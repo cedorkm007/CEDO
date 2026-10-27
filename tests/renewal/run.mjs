@@ -960,7 +960,7 @@ test("the Appointments subtab sits inside the existing Consultation Tool (same t
   const sql = [...["p2_application", "p3_appointments", "p4_tracker", "p8b_test_windows"].map(n => "supabase_migration_renewal_" + n + ".sql"), "supabase_migration_consultation_types_b_booking.sql"].map(n => fs.readFileSync(path.join(root, n), "utf8")).join("\n");
   const called = new Set();
   for (const p of ["src/sead/appointmentsApi.ts", "src/scholar/renewalApi.ts", "src/sead/renewalApi.ts"]) for (const m of fs.readFileSync(path.join(root, p), "utf8").matchAll(/rpc\("([a-z_]+)"/g)) called.add(m[1]);
-  const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql + fs.readFileSync(path.join(root, "supabase_migration_renewal_not_applied_columns.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_referral_reason_c_functions.sql"), "utf8")));
+  const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql + fs.readFileSync(path.join(root, "supabase_migration_renewal_not_applied_columns.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_referral_reason_c_functions.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_renewal_window_schools_b_functions.sql"), "utf8")));
   assert.deepEqual(missing, []);
 });
 test("the scholar-facing messages never show a time in UTC or the browser's own time zone", () => {
@@ -1221,6 +1221,39 @@ test("the three referral files: A changes only the referrals table, B only the b
   assert.equal(/\balter table\b|\bdrop table\b|\btruncate\b/i.test(c), false, "file C changes no table");
   assert.ok((c.match(/interval '12 hours'/g) ?? []).length >= 5, "the 12-hour rule");
   assert.match(c, /_consult_blocks\(/, "the minutes of the reason are counted against the staff's available minutes");
+});
+
+
+console.log("Renewal window: choose the schools");
+test("the window form offers all schools or checkboxes for the schools, says how many scholars, warns about scholars with no school, and sends the schools only when they matter", () => {
+  const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalWindowsTab.tsx"), "utf8");
+  assert.match(tab, /Which schools can renew in this window/);
+  assert.match(tab, /All schools/);
+  assert.match(tab, /Only the schools I tick/);
+  assert.match(tab, /type="checkbox" checked=\{pickedSchools\.has/, "one checkbox per school");
+  assert.match(tab, /Tick all/);
+  assert.match(tab, /no school set/, "scholars with no school cannot be matched, and the form says so");
+  assert.match(tab, /Tick at least one school/, "an empty choice is refused");
+  assert.match(tab, /schools && onlySchools/, "the schools are only sent when they matter (the save also works before the SQL is run)");
+  assert.match(tab, /already applied keeps their application/);
+  assert.deepEqual([...tab.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map(m => Number(m[1])).filter(n => n < 13), [], "no small text");
+  const api = fs.readFileSync(path.join(root, "src/sead/renewalApi.ts"), "utf8");
+  assert.match(api, /rpc\("renewal_window_schools"/);
+  assert.match(api, /p_schools: w\.schools/);
+  assert.match(api, /school_ids/);
+});
+test("the database side: one helper decides who a window is for (testers AND schools), the trigger refuses anyone outside, the reading rule hides the window, and an application that exists is never hidden", () => {
+  const a = fs.readFileSync(path.join(root, "supabase_migration_renewal_window_schools_a_column.sql"), "utf8").replace(/--.*$/gm, "");
+  assert.equal(/alter table public\.(?!renewal_windows)/i.test(a), false, "file A changes only the windows table");
+  assert.match(a, /school_ids uuid\[\]/);
+  const b = fs.readFileSync(path.join(root, "supabase_migration_renewal_window_schools_b_functions.sql"), "utf8");
+  assert.match(b, /s\.school_id = any \(w\.school_ids\)/);
+  assert.match(b, /This renewal window is not open for your school\./);
+  assert.match(b, /drop policy if exists "signed in users read renewal windows"/);
+  assert.match(b, /r2\.window_id = renewal_windows\.id and r2\.scholar_id_number = v_id/, "a scholar who already applied keeps seeing the window");
+  assert.equal(/\balter table\b|\bdrop table\b|\btruncate\b|delete from/i.test(b.replace(/--.*$/gm, "")), false, "file B changes no table and deletes nothing");
+  const p8b = fs.readFileSync(path.join(root, "supabase_migration_renewal_p8b_test_windows.sql"), "utf8");
+  assert.equal((p8b.match(/_renewal_window_includes\(/g) ?? []).length, 7, "the lists, alerts, dashboard and export already ask the same helper, so one change covers them");
 });
 
 console.log(`\n${process.exitCode ? "SOME TESTS FAILED" : "All " + passed + " tests passed"}`);

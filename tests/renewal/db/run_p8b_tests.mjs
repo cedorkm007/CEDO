@@ -117,7 +117,8 @@ check("nothing else was touched: other terms' renewals and other scholars are un
 check("the window itself can now be deleted, or opened to everyone with clean numbers", await (async () => { await rpc(EVAL, "select public.renewal_window_delete($1)", [wid]); return !(await windowOf()); })());
 
 console.log("\nSafety");
-check("the migration can be run twice", await (async () => { try { await db.exec(fs.readFileSync(new URL("../../../supabase_migration_renewal_p8b_test_windows.sql", import.meta.url), "utf8")); return (await q("select count(*)::int n from pg_proc where proname = 'renewal_window_save'"))[0].n === 1; } catch (e) { console.log("   ", e.message); return false; } })());
+check("the migration can be run twice", await (async () => { try { await db.exec(fs.readFileSync(new URL("../../../supabase_migration_renewal_p8b_test_windows.sql", import.meta.url), "utf8")); // one save of this file (8 arguments); the choose-schools update adds ONE separate form (9 arguments, it requires the schools) and never removes this one
+  return (await q("select count(*)::int n from pg_proc where proname = 'renewal_window_save' and pronargs = 8"))[0].n === 1 && (await q("select count(*)::int n from pg_proc where proname = 'renewal_window_save'"))[0].n <= 2; } catch (e) { console.log("   ", e.message); return false; } })());
 check("the internal helper and the guard cannot be called by signed-in users", await fails(EVAL, "select public._renewal_window_includes('2026-2027', '1st Semester', 'x')", [], /permission denied/));
 
 console.log(`\n${failed === 0 ? "ALL PHASE 8b DATABASE CHECKS PASSED" : "SOME CHECKS FAILED"} — ${passed} passed, ${failed} failed`);
