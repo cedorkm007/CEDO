@@ -512,3 +512,29 @@ export function referralStatusText(status: string | null): string | null {
     default: return "Referred";
   }
 }
+// ── Scholar Renewal > Scholar List ──────────────────────────
+/** The renewal eligibility groups of the Scholar List, in the order they are shown. The database decides which group(s) a scholar is in (supabase_migration_renewal_scholar_list.sql). */
+export type ScholarEligibility = "ready" | "consultation" | "sdp_reconsideration" | "waiting" | "review";
+export const ELIGIBILITY_OPTIONS: { key: ScholarEligibility; label: string; tone: "good" | "bad" | "warn" | "plain" }[] = [
+  { key: "ready", label: "Ready for renewal", tone: "good" },
+  { key: "consultation", label: "For consultation", tone: "bad" },
+  { key: "sdp_reconsideration", label: "For SDP reconsideration", tone: "warn" },
+  { key: "waiting", label: "Waiting for grades", tone: "plain" },
+  { key: "review", label: "Needs review", tone: "warn" },
+];
+export function eligibilityLabel(key: string): string { return ELIGIBILITY_OPTIONS.find(o => o.key === key)?.label ?? key; }
+/** The Grades column: how many of this semester's subjects have a grade, e.g. "4 of 5 graded". */
+export function gradesProgressText(g: { graded: number; total: number }): string {
+  return g.total <= 0 ? "No subjects yet" : `${g.graded} of ${g.total} graded`;
+}
+/** The small indicators next to the grades count: "1 failed", "2 failed", "1 DRP", "INC", "2 INC", "1 to review". A failed count does not include DRP (a DRP has its own indicator). */
+export function gradeIndicators(g: { failed: number; drp: number; inc: number; review: number }): { text: string; tone: "bad" | "warn" }[] {
+  const out: { text: string; tone: "bad" | "warn" }[] = [];
+  if (g.failed > 0) out.push({ text: `${g.failed} failed`, tone: "bad" });
+  if (g.drp > 0) out.push({ text: `${g.drp} DRP`, tone: "bad" });
+  if (g.inc > 0) out.push({ text: g.inc === 1 ? "INC" : `${g.inc} INC`, tone: "warn" });
+  if (g.review > 0) out.push({ text: `${g.review} to review`, tone: "warn" });
+  return out;
+}
+/** The categories of the SDP credits view, in the order the check lists them. */
+export const SDP_CATEGORY_LABELS: Record<string, string> = { community_service: "Institutional Volunteerism", community_volunteerism: "Community Volunteerism", formation_program: "Formation Program" };
