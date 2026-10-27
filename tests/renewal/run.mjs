@@ -1256,4 +1256,47 @@ test("the database side: one helper decides who a window is for (testers AND sch
   assert.equal((p8b.match(/_renewal_window_includes\(/g) ?? []).length, 7, "the lists, alerts, dashboard and export already ask the same helper, so one change covers them");
 });
 
+console.log("Scholar Renewal > Scholar List");
+test("the Grades column says how many subjects are graded of the total, and the indicators say failed / DRP / INC / to review", () => {
+  assert.equal(R.gradesProgressText({ graded: 4, total: 5 }), "4 of 5 graded");
+  assert.equal(R.gradesProgressText({ graded: 0, total: 0 }), "No subjects yet");
+  assert.deepEqual(R.gradeIndicators({ failed: 0, drp: 0, inc: 0, review: 0 }), []);
+  assert.deepEqual(R.gradeIndicators({ failed: 1, drp: 0, inc: 0, review: 0 }), [{ text: "1 failed", tone: "bad" }]);
+  assert.deepEqual(R.gradeIndicators({ failed: 2, drp: 0, inc: 0, review: 0 }), [{ text: "2 failed", tone: "bad" }]);
+  assert.deepEqual(R.gradeIndicators({ failed: 0, drp: 1, inc: 0, review: 0 }), [{ text: "1 DRP", tone: "bad" }]);
+  assert.deepEqual(R.gradeIndicators({ failed: 0, drp: 2, inc: 0, review: 0 }), [{ text: "2 DRP", tone: "bad" }]);
+  assert.deepEqual(R.gradeIndicators({ failed: 0, drp: 0, inc: 1, review: 0 }), [{ text: "INC", tone: "warn" }]);
+  assert.deepEqual(R.gradeIndicators({ failed: 1, drp: 1, inc: 2, review: 1 }).map(c => c.text), ["1 failed", "1 DRP", "2 INC", "1 to review"]);
+});
+test("the eligibility groups are the three of the request plus Waiting for grades and Needs review, in this order", () => {
+  assert.deepEqual(R.ELIGIBILITY_OPTIONS.map(o => o.label), ["Ready for renewal", "For consultation", "For SDP reconsideration", "Waiting for grades", "Needs review"]);
+  assert.equal(R.eligibilityLabel("sdp_reconsideration"), "For SDP reconsideration");
+  assert.equal(R.SDP_CATEGORY_LABELS.community_service, "Institutional Volunteerism");
+});
+test("the tab sits between Dashboard and Applications, is for the evaluator, and every column of the request is on the page", () => {
+  const page = fs.readFileSync(path.join(root, "src/sead/ScholarRenewalPage.tsx"), "utf8");
+  assert.ok(page.indexOf('key: "dashboard"') < page.indexOf('key: "scholarList"') && page.indexOf('key: "scholarList"') < page.indexOf('key: "applications"'));
+  assert.match(page, /key: "scholarList", label: "Scholar List".*evaluatorOnly: true/);
+  const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalScholarListTab.tsx"), "utf8");
+  for (const h of ["Scholar ID", "Scholar name", "Scholarship status", "School", "Year level", "Program", "SDP status", "Grades", "Renewal eligibility"]) assert.ok(tab.includes(`"${h}"`), h);
+  assert.match(tab, /View SDP credits/);
+  assert.match(tab, /hidden lg:block/); assert.match(tab, /lg:hidden/);
+  assert.equal(/text-slate-[45]00/.test(tab), false, "no faint text");
+});
+test("the website asks the database for the list, the count table, the choices, the check and the SDP credits, and a missing database update is told, not shown as an error", () => {
+  const api = fs.readFileSync(path.join(root, "src/sead/renewalScholarListApi.ts"), "utf8");
+  for (const fn of ["renewal_scholar_list", "renewal_scholar_list_matrix", "renewal_scholar_list_options", "renewal_scholar_list_refresh", "renewal_scholar_sdp_credits"]) assert.ok(api.includes(`rpc("${fn}"`), fn);
+  assert.match(api, /PGRST202/);
+  assert.match(api, /p_since: since/);
+});
+test("the database side: one table, locked; the labels come from the one renewal check; the check runs in steps and is for the evaluator only", () => {
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_scholar_list.sql"), "utf8").replace(/--.*$/gm, "");
+  assert.ok(sql.includes("revoke all on public.renewal_scholar_list_cache from public, anon, authenticated"));
+  assert.ok(sql.includes("public._renewal_evaluate(s.scholar_id_number, p_school_year, p_term)"), "one check for the list and an application");
+  assert.ok(sql.includes("perform public._renewal_require_evaluator()"));
+  assert.ok(sql.includes("public._renewal_window_includes("));
+  assert.equal((sql.match(/create table/gi) ?? []).length, 1);
+  assert.equal(/alter table public[.](?!renewal_scholar_list_cache)|drop table|truncate|delete from/i.test(sql), false);
+});
+
 console.log(`\n${process.exitCode ? "SOME TESTS FAILED" : "All " + passed + " tests passed"}`);
