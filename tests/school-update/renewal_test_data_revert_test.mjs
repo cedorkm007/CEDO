@@ -24,10 +24,7 @@ console.log("\nIt stops when something belongs to a real (non-test) person or to
 check("the demo data has bookings and referrals tied to renewals, so the script stops and says why", await (async () => { const r = await attempt(DRY); return !r.ok && /STOPPED/.test(r.msg); })());
 check("on the demo, before the testers are set, it also stops (applications that belong to no testers-only window)", (await attempt(REAL)).ok === false);
 
-// the real project's situation: one testers-only window, 3 applications from the testers, one certificate, no booking / referral / Daily Record
-await q("delete from counseling_slots where record_id is not null");
-await q("update scholar_counseling_referrals set renewal_record_id = null");
-await q("update scholar_counseling_records set renewal_record_id = null");
+// the real project's situation: one testers-only window, applications from the testers, one certificate, and the bookings / referrals / Daily Records that the test applications made (all hang on test applications)
 const owners = await q("select distinct w.id, r.scholar_id_number from renewal_records r join renewal_windows w on w.id = r.window_id");
 for (const w of [...new Set(owners.map(o => o.id))]) await q("update renewal_windows set testers = $2 where id = $1", [w, owners.filter(o => o.id === w).map(o => o.scholar_id_number)]);
 const tester1 = (await q("select r.scholar_id_number s, r.id, r.school_year y, r.term t from renewal_records r order by r.scholar_id_number limit 1"))[0];
@@ -39,6 +36,12 @@ await q("insert into renewal_export_log (by_label, school_year, term, row_count)
 await q("insert into notifications (id, type, user_id, user_name, title, message, \"timestamp\", read, reference_id) values (gen_random_uuid(), 'renewal', $1, '', 'Renewal test', 'x', now(), false, ''), (gen_random_uuid(), 'task', $1, '', 'A normal task notice', 'x', now(), false, '')", [seedId("staff:demo.evaluator")]);
 await q("insert into scholar_notifications (scholar_id_number, kind, title, body) values ('TEST-0001', 'some_other_kind', 'Not a renewal notice', 'x')");
 const csrBefore = (await q("select count(*)::int n from csr_issued"))[0].n;
+// like the real project: one booking made by the new booking system (it has a type), one made the older way (a ready-made time slot), and a Daily Record the renewal made for a test application
+await q("update counseling_slots set consult_type = 'INC', minutes = 8 where id = (select id from counseling_slots where record_id is not null order by starts_at limit 1)");
+await q("insert into scholar_counseling_records (scholar_id_number, status, consulted_by, renewal_record_id) select r.scholar_id_number, 'Regular', (select staff_id from counseling_slots where record_id is not null limit 1), r.id from renewal_records r order by r.scholar_id_number limit 1");
+const linked = (await q(`select (select count(*)::int from counseling_slots where record_id is not null) slots, (select count(*)::int from counseling_slots where record_id is not null and (consult_type is not null or referral_id is not null)) deleted_slots,
+  (select count(*)::int from scholar_counseling_referrals where renewal_record_id is not null) refs, (select count(*)::int from scholar_counseling_records where renewal_record_id is not null) recs`))[0];
+check("the demo has bookings, referrals and Daily Records that hang on test applications (like the real project's two of each)", linked.slots >= 2 && linked.deleted_slots === 1 && linked.refs >= 1 && linked.recs === 1, JSON.stringify(linked));
 const before = await counts();
 check("the demo now looks like the real project: applications from the testers, a certificate, notices, push messages", before.renewal_records > 0 && csrBefore >= 1 && before.scholar_notifications > 0 && before.push_outbox >= 1 && before.renewal_notice_log >= 2);
 
@@ -50,6 +53,9 @@ check("it says it is a dry run", dry.some(r => r.step === "RESULT" && /DRY RUN/.
 check("it counts exactly what it would remove", Number(find(dry, "applications of the test accounts").rows) === before.renewal_records && Number(find(dry, "notices sent to scholars").rows) === before.scholar_notifications - 1
   && Number(find(dry, "staff bell notices").rows) === 1 && Number(find(dry, "queued").rows) === before.push_outbox && Number(find(dry, "certificate records").rows) === csrBefore, JSON.stringify(dry.filter(r => r.step === "1. REMOVE")));
 check("it lists the certificate file to delete by hand", dry.some(r => r.step.startsWith("2. FILE") && r.what === "TEST-0026/CSR-DEMO-0001.pdf" || r.step.startsWith("2. FILE") && r.what.endsWith("/CSR-DEMO-0001.pdf")));
+
+check("it counts the bookings, time slots, referrals and Daily Records it would remove", Number(find(dry, "consultation bookings of the test").rows) === linked.deleted_slots
+  && Number(find(dry, "consultation time slots").rows) === linked.slots - linked.deleted_slots && Number(find(dry, "consultation referrals").rows) === linked.refs && Number(find(dry, "Daily Records").rows) === linked.recs, JSON.stringify(dry.filter(r => r.step === "1. REMOVE")));
 
 console.log("\nA person who is not a test account");
 const outsider = (await q("select scholar_id_number s, window_id w from renewal_records limit 1"))[0];
@@ -75,10 +81,16 @@ check("everything else is untouched: a normal staff notice, a non-renewal schola
   && after.scholars === before.scholars && after.scholar_status_history === before.scholar_status_history && after.renewal_windows === before.renewal_windows && after.counseling_availability === before.counseling_availability
   && after.push_subscriptions === before.push_subscriptions && after.renewal_study_plan_forms === before.renewal_study_plan_forms
   && (await q("select count(*)::int n from renewal_windows where testers is not null"))[0].n === before.renewal_windows);
+check("the bookings, referrals and Daily Records of the test applications are gone; nothing is left hanging on a renewal", (await q("select (select count(*)::int from counseling_slots where record_id is not null) a, (select count(*)::int from scholar_counseling_referrals where renewal_record_id is not null) b, (select count(*)::int from scholar_counseling_records where renewal_record_id is not null) c"))
+  .every(r => r.a === 0 && r.b === 0 && r.c === 0) && after.scholar_counseling_referrals === before.scholar_counseling_referrals - linked.refs && after.scholar_counseling_records === before.scholar_counseling_records - linked.recs
+  && after.counseling_slots === before.counseling_slots - linked.deleted_slots && after.counseling_availability === before.counseling_availability);
+
 const backup = await q("select table_name, count(*)::int n from public._renewal_test_backup group by 1");
 const inBackup = Object.fromEntries(backup.map(b => [b.table_name, b.n]));
 check("every removed row was copied to the holding table first", inBackup.renewal_records === before.renewal_records && inBackup.scholar_notifications === before.scholar_notifications - 1 && inBackup.csr_issued === csrBefore
   && inBackup.renewal_notice_log === before.renewal_notice_log && inBackup.push_outbox === before.push_outbox && inBackup.renewal_export_log === before.renewal_export_log && inBackup.notifications === 1, JSON.stringify(inBackup));
+check("the bookings, referrals and Daily Records were copied to the holding table first too", inBackup.counseling_slots === linked.slots && inBackup.scholar_counseling_referrals === linked.refs && inBackup.scholar_counseling_records === linked.recs, JSON.stringify(inBackup));
+
 check("the copy is complete enough to put a row back (an application with its Scholar ID and stage)", (await q("select row_data ->> 'scholar_id_number' s, row_data ->> 'stage' st from public._renewal_test_backup where table_name = 'renewal_records' limit 1"))[0].s?.startsWith("TEST-"));
 check("the holding table is locked: signed-in people and visitors cannot read it", await (async () => {
   for (const role of ["authenticated", "anon"]) {
