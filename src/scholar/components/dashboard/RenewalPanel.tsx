@@ -7,6 +7,7 @@ import { ConsultationSection } from "./ConsultationSection";
 import { CsrDownload } from "./CsrDownload";
 import { RenewalProgressBar } from "./RenewalProgressBar";
 import { SelfGradesSection } from "./SelfGradesSection";
+import { SelfGradesForm, emptyGradeRow, gradeFormProblem, type GradeFormRow } from "./SelfGradesForm";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { StudyPlanFormLink } from "./StudyPlanFormLink";
 import { buildNextSteps } from "../../renewalSummary";
@@ -110,6 +111,11 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
   const [yearLevel, setYearLevel] = useState(overview.scholar.yearLevel);
   const [note, setNote] = useState("");
   const [askReconsideration, setAskReconsideration] = useState(false);
+  const [enterGrades, setEnterGrades] = useState(false);      // the scholar chose to enter their grades in this form
+  const [gRows, setGRows] = useState<GradeFormRow[]>([emptyGradeRow()]);
+  const [gFiles, setGFiles] = useState<File[]>([]);
+  const [gAck, setGAck] = useState(false);
+  const [gError, setGError] = useState("");
   const [preview, setPreview] = useState<RenewalEvaluation | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -124,7 +130,7 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
 
   async function submit() {
     setBusy(true); setError("");
-    const r = await applyForRenewal({ windowId: w.id, school, program, yearLevel, note, requestSdpReconsideration: canAskReconsideration && askReconsideration });
+    const r = await applyForRenewal({ windowId: w.id, school, program, yearLevel, note, requestSdpReconsideration: wantsReconsideration, scholarIdNumber: overview.scholar.scholarIdNumber, grades: enterGrades ? { lines: gRows, newFiles: gFiles, acknowledged: gAck } : undefined });
     setBusy(false);
     if (!r.ok) { setError(r.error); return; }
     await onDone();
@@ -132,6 +138,13 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
 
   // A scholar who lacks SDP credits is told what is lacking and may ask for an SDP reconsideration together with the application.
   const canAskReconsideration = !!preview?.sdp?.applicable && preview.sdp.complied === false && !!preview.sdp.lacking && sdpLackingTotal(preview.sdp.lacking) > 0 && !preview.sdp.reconsideration;
+  // Grades first: the form can carry the scholar's own grades (when the school has not uploaded them), and an SDP reconsideration is offered only once the grades are entered or the school's are in.
+  const gradesInForm = !!preview?.grades_in_form;
+  const schoolGrades = !!preview?.grades?.school_submitted;
+  const offerGrades = gradesInForm && !schoolGrades && preview?.grades?.self_status !== "approved";
+  const gradeProblem = enterGrades ? gradeFormProblem(gRows, gFiles.length, gAck) : null;
+  const gradesReady = !gradesInForm || schoolGrades || preview?.grades?.self_status === "approved" || (enterGrades && !gradeProblem);
+  const wantsReconsideration = canAskReconsideration && gradesReady && askReconsideration;
   const inputCls = "w-full rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] outline-none focus:border-[#062444] bg-white";
   return (
     <div>
@@ -163,7 +176,35 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
           {previewError && <p role="alert" className="text-[14px] text-red-700">{previewError}</p>}
           {!preview && !previewError && <p className="text-[14px] text-slate-600 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading what we have for you…</p>}
           {preview && <EvaluationSummary ev={preview} />}
-          {preview && canAskReconsideration && (
+          {preview && offerGrades && (
+            <div className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3.5 py-3 text-[14px] text-slate-900">
+              <p className="font-bold text-[#062444]">Your grades</p>
+              {!enterGrades ? (
+                <>
+                  <p className="mt-1">Your school has not uploaded your grades yet. You can enter them yourself now, with a screenshot, and the Grades Approver checks them. You can also apply without them and enter them later from your renewal page.</p>
+                  <button type="button" onClick={() => setEnterGrades(true)} className="mt-2 rounded-lg bg-[#062444] px-4 py-2 font-bold text-white">Enter my grades now</button>
+                </>
+              ) : (
+                <div className="mt-2 space-y-2">
+                  <SelfGradesForm basis={preview.basis_school_year && preview.basis_term ? termLabelOf(preview.basis_school_year, preview.basis_term) : "the previous semester"} rows={gRows} setRows={setGRows} keep={[]} setKeep={() => undefined} newFiles={gFiles} setNewFiles={setGFiles} ack={gAck} setAck={setGAck} onError={setGError} />
+                  {gError && <p role="alert" className="text-red-700">{gError}</p>}
+                  {gradeProblem && <p className="text-amber-900">Still needed: {gradeProblem}</p>}
+                  <button type="button" onClick={() => { setEnterGrades(false); setAskReconsideration(false); setGError(""); }} className="rounded-lg border border-[#062444]/25 px-3 py-1.5 font-semibold text-[#062444]">Apply without entering my grades</button>
+                </div>
+              )}
+            </div>
+          )}
+          {preview && gradesInForm && schoolGrades && (
+            <p className="rounded-lg border border-green-300 bg-green-50 px-3.5 py-2.5 text-[14px] text-green-950">Your school has already uploaded your grades, so you do not need to enter them.</p>
+          )}
+          {preview && canAskReconsideration && !gradesReady && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3 text-[14px] text-amber-950">
+              <p className="font-bold mb-1">Your SDP is not complete</p>
+              <p>Lacking: <strong>{sdpLackingText(preview.sdp!.lacking)}</strong>. Until the credits are recorded, your renewal waits on hold.</p>
+              <p className="mt-1.5">You can ask for an <strong>SDP reconsideration</strong>, but only after your grades are entered (or your school has uploaded them). Enter your grades above first, and the choice appears here.</p>
+            </div>
+          )}
+          {preview && canAskReconsideration && gradesReady && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3 text-[14px] text-amber-950">
               <p className="font-bold mb-1">Your SDP is not complete</p>
               <p>Lacking: <strong>{sdpLackingText(preview.sdp!.lacking)}</strong>. Until the credits are recorded, your renewal waits on hold.</p>
@@ -187,7 +228,7 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
             <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} maxLength={1000} placeholder="For example: my Science grade should be 1.5, not 2.0." className={`${inputCls} mt-1 font-normal`} />
           </label>
           <div className="flex gap-2 pt-1">
-            <button onClick={() => setStep(3)} disabled={!preview} className="rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white disabled:opacity-50">Next</button>
+            <button onClick={() => setStep(3)} disabled={!preview || !!gradeProblem} className="rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white disabled:opacity-50">Next</button>
             <button onClick={() => setStep(1)} className="rounded-lg border border-[#062444]/25 px-4 py-2 text-[14px] font-semibold text-[#062444]">Back</button>
           </div>
         </div>
@@ -199,7 +240,8 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
           <ul className="text-[14px] text-slate-700 list-disc pl-5">
             <li>School: {school}</li><li>Program: {program}</li><li>Year level: {yearLevel}</li>
             {note.trim() && <li>Your note: {note.trim()}</li>}
-            {canAskReconsideration && askReconsideration && <li>SDP reconsideration: <strong>requested</strong> (lacking {sdpLackingText(preview?.sdp?.lacking)})</li>}
+            {enterGrades && <li>Your grades: <strong>{gRows.length} subject{gRows.length === 1 ? "" : "s" } entered</strong> with {gFiles.length} image{gFiles.length === 1 ? "" : "s"}, sent with your application for the Grades Approver to check</li>}
+            {wantsReconsideration && <li>SDP reconsideration: <strong>requested</strong> (lacking {sdpLackingText(preview?.sdp?.lacking)})</li>}
           </ul>
           {error && <p role="alert" className="text-[14px] text-red-700">{error}</p>}
           <div className="flex gap-2 pt-1">

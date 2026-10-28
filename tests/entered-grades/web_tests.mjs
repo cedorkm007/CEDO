@@ -82,9 +82,11 @@ test("an approver with no other renewal tag can open Scholar Renewal, and lands 
 console.log("\nThe screens");
 test("the scholar's form: subject code, subject name, units and grade per subject; images; the tick; sent only with the tick", () => {
   const f = src("src/scholar/components/dashboard/SelfGradesSection.tsx");
-  for (const label of ["Subject code", "Subject name", "Units", "Grade"]) assert.ok(f.includes(`placeholder="${label}"`), label);
-  assert.match(f, /Screenshot or image of your grades/);
-  assert.match(f, /\{SELF_GRADES_WARNING\}/);
+  const form = src("src/scholar/components/dashboard/SelfGradesForm.tsx");
+  assert.match(f, /<SelfGradesForm /, "the tracker card uses the shared form");
+  for (const label of ["Subject code", "Subject name", "Units", "Grade"]) assert.ok(form.includes(`placeholder="${label}"`), label);
+  assert.match(form, /Screenshot or image of your grades/);
+  assert.match(form, /\{SELF_GRADES_WARNING\}/);
   assert.match(f, /disabled=\{busy \|\| !ack\}/, "the Send button waits for the tick");
   assert.match(f, /Send my grades for approval/);
   assert.match(f, /Correct and send again/);
@@ -123,6 +125,32 @@ test("the Grades Monitoring tool has a Grading setup tab: the scale, the passing
 });
 test("the evaluator's application page says when the grades are the scholar's own entered grades", () => {
   assert.match(src("src/sead/renewal/RenewalDetailView.tsx"), /These are the grades the scholar entered/);
+});
+
+console.log("\nGrades inside the application form");
+test("the form offers the grades step only when the database says it can carry them, and not when the school already uploaded", () => {
+  const p = src("src/scholar/components/dashboard/RenewalPanel.tsx");
+  assert.match(p, /preview\?\.grades_in_form/);
+  assert.match(p, /offerGrades = gradesInForm && !schoolGrades/);
+  assert.match(p, /Enter my grades now/); assert.match(p, /Apply without entering my grades/);
+  assert.match(p, /<SelfGradesForm /);
+});
+test("an SDP reconsideration is not offered until the grades are entered or the school's are in; the Next button waits for a complete grades form", () => {
+  const p = src("src/scholar/components/dashboard/RenewalPanel.tsx");
+  assert.match(p, /gradesReady = !gradesInForm \|\| schoolGrades/);
+  assert.match(p, /canAskReconsideration && !gradesReady/);
+  assert.match(p, /disabled=\{!preview \|\| !!gradeProblem\}/);
+});
+test("the application sends the grades with the images uploaded first and removed again if the application is refused", () => {
+  const a = src("src/scholar/renewalApi.ts");
+  assert.match(a, /p_grade_lines/); assert.match(a, /p_grade_files/); assert.match(a, /p_grade_ack/);
+  assert.match(a, /grade-entries/);
+  assert.match(a, /await undo\(\)/);
+});
+test("the approver cannot approve an SDP reconsideration while the grades are not complete (deny stays)", () => {
+  const a = src("src/sead/sdpReconsiderationApi.ts"), tab = src("src/sead/renewal/RenewalSdpReconsiderationTab.tsx");
+  assert.match(a, /grades_complete/); assert.match(a, /Cannot be approved yet/);
+  assert.match(tab, /disabled=\{r\.status === "pending" && !!sdpApprovalBlockedText\(r\)\}/);
 });
 
 console.log("\nThe database files");

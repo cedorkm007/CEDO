@@ -66,8 +66,8 @@ test("the application form shows the lacking credits and the implication, and as
   const p = src("src/scholar/components/dashboard/RenewalPanel.tsx");
   assert.match(p, /Your SDP is not complete/);
   assert.match(p, /sdpReconsiderationImplication\(preview\)/);
-  assert.match(p, /canAskReconsideration && askReconsideration/);
-  assert.match(p, /requestSdpReconsideration: canAskReconsideration && askReconsideration/);
+  assert.match(p, /canAskReconsideration && gradesReady && askReconsideration/, "only offered and sent once the grades are in");
+  assert.match(p, /requestSdpReconsideration: wantsReconsideration/);
   const api = src("src/scholar/renewalApi.ts");
   assert.match(api, /p_request_sdp_reconsideration: true/);
   assert.ok(api.indexOf("requestSdpReconsideration ? await") > 0, "the older call is used when no request is made");
