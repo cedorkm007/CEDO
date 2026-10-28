@@ -51,17 +51,17 @@ begin
   end if;
 
   select * into v_basis from public._renewal_basis(w.school_year, w.term);
-  -- Grades first: the application is only taken when the grades are in: uploaded by the school, or entered together with the application (renewal_apply with the grades sets the
-  -- flag below for the length of its own transaction).
-  if public._eg_grades_status(v_id, v_basis.basis_school_year, v_basis.basis_term) <> 'school' and coalesce(current_setting('cedo.apply_grades_ok', true), '') <> 'on' then
-    raise exception 'Enter your grades first. You cannot apply for renewal until your grades are entered (or your school has uploaded them).';
-  end if;
   insert into public.renewal_records (scholar_id_number, school_year, term, window_id, stage, basis_school_year, basis_term, applied_at, is_late, late_decision,
       confirmed_school, confirmed_program, confirmed_year_level, scholar_note, scholar_note_at)
   values (v_id, w.school_year, w.term, w.id, case when v_late then 'late_pending' else 'submitted' end, v_basis.basis_school_year, v_basis.basis_term, now(),
       v_late, case when v_late then 'pending' end, btrim(p_school), btrim(p_program), btrim(p_year_level),
       left(btrim(coalesce(p_note, '')), 1000), case when btrim(coalesce(p_note, '')) <> '' then now() end)
   returning id into v_record_id;
+  -- Grades first (checked right after the row is made, so the window's own rules, such as the list of schools it is open for, answer first; refusing here undoes the row): the application is only taken when the grades are in: uploaded by the school, or entered together with the application (renewal_apply with the grades sets the
+  -- flag below for the length of its own transaction).
+  if public._eg_grades_status(v_id, v_basis.basis_school_year, v_basis.basis_term) <> 'school' and coalesce(current_setting('cedo.apply_grades_ok', true), '') <> 'on' then
+    raise exception 'Enter your grades first. You cannot apply for renewal until your grades are entered (or your school has uploaded them).';
+  end if;
 
   perform public._renewal_log(v_record_id, null, case when v_late then 'late_pending' else 'submitted' end,
     case when v_late then 'Applied after the window closed — waiting for the evaluator to accept.' else 'Application submitted.' end, 'Scholar');

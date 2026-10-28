@@ -10,6 +10,7 @@ const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const read = f => fs.readFileSync(f, "utf8");
+await db.exec(read("undo_entered_grades_e.sql"));      // this test is about the entered grades after applying; the later rule that grades must be in before applying (file E) has its own test
 const FILES = ["supabase_migration_entered_grades_a_tables.sql", "supabase_migration_entered_grades_b_grading_columns.sql", "supabase_migration_entered_grades_c_functions.sql"];
 const UNDOS = ["undo_entered_grades_c.sql", "undo_entered_grades_b.sql", "undo_entered_grades_a.sql"];
 async function as(uid, fn, role = "authenticated") {
