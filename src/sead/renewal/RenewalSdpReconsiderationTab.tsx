@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { CheckCircle2, Loader2, Search, XCircle } from "lucide-react";
 import {
-  decideSdpReconsideration, fetchSdpReconsiderationCounts, fetchSdpReconsiderations, SDP_RECONSIDERATION_PAGE_SIZE,
+  decideSdpReconsideration, fetchSdpReconsiderationCounts, fetchSdpReconsiderations, sdpApprovalBlockedText, SDP_RECONSIDERATION_PAGE_SIZE,
   type SdpReconsiderationCounts, type SdpReconsiderationFilter, type SdpReconsiderationRow,
 } from "../sdpReconsiderationApi";
 import { formatDateTime, sdpLackingText, sdpReconsiderationStatusText, termLabelOf } from "@/lib/renewal";
@@ -95,6 +95,7 @@ export function RenewalSdpReconsiderationTab({ refreshKey, onChanged }: { refres
                     <dt className="text-slate-600">Applied for</dt><dd className="text-slate-900">{termLabelOf(r.schoolYear, r.term)} (asked {formatDateTime(r.requestedAt)})</dd>
                     <dt className="text-slate-600">SDP checked for</dt><dd className="text-slate-900">{termLabelOf(r.basisSchoolYear, r.basisTerm)}</dd>
                     <dt className="text-slate-600">Lacking</dt><dd className="font-semibold text-red-800">{sdpLackingText(r.lacking)}</dd>
+                    {r.gradesStatus != null && <><dt className="text-slate-600">Grades</dt><dd className={r.gradesComplete ? "font-semibold text-green-900" : "font-semibold text-amber-900"}>{r.gradesStatus === "school" ? "Uploaded by the school" : r.gradesStatus === "approved" ? "Entered by the scholar and approved" : r.gradesStatus === "pending" ? "Entered by the scholar, waiting for the Grades Approver" : r.gradesStatus === "returned" ? "Returned to the scholar for correction" : "Not entered yet"}</dd></>}
                     <dt className="text-slate-600">If approved</dt><dd className="text-slate-900">Complied for {termLabelOf(r.basisSchoolYear, r.basisTerm)}; the lacking credits are added to the SDP requirement for {nextLabel}.</dd>
                     {r.status !== "pending" && <>
                       <dt className="text-slate-600">Decided</dt><dd className="text-slate-900">{r.decidedAt ? formatDateTime(r.decidedAt) : "—"}{r.decidedByLabel ? ` by ${r.decidedByLabel}` : ""}</dd>
@@ -112,11 +113,12 @@ export function RenewalSdpReconsiderationTab({ refreshKey, onChanged }: { refres
                     <button onClick={() => setViewing(r)} className="rounded-lg border border-[#062444]/25 bg-white px-3 py-1.5 font-semibold text-[#062444] hover:bg-[#f7f9fc]">View SDP credits</button>
                     {r.canDecide && (
                       <>
-                        <button onClick={() => { setNotice(""); setDeciding({ row: r, approve: true }); }} className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-3 py-1.5 font-bold text-white hover:bg-green-900"><CheckCircle2 size={15} aria-hidden="true" /> Approve</button>
+                        <button onClick={() => { setNotice(""); setDeciding({ row: r, approve: true }); }} disabled={r.status === "pending" && !!sdpApprovalBlockedText(r)} className="disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-3 py-1.5 font-bold text-white hover:bg-green-900"><CheckCircle2 size={15} aria-hidden="true" /> Approve</button>
                         <button onClick={() => { setNotice(""); setDeciding({ row: r, approve: false }); }} className="inline-flex items-center gap-1.5 rounded-lg bg-red-700 px-3 py-1.5 font-bold text-white hover:bg-red-800"><XCircle size={15} aria-hidden="true" /> Deny</button>
                       </>
                     )}
                   </div>
+                  {r.canDecide && r.status === "pending" && sdpApprovalBlockedText(r) && <p className="mt-2 text-amber-900">{sdpApprovalBlockedText(r)}</p>}
                 </li>
               );
             })}

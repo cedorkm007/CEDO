@@ -37,6 +37,26 @@ $$;
 revoke all on function public.sdp_reconsideration_list(text, text, integer, integer) from public, anon;
 grant execute on function public.sdp_reconsideration_list(text, text, integer, integer) to authenticated;
 
+create or replace function public.renewal_my_preview(p_window_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_id text := public.current_scholar_id_number();
+  w public.renewal_windows%rowtype;
+begin
+  if v_id is null then raise exception 'Not signed in as a scholar.'; end if;
+  select * into w from public.renewal_windows where id = p_window_id;
+  if not found then raise exception 'That renewal window was not found.'; end if;
+  return public._renewal_evaluate(v_id, w.school_year, w.term);
+end;
+$$;
+revoke all on function public.renewal_my_preview(uuid) from public, anon;
+grant execute on function public.renewal_my_preview(uuid) to authenticated;
+
 create or replace function public.renewal_sdp_reconsideration_decide(p_request_id uuid, p_approve boolean, p_note text default '')
 returns text
 language plpgsql

@@ -64,6 +64,8 @@ const status = async s => (await q("select public._eg_grades_status($1, $2, $3) 
 console.log("Where the grades stand");
 check("with nothing entered and no school upload the status is 'none', and the grades are not in", await status(A) === "none" && (await q("select public._eg_grades_available($1, $2, $3) v", [A, basis.basis_school_year, basis.basis_term]))[0].v === false);
 
+check("the scholar's preview before applying says the form can carry grades (so the form offers the grades step only when this file is installed)", (await rows(uidOf(A), "select public.renewal_my_preview($1) p", [win.id]))[0].p.grades_in_form === true);
+
 console.log("\nAn SDP reconsideration needs the grades first");
 const noGrades = await apply6(A, true);
 check("asking for an SDP reconsideration without any grades is refused, and no application is left behind", !noGrades.ok && /Enter your grades first/.test(noGrades.msg) && !(await recOf(A)), noGrades.msg);
@@ -139,6 +141,7 @@ await db.exec(read(UNDO));
 check("after the undo the 9-argument application call is gone, the list has its older columns, and the helpers are gone", (await q("select count(*)::int n from pg_proc where proname = 'renewal_apply' and pronargs = 9"))[0].n === 0
   && (await q("select count(*)::int n from pg_proc where proname in ('_eg_save', '_eg_grades_status', '_eg_grades_complete', '_eg_grades_available')"))[0].n === 0
   && (await attempt(ITADMIN, "select * from public.sdp_reconsideration_list('all')")).rows.every(r => !("grades_status" in r)));
+check("after the undo the preview no longer says so", (await rows(uidOf(A), "select public.renewal_my_preview($1) p", [win.id]))[0].p.grades_in_form === undefined);
 check("after the undo a request no longer needs grades (the earlier behaviour), and entering grades for an existing application still works", await (async () => {
   const r = await attempt(uidOf(F), "select public.renewal_apply($1, 'School', 'Program', '2nd Year', '', true) id", [win.id]);
   const rec = await recOf(F);

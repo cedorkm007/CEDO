@@ -83,11 +83,41 @@ export async function previewMyRenewal(windowId: string): Promise<{ ok: true; ev
   return { ok: true, evaluation: data as RenewalEvaluation };
 }
 
-/** requestSdpReconsideration: the scholar lacks SDP credits and chose to ask for a reconsideration together with the application (the database refuses it at any other time). */
-export async function applyForRenewal(args: { windowId: string; school: string; program: string; yearLevel: string; note: string; requestSdpReconsideration?: boolean }): Promise<Done> {
+/**
+ * requestSdpReconsideration: the scholar lacks SDP credits and chose to ask for a reconsideration together with the application (the database refuses it at any other time, and refuses it
+ * without grades). grades: the scholar entered their grades in the application form (subjects, screenshots, the tick): the images are uploaded first, then everything is sent with the
+ * application in one go (supabase_migration_entered_grades_d_apply_flow.sql); if the application is refused the uploaded images are removed again.
+ */
+export async function applyForRenewal(args: {
+  windowId: string; school: string; program: string; yearLevel: string; note: string; requestSdpReconsideration?: boolean;
+  scholarIdNumber?: string; grades?: { lines: { code: string; subject: string; units: string; grade: string }[]; newFiles: File[]; acknowledged: boolean };
+}): Promise<Done> {
   const base = { p_window_id: args.windowId, p_school: args.school, p_program: args.program, p_year_level: args.yearLevel, p_note: args.note };
-  const { error } = args.requestSdpReconsideration ? await supabase.rpc("renewal_apply", { ...base, p_request_sdp_reconsideration: true }) : await supabase.rpc("renewal_apply", base);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  const g = args.grades;
+  if (!g) {
+    const { error } = args.requestSdpReconsideration ? await supabase.rpc("renewal_apply", { ...base, p_request_sdp_reconsideration: true }) : await supabase.rpc("renewal_apply", base);
+    return error ? { ok: false, error: error.message } : { ok: true };
+  }
+  const problem = validateSelfGradeLines(g.lines);
+  if (problem) return { ok: false, error: problem };
+  if (!g.acknowledged) return { ok: false, error: "Please tick the box to say you understand." };
+  if (g.newFiles.length === 0) return { ok: false, error: "Upload at least one screenshot or image of your grades." };
+  for (const f of g.newFiles) { const p = validateSelfGradeImage(f, 0); if (p) return { ok: false, error: p }; }
+  const uploaded: { path: string; name: string; mime: string; size: number }[] = [];
+  const undo = async () => { if (uploaded.length) await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).remove(uploaded.map(u => u.path)); };
+  for (const f of g.newFiles) {
+    const safe = f.name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80);
+    const path = `${args.scholarIdNumber}/${args.windowId}/grade-entries/${crypto.randomUUID()}-${safe}`;
+    const up = await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).upload(path, f, { contentType: f.type, upsert: false });
+    if (up.error) { await undo(); return { ok: false, error: up.error.message }; }
+    uploaded.push({ path, name: f.name, mime: f.type, size: f.size });
+  }
+  const { error } = await supabase.rpc("renewal_apply", {
+    ...base, p_request_sdp_reconsideration: !!args.requestSdpReconsideration, p_grade_ack: g.acknowledged, p_grade_files: uploaded,
+    p_grade_lines: g.lines.map(l => ({ code: l.code.trim(), subject: l.subject.trim(), units: Number(l.units.replace(",", ".")), grade: l.grade.trim() })),
+  });
+  if (error) { await undo(); return { ok: false, error: functionMissing(error) ? "The application form cannot carry your grades yet. Please apply without them and enter them afterwards." : error.message }; }
+  return { ok: true };
 }
 
 export async function resubmitRenewal(recordId: string, note: string): Promise<Done> {

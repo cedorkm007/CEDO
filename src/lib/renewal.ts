@@ -270,6 +270,8 @@ export interface RenewalEvaluation {
   rule_code?: string | null; rule_text?: string | null; stage?: RenewalStage; reason?: string;
   required_documents?: { kind: DocKind; label: string; satisfied: boolean; approved?: boolean }[];
   consultation_required?: boolean; consultation_done?: boolean;
+  /** Set by the database when the application form can carry the scholar's grades (supabase_migration_entered_grades_d_apply_flow.sql is installed). */
+  grades_in_form?: boolean;
   error?: string;
 }
 

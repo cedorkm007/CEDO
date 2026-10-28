@@ -301,6 +301,28 @@ $$;
 revoke all on function public.sdp_reconsideration_list(text, text, integer, integer) from public, anon;
 grant execute on function public.sdp_reconsideration_list(text, text, integer, integer) to authenticated;
 
+-- What the scholar sees before applying: the same check the application will make, and a note that the form can carry grades.
+create or replace function public.renewal_my_preview(p_window_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_id text := public.current_scholar_id_number();
+  w public.renewal_windows%rowtype;
+begin
+  if v_id is null then raise exception 'Not signed in as a scholar.'; end if;
+  select * into w from public.renewal_windows where id = p_window_id;
+  if not found then raise exception 'That renewal window was not found.'; end if;
+  -- the application form can carry the scholar's grades (this file is installed): the form checks for this before it offers the grades step
+  return public._renewal_evaluate(v_id, w.school_year, w.term) || jsonb_build_object('grades_in_form', true);
+end;
+$$;
+revoke all on function public.renewal_my_preview(uuid) from public, anon;
+grant execute on function public.renewal_my_preview(uuid) to authenticated;
+
 -- Applying WITH the grades (and, if the scholar wants, the SDP reconsideration). p_grade_lines / p_grade_files like renewal_self_grades_submit; the images are uploaded first to
 -- <scholar>/<renewal window>/grade-entries/ (the application does not exist yet). Empty grades are fine: the scholar applies and waits for the school's grades (or enters them later).
 create or replace function public.renewal_apply(p_window_id uuid, p_school text, p_program text, p_year_level text, p_note text, p_request_sdp_reconsideration boolean,
