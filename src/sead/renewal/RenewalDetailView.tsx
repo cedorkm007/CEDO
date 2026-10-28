@@ -141,6 +141,8 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
       </Section>
 
       <Section title={`Grades — ${basis}`}>
+        {g?.self_reported && <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-amber-950"><strong>These are the grades the scholar entered</strong> (approved by the Grades Approver) because the school has not uploaded its grades yet. They are replaced when the school uploads, and any differences are shown in the Entered grades tab.</p>}
+        {g && !g.self_reported && g.self_status === "approved" && g.school_submitted && <p className="rounded-md border border-[#e6ecf5] bg-[#f7f9fc] px-2.5 py-2">The scholar had entered grades that were approved; the school's own grades replaced them. See the Entered grades tab for any differences.</p>}
         {g && g.state !== "ready" && <p>{g.reason}</p>}
         {g && g.state === "ready" && (
           <>

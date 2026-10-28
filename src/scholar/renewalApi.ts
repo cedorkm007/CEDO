@@ -6,8 +6,8 @@
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
 import {
-  RENEWAL_DOCUMENT_BUCKET, renewalDocumentPath, validateRenewalFile,
-  type ConsultState, type DocKind, type RenewalEvaluation, type RenewalStage, type WindowState,
+  RENEWAL_DOCUMENT_BUCKET, renewalDocumentPath, validateRenewalFile, validateSelfGradeImage, validateSelfGradeLines,
+  type ConsultState, type DocKind, type RenewalEvaluation, type RenewalStage, type SelfGradeDifference, type SelfGradeLine, type SelfGradesStatus, type WindowState,
 } from "@/lib/renewal";
 
 export type Done = { ok: true } | { ok: false; error: string };
@@ -256,4 +256,63 @@ export async function fetchMyAppointments(): Promise<{ ok: true; rows: MyAppoint
       recordId: strOrNull(r.record_id), termLabel: strOrNull(r.term_label), canChange: !!r.can_change, typeLabel: strOrNull(r.type_label), minutes: r.minutes == null ? null : Number(r.minutes),
     })),
   };
+}
+
+// ── Entering grades (supabase_migration_entered_grades_c_functions.sql) ──────────────────
+export interface MySelfGrades {
+  /** null = grades can be entered now; otherwise why not (in words). */
+  cannotEnterReason: string | null;
+  submission: { id: string; version: number; status: SelfGradesStatus; submittedAt: string; decidedAt: string | null; note: string; officialCheckedAt: string | null; differences: SelfGradeDifference[] | null } | null;
+  lines: SelfGradeLine[];
+  files: { name: string; path: string }[];
+}
+
+/** The scholar's newest try of entered grades for one application (or null before the database update is run). */
+export async function fetchMySelfGrades(recordId: string): Promise<{ ok: true; data: MySelfGrades } | { ok: false; error: string; missing: boolean }> {
+  const { data, error } = await supabase.rpc("renewal_my_self_grades", { p_record_id: recordId });
+  if (error || !data) return { ok: false, error: error?.message ?? "Couldn't load your entered grades.", missing: !!error && (error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "")) };
+  const d = data as Row;
+  const s = d.submission as Row | null;
+  return {
+    ok: true,
+    data: {
+      cannotEnterReason: strOrNull(d.cannot_enter_reason),
+      submission: s ? { id: str(s.id), version: Number(s.version), status: str(s.status) as SelfGradesStatus, submittedAt: str(s.submitted_at), decidedAt: strOrNull(s.decided_at), note: str(s.note), officialCheckedAt: strOrNull(s.official_checked_at), differences: (s.differences ?? null) as SelfGradeDifference[] | null } : null,
+      lines: ((d.lines ?? []) as Row[]).map(l => ({ code: str(l.code), subject: str(l.subject), units: Number(l.units), grade: str(l.grade) })),
+      files: ((d.files ?? []) as Row[]).map(f => ({ name: str(f.name), path: str(f.path) })),
+    },
+  };
+}
+
+/**
+ * Sends the entered grades: the new images are uploaded first to the scholar's own folder (<scholar>/<application>/grade-entries/), then the database saves the try with the tick.
+ * keepPaths = images of the earlier try that are kept. If saving fails, the images just uploaded are removed again.
+ */
+export async function submitSelfGrades(args: { recordId: string; scholarIdNumber: string; lines: { code: string; subject: string; units: string; grade: string }[]; newFiles: File[]; keepFiles: { name: string; path: string }[]; acknowledged: boolean }): Promise<Done> {
+  const problem = validateSelfGradeLines(args.lines);
+  if (problem) return { ok: false, error: problem };
+  if (!args.acknowledged) return { ok: false, error: "Please tick the box to say you understand." };
+  if (args.newFiles.length + args.keepFiles.length === 0) return { ok: false, error: "Upload at least one screenshot or image of your grades." };
+  for (const f of args.newFiles) { const p = validateSelfGradeImage(f, 0); if (p) return { ok: false, error: p }; }
+  const uploaded: { path: string; name: string; mime: string; size: number }[] = [];
+  for (const f of args.newFiles) {
+    const safe = f.name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80);
+    const path = `${args.scholarIdNumber}/${args.recordId}/grade-entries/${crypto.randomUUID()}-${safe}`;
+    const up = await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).upload(path, f, { contentType: f.type, upsert: false });
+    if (up.error) { await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).remove(uploaded.map(u => u.path)); return { ok: false, error: up.error.message }; }
+    uploaded.push({ path, name: f.name, mime: f.type, size: f.size });
+  }
+  const files = [...args.keepFiles.map(k => ({ path: k.path, name: k.name, mime: "image/png", size: 1 })), ...uploaded];
+  const { error } = await supabase.rpc("renewal_self_grades_submit", {
+    p_record_id: args.recordId, p_acknowledged: args.acknowledged, p_files: files,
+    p_lines: args.lines.map(l => ({ code: l.code.trim(), subject: l.subject.trim(), units: Number(l.units.replace(",", ".")), grade: l.grade.trim() })),
+  });
+  if (error) { if (uploaded.length) await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).remove(uploaded.map(u => u.path)); return { ok: false, error: error.message }; }
+  return { ok: true };
+}
+
+/** A short-lived link to one of the scholar's own images (for the preview). */
+export async function getSelfGradeImageUrl(path: string): Promise<string | null> {
+  const { data, error } = await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).createSignedUrl(path, 300);
+  return error || !data ? null : data.signedUrl;
 }

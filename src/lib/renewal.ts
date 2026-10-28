@@ -261,6 +261,8 @@ export interface RenewalEvaluation {
   };
   grades?: {
     state: "ready" | "waiting" | "no_grades" | "review"; school_submitted: boolean; reason: string;
+    /** The grades are the scholar's own entered grades (approved by the Grades Approver) because the school has not uploaded yet; self_status is the newest try's status. */
+    self_reported?: boolean; self_status?: string | null; self_submission_id?: string | null;
     counts: { total: number; passed: number; failed: number; drp: number; inc: number; review: number; ungraded: number };
     failed_subjects: RenewalSubjectFlag[]; inc_subjects: RenewalSubjectFlag[]; review_subjects: RenewalSubjectFlag[];
   };
@@ -571,5 +573,54 @@ export function sdpReconsiderationStatusText(status: SdpReconsiderationStatus): 
     case "approved": return { text: "Approved", tone: "good" };
     case "denied": return { text: "Not approved", tone: "bad" };
     default: return { text: "Not needed (credits complete)", tone: "plain" };
+  }
+}
+
+// ── Grades the scholar enters in the portal during the renewal (the Grades Approver approves them; the school's own upload replaces them) ──
+export type SelfGradesStatus = "pending" | "approved" | "returned";
+export interface SelfGradeLine { code: string; subject: string; units: number; grade: string }
+export interface SelfGradeDifference { code: string; subject: string; entered: string | null; school: string | null; kind: "different" | "missing_in_school" | "missing_in_entered" }
+export const SELF_GRADES_MAX_SUBJECTS = 25;
+export const SELF_GRADES_MAX_IMAGES = 5;
+export const SELF_GRADES_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+export const SELF_GRADES_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+/** The sentence the scholar ticks before sending the grades. */
+export const SELF_GRADES_WARNING = "I understand that if I enter wrong or false information, it will result in disciplinary action or removal from the City Scholarship Program.";
+
+/** The same checks the database makes on the entered subjects (so a mistake is shown before sending). null = fine. */
+export function validateSelfGradeLines(lines: { code: string; subject: string; units: string; grade: string }[]): string | null {
+  if (lines.length === 0) return "Enter at least one subject.";
+  if (lines.length > SELF_GRADES_MAX_SUBJECTS) return `You can enter at most ${SELF_GRADES_MAX_SUBJECTS} subjects.`;
+  const seen = new Set<string>();
+  for (const [i, l] of lines.entries()) {
+    const n = i + 1;
+    if (!l.code.trim() || !l.subject.trim() || !l.grade.trim()) return `Subject ${n}: the subject code, the subject name and the grade are all needed.`;
+    const u = Number(l.units.replace(",", "."));
+    if (!l.units.trim() || !Number.isFinite(u) || u <= 0 || u > 12) return `Subject ${n}: the units must be a number from 0.5 to 12.`;
+    const key = l.code.trim().toUpperCase();
+    if (seen.has(key)) return `The subject code ${l.code.trim()} is listed twice.`;
+    seen.add(key);
+  }
+  return null;
+}
+export function validateSelfGradeImage(file: { name: string; size: number; type: string }, existingCount: number): string | null {
+  if (existingCount >= SELF_GRADES_MAX_IMAGES) return `You can upload at most ${SELF_GRADES_MAX_IMAGES} images.`;
+  if (!SELF_GRADES_IMAGE_TYPES.includes(file.type)) return `${file.name}: only JPG, PNG or WEBP images can be uploaded.`;
+  if (file.size > SELF_GRADES_MAX_IMAGE_BYTES) return `${file.name} is too big (10 MB at most).`;
+  if (file.size <= 0) return `${file.name} is empty.`;
+  return null;
+}
+/** One line about a subject where the entered grade and the school's grade differ. */
+export function selfGradeDifferenceText(d: SelfGradeDifference): string {
+  const who = `${d.code}${d.subject ? " " + d.subject : ""}`.trim();
+  if (d.kind === "different") return `${who}: you entered ${d.entered}, the school has ${d.school}`;
+  if (d.kind === "missing_in_school") return `${who}: you entered ${d.entered}, the school has no grade for it`;
+  return `${who}: the school has ${d.school}, you did not enter it`;
+}
+export function selfGradesStatusText(status: SelfGradesStatus): { text: string; tone: "good" | "bad" | "warn" | "plain" } {
+  switch (status) {
+    case "pending": return { text: "Waiting for the Grades Approver", tone: "warn" };
+    case "approved": return { text: "Approved", tone: "good" };
+    default: return { text: "Returned for correction", tone: "bad" };
   }
 }
