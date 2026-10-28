@@ -5,7 +5,7 @@ import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
   fetchAttendanceForActivity, fetchCreditHistory, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, creditScholarForDay, removeAttendance, moveCreditSemester, type CreditPeriod, type AttendedWithoutCredit, type CreditHistoryEntry,
-  fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpChecklistSummary,
+  fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpChecklistSummary, fetchSdpOwed,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
   isSubCategorySupported, isDayLabelsSupported, type ChecklistSummary, type ChecklistSortKey, type SDPActivity, type SDPCategory, type SDPSubCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
@@ -1370,12 +1370,14 @@ function ActivitiesSection() {
 const SDP_CATEGORY_CREDIT_GOAL = 3;
 
 /** Credit above the requirement is not capped or banked — it shows as the real total (6 / 3, 4 / 3). See supabase_migration_sdp_show_total_credits_over_required.sql. */
-function CreditCell({ credits }: { credits: number }) {
-  const complete = credits >= SDP_CATEGORY_CREDIT_GOAL;
+function CreditCell({ credits, owed = 0 }: { credits: number; owed?: number }) {
+  // owed = extra credits this scholar owes for the semester (an approved SDP reconsideration of the semester before): the requirement is 3 + owed
+  const goal = SDP_CATEGORY_CREDIT_GOAL + owed;
+  const complete = credits >= goal;
   return (
     <span className={`inline-flex items-center gap-1 text-[11px] font-bold whitespace-nowrap ${complete ? "text-green-700" : "text-slate-600"}`}>
       {complete ? <CheckCircle2 size={13} /> : null}
-      {credits} / {SDP_CATEGORY_CREDIT_GOAL}
+      {credits} / {goal}
     </span>
   );
 }
@@ -1473,6 +1475,15 @@ function ChecklistSection() {
     setError(result.error); setRows([]); setTotal(0); setLoading(false);
   }, [chosen, current.schoolYear, search, filter, sortState.key, sortState.direction, page]);
   useEffect(() => { if (serverPaging) void loadPage(); }, [serverPaging, loadPage]);
+
+  // Who owes extra credits for the chosen semester (usually nobody, or a few): the credit columns then show "3 / 5".
+  const [owed, setOwed] = useState<Awaited<ReturnType<typeof fetchSdpOwed>>>(() => new Map());
+  useEffect(() => {
+    if (!chosen) return;
+    let cancelled = false;
+    void fetchSdpOwed(chosen.schoolYear, chosen.term).then(m => { if (!cancelled) setOwed(m); });
+    return () => { cancelled = true; };
+  }, [chosen]);
 
   // The three counts load separately, so the page does not wait for them.
   useEffect(() => {
@@ -1586,9 +1597,9 @@ function ChecklistSection() {
                 <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
                   <td className="px-2.5 py-2.5 text-slate-600 whitespace-nowrap">{s.scholarIdNumber}</td>
                   <td className="px-2.5 py-2.5 font-medium text-[#062444] break-words">{s.name}</td>
-                  <td className="px-2.5 py-2.5 text-center"><CreditCell credits={s.communityService} /></td>
-                  <td className="px-2.5 py-2.5 text-center"><CreditCell credits={s.communityVolunteerism} /></td>
-                  <td className="px-2.5 py-2.5 text-center"><CreditCell credits={s.formationProgram} /></td>
+                  <td className="px-2.5 py-2.5 text-center"><CreditCell credits={s.communityService} owed={owed.get(s.scholarIdNumber)?.communityService} /></td>
+                  <td className="px-2.5 py-2.5 text-center"><CreditCell credits={s.communityVolunteerism} owed={owed.get(s.scholarIdNumber)?.communityVolunteerism} /></td>
+                  <td className="px-2.5 py-2.5 text-center"><CreditCell credits={s.formationProgram} owed={owed.get(s.scholarIdNumber)?.formationProgram} /></td>
                   {!legacy && (
                     <td className="px-2.5 py-2.5">
                       <ComplianceBadge row={s} />

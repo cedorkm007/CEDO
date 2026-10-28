@@ -9,7 +9,7 @@ import { RenewalProgressBar } from "./RenewalProgressBar";
 import { StudyPlanFormLink } from "./StudyPlanFormLink";
 import { buildNextSteps } from "../../renewalSummary";
 import {
-  DOC_ACCEPT, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, renewalBasis, renewalProgress, termLabelOf,
+  DOC_ACCEPT, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, renewalBasis, renewalProgress, sdpLackingText, sdpLackingTotal, sdpReconsiderationImplication, termLabelOf,
   type DocKind, type RenewalEvaluation, type WindowState,
 } from "@/lib/renewal";
 import {
@@ -106,6 +106,7 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
   const [program, setProgram] = useState(overview.scholar.program);
   const [yearLevel, setYearLevel] = useState(overview.scholar.yearLevel);
   const [note, setNote] = useState("");
+  const [askReconsideration, setAskReconsideration] = useState(false);
   const [preview, setPreview] = useState<RenewalEvaluation | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -120,12 +121,14 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
 
   async function submit() {
     setBusy(true); setError("");
-    const r = await applyForRenewal({ windowId: w.id, school, program, yearLevel, note });
+    const r = await applyForRenewal({ windowId: w.id, school, program, yearLevel, note, requestSdpReconsideration: canAskReconsideration && askReconsideration });
     setBusy(false);
     if (!r.ok) { setError(r.error); return; }
     await onDone();
   }
 
+  // A scholar who lacks SDP credits is told what is lacking and may ask for an SDP reconsideration together with the application.
+  const canAskReconsideration = !!preview?.sdp?.applicable && preview.sdp.complied === false && !!preview.sdp.lacking && sdpLackingTotal(preview.sdp.lacking) > 0 && !preview.sdp.reconsideration;
   const inputCls = "w-full rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] outline-none focus:border-[#062444] bg-white";
   return (
     <div>
@@ -157,6 +160,18 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
           {previewError && <p role="alert" className="text-[14px] text-red-700">{previewError}</p>}
           {!preview && !previewError && <p className="text-[14px] text-slate-600 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading what we have for you…</p>}
           {preview && <EvaluationSummary ev={preview} />}
+          {preview && canAskReconsideration && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3 text-[14px] text-amber-950">
+              <p className="font-bold mb-1">Your SDP is not complete</p>
+              <p>Lacking: <strong>{sdpLackingText(preview.sdp!.lacking)}</strong>. Until the credits are recorded, your renewal waits on hold.</p>
+              <p className="mt-1.5">You can ask for an <strong>SDP reconsideration</strong> together with this application. It is decided by the SDP reconsideration approver.</p>
+              <p className="mt-1.5">{sdpReconsiderationImplication(preview)}</p>
+              <label className="mt-2.5 flex cursor-pointer items-start gap-2 font-semibold">
+                <input type="checkbox" checked={askReconsideration} onChange={e => setAskReconsideration(e.target.checked)} className="mt-1 h-4 w-4 shrink-0" />
+                <span>Yes, I want to ask for an SDP reconsideration. I understand that if it is approved, the lacking credits are added to my SDP requirement for the next semester.</span>
+              </label>
+            </div>
+          )}
           {preview && (preview.required_documents?.length ?? 0) > 0 && (
             <div className="rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 text-[14px] text-sky-900">
               <p className="font-bold mb-1">Documents you will need</p>
@@ -181,6 +196,7 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
           <ul className="text-[14px] text-slate-700 list-disc pl-5">
             <li>School: {school}</li><li>Program: {program}</li><li>Year level: {yearLevel}</li>
             {note.trim() && <li>Your note: {note.trim()}</li>}
+            {canAskReconsideration && askReconsideration && <li>SDP reconsideration: <strong>requested</strong> (lacking {sdpLackingText(preview?.sdp?.lacking)})</li>}
           </ul>
           {error && <p role="alert" className="text-[14px] text-red-700">{error}</p>}
           <div className="flex gap-2 pt-1">
@@ -204,10 +220,20 @@ function EvaluationSummary({ ev }: { ev: RenewalEvaluation }) {
       <div className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3.5 py-3">
         <p className="text-[14px] font-bold text-[#062444] mb-1">SDP for {basis}</p>
         {sdp && !sdp.applicable && <p className="text-[14px] text-slate-700">Summer renewal has no SDP requirement.</p>}
-        {sdp?.applicable && sdp.complied && <p className="text-[14px] text-green-800 flex items-center gap-1.5"><CheckCircle2 size={15} aria-hidden="true" /> Complied — you have at least 3 credits in each category.</p>}
+        {sdp?.applicable && sdp.complied && !sdp.by_reconsideration && <p className="text-[14px] text-green-800 flex items-center gap-1.5"><CheckCircle2 size={15} aria-hidden="true" /> Complied — you have the credits needed in each category.</p>}
+        {sdp?.applicable && sdp.by_reconsideration && <p className="text-[14px] text-green-800 flex items-center gap-1.5"><CheckCircle2 size={15} aria-hidden="true" /> Complied through your approved SDP reconsideration.</p>}
         {sdp?.applicable && !sdp.complied && <p className="text-[14px] text-amber-900 flex items-center gap-1.5"><XCircle size={15} aria-hidden="true" /> Not complied yet — {sdp.missing ?? "some credits are missing"}.</p>}
         {sdp?.applicable && (
-          <p className="text-[13.5px] text-slate-600 mt-1">Institutional Volunteerism {sdp.community_service ?? 0} · Community Volunteerism {sdp.community_volunteerism ?? 0} · Formation Program {sdp.formation_program ?? 0} (3 needed in each)</p>
+          <p className="text-[13.5px] text-slate-600 mt-1">Institutional Volunteerism {sdp.community_service ?? 0}/{sdp.required?.community_service ?? 3} · Community Volunteerism {sdp.community_volunteerism ?? 0}/{sdp.required?.community_volunteerism ?? 3} · Formation Program {sdp.formation_program ?? 0}/{sdp.required?.formation_program ?? 3}</p>
+        )}
+        {sdp?.applicable && sdp.reconsideration?.status === "pending" && (
+          <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-[14px] text-amber-950"><strong>SDP reconsideration: waiting for a decision.</strong> {sdpReconsiderationImplication(ev)}</p>
+        )}
+        {sdp?.applicable && sdp.reconsideration?.status === "approved" && (
+          <p className="mt-2 rounded-md border border-green-300 bg-green-50 px-2.5 py-2 text-[14px] text-green-950"><strong>SDP reconsideration approved{sdp.reconsideration.decided_at ? ` on ${formatDay(sdp.reconsideration.decided_at)}` : ""}.</strong> The credits that were lacking ({sdpLackingText(sdp.reconsideration.lacking)}) are added to your SDP requirement for {sdp.next_school_year && sdp.next_semester ? termLabelOf(sdp.next_school_year, sdp.next_semester) : "the next semester"}.{sdp.reconsideration.note ? ` Note: ${sdp.reconsideration.note}` : ""}</p>
+        )}
+        {sdp?.applicable && sdp.reconsideration?.status === "denied" && (
+          <p className="mt-2 rounded-md border border-red-300 bg-red-50 px-2.5 py-2 text-[14px] text-red-950"><strong>SDP reconsideration was not approved.</strong>{sdp.reconsideration.note ? ` Reason: ${sdp.reconsideration.note}` : ""} Your renewal stays on hold until the missing credits are recorded.</p>
         )}
       </div>
       <div className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3.5 py-3">

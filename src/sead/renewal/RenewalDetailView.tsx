@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, Loader2, Paperclip, ShieldCheck, XCircle } from "lucide-react";
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
-import { DIVISION_HEAD_DECISION_LABEL, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, termLabelOf, type DivisionHeadDecision } from "@/lib/renewal";
+import { DIVISION_HEAD_DECISION_LABEL, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, sdpLackingText, sdpReconsiderationStatusText, termLabelOf, type DivisionHeadDecision } from "@/lib/renewal";
 import {
   confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, getStaffRenewalDocumentUrl, returnRenewal, reviewDocument, type DetailDocument, type RenewalDetail,
 } from "../renewalApi";
@@ -126,8 +126,16 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
         {ev.sdp && !ev.sdp.applicable && <p>Not checked — Summer has no SDP requirement.</p>}
         {ev.sdp?.applicable && (
           <>
-            <p className="flex items-center gap-1.5 font-semibold">{ev.sdp.complied ? <><CheckCircle2 size={15} className="text-green-700" aria-hidden="true" /> Complied</> : <><XCircle size={15} className="text-red-700" aria-hidden="true" /> Not complied — {ev.sdp.missing}</>}</p>
-            <p className="text-[13.5px] text-slate-600 mt-1">Institutional Volunteerism {ev.sdp.community_service ?? 0} · Community Volunteerism {ev.sdp.community_volunteerism ?? 0} · Formation Program {ev.sdp.formation_program ?? 0} (3 needed in each; credit above 3 carries over)</p>
+            <p className="flex items-center gap-1.5 font-semibold">{ev.sdp.complied ? <><CheckCircle2 size={15} className="text-green-700" aria-hidden="true" /> {ev.sdp.by_reconsideration ? "Complied by SDP reconsideration" : "Complied"}</> : <><XCircle size={15} className="text-red-700" aria-hidden="true" /> Not complied — {ev.sdp.missing}</>}</p>
+            <p className="text-[13.5px] text-slate-600 mt-1">Institutional Volunteerism {ev.sdp.community_service ?? 0} · Community Volunteerism {ev.sdp.community_volunteerism ?? 0} · Formation Program {ev.sdp.formation_program ?? 0} (needed: {ev.sdp.required?.community_service ?? 3} / {ev.sdp.required?.community_volunteerism ?? 3} / {ev.sdp.required?.formation_program ?? 3}; credit above the requirement carries over)</p>
+            {ev.sdp.reconsideration && (
+              <p className="mt-1.5 rounded-md border border-[#e6ecf5] bg-white px-2.5 py-2 text-[14px] text-slate-900">
+                <strong>SDP reconsideration: {sdpReconsiderationStatusText(ev.sdp.reconsideration.status).text}.</strong>{" "}
+                Lacking when asked: {sdpLackingText(ev.sdp.reconsideration.lacking)}.
+                {ev.sdp.reconsideration.decided_at ? ` Decided ${formatDateTime(ev.sdp.reconsideration.decided_at)}.` : " Waiting for it.admin1 or an appointed approver."}
+                {ev.sdp.reconsideration.note ? ` Note: ${ev.sdp.reconsideration.note}` : ""}
+              </p>
+            )}
           </>
         )}
       </Section>

@@ -248,9 +248,17 @@ export function renewalBasis(schoolYear: string, term: string): { schoolYear: st
 
 // ── What the database's evaluation looks like (only the parts the screens read) ──
 export interface RenewalSubjectFlag { code: string; subject: string; grade: string | null; outcome?: string; state?: string; deadline?: string | null; item_id?: string | null }
+export type SdpReconsiderationStatus = "pending" | "approved" | "denied" | "not_needed";
+export interface SdpReconsiderationInfo { id: string; status: SdpReconsiderationStatus; requested_at?: string | null; decided_at?: string | null; note?: string | null; lacking?: Record<string, number> }
 export interface RenewalEvaluation {
   basis_school_year?: string; basis_term?: string;
-  sdp?: { applicable: boolean; complied: boolean | null; missing: string | null; community_service?: number; community_volunteerism?: number; formation_program?: number };
+  sdp?: {
+    applicable: boolean; complied: boolean | null; missing: string | null; community_service?: number; community_volunteerism?: number; formation_program?: number;
+    /** What each category needs for the semester the renewal looks at (3, plus what the scholar owes for it), what is lacking, and the semester after (where a reconsideration's lacking credits are added). */
+    required?: Record<string, number>; lacking?: Record<string, number>; next_school_year?: string; next_semester?: string;
+    by_reconsideration?: boolean;
+    reconsideration?: SdpReconsiderationInfo;
+  };
   grades?: {
     state: "ready" | "waiting" | "no_grades" | "review"; school_submitted: boolean; reason: string;
     counts: { total: number; passed: number; failed: number; drp: number; inc: number; review: number; ungraded: number };
@@ -538,3 +546,30 @@ export function gradeIndicators(g: { failed: number; drp: number; inc: number; r
 }
 /** The categories of the SDP credits view, in the order the check lists them. */
 export const SDP_CATEGORY_LABELS: Record<string, string> = { community_service: "Institutional Volunteerism", community_volunteerism: "Community Volunteerism", formation_program: "Formation Program" };
+
+// ── SDP reconsideration (a scholar who lacks SDP credits asks, with the renewal application, to be treated as complied) ──
+/** How many credits are lacking in all, from {"community_service": 2, "formation_program": 1}. */
+export function sdpLackingTotal(lacking: Record<string, number> | null | undefined): number {
+  return Object.values(lacking ?? {}).reduce((n, v) => n + (Number(v) || 0), 0);
+}
+/** "Institutional Volunteerism: 2 more credits; Formation Program: 1 more credit" (the same wording the database uses in its notices). */
+export function sdpLackingText(lacking: Record<string, number> | null | undefined): string {
+  const parts = Object.keys(SDP_CATEGORY_LABELS).filter(k => Number(lacking?.[k] ?? 0) > 0).map(k => `${SDP_CATEGORY_LABELS[k]}: ${lacking![k]} more credit${Number(lacking![k]) === 1 ? "" : "s"}`);
+  return parts.length ? parts.join("; ") : "nothing";
+}
+/** The sentence that tells a scholar what an approved reconsideration means. */
+export function sdpReconsiderationImplication(ev: { basis_school_year?: string; basis_term?: string; sdp?: RenewalEvaluation["sdp"] }): string {
+  const s = ev.sdp;
+  const basis = ev.basis_school_year && ev.basis_term ? termLabelOf(ev.basis_school_year, ev.basis_term) : "the previous semester";
+  const next = s?.next_school_year && s?.next_semester ? termLabelOf(s.next_school_year, s.next_semester) : "the next semester";
+  return `If it is approved, you will be treated as complied with the SDP for ${basis}, and the lacking credits (${sdpLackingText(s?.lacking)}) will be added to your SDP requirement for ${next}.`;
+}
+/** The reconsideration status shown to people: label and colour tone. */
+export function sdpReconsiderationStatusText(status: SdpReconsiderationStatus): { text: string; tone: "good" | "bad" | "warn" | "plain" } {
+  switch (status) {
+    case "pending": return { text: "Waiting for a decision", tone: "warn" };
+    case "approved": return { text: "Approved", tone: "good" };
+    case "denied": return { text: "Not approved", tone: "bad" };
+    default: return { text: "Not needed (credits complete)", tone: "plain" };
+  }
+}

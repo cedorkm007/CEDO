@@ -4,7 +4,7 @@ import {
   EMPTY_SCHOLAR_LIST_FILTERS, fetchScholarList, fetchScholarListMatrix, fetchScholarListOptions, fetchScholarSdpCredits, refreshScholarListStep, SCHOLAR_LIST_PAGE_SIZE,
   type ScholarListFilters, type ScholarListMatrixRow, type ScholarListOptions, type ScholarListRow, type ScholarSdpCredits,
 } from "../renewalScholarListApi";
-import { ELIGIBILITY_OPTIONS, formatDateTime, formatDay, gradeIndicators, gradesProgressText, SDP_CATEGORY_LABELS, sdpStatusText, termLabelOf, type ScholarEligibility } from "@/lib/renewal";
+import { ELIGIBILITY_OPTIONS, formatDateTime, formatDay, gradeIndicators, gradesProgressText, SDP_CATEGORY_LABELS, sdpReconsiderationStatusText, sdpStatusText, termLabelOf, type ScholarEligibility, type SdpReconsiderationStatus } from "@/lib/renewal";
 import { ListPagination } from "@/app/components/PaginatedList";
 import { ModalShell } from "../components/SeadUiShell";
 
@@ -50,7 +50,10 @@ function SdpCell({ r, onView }: { r: ScholarListRow; onView: (r: ScholarListRow)
   return (
     <div>
       <span className={s.tone === "good" ? "font-semibold text-green-900" : s.tone === "bad" ? "font-semibold text-red-800" : "text-slate-800"}>{s.text}</span>
-      {r.sdpApplicable && r.sdpComplied === false && <button onClick={() => onView(r)} className="mt-0.5 block font-semibold text-[#00709f] hover:underline text-left">View SDP credits</button>}
+      {r.sdpApplicable && r.sdpReconsideration === "approved" && r.sdpComplied === true && <span className="block text-[13px] text-slate-800">by SDP reconsideration</span>}
+      {r.sdpApplicable && r.sdpReconsideration === "pending" && <span className="block text-[13px] font-semibold text-amber-900">Reconsideration requested</span>}
+      {r.sdpApplicable && r.sdpReconsideration === "denied" && <span className="block text-[13px] font-semibold text-red-800">Reconsideration not approved</span>}
+      {r.sdpApplicable && (r.sdpComplied === false || r.sdpReconsideration === "approved") && <button onClick={() => onView(r)} className="mt-0.5 block font-semibold text-[#00709f] hover:underline text-left">View SDP credits</button>}
     </div>
   );
 }
@@ -282,7 +285,7 @@ export function RenewalScholarListTab({ schoolYear, term, refreshKey }: { school
 }
 
 /** One scholar's SDP credit information: the credits had in each category against the credits needed, the credits earned in the semester that counts, and credits set aside for later. */
-function SdpCreditsModal({ scholar, schoolYear, term, onClose }: { scholar: ScholarListRow; schoolYear: string; term: string; onClose: () => void }) {
+export function SdpCreditsModal({ scholar, schoolYear, term, onClose }: { scholar: { scholarIdNumber: string; name: string }; schoolYear: string; term: string; onClose: () => void }) {
   const [data, setData] = useState<ScholarSdpCredits | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -291,20 +294,22 @@ function SdpCreditsModal({ scholar, schoolYear, term, onClose }: { scholar: Scho
     return () => { live = false; };
   }, [scholar.scholarIdNumber, schoolYear, term]);
   const cats: [string, number | undefined][] = data ? [["community_service", data.sdp.communityService], ["community_volunteerism", data.sdp.communityVolunteerism], ["formation_program", data.sdp.formationProgram]] : [];
+  const need = (k: string) => data?.sdp.required[k] ?? data?.required ?? 3;
   return (
     <ModalShell title="SDP credits" onClose={onClose} wide>
       <p className="text-[14px] text-slate-900"><strong>{scholar.name}</strong> · {scholar.scholarIdNumber}</p>
       {error ? <p role="alert" className="text-[14px] text-red-700">{error}</p> : !data ? <p className="text-[14px] text-slate-700 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading…</p> : (
         <>
-          <p className="text-[14px] text-slate-800">The renewal for {termLabelOf(schoolYear, term)} looks at the SDP credits of {termLabelOf(data.basisSchoolYear, data.basisTerm)}. Each category needs {data.required} credits (credits left over from earlier semesters are counted).</p>
+          <p className="text-[14px] text-slate-800">The renewal for {termLabelOf(schoolYear, term)} looks at the SDP credits of {termLabelOf(data.basisSchoolYear, data.basisTerm)}. Each category needs {data.required} credits, plus any credits owed from an approved SDP reconsideration (credits left over from earlier semesters are counted).</p>
+          {data.sdp.reconsideration && <p className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3 py-2 text-[14px] text-slate-900"><strong>SDP reconsideration: {sdpReconsiderationStatusText(data.sdp.reconsideration.status as SdpReconsiderationStatus).text}.</strong>{data.sdp.reconsideration.note ? ` Note: ${data.sdp.reconsideration.note}` : ""}</p>}
           <table className="w-full text-left text-[14px]">
             <thead className="text-[#062444]"><tr><th scope="col" className="py-1.5 pr-2 font-bold">Category</th><th scope="col" className="py-1.5 px-2 text-right font-bold">Credits</th><th scope="col" className="py-1.5 pl-2 font-bold">Status</th></tr></thead>
             <tbody>
               {cats.map(([k, n]) => (
                 <tr key={k} className="border-t border-[#eef3fb]">
                   <td className="py-1.5 pr-2 text-slate-900">{SDP_CATEGORY_LABELS[k] ?? k}</td>
-                  <td className="py-1.5 px-2 text-right text-slate-900">{n ?? 0} of {data.required}</td>
-                  <td className={`py-1.5 pl-2 font-semibold ${(n ?? 0) >= data.required ? "text-green-900" : "text-red-800"}`}>{(n ?? 0) >= data.required ? "Complete" : `Lacks ${data.required - (n ?? 0)}`}</td>
+                  <td className="py-1.5 px-2 text-right text-slate-900">{n ?? 0} of {need(k)}</td>
+                  <td className={`py-1.5 pl-2 font-semibold ${(n ?? 0) >= need(k) ? "text-green-900" : "text-red-800"}`}>{(n ?? 0) >= need(k) ? "Complete" : `Lacks ${need(k) - (n ?? 0)}`}</td>
                 </tr>
               ))}
             </tbody>

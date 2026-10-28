@@ -2,7 +2,8 @@
 //   - the Scholar Renewal Evaluator (tag scholar_renewal_evaluator): everything
 //   - the SEAD Division Head (tag sead_division_head): the Division Head tab and the Dashboard
 //   - the heads of SEAD (a SEAD division admin, or a super admin): the Dashboard and the Excel report only
-//   - the IT admin (it.admin1): only the Certificate tab (the signatories of the Certificate of Scholarship Renewal)
+//   - the IT admin (it.admin1): the Certificate tab (the signatories of the Certificate of Scholarship Renewal) and the SDP Reconsideration tab (he decides requests)
+//   - an account with the tag sdp_reconsideration_approver (appointed by it.admin1): only the SDP Reconsideration tab
 // Mirrors can_view_renewal_reports() in supabase_migration_renewal_p7_reports.sql.
 export interface RenewalAccessUser { tags: string[]; role: string; division: string; username?: string }
 
@@ -11,6 +12,9 @@ export const isItAdmin = (u: RenewalAccessUser): boolean => (u.username ?? "").t
 
 export const isSeadHead = (u: RenewalAccessUser): boolean => u.role === "super_admin" || (u.role === "division_admin" && u.division === "SEAD");
 
+/** Who may APPROVE or DENY an SDP reconsideration request: it.admin1 and the accounts he appoints (the database checks it in can_decide_sdp_reconsideration()). */
+export const canDecideSdpReconsideration = (u: RenewalAccessUser): boolean => u.tags.includes("sdp_reconsideration_approver") || isItAdmin(u);
+
 export function canSeeScholarRenewal(u: RenewalAccessUser): boolean {
-  return u.tags.includes("scholar_renewal_evaluator") || u.tags.includes("sead_division_head") || isSeadHead(u) || isItAdmin(u);
+  return u.tags.includes("scholar_renewal_evaluator") || u.tags.includes("sead_division_head") || isSeadHead(u) || isItAdmin(u) || canDecideSdpReconsideration(u);
 }

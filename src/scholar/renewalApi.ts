@@ -83,8 +83,10 @@ export async function previewMyRenewal(windowId: string): Promise<{ ok: true; ev
   return { ok: true, evaluation: data as RenewalEvaluation };
 }
 
-export async function applyForRenewal(args: { windowId: string; school: string; program: string; yearLevel: string; note: string }): Promise<Done> {
-  const { error } = await supabase.rpc("renewal_apply", { p_window_id: args.windowId, p_school: args.school, p_program: args.program, p_year_level: args.yearLevel, p_note: args.note });
+/** requestSdpReconsideration: the scholar lacks SDP credits and chose to ask for a reconsideration together with the application (the database refuses it at any other time). */
+export async function applyForRenewal(args: { windowId: string; school: string; program: string; yearLevel: string; note: string; requestSdpReconsideration?: boolean }): Promise<Done> {
+  const base = { p_window_id: args.windowId, p_school: args.school, p_program: args.program, p_year_level: args.yearLevel, p_note: args.note };
+  const { error } = args.requestSdpReconsideration ? await supabase.rpc("renewal_apply", { ...base, p_request_sdp_reconsideration: true }) : await supabase.rpc("renewal_apply", base);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 

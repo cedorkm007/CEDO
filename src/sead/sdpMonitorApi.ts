@@ -746,3 +746,14 @@ export async function fetchAttendanceRoster(sessionId: string): Promise<Attendan
     completedDays: Math.min(Number(r.time_in_count ?? (r.time_in_at ? 1 : 0)), Number(r.time_out_count ?? (r.time_out_at ? 1 : 0))),
   }));
 }
+
+/** Scholars who owe EXTRA credits for a semester (an approved SDP reconsideration of the semester before): only those who do. Empty before the SDP reconsideration database update. */
+export async function fetchSdpOwed(schoolYear: string, semester: string): Promise<Map<string, { communityService: number; communityVolunteerism: number; formationProgram: number }>> {
+  const out = new Map<string, { communityService: number; communityVolunteerism: number; formationProgram: number }>();
+  const { data, error } = await supabase.rpc("scholars_sdp_extra_required", { p_school_year: schoolYear, p_semester: semester });
+  if (error || !Array.isArray(data)) return out;
+  for (const r of data as { scholar_id_number: string; community_service: number; community_volunteerism: number; formation_program: number }[]) {
+    out.set(String(r.scholar_id_number), { communityService: Number(r.community_service) || 0, communityVolunteerism: Number(r.community_volunteerism) || 0, formationProgram: Number(r.formation_program) || 0 });
+  }
+  return out;
+}

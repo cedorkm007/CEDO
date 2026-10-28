@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { X, ClipboardList, Lightbulb, CheckCircle2 } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import {
-  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPProgress, SDP_CATEGORIES, subCategoryLabel, daySubName, manilaDay,
+  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPProgress, fetchScholarSDPRequirements, SDP_CATEGORIES, subCategoryLabel, daySubName, manilaDay,
   type SDPActivity, type SDPCreditCounts,
 } from "../../sdpApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
@@ -96,7 +96,7 @@ function ActivityCard({ act, attended, onClick }: { act: SDPActivity; attended: 
   );
 }
 
-const CREDITS_REQUIRED = 3;
+const CREDITS_REQUIRED = 3;   // the usual requirement; a scholar whose SDP reconsideration was approved owes more for the next semester (fetchScholarSDPRequirements)
 
 /**
  * Per-category progress toward the 3 credits needed to complete it (for
@@ -112,12 +112,13 @@ function twoLineLabel(label: string) {
   return <>{label.slice(0, splitAt)}<br />{label.slice(splitAt + 1)}</>;
 }
 
-function CreditProgress({ credits }: { credits: SDPCreditCounts }) {
+function CreditProgress({ credits, required }: { credits: SDPCreditCounts; required: SDPCreditCounts }) {
   return (
     <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 mb-5">
       {SDP_CATEGORIES.map(c => {
         const count = credits[c.key] ?? 0;
-        const complete = count >= CREDITS_REQUIRED;
+        const need = required[c.key] ?? CREDITS_REQUIRED;   // 3, plus credits owed after an approved SDP reconsideration
+        const complete = count >= need;
         return (
           <div key={c.key} className={`rounded-lg sm:rounded-xl border px-1.5 py-1.5 sm:p-3 ${complete ? "bg-green-50 border-green-200" : "bg-[#f7f9fc] border-transparent"}`}>
             <div className="flex items-center justify-between gap-1 mb-1 sm:mb-1.5">
@@ -126,9 +127,9 @@ function CreditProgress({ credits }: { credits: SDPCreditCounts }) {
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
               <div className="flex-1 h-1 sm:h-1.5 rounded-full bg-white overflow-hidden">
-                <div className={`h-full rounded-full ${complete ? "bg-green-500" : "bg-[#0088cc]"}`} style={{ width: `${Math.min(100, (count / CREDITS_REQUIRED) * 100)}%` }} />
+                <div className={`h-full rounded-full ${complete ? "bg-green-500" : "bg-[#0088cc]"}`} style={{ width: `${Math.min(100, (count / need) * 100)}%` }} />
               </div>
-              <span className="text-[8.5px] sm:text-[10.5px] font-bold text-slate-500 shrink-0">{count}/{CREDITS_REQUIRED}</span>
+              <span className="text-[8.5px] sm:text-[10.5px] font-bold text-slate-500 shrink-0">{count}/{need}</span>
             </div>
           </div>
         );
@@ -155,14 +156,16 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   const [loading, setLoading] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<SDPActivity | null>(null);
   const [credits, setCredits] = useState<SDPCreditCounts>({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
+  const [required, setRequired] = useState<SDPCreditCounts>({ community_service: CREDITS_REQUIRED, community_volunteerism: CREDITS_REQUIRED, formation_program: CREDITS_REQUIRED });
 
   async function loadAll() {
     setLoading(true);
-    const [a, progress, attended] = await Promise.all([
-      fetchApprovedSDPActivities(), fetchScholarSDPProgress(), fetchAttendedSDPActivityIds(scholarIdNumber),
+    const [a, progress, attended, req] = await Promise.all([
+      fetchApprovedSDPActivities(), fetchScholarSDPProgress(), fetchAttendedSDPActivityIds(scholarIdNumber), fetchScholarSDPRequirements(),
     ]);
     setActivities(a);
     setCredits(progress.credits);
+    setRequired(req);
     setAttendedIds(attended);
     setLoading(false);
   }
@@ -170,7 +173,10 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
 
   return (
     <SectionCard icon={<Lightbulb size={14} />} title="Scholars' Development Program (SDP)">
-      {!loading && <CreditProgress credits={credits} />}
+      {!loading && <CreditProgress credits={credits} required={required} />}
+      {!loading && SDP_CATEGORIES.some(c => (required[c.key] ?? CREDITS_REQUIRED) > CREDITS_REQUIRED) && (
+        <p className="-mt-3 mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-950">Part of this semester's requirement is credit that was lacking last semester and was added after your SDP reconsideration was approved.</p>
+      )}
 
       <div className="flex items-center gap-2 mb-3">
         <h4 className="text-[#062444] font-bold text-sm flex-1">SDP Activities</h4>
