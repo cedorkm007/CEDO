@@ -48,6 +48,7 @@ import { ForcePasswordChange } from "@/app/components/ForcePasswordChange";
 import { TwoStepCodeEntry } from "@/app/components/TwoStepCodeEntry";
 import { usePasswordChangeRequired } from "@/lib/passwordGate";
 import { validateNewPassword } from "@/lib/passwordPolicy";
+import { cleanLoginName, staffSignInErrorMessage } from "@/lib/staffLogin";
 import { TopNav } from "@/app/components/TopNav";
 import { AppSidebar } from "@/app/components/Sidebar";
 import { SidebarProvider, SidebarInset } from "@/app/components/ui/sidebar";
@@ -453,18 +454,19 @@ function SignInPage({ users, onSignIn }: { users: UserProfile[]; onSignIn: (u: U
     onSignIn(profile);
   }
   async function handleSignIn() {
-    if (!username || !password) { setError("Please enter your username/email and password."); return; }
+    const loginName = cleanLoginName(username);   // a stray space or invisible character from a phone keyboard / autofill must not break a correct email
+    if (!loginName || !password) { setError("Please enter your username/email and password."); return; }
     setBusy(true); setError("");
     try {
-      let resolvedEmail: string | undefined = username;
-      if (!username.includes("@")) {
-        const { data: lookedUpEmail, error: lookupError } = await supabase.rpc("resolve_staff_login_email", { p_username: username });
+      let resolvedEmail: string | undefined = loginName;
+      if (!loginName.includes("@")) {
+        const { data: lookedUpEmail, error: lookupError } = await supabase.rpc("resolve_staff_login_email", { p_username: loginName });
         if (lookupError && /too many attempts/i.test(lookupError.message)) { setError("Too many attempts. Please wait a few minutes and try again."); setBusy(false); return; }
         resolvedEmail = lookedUpEmail ?? undefined;
       }
       if (!resolvedEmail) { setError("Incorrect username or password."); setBusy(false); return; }
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email: resolvedEmail, password });
-      if (authError || !data.user) { setError("Incorrect username or password."); setBusy(false); return; }
+      if (authError || !data.user) { setError(staffSignInErrorMessage(authError)); setBusy(false); return; }
       const { data: level } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
       if (level && level.nextLevel === "aal2" && level.currentLevel !== "aal2") { setNeedsCode(data.user.id); setBusy(false); return; }
       const profile = await fetchUserProfile(data.user.id);
