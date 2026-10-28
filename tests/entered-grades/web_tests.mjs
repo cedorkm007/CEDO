@@ -132,8 +132,15 @@ test("the form offers the grades step only when the database says it can carry t
   const p = src("src/scholar/components/dashboard/RenewalPanel.tsx");
   assert.match(p, /preview\?\.grades_in_form/);
   assert.match(p, /offerGrades = gradesInForm && !schoolGrades/);
-  assert.match(p, /Enter my grades now/); assert.match(p, /Apply without entering my grades/);
+  assert.match(p, /You cannot apply for renewal without your grades/);
+  assert.doesNotMatch(p, /Apply without entering my grades/, "entering the grades is a must, not a choice");
   assert.match(p, /<SelfGradesForm /);
+});
+test("the application cannot go on until the grades form is complete (or the school uploaded the grades)", () => {
+  const p = src("src/scholar/components/dashboard/RenewalPanel.tsx");
+  assert.match(p, /const enterGrades = offerGrades/);
+  assert.match(p, /Still needed before you can go on/);
+  assert.match(p, /disabled={!preview || !!gradeProblem}/);
 });
 test("an SDP reconsideration is not offered until the grades are entered or the school's are in; the Next button waits for a complete grades form", () => {
   const p = src("src/scholar/components/dashboard/RenewalPanel.tsx");

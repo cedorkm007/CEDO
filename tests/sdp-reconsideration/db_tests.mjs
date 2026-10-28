@@ -38,6 +38,7 @@ const totalsBefore = JSON.stringify(await q("select scholar_id_number s, categor
 
 // The entered-grades file D (a later file) makes a request need the grades first and adds a column to the list; this test is about the reconsideration itself, so that file is taken back first
 // (the two together are tested in tests/entered-grades/apply_flow_db_tests.mjs).
+if (fs.existsSync("undo_entered_grades_e.sql")) await db.exec(read("undo_entered_grades_e.sql"));
 if (fs.existsSync("undo_entered_grades_d.sql")) await db.exec(read("undo_entered_grades_d.sql"));
 for (const f of FILES) await db.exec(read(f));
 for (const f of FILES) await db.exec(read(f));     // twice: safe

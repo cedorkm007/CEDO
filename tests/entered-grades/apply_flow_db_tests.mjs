@@ -32,7 +32,8 @@ const Y = win.school_year, T = win.term;
 const basis = (await q("select * from public._renewal_basis($1, $2)", [Y, T]))[0];
 await q("insert into staff_account_tags (staff_id, tag_key) values ($1, 'scholar_grades_approver') on conflict do nothing", [PLAIN]);
 
-for (const f of FILE ? [FILE] : []) await db.exec(read(f));
+await db.exec(read("undo_entered_grades_e.sql"));      // this test is about file D alone (file E, which makes grades a must for applying, has its own test)
+await db.exec(read(FILE));
 await db.exec(read(FILE));     // twice: safe
 
 const schoolId = async key => (await q("select id from schools where name like $1", [`%${key}%`]))[0].id;

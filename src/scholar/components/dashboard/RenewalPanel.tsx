@@ -111,7 +111,6 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
   const [yearLevel, setYearLevel] = useState(overview.scholar.yearLevel);
   const [note, setNote] = useState("");
   const [askReconsideration, setAskReconsideration] = useState(false);
-  const [enterGrades, setEnterGrades] = useState(false);      // the scholar chose to enter their grades in this form
   const [gRows, setGRows] = useState<GradeFormRow[]>([emptyGradeRow()]);
   const [gFiles, setGFiles] = useState<File[]>([]);
   const [gAck, setGAck] = useState(false);
@@ -142,6 +141,7 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
   const gradesInForm = !!preview?.grades_in_form;
   const schoolGrades = !!preview?.grades?.school_submitted;
   const offerGrades = gradesInForm && !schoolGrades && preview?.grades?.self_status !== "approved";
+  const enterGrades = offerGrades;      // the grades are a must: the application is not taken without them (uploaded by the school, or entered here)
   const gradeProblem = enterGrades ? gradeFormProblem(gRows, gFiles.length, gAck) : null;
   const gradesReady = !gradesInForm || schoolGrades || preview?.grades?.self_status === "approved" || (enterGrades && !gradeProblem);
   const wantsReconsideration = canAskReconsideration && gradesReady && askReconsideration;
@@ -179,19 +179,12 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
           {preview && offerGrades && (
             <div className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3.5 py-3 text-[14px] text-slate-900">
               <p className="font-bold text-[#062444]">Your grades</p>
-              {!enterGrades ? (
-                <>
-                  <p className="mt-1">Your school has not uploaded your grades yet. You can enter them yourself now, with a screenshot, and the Grades Approver checks them. You can also apply without them and enter them later from your renewal page.</p>
-                  <button type="button" onClick={() => setEnterGrades(true)} className="mt-2 rounded-lg bg-[#062444] px-4 py-2 font-bold text-white">Enter my grades now</button>
-                </>
-              ) : (
-                <div className="mt-2 space-y-2">
-                  <SelfGradesForm basis={preview.basis_school_year && preview.basis_term ? termLabelOf(preview.basis_school_year, preview.basis_term) : "the previous semester"} rows={gRows} setRows={setGRows} keep={[]} setKeep={() => undefined} newFiles={gFiles} setNewFiles={setGFiles} ack={gAck} setAck={setGAck} onError={setGError} />
-                  {gError && <p role="alert" className="text-red-700">{gError}</p>}
-                  {gradeProblem && <p className="text-amber-900">Still needed: {gradeProblem}</p>}
-                  <button type="button" onClick={() => { setEnterGrades(false); setAskReconsideration(false); setGError(""); }} className="rounded-lg border border-[#062444]/25 px-3 py-1.5 font-semibold text-[#062444]">Apply without entering my grades</button>
-                </div>
-              )}
+              <p className="mt-1">Your school has not uploaded your grades yet, so please enter them here, with a screenshot. You cannot apply for renewal without your grades. The Grades Approver checks them, and when your school uploads its grades they replace the ones you entered.</p>
+              <div className="mt-2 space-y-2">
+                <SelfGradesForm basis={preview.basis_school_year && preview.basis_term ? termLabelOf(preview.basis_school_year, preview.basis_term) : "the previous semester"} rows={gRows} setRows={setGRows} keep={[]} setKeep={() => undefined} newFiles={gFiles} setNewFiles={setGFiles} ack={gAck} setAck={setGAck} onError={setGError} />
+                {gError && <p role="alert" className="text-red-700">{gError}</p>}
+                {gradeProblem && <p className="text-amber-900">Still needed before you can go on: {gradeProblem}</p>}
+              </div>
             </div>
           )}
           {preview && gradesInForm && schoolGrades && (
