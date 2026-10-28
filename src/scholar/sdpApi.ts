@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { SDP_CREDITS_REQUIRED } from "@/lib/renewal";
 
 export type SDPCategory = "community_service" | "community_volunteerism" | "formation_program";
 export type SDPActivityType = "one_time" | "recurring";
@@ -152,14 +153,21 @@ export async function fetchApprovedSDPActivities(): Promise<SDPActivity[]> {
 
 export type SDPCategoryStatus = Record<SDPCategory, boolean>;
 
-/** This scholar's completion status for each of the 3 required SDP categories. */
+/**
+ * This scholar's completion status for each of the 3 required SDP categories (the green / grey marks on the profile banner and the profile card).
+ * A category is complete when EITHER the saved "completed" mark says so OR the credits the SDP tab shows for it (carry-over from earlier semesters included, the same
+ * total the renewal check counts) have reached the requirement. The saved mark is kept up to date by a database trigger on the attendance table and can be missing or behind
+ * (for example credit that came from "set aside" credits, or an attendance row changed by hand), and a scholar showing 4/3 must never look as if they have not complied.
+ */
 export async function fetchScholarSDPCategoryStatus(scholarIdNumber: string): Promise<SDPCategoryStatus> {
   const fallback: SDPCategoryStatus = { community_service: false, community_volunteerism: false, formation_program: false };
-  const { data, error } = await supabase.from("scholar_sdp_category_status")
-    .select("category, completed").eq("scholar_id_number", scholarIdNumber);
-  if (error || !data) return fallback;
+  const [saved, progress] = await Promise.all([
+    supabase.from("scholar_sdp_category_status").select("category, completed").eq("scholar_id_number", scholarIdNumber),
+    fetchScholarSDPProgress(),
+  ]);
   const status = { ...fallback };
-  for (const row of data) status[row.category as SDPCategory] = !!row.completed;
+  if (!saved.error && saved.data) for (const row of saved.data) status[row.category as SDPCategory] = !!row.completed;
+  for (const c of Object.keys(status) as SDPCategory[]) if ((progress.credits[c] ?? 0) >= SDP_CREDITS_REQUIRED) status[c] = true;
   return status;
 }
 
