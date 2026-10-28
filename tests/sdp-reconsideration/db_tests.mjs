@@ -10,8 +10,8 @@ const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const read = f => fs.readFileSync(f, "utf8");
-const FILES = ["supabase_migration_sdp_reconsideration_a_tables.sql", "supabase_migration_sdp_reconsideration_b_sdp_rules.sql", "supabase_migration_sdp_reconsideration_c_renewal.sql"];
-const UNDOS = ["undo_sdp_reconsideration_c.sql", "undo_sdp_reconsideration_b.sql", "undo_sdp_reconsideration_a.sql"];
+const FILES = ["supabase_migration_sdp_reconsideration_a_tables.sql", "supabase_migration_sdp_reconsideration_b_sdp_rules.sql", "supabase_migration_sdp_reconsideration_c_renewal.sql", "supabase_migration_sdp_reconsideration_d_lists.sql"];
+const UNDOS = ["undo_sdp_reconsideration_d.sql", "undo_sdp_reconsideration_c.sql", "undo_sdp_reconsideration_b.sql", "undo_sdp_reconsideration_a.sql"];
 async function as(uid, fn, role = "authenticated") {
   return db.transaction(async tx => {
     await tx.exec(`set local role ${role}`);
@@ -208,13 +208,32 @@ check("the renewal evaluator's list-eligibility of an approved scholar is no lon
   return !lab.includes("sdp_reconsideration");
 })());
 
+console.log("\nThe Scholar List and SDP Monitoring (file D)");
+{
+  const since = null;
+  let step = (await rows(EVALUATOR, "select * from public.renewal_scholar_list_refresh($1, $2, $3, 300)", [Y, T, since]))[0], guard = 0;
+  while (Number(step.remaining) > 0 && guard++ < 100) step = (await rows(EVALUATOR, "select * from public.renewal_scholar_list_refresh($1, $2, $3, 300)", [Y, T, step.since]))[0];
+  const list = await rows(EVALUATOR, "select * from public.renewal_scholar_list($1, $2, null, null, null, null, null, 200, 0)", [Y, T]);
+  const rowOf = s => list.find(r => r.scholar_id_number === s);
+  check("the Scholar List says which scholars have asked, were approved or were denied (and nothing for those who did not ask)", rowOf(C)?.sdp_reconsideration === "approved" && rowOf(A)?.sdp_reconsideration === "denied" && rowOf(B)?.sdp_reconsideration === null, JSON.stringify([rowOf(C)?.sdp_reconsideration, rowOf(A)?.sdp_reconsideration, rowOf(B)?.sdp_reconsideration]));
+  check("an approved scholar shows SDP complied in the list and is not 'For SDP reconsideration'; the denied one still is", rowOf(C).sdp_complied === true && !rowOf(C).eligibility.includes("sdp_reconsideration") && rowOf(A).sdp_complied === false && rowOf(A).eligibility.includes("sdp_reconsideration"));
+  const owedRows = await rows(PLAIN, "select * from public.scholars_sdp_extra_required($1, $2)", [nxt.school_year, nxt.semester]);
+  check("SDP Monitoring can ask who owes extra credits for the semester after: exactly the approved scholar, with the credits owed", owedRows.length === 1 && owedRows[0].scholar_id_number === C
+    && owedRows[0].community_service + owedRows[0].community_volunteerism + owedRows[0].formation_program === sumLack, JSON.stringify(owedRows));
+  check("it is for SDP Monitoring staff, the evaluator and the approvers; not for a scholar or a visitor", (await attempt(SEAD, "select * from public.scholars_sdp_extra_required($1, $2)", [nxt.school_year, nxt.semester])).ok
+    && (await attempt(EVALUATOR, "select * from public.scholars_sdp_extra_required($1, $2)", [nxt.school_year, nxt.semester])).ok && !(await attempt(uidOf(A), "select * from public.scholars_sdp_extra_required($1, $2)", [nxt.school_year, nxt.semester])).ok
+    && !(await attempt(null, "select * from public.scholars_sdp_extra_required($1, $2)", [nxt.school_year, nxt.semester], "anon")).ok);
+  check("a semester nobody owes anything for gives an empty answer", (await rows(PLAIN, "select * from public.scholars_sdp_extra_required('2020-2021', '1st Semester')")).length === 0);
+}
+
 console.log("\nRunning again, the undo and putting it back");
 for (const f of FILES) await db.exec(read(f));
 check("running the files again keeps every request and decision", (await q("select count(*)::int n from sdp_reconsideration_requests"))[0].n >= 3);
 await q("delete from sdp_attendance where occurrence_number >= 100");     // the credits this test added for one scholar, so the before / after comparison is fair
 for (const f of UNDOS) await db.exec(read(f));
+check("after the undo the Scholar List page has its original columns again", (await attempt(EVALUATOR, "select * from public.renewal_scholar_list($1, $2, null, null, null, null, null, 5, 0)", [Y, T])).rows.every(r => !("sdp_reconsideration" in r)));
 check("after the undo the tables and the new functions are gone, and the renewal check is the old one (no reconsideration in its answer)", (await q("select to_regclass('public.sdp_reconsideration_requests') t"))[0].t === null
-  && (await q("select count(*)::int n from pg_proc where proname in ('renewal_sdp_reconsideration_decide', 'sdp_reconsideration_list', '_sdp_required_map', 'fetch_scholar_sdp_requirements', 'can_decide_sdp_reconsideration')"))[0].n === 0
+  && (await q("select count(*)::int n from pg_proc where proname in ('renewal_sdp_reconsideration_decide', 'sdp_reconsideration_list', '_sdp_required_map', 'fetch_scholar_sdp_requirements', 'can_decide_sdp_reconsideration', 'scholars_sdp_extra_required')"))[0].n === 0
   && !("reconsideration" in ((await q("select public._renewal_evaluate($1, $2, $3) e", [A, Y, T]))[0].e.sdp)));
 check("after the undo the SDP answers are the same as before the files were ever run, and the older application call works", (await snapshot()) === before
   && (await attempt(uidOf(fine[0]), "select public.renewal_apply($1, 'School', 'Program', '2nd Year', '') id", [win.id])).ok);

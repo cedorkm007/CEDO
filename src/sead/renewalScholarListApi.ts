@@ -20,6 +20,8 @@ export const EMPTY_SCHOLAR_LIST_FILTERS: ScholarListFilters = { query: "", schoo
 export interface ScholarListRow {
   scholarIdNumber: string; name: string; status: string; schoolId: string | null; school: string; yearLevel: string; program: string;
   sdpApplicable: boolean; sdpComplied: boolean | null; sdpMissing: string | null;
+  /** The scholar's SDP reconsideration request for the term: pending | approved | denied | not_needed, or null (needs the SDP reconsideration database update). */
+  sdpReconsideration: string | null;
   gradesState: string | null; graded: number; total: number; failed: number; drp: number; inc: number; review: number;
   eligibility: ScholarEligibility[]; computedAt: string | null;
 }
@@ -27,7 +29,9 @@ export interface ScholarListMatrixRow { schoolId: string | null; school: string;
 export interface ScholarListOptions { schools: { id: string | null; name: string }[]; yearLevels: string[]; programs: string[]; scholars: number; checked: number; lastChecked: string | null }
 export interface ScholarSdpCredits {
   basisSchoolYear: string; basisTerm: string; required: number;
-  sdp: { applicable: boolean; complied: boolean | null; missing: string | null; communityService: number; communityVolunteerism: number; formationProgram: number };
+  sdp: { applicable: boolean; complied: boolean | null; missing: string | null; communityService: number; communityVolunteerism: number; formationProgram: number;
+    /** What each category needs for this semester (3, plus credits owed); empty before the SDP reconsideration database update. */
+    required: Record<string, number>; byReconsideration: boolean; reconsideration: { status: string; note: string | null; decidedAt: string | null } | null };
   credits: { activity: string; category: string | null; credits: number; attendedDate: string | null; activityDay: string | null }[];
   reserved: { category: string; amount: number; fromSchoolYear: string | null; fromSemester: string | null; claimed: boolean }[];
 }
@@ -46,7 +50,7 @@ export async function fetchScholarList(schoolYear: string, term: string, f: Scho
     ok: true, total: list.length ? num(list[0].total_rows) : 0,
     rows: list.map(r => ({
       scholarIdNumber: str(r.scholar_id_number), name: str(r.name), status: str(r.scholar_status), schoolId: strOrNull(r.school_id), school: str(r.school), yearLevel: str(r.year_level), program: str(r.program),
-      sdpApplicable: r.sdp_applicable == null ? true : !!r.sdp_applicable, sdpComplied: r.sdp_complied == null ? null : !!r.sdp_complied, sdpMissing: strOrNull(r.sdp_missing),
+      sdpApplicable: r.sdp_applicable == null ? true : !!r.sdp_applicable, sdpComplied: r.sdp_complied == null ? null : !!r.sdp_complied, sdpMissing: strOrNull(r.sdp_missing), sdpReconsideration: strOrNull(r.sdp_reconsideration),
       gradesState: strOrNull(r.grades_state), graded: num(r.graded), total: num(r.total), failed: num(r.failed), drp: num(r.drp), inc: num(r.inc), review: num(r.review),
       eligibility: ((r.eligibility ?? []) as string[]) as ScholarEligibility[], computedAt: strOrNull(r.computed_at),
     })),
@@ -90,7 +94,9 @@ export async function fetchScholarSdpCredits(scholarIdNumber: string, schoolYear
     ok: true,
     credits: {
       basisSchoolYear: str(d.basis_school_year), basisTerm: str(d.basis_term), required: num(d.required),
-      sdp: { applicable: s.applicable == null ? true : !!s.applicable, complied: s.complied == null ? null : !!s.complied, missing: strOrNull(s.missing), communityService: num(s.community_service), communityVolunteerism: num(s.community_volunteerism), formationProgram: num(s.formation_program) },
+      sdp: { applicable: s.applicable == null ? true : !!s.applicable, complied: s.complied == null ? null : !!s.complied, missing: strOrNull(s.missing), communityService: num(s.community_service), communityVolunteerism: num(s.community_volunteerism), formationProgram: num(s.formation_program),
+        required: Object.fromEntries(Object.entries((s.required ?? {}) as Row).map(([k, n]) => [k, num(n)])), byReconsideration: !!s.by_reconsideration,
+        reconsideration: s.reconsideration ? { status: str((s.reconsideration as Row).status), note: strOrNull((s.reconsideration as Row).note), decidedAt: strOrNull((s.reconsideration as Row).decided_at) } : null },
       credits: ((d.credits ?? []) as Row[]).map(c => ({ activity: str(c.activity), category: strOrNull(c.category), credits: num(c.credits), attendedDate: strOrNull(c.attended_date), activityDay: strOrNull(c.activity_day) })),
       reserved: ((d.reserved ?? []) as Row[]).map(c => ({ category: str(c.category), amount: num(c.amount), fromSchoolYear: strOrNull(c.from_school_year), fromSemester: strOrNull(c.from_semester), claimed: !!c.claimed })),
     },

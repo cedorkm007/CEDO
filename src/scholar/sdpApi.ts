@@ -161,13 +161,14 @@ export type SDPCategoryStatus = Record<SDPCategory, boolean>;
  */
 export async function fetchScholarSDPCategoryStatus(scholarIdNumber: string): Promise<SDPCategoryStatus> {
   const fallback: SDPCategoryStatus = { community_service: false, community_volunteerism: false, formation_program: false };
-  const [saved, progress] = await Promise.all([
+  const [saved, progress, required] = await Promise.all([
     supabase.from("scholar_sdp_category_status").select("category, completed").eq("scholar_id_number", scholarIdNumber),
     fetchScholarSDPProgress(),
+    fetchScholarSDPRequirements(),
   ]);
   const status = { ...fallback };
   if (!saved.error && saved.data) for (const row of saved.data) status[row.category as SDPCategory] = !!row.completed;
-  for (const c of Object.keys(status) as SDPCategory[]) if ((progress.credits[c] ?? 0) >= SDP_CREDITS_REQUIRED) status[c] = true;
+  for (const c of Object.keys(status) as SDPCategory[]) if ((progress.credits[c] ?? 0) >= required[c]) status[c] = true;
   return status;
 }
 
@@ -179,6 +180,21 @@ export async function fetchAttendedSDPActivityIds(scholarIdNumber: string): Prom
 }
 
 export type SDPCreditCounts = Record<SDPCategory, number>;
+
+/**
+ * What each SDP category needs for the CURRENT grading period: 3, plus any credits owed because an SDP reconsideration of the semester before was approved
+ * (fetch_scholar_sdp_requirements(), supabase_migration_sdp_reconsideration_b_sdp_rules.sql). Before that database update is run, or if it fails, every category needs 3 as always.
+ */
+export async function fetchScholarSDPRequirements(): Promise<SDPCreditCounts> {
+  const req: SDPCreditCounts = { community_service: SDP_CREDITS_REQUIRED, community_volunteerism: SDP_CREDITS_REQUIRED, formation_program: SDP_CREDITS_REQUIRED };
+  const { data, error } = await supabase.rpc("fetch_scholar_sdp_requirements");
+  if (error || !Array.isArray(data)) return req;
+  for (const row of data as { category: SDPCategory; required?: number }[]) {
+    const n = Number(row.required);
+    if (row.category in req && Number.isFinite(n) && n > 0) req[row.category] = n;
+  }
+  return req;
+}
 
 const zeroCreditCounts = (): SDPCreditCounts => ({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
 

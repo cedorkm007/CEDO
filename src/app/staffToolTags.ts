@@ -49,6 +49,11 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     description: "Add sign words and quick phrases, and upload/compress the sign-language videos for the Kauban app.",
   },
   {
+    key: "sdp_reconsideration_approver",
+    label: "SDP Reconsideration Approver",
+    description: "Approve or deny scholars' requests for SDP reconsideration (a scholar who lacks SDP credits asks, with the renewal application, to be treated as complied; the lacking credits are added to the next semester). it.admin1 can always decide; this tag appoints someone else.",
+  },
+  {
     key: "scholarship_program_info",
     label: "Scholarship Program Information",
     description: "Birds-eye statistics on the scholarship program — counts by status, barangay, school, year level, and program, with per-scholar profile exports.",
