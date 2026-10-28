@@ -32,6 +32,21 @@ test("capitals and the inside of the text are left as typed (the database ignore
 });
 test("only spaces becomes empty (so the page asks for the username again)", () => assert.equal(L.cleanLoginName("   "), ""));
 
+console.log("\nA password pasted with stray edges");
+test("a space, tab, line break or invisible character at either end is dropped for a second try", () => {
+  assert.equal(L.passwordWithoutStrayEdges("Abc#12345 "), "Abc#12345");
+  assert.equal(L.passwordWithoutStrayEdges(" Abc#12345"), "Abc#12345");
+  assert.equal(L.passwordWithoutStrayEdges("Abc#12345\n"), "Abc#12345");
+  assert.equal(L.passwordWithoutStrayEdges("Abc#12345\u200B"), "Abc#12345");
+  assert.equal(L.passwordWithoutStrayEdges("\uFEFF Abc#12345 \r\n"), "Abc#12345");
+});
+test("a password with nothing stray gives null (no second try), and spaces INSIDE are never touched", () => {
+  assert.equal(L.passwordWithoutStrayEdges("Abc#12345"), null);
+  assert.equal(L.passwordWithoutStrayEdges("Abc #12 345"), null);
+  assert.equal(L.passwordWithoutStrayEdges("Abc #12 345 "), "Abc #12 345");
+});
+test("a password of only spaces gives null (there is nothing to try)", () => assert.equal(L.passwordWithoutStrayEdges("    "), null));
+
 console.log("\nThe message for a failed sign-in");
 const msg = L.staffSignInErrorMessage;
 test("a wrong password or unknown account says incorrect username or password", () => {
@@ -59,6 +74,7 @@ test("the sign-in page cleans the name, never changes the password, and shows th
   assert.match(app, /resolve_staff_login_email", \{ p_username: loginName \}/);
   assert.match(app, /signInWithPassword\(\{ email: resolvedEmail, password \}\)/, "the password is sent exactly as typed");
   assert.match(app, /setError\(staffSignInErrorMessage\(authError\)\)/);
+  assert.match(app, /passwordWithoutStrayEdges\(password\)/, "a second try without stray edges, only after the exact password was refused");
 });
 
 console.log(`\n${process.exitCode ? "SOME TESTS FAILED" : "All " + passed + " tests passed"}`);

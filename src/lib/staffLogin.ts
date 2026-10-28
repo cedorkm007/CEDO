@@ -12,6 +12,16 @@ export function cleanLoginName(raw: string): string {
   return raw.replace(/[​-‍⁠﻿]/g, "").trim();
 }
 
+/**
+ * A password pasted from a message or a notice often carries a space, a line break or an invisible character at the start or the end, which makes a CORRECT password fail.
+ * Returns the password without such stray edges when there are any (to try once more after the exact password was refused), otherwise null. The password the person typed is
+ * always tried first, exactly as typed, so a password that really does start or end with a space still works. Nothing inside the password is ever changed.
+ */
+export function passwordWithoutStrayEdges(password: string): string | null {
+  const cleaned = password.replace(/^[\s\u200B-\u200D\u2060\uFEFF]+|[\s\u200B-\u200D\u2060\uFEFF]+$/g, "");
+  return cleaned !== password && cleaned.length > 0 ? cleaned : null;
+}
+
 export interface AuthErrorLike { message?: string | null; status?: number | null; code?: string | null }
 
 /**

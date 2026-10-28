@@ -48,7 +48,7 @@ import { ForcePasswordChange } from "@/app/components/ForcePasswordChange";
 import { TwoStepCodeEntry } from "@/app/components/TwoStepCodeEntry";
 import { usePasswordChangeRequired } from "@/lib/passwordGate";
 import { validateNewPassword } from "@/lib/passwordPolicy";
-import { cleanLoginName, staffSignInErrorMessage } from "@/lib/staffLogin";
+import { cleanLoginName, passwordWithoutStrayEdges, staffSignInErrorMessage } from "@/lib/staffLogin";
 import { TopNav } from "@/app/components/TopNav";
 import { AppSidebar } from "@/app/components/Sidebar";
 import { SidebarProvider, SidebarInset } from "@/app/components/ui/sidebar";
@@ -465,7 +465,10 @@ function SignInPage({ users, onSignIn }: { users: UserProfile[]; onSignIn: (u: U
         resolvedEmail = lookedUpEmail ?? undefined;
       }
       if (!resolvedEmail) { setError("Incorrect username or password."); setBusy(false); return; }
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email: resolvedEmail, password });
+      let { data, error: authError } = await supabase.auth.signInWithPassword({ email: resolvedEmail, password });
+      // a password pasted with a stray space or line break at an end: if the exact one was refused, try once more without those edges
+      const withoutEdges = authError ? passwordWithoutStrayEdges(password) : null;
+      if (withoutEdges) ({ data, error: authError } = await supabase.auth.signInWithPassword({ email: resolvedEmail, password: withoutEdges }));
       if (authError || !data.user) { setError(staffSignInErrorMessage(authError)); setBusy(false); return; }
       const { data: level } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
       if (level && level.nextLevel === "aal2" && level.currentLevel !== "aal2") { setNeedsCode(data.user.id); setBusy(false); return; }
