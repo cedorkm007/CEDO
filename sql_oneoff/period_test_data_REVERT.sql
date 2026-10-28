@@ -12,8 +12,8 @@
 --     its real 1st-semester grades.);
 --   the grade-change lines (audit) of the test accounts in those two periods since the tests began;
 --   SDP credits of the TEST accounts that were added since the renewal tests began, in any semester (their renewal needs have gone with the renewal test data);
---   SDP credits stamped with the 2nd Semester 2026-2027 that belong to the TWO scholars you named (2306-01451 and 2507-00328): you asked for these to be removed too,
---     although they are not test accounts. Only credits stamped with that semester, only those two scholars. Their credits in any other semester stay.
+--   SDP credits stamped with the 2nd Semester 2026-2027 that belong to the THREE scholars you named (2306-01451, 2507-00328 and 2306-00134): you asked for these to be
+--     removed too, although they are not test accounts. Only credits stamped with that semester, only those three scholars. Their credits in any other semester stay.
 -- WHAT IT KEEPS: every credit and grade of every other scholar; the current grading period (already the 1st Semester); the 1st Semester 2026-2027 period itself; credits
 --   set aside for later; the SDP credit HISTORY (it cannot be edited by design: removing a credit adds a "credit removed" line to it, it does not erase the old lines).
 -- SAFETY: it STOPS and changes nothing if it finds a grade, credit or correction request in these two periods that belongs to someone who is NOT a test account (it lists
@@ -28,7 +28,7 @@ declare
   v_test_term text := '2nd Semester';        -- the semester that was opened for testing
   v_real_term text := '1st Semester';        -- the real semester (only the test accounts' entries are removed from it)
   v_testers text[];
-  v_extra text[] := array['2306-01451', '2507-00328'];     -- the two scholars (not test accounts) whose 2nd-Semester-stamped credits you asked to remove as well
+  v_extra text[] := array['2306-01451', '2507-00328', '2306-00134'];     -- the three scholars (not test accounts) whose 2nd-Semester-stamped credits you asked to remove as well
   v_start timestamptz;
   v_p2 uuid; v_p1 uuid;
   v_bad text;
@@ -72,8 +72,8 @@ begin
     ('1. REMOVE', 'grade-change (audit) lines of the test accounts in these two periods since the tests began', (select count(*) from public.scholar_grade_audit a where a.scholar_id_number = any (v_testers) and a.school_year = v_year and a.semester in (v_test_term, v_real_term) and a.changed_at >= v_start)),
     ('1. REMOVE', 'the period ' || v_test_term || ' ' || v_year || ' itself', (select count(*) from public.academic_periods where id = v_p2)),
     ('1. REMOVE', 'SDP credits of the test accounts added since the tests began (any semester)', (select count(*) from public.sdp_attendance a where a.scholar_id_number = any (v_testers) and (to_jsonb(a) ->> 'created_at')::timestamptz >= v_start)),
-    ('1. REMOVE', 'SDP credits of the two named scholars (' || array_to_string(v_extra, ', ') || ') stamped ' || v_test_term || ' ' || v_year, (select count(*) from public.sdp_attendance a where a.scholar_id_number = any (v_extra) and a.school_year = v_year and a.semester = v_test_term)),
-    ('1. KEPT', 'SDP credits of the two named scholars in any other semester (they stay)', (select count(*) from public.sdp_attendance a where a.scholar_id_number = any (v_extra) and not (a.school_year = v_year and a.semester = v_test_term))),
+    ('1. REMOVE', 'SDP credits of the named scholars (' || array_to_string(v_extra, ', ') || ') stamped ' || v_test_term || ' ' || v_year, (select count(*) from public.sdp_attendance a where a.scholar_id_number = any (v_extra) and a.school_year = v_year and a.semester = v_test_term)),
+    ('1. KEPT', 'SDP credits of the named scholars in any other semester (they stay)', (select count(*) from public.sdp_attendance a where a.scholar_id_number = any (v_extra) and not (a.school_year = v_year and a.semester = v_test_term))),
     ('1. KEPT', 'grades in the REAL ' || v_real_term || ' ' || v_year || ' that stay', (select count(*) from public.scholar_subjects_grades where school_year = v_year and semester = v_real_term) - (select count(*) from public.scholar_subjects_grades where school_year = v_year and semester = v_real_term and created_at >= v_start and scholar_id_number = any (v_testers))),
     ('1. KEPT', 'SDP credits of everyone else in ' || v_year || ' ' || v_real_term, (select count(*) from public.sdp_attendance a where a.school_year = v_year and a.semester = v_real_term and not (a.scholar_id_number = any (v_testers) and (to_jsonb(a) ->> 'created_at')::timestamptz >= v_start)));
   for f in select g.scholar_id_number s, g.semester sem, count(*) c from public.scholar_subjects_grades g
@@ -137,7 +137,7 @@ begin
   delete from public.sdp_attendance a where a.scholar_id_number = any (v_testers) and (to_jsonb(a) ->> 'created_at')::timestamptz >= v_start;
   get diagnostics v_n = row_count; insert into _rv (step, what, rows) values ('6. REMOVED', 'SDP credits of the test accounts', v_n);
   delete from public.sdp_attendance a where a.scholar_id_number = any (v_extra) and a.school_year = v_year and a.semester = v_test_term;
-  get diagnostics v_n = row_count; insert into _rv (step, what, rows) values ('6. REMOVED', 'SDP credits of the two named scholars stamped ' || v_test_term || ' ' || v_year, v_n);
+  get diagnostics v_n = row_count; insert into _rv (step, what, rows) values ('6. REMOVED', 'SDP credits of the named scholars stamped ' || v_test_term || ' ' || v_year, v_n);
 
   insert into _rv (step, what, rows) values ('RESULT', 'DONE. Delete the evidence file(s) listed above by hand. The copy is in public._period_test_backup until you drop it (period_test_data_drop_backup.sql).', 0);
 end $$;
