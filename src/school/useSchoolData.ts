@@ -5,7 +5,8 @@
 // period (read back from the database). The period bar, the summary row, the cards, the table and the grade-entry
 // window all read from this one object, so they can never disagree.
 // ─────────────────────────────────────────────────────────────
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { fetchMySubmission, fetchMyCorrections } from "./submissionApi";
 import { buildLockInfo, type CorrectionRequest, type GradeLockInfo, type Submission } from "./submissionLogic";
 import { fetchOwnScholars, fetchCurrentGradingPeriod, fetchGradingConfig, fetchLetterGrades, fetchSchoolMarksAsLetters, fetchGradesForScholars } from "./schoolApi";
@@ -88,6 +89,7 @@ export function useSchoolData(schoolId: string): SchoolData {
   const [corrections, setCorrections] = useState<CorrectionRequest[]>([]);
   const [correctionsError, setCorrectionsError] = useState("");
   const [submissionVersion, setSubmissionVersion] = useState(0);
+  const quietGrades = useRef(false);      // set while a live update reads the grades again, so the table updates in place instead of flashing "loading"
 
   useEffect(() => {
     let cancelled = false;
@@ -124,7 +126,8 @@ export function useSchoolData(schoolId: string): SchoolData {
   // Memoized: the grades effect below refetches whenever this object changes identity.
   const period: GradingPeriod = useMemo(
     () => (selectedRecord ? periodRefOf(selectedRecord) : { schoolYear: currentPeriod.schoolYear, semester: currentPeriod.semester }),
-    [selectedRecord, currentPeriod.schoolYear, currentPeriod.semester],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedRecord?.schoolYear, selectedRecord?.term, currentPeriod.schoolYear, currentPeriod.semester],
   );
   const periodRecord = useMemo(() => findPeriod(periods, period), [periods, period]);
   const editable = canSchoolEdit(periodRecord?.status);
@@ -133,11 +136,12 @@ export function useSchoolData(schoolId: string): SchoolData {
     if (loading) return;
     let cancelled = false;
     (async () => {
-      setGradesLoading(true);
+      if (!quietGrades.current) setGradesLoading(true);
       const result = period.schoolYear && period.semester
         ? await fetchGradesForScholars(scholars.map(s => s.scholarIdNumber), period)
         : { ok: true as const, rows: [] as SchoolSubjectGrade[] };
       if (cancelled) return;
+      quietGrades.current = false;
       if (result.ok) { setGradeRows(result.rows); setGradesError(""); }
       else setGradesError(result.error);
       setGradesLoading(false);
@@ -176,6 +180,18 @@ export function useSchoolData(schoolId: string): SchoolData {
   const reloadGrades = useCallback(() => setGradesVersion(v => v + 1), []);
   const reloadConfig = useCallback(() => setConfigVersion(v => v + 1), []);
   const reloadSubmission = useCallback(() => setSubmissionVersion(v => v + 1), []);
+
+  // Live updates: when the database says something changed, read the lists again. A list that did not really change keeps its identity (so nothing that depends on it, like an open
+  // grade-entry window, starts over).
+  useLiveReload(async () => {
+    const [cur, result, rows] = await Promise.all([fetchCurrentGradingPeriod(), fetchAcademicPeriods(), fetchOwnScholars(schoolId)]);
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    setCurrentPeriod(prev => (same(prev, cur) ? prev : cur));
+    if (result.ok) setPeriods(prev => (same(prev, result.periods) ? prev : result.periods));
+    setScholars(prev => (same(prev, rows) ? prev : rows));
+    quietGrades.current = true;
+    setGradesVersion(v => v + 1); setConfigVersion(v => v + 1); setSubmissionVersion(v => v + 1);
+  });
 
   return {
     schoolId, scholars, loading,

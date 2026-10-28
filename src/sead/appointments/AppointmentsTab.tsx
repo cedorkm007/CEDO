@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { CalendarPlus, ChevronLeft, ChevronRight, Loader2, Pencil, Trash2 } from "lucide-react";
 import { consultHalf, formatSlot, formatTimeOnly, manilaDay, manilaInstant, manilaToday, rangeMinutesIn, slotCount, type ConsultHalf } from "@/lib/renewal";
 import {
@@ -65,6 +66,7 @@ export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?:
     setLoading(false);
   }, [days, readOnly, staffFilter]);
   useEffect(() => { setLoading(true); void load(); }, [load]);
+  useLiveReload(load);
   useEffect(() => {
     if (!readOnly) return;
     void fetchCalendarStaff().then(r => { if (r.ok) setStaffList(r.rows); });

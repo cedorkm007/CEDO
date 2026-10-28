@@ -7,6 +7,7 @@ import { ConsultationSection } from "./ConsultationSection";
 import { CsrDownload } from "./CsrDownload";
 import { RenewalProgressBar } from "./RenewalProgressBar";
 import { SelfGradesSection } from "./SelfGradesSection";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { StudyPlanFormLink } from "./StudyPlanFormLink";
 import { buildNextSteps } from "../../renewalSummary";
 import {
@@ -41,6 +42,7 @@ export function RenewalPanel() {
     window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED));
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useLiveReload(load);      // the evaluator, the school or the office changed something: show it without refreshing
 
   if (error) return <p role="alert" className="text-[14px] text-red-700">Couldn't load your renewal: {error}</p>;
   if (!overview) return <p className="text-[14px] text-slate-600 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading your renewal…</p>;

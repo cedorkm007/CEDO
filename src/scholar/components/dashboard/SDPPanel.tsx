@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { motion, AnimatePresence } from "motion/react";
 import { X, ClipboardList, Lightbulb, CheckCircle2 } from "lucide-react";
 import { SectionCard } from "./SectionCard";
@@ -158,8 +159,8 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   const [credits, setCredits] = useState<SDPCreditCounts>({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
   const [required, setRequired] = useState<SDPCreditCounts>({ community_service: CREDITS_REQUIRED, community_volunteerism: CREDITS_REQUIRED, formation_program: CREDITS_REQUIRED });
 
-  async function loadAll() {
-    setLoading(true);
+  async function loadAll(quiet = false) {
+    if (!quiet) setLoading(true);
     const [a, progress, attended, req] = await Promise.all([
       fetchApprovedSDPActivities(), fetchScholarSDPProgress(), fetchAttendedSDPActivityIds(scholarIdNumber), fetchScholarSDPRequirements(),
     ]);
@@ -170,6 +171,7 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
     setLoading(false);
   }
   useEffect(() => { loadAll(); }, [scholarIdNumber]);
+  useLiveReload(() => loadAll(true));      // new credits, a changed requirement: show them without refreshing
 
   return (
     <SectionCard icon={<Lightbulb size={14} />} title="Scholars' Development Program (SDP)">

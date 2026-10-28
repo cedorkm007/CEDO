@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { Bell } from "lucide-react";
 import { formatDateTime } from "@/lib/renewal";
 import { PushSettings } from "@/app/components/PushSettings";
@@ -30,6 +31,8 @@ export function NotificationBell({ tone = "dark" }: { tone?: "dark" | "light" })
     window.addEventListener(NOTIFICATIONS_CHANGED, refresh);
     return () => { window.clearInterval(t); window.removeEventListener(NOTIFICATIONS_CHANGED, refresh); };
   }, [load]);
+
+  useLiveReload(load);
 
   useEffect(() => {
     if (!open) return;

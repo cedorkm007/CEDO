@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { ChevronDown, Loader2, RefreshCw, Search } from "lucide-react";
 import {
   EMPTY_SCHOLAR_LIST_FILTERS, fetchScholarList, fetchScholarListMatrix, fetchScholarListOptions, fetchScholarSdpCredits, refreshScholarListStep, SCHOLAR_LIST_PAGE_SIZE,
@@ -114,6 +115,7 @@ export function RenewalScholarListTab({ schoolYear, term, refreshKey }: { school
 
   useEffect(() => { setOptions(null); setFilters(EMPTY_SCHOLAR_LIST_FILTERS); setTyped(""); setPage(1); void loadOptions(); }, [loadOptions, refreshKey]);
   useEffect(() => { if (!missing) void loadList(); }, [loadList, missing, refreshKey]);
+  useLiveReload(async () => { if (!missing) { void loadOptions(); await loadList(); } });      // a decision, a booking or new grades: update in place
 
   /** Checks everybody again, 100 scholars at a time (the first step has no start time: the database's own clock marks it, and every step after hands it back). */
   const refresh = useCallback(async () => {

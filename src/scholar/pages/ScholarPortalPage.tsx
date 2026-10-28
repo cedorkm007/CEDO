@@ -28,6 +28,7 @@ import { NewlyUnlockedModal } from "../components/dashboard/NewlyUnlockedModal";
 import { syncAndFetchUnreadFormUnlockNotifications, markFormUnlockNotificationsRead, type FormUnlockNotification } from "../formsApi";
 import { useUrlState } from "@/app/useUrlState";
 import { ForcePasswordChange } from "@/app/components/ForcePasswordChange";
+import { LiveProvider, useLiveReload } from "@/lib/liveUpdates";
 import { usePasswordChangeRequired } from "@/lib/passwordGate";
 import type { DashPanelKey } from "../components/dashboard/types";
 import type { ScholarProfile, SubjectGrade, QuestScore } from "../types";
@@ -48,7 +49,12 @@ interface ScholarPortalPageProps {
 type PanelUrlValue = "home" | DashPanelKey;
 const PANEL_VALUES: readonly PanelUrlValue[] = ["home", "profile", "subjects-grades", "services", "quests", "sdp", "calendar"];
 
-export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
+/** The scholar portal, kept up to date while it is open: a change made by someone else (the evaluator, the school, the office) shows up without refreshing (src/lib/liveUpdates.tsx). */
+export function ScholarPortalPage(props: ScholarPortalPageProps) {
+  return <LiveProvider kind="scholar"><ScholarPortalPageInner {...props} /></LiveProvider>;
+}
+
+function ScholarPortalPageInner({ onSignOut }: ScholarPortalPageProps) {
   const [profile, setProfile] = useState<ScholarProfile | null>(null);
   const [grades, setGrades] = useState<SubjectGrade[]>([]);
   const [scores, setScores] = useState<QuestScore[]>([]);
@@ -110,6 +116,15 @@ export function ScholarPortalPage({ onSignOut }: ScholarPortalPageProps) {
       setLoading(false);
     })();
   }, []);
+
+  // The parts that can change while the portal is open (status, grades, scores, SDP marks, positions), read again quietly when the database says something changed.
+  useLiveReload(async () => {
+    const p = await fetchCurrentScholarProfile();
+    if (!p) return;
+    setProfile(prev => (prev && JSON.stringify(prev) === JSON.stringify(p) ? prev : p));
+    const [g, s, status, pos] = await Promise.all([fetchSubjectsAndGrades(p.scholarIdNumber), fetchQuestScores(p.scholarIdNumber), fetchScholarSDPCategoryStatus(p.scholarIdNumber), fetchOwnPositionLabels(p.scholarIdNumber)]);
+    setGrades(g); setScores(s); setSdpStatus(status); setPositions(pos);
+  });
 
   function dismissNewlyUnlocked() {
     const ids = newlyUnlocked.map(n => n.notificationId);

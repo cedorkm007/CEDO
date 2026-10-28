@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { ArrowRight, RotateCw } from "lucide-react";
 import { fetchMyRenewals } from "../../renewalApi";
 import { renewalAttention, type RenewalAttention } from "../../renewalSummary";
@@ -15,6 +16,9 @@ export function RenewalHomeBanner({ onOpen }: { onOpen: () => void }) {
     void fetchMyRenewals().then(r => { if (!cancelled && r.ok) setAtt(renewalAttention(r.overview.windows)); });
     return () => { cancelled = true; };
   }, []);
+
+  const refresh = useCallback(async () => { const r = await fetchMyRenewals(); if (r.ok) setAtt(renewalAttention(r.overview.windows)); }, []);
+  useLiveReload(refresh);
 
   if (!att) return null;
   return (

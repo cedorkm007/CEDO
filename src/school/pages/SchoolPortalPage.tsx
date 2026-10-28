@@ -10,6 +10,7 @@ import { SchoolAccountMenu } from "../components/SchoolAccountMenu";
 import { SchoolPeriodBar } from "../components/SchoolPeriodBar";
 import { focusRing } from "../components/portalParts";
 import { useSchoolData, type SchoolData } from "../useSchoolData";
+import { LiveProvider } from "@/lib/liveUpdates";
 import { useUrlState } from "@/app/useUrlState";
 import type { SchoolProfile, SchoolScholarRow } from "../types";
 
@@ -117,5 +118,6 @@ export function SchoolPortalPage({ onSignOut }: SchoolPortalPageProps) {
       </div>
     );
   }
-  return <SchoolWorkspace profile={profile} username={username} onSignOut={handleSignOut} />;
+  // kept up to date while it is open: a correction request reviewed, a period opened or closed, a scholar's status changed... shows without refreshing (src/lib/liveUpdates.tsx)
+  return <LiveProvider kind="school"><SchoolWorkspace profile={profile} username={username} onSignOut={handleSignOut} /></LiveProvider>;
 }

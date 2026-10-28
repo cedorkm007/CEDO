@@ -5,6 +5,7 @@ import {
   type RenewalEvaluation,
 } from "@/lib/renewal";
 import { fetchMySelfGrades, getSelfGradeImageUrl, submitSelfGrades, type MyRenewalRecord, type MySelfGrades } from "../../renewalApi";
+import { useLiveReload } from "@/lib/liveUpdates";
 
 const TONE: Record<"good" | "bad" | "warn" | "plain", string> = {
   good: "bg-green-100 text-green-950 border-green-300", bad: "bg-red-100 text-red-950 border-red-300", warn: "bg-amber-100 text-amber-950 border-amber-300", plain: "bg-slate-100 text-slate-900 border-slate-300",
@@ -34,9 +35,10 @@ export function SelfGradesSection({ record, ev, scholarIdNumber, onChanged }: { 
   const load = useCallback(async () => {
     const r = await fetchMySelfGrades(record.id);
     if (!r.ok) { if (r.missing) setHidden(true); return; }
-    setData(r.data);
+    setData(prev => (prev && JSON.stringify(prev) === JSON.stringify(r.data) ? prev : r.data));      // same answer: keep what is on screen
   }, [record.id]);
   useEffect(() => { void load(); }, [load, ev.grades?.self_status, ev.grades?.school_submitted]);
+  useLiveReload(load);
 
   // little previews of the images already sent
   useEffect(() => {

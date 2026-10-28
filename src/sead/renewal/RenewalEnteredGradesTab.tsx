@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { AlertTriangle, CheckCircle2, CornerUpLeft, Loader2, Search } from "lucide-react";
 import {
   decideEnteredGrades, ENTERED_GRADES_PAGE_SIZE, fetchEnteredGrades, fetchEnteredGradesCounts, getEnteredGradeImageUrl,
@@ -48,6 +49,7 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged }: { refreshKey:
     if (c.ok) setCounts(c.counts);
   }, [filter, query, page]);
   useEffect(() => { void load(); }, [load, refreshKey]);
+  useLiveReload(load);
 
   if (missing) return <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[14px] text-amber-950">Entered grades need the latest database update (the three supabase_migration_entered_grades files). Until it is run, this tab cannot show them.</p>;
   if (error) return <p role="alert" className="text-[14px] text-red-700">{error}</p>;
