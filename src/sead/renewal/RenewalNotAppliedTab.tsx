@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { Loader2, Search } from "lucide-react";
 import { fetchNotAppliedPage, markNotRequired, NOT_APPLIED_PAGE_SIZE, type NotAppliedPageRow } from "../renewalApi";
 import { fetchScholarInformationByIdNumber, type ScholarInformationRow } from "../seadApi";
@@ -37,6 +38,7 @@ export function RenewalNotAppliedTab({ schoolYear, term, onChanged, refreshKey }
     if (r.ok) { setRows(r.rows); setTotal(r.total); setLegacy(r.legacy); setError(""); } else setError(r.error);
   }, [schoolYear, term, query, page]);
   useEffect(() => { setRows(null); void load(); }, [load, refreshKey]);
+  useLiveReload(load);
   useEffect(() => { setPage(1); }, [schoolYear, term]);
 
   async function openReferral(r: NotAppliedPageRow) {

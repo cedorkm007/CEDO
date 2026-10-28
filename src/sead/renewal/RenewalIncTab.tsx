@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { Loader2 } from "lucide-react";
 import { daysLeftText, formatDay, manilaToday } from "@/lib/renewal";
 import { decideInc, fetchIncList, type IncDecision, type IncRow } from "../renewalApi";
@@ -27,6 +28,7 @@ export function RenewalIncTab({ schoolYear, term, onOpen, onChanged, refreshKey 
     if (r.ok) { setRows(r.rows); setError(""); } else setError(r.error);
   }, [schoolYear, term]);
   useEffect(() => { setRows(null); void load(); }, [load, refreshKey]);
+  useLiveReload(load);
 
   if (error) return <p role="alert" className="text-[14px] text-red-700">{error}</p>;
   if (!rows) return <p className="text-[14px] text-slate-700 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading…</p>;

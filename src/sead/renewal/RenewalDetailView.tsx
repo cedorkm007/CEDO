@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { ArrowLeft, CheckCircle2, Loader2, Paperclip, ShieldCheck, XCircle } from "lucide-react";
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
 import { DIVISION_HEAD_DECISION_LABEL, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, sdpLackingText, sdpReconsiderationStatusText, termLabelOf, type DivisionHeadDecision } from "@/lib/renewal";
@@ -35,6 +36,7 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
     } else setError(r.error);
   }, [recordId]);
   useEffect(() => { setDetail(null); void load(); }, [load]);
+  useLiveReload(load);
 
   async function openFile(path: string) {
     const r = await getStaffRenewalDocumentUrl(path);

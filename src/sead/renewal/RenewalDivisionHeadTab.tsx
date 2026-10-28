@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { Loader2 } from "lucide-react";
 import { DIVISION_HEAD_CASE_LABEL, DIVISION_HEAD_DECISION_LABEL, formatDay } from "@/lib/renewal";
 import { ModalShell } from "../components/SeadUiShell";
@@ -24,6 +25,7 @@ export function RenewalDivisionHeadTab({ canDecide, onOpenRecord, onChanged, ref
     if (r.ok) { setRows(r.rows); setError(""); } else setError(r.error);
   }, []);
   useEffect(() => { void load(); }, [load, refreshKey]);
+  useLiveReload(load);
 
   if (error) return <p role="alert" className="text-[14px] text-red-700">Couldn't load the Division Head's list: {error}</p>;
   if (!rows) return <p className="flex items-center gap-2 text-[14px] text-slate-700"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading…</p>;

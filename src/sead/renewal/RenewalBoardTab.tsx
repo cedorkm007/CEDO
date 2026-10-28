@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { Flag, Loader2, Search, StickyNote } from "lucide-react";
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
 import { BOARD_GROUPS, formatDay, formatSlot } from "@/lib/renewal";
@@ -17,6 +18,7 @@ export function RenewalBoardTab({ schoolYear, term, onOpen, refreshKey }: { scho
     if (r.ok) { setRows(r.rows); setError(""); } else setError(r.error);
   }, [schoolYear, term]);
   useEffect(() => { setRows(null); void load(); }, [load, refreshKey]);
+  useLiveReload(load);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: rows?.length ?? 0 };

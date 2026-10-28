@@ -8,6 +8,7 @@ import { RenewalScholarListTab } from "./renewal/RenewalScholarListTab";
 import { RenewalNotAppliedTab } from "./renewal/RenewalNotAppliedTab";
 import { RenewalSdpReconsiderationTab } from "./renewal/RenewalSdpReconsiderationTab";
 import { RenewalEnteredGradesTab } from "./renewal/RenewalEnteredGradesTab";
+import { LiveProvider, useLiveReload } from "@/lib/liveUpdates";
 import { RenewalIncTab } from "./renewal/RenewalIncTab";
 import { RenewalWindowsTab } from "./renewal/RenewalWindowsTab";
 import { RenewalDetailView } from "./renewal/RenewalDetailView";
@@ -25,7 +26,14 @@ type Tab = "scholarList" | "sdpReconsideration" | "enteredGrades" | "application
  * and a detail page per scholar. The rules are decided by the database; this page shows them and records the evaluator's decisions.
  * The IT admin (it.admin1) opens it only for the "Certificate" tab (the signatories of the Certificate of Scholarship Renewal).
  */
-export function ScholarRenewalPage({ canAct = true, isEvaluator = true, isDivisionHead = false, isSeadHead = false, isItAdmin = false, isSdpApprover = false, isGradesApprover = false }: { canAct?: boolean; isEvaluator?: boolean; isDivisionHead?: boolean; isSeadHead?: boolean; isItAdmin?: boolean; isSdpApprover?: boolean; isGradesApprover?: boolean }) {
+type ScholarRenewalPageProps = { canAct?: boolean; isEvaluator?: boolean; isDivisionHead?: boolean; isSeadHead?: boolean; isItAdmin?: boolean; isSdpApprover?: boolean; isGradesApprover?: boolean };
+
+/** Scholar Renewal, kept up to date while it is open: when a scholar applies, a document is reviewed, a booking is made, the school uploads grades... every tab shows it without refreshing (src/lib/liveUpdates.tsx). */
+export function ScholarRenewalPage(props: ScholarRenewalPageProps) {
+  return <LiveProvider kind="staff"><ScholarRenewalPageInner {...props} /></LiveProvider>;
+}
+
+function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivisionHead = false, isSeadHead = false, isItAdmin = false, isSdpApprover = false, isGradesApprover = false }: { canAct?: boolean; isEvaluator?: boolean; isDivisionHead?: boolean; isSeadHead?: boolean; isItAdmin?: boolean; isSdpApprover?: boolean; isGradesApprover?: boolean }) {
   const seesRenewals = isEvaluator || isDivisionHead || isSeadHead;   // a lone IT admin sees only the Certificate tab
   const [windows, setWindows] = useState<RenewalWindowRow[] | null>(null);
   const [error, setError] = useState("");
@@ -40,6 +48,7 @@ export function ScholarRenewalPage({ canAct = true, isEvaluator = true, isDivisi
     if (r.ok) { setWindows(r.rows); setError(""); } else setError(r.error);
   }, [seesRenewals]);
   useEffect(() => { void loadWindows(); }, [loadWindows]);
+  useLiveReload(loadWindows);
 
   // Default to a window that is open now, else the newest.
   const current = useMemo(() => {

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LiveProvider } from "@/lib/liveUpdates";
 import { ClipboardList, AlertTriangle, LayoutDashboard, CalendarClock } from "lucide-react";
 import { ScholarCounselingTab } from "./pages/ScholarCounselingTab";
 import { ProbationMonitoringTab } from "./pages/ProbationMonitoringTab";
@@ -15,7 +16,12 @@ type ScholarCounselingSubtab = "main-dashboard" | "daily-records" | "probation-m
  * ScholarManagementToolsPage.tsx so more subtabs can be added later
  * without restructuring.
  */
+/** The Consultation Tool, kept up to date while it is open (bookings and referrals made by scholars show without refreshing: src/lib/liveUpdates.tsx). */
 export function ScholarCounselingToolPage() {
+  return <LiveProvider kind="staff"><ScholarCounselingToolPageInner /></LiveProvider>;
+}
+
+function ScholarCounselingToolPageInner() {
   const TABS: { key: ScholarCounselingSubtab; label: string; icon: React.ReactNode }[] = [
     { key: "main-dashboard", label: "Main Dashboard", icon: <LayoutDashboard size={14} /> },
     { key: "appointments", label: "Appointments", icon: <CalendarClock size={14} /> },

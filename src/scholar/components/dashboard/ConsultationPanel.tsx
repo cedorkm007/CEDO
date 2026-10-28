@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { CalendarCheck, CalendarX, Loader2, UserX } from "lucide-react";
 import { CONSULT_CHANGE_CUTOFF_HOURS, formatSlot, termLabelOf } from "@/lib/renewal";
 import { fetchMyAppointments, fetchMyReferrals, fetchMyRenewals, type MyAppointment, type MyReferral, type MyRenewalOverview } from "../../renewalApi";
@@ -23,6 +24,7 @@ export function ConsultationPanel() {
     window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED));
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useLiveReload(load);
 
   if (error) return <p role="alert" className="text-[14px] text-red-700">Couldn't load your consultations: {error}</p>;
   if (!overview || !appointments) return <p className="text-[14px] text-slate-600 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading your consultations…</p>;

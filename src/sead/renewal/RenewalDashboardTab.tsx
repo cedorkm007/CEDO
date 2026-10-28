@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLiveReload } from "@/lib/liveUpdates";
 import { CalendarClock, ChevronDown, FileSpreadsheet, Loader2 } from "lucide-react";
 import { formatDay } from "@/lib/renewal";
 import { FILTER_GROUPS, NO_FILTER, describeFilter, isFiltered, lastDays, percentOf, percentText, stageGroupCounts, type DashboardData, type ExportFilter } from "@/lib/renewalReport";
@@ -72,6 +73,7 @@ export function RenewalDashboardTab({ schoolYear, term, refreshKey }: { schoolYe
     if (r.ok) { setData(r.data); setError(""); } else setError(r.error);
   }, [schoolYear, term]);
   useEffect(() => { setData(null); void load(); }, [load, refreshKey]);
+  useLiveReload(load);
 
   async function exportExcel() {
     if (!data) return;
