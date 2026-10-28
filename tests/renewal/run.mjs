@@ -786,7 +786,7 @@ test("who can open Scholar Renewal: the evaluator, the Division Head, and the he
 });
 test("the SEAD head sees only the Dashboard; the filter boxes are on the dashboard; the database agrees on who may read", () => {
   const page = fs.readFileSync(path.join(root, "src/sead/ScholarRenewalPage.tsx"), "utf8");
-  assert.match(page, /t\.key !== "divisionHead" \|\| isEvaluator \|\| isDivisionHead/); assert.match(page, /isDivisionHead \? "divisionHead" : seesRenewals \? "dashboard" : "certificate"/);
+  assert.match(page, /t\.key !== "divisionHead" \|\| isEvaluator \|\| isDivisionHead/); assert.match(page, /isDivisionHead \? "divisionHead" : seesRenewals \? "dashboard" : isSdpApprover \? "sdpReconsideration" : "certificate"/);
   const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalDashboardTab.tsx"), "utf8");
   assert.match(tab, /Choose what goes into the Excel file/); assert.match(tab, /<fieldset/);
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p7_reports.sql"), "utf8");

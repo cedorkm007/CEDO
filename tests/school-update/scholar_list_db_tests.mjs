@@ -21,6 +21,9 @@ async function as(uid, fn, role = "authenticated") {
 const rows = (uid, sql, params = []) => as(uid, async tx => (await tx.query(sql, params)).rows);
 const attempt = async (uid, sql, params = [], role) => { try { return { ok: true, rows: await as(uid, async tx => (await tx.query(sql, params)).rows, role) }; } catch (e) { return { ok: false, msg: String(e.message) }; } };
 
+// The SDP reconsideration file D (a later file) adds a column to the list function, and a function cannot change its columns by being created again: take that file back first,
+// as on a real project, where this file is run before it.
+if (fs.existsSync("undo_sdp_reconsideration_d.sql")) await db.exec(read("undo_sdp_reconsideration_d.sql"));
 await db.exec(read(FILE));
 const EVALUATOR = seedId("staff:demo.evaluator"), SEAD = seedId("staff:demo.sead"), COUNSELOR = seedId("staff:demo.counselor"), DIVHEAD = seedId("staff:demo.divhead"), PLAIN = seedId("staff:demo.plain");
 const win = (await q(`select w.school_year, w.term from renewal_windows w order by (select count(*) from renewal_records r where r.window_id = w.id) desc limit 1`))[0];
