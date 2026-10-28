@@ -13,8 +13,10 @@ const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok 
 
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+// these checks are about how an application works; the later rule that grades must be in first (entered grades file E) has its own tests
+await db.exec((await import("node:fs")).readFileSync(new URL("../../../undo_entered_grades_e.sql", import.meta.url), "utf8"));
 
-const day = n => new Date(Date.now() + 8 * 3600 * 1000 + n * 86400000).toISOString().slice(0, 10);
+const day =n => new Date(Date.now() + 8 * 3600 * 1000 + n * 86400000).toISOString().slice(0, 10);
 const num = n => `TEST-${String(n).padStart(4, "0")}`;
 const scholarUid = n => seedId(`scholar:${n}`);
 const staffUid = name => seedId(`staff:${name}`);
