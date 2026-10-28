@@ -89,7 +89,7 @@ test("the Scholar Renewal page has an SDP Reconsideration tab for the evaluator 
   const page = src("src/sead/ScholarRenewalPage.tsx");
   assert.match(page, /key: "sdpReconsideration", label: "SDP Reconsideration"/);
   assert.match(page, /t\.key === "sdpReconsideration" \? \(isEvaluator \|\| isSdpApprover\)/);
-  assert.match(page, /isSdpApprover \? "sdpReconsideration" : "certificate"/);
+  assert.match(page, /isSdpApprover \? "sdpReconsideration" : isGradesApprover \? "enteredGrades" : "certificate"/);
   assert.match(page, /<RenewalSdpReconsiderationTab refreshKey=\{refreshKey\} onChanged=\{bump\} \/>/);
   assert.match(src("src/app/App.tsx"), /isSdpApprover=\{canDecideSdpReconsideration\(currentUser\)\}/);
 });
