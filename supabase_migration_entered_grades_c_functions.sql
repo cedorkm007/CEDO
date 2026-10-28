@@ -15,6 +15,14 @@
 -- (same stages and rules as before; its "grades" part also says whether the grades are the scholar's own entered ones). No table is changed. Nothing is deleted.
 -- ─────────────────────────────────────────────────────────────
 
+-- This file uses the table of non-numeric marks that supabase_migration_school_non_numeric_marks.sql creates. If that file has not been run, stop here with a clear message (nothing has been changed yet).
+do $$
+begin
+  if to_regclass('public.school_marks') is null then
+    raise exception 'STOPPED, nothing changed: run supabase_migration_school_non_numeric_marks.sql first (it creates the table of non-numeric marks that this file uses), then run this file again.';
+  end if;
+end $$;
+
 create or replace function public.can_approve_scholar_grades()
 returns boolean
 language sql
