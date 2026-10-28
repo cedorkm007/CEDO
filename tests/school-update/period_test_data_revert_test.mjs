@@ -11,7 +11,7 @@ const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const SQL = fs.readFileSync("sql_oneoff/period_test_data_REVERT.sql", "utf8");
-const DRY = SQL, REAL = SQL.replace("v_confirm text := 'NO';", "v_confirm text := 'YES';");
+let DRY = SQL, REAL = SQL.replace("v_confirm text := 'NO';", "v_confirm text := 'YES';");
 check("the file as sent is the dry run (it says 'NO')", /v_confirm text := 'NO';/.test(SQL));
 const run = async sql => { const res = await db.exec(sql); return res[res.length - 1]?.rows ?? []; };
 const attempt = async sql => { try { return { ok: true, rows: await run(sql) }; } catch (e) { return { ok: false, msg: String(e.message) }; } };
@@ -77,6 +77,24 @@ check("a school that submitted for the real semester but also has other scholars
 await q("delete from scholar_subjects_grades where subject = 'REAL-LOCK'");
 const clean = await counts();
 
+console.log("\nThe two named scholars (not test accounts) whose 2nd-semester credits were asked to be removed too");
+const [X1, X2] = [nonTester[1], nonTester[2]];
+const NAMED = "v_extra text[] := array['2306-01451', '2507-00328'];";
+check("the file names exactly the two scholars the project's check found", SQL.includes(NAMED));
+const withNamed = s => s.replace(NAMED, `v_extra text[] := array['${X1}', '${X2}'];`);
+const addCredit = (s, sem, occ) => q("insert into sdp_attendance (activity_id, scholar_id_number, attended_date, school_year, semester, occurrence_number) values ($1, $2, '2026-10-21', '2026-2027', $3, $4)", [act, s, sem, occ]);
+await addCredit(X1, "2nd Semester", 21); await addCredit(X2, "2nd Semester", 22); await addCredit(X1, "1st Semester", 23);
+await addCredit(nonTester[0], "2nd Semester", 24);
+const stopOther = await attempt(withNamed(REAL));
+check("a 2nd-semester credit of ANY OTHER scholar who is not a test account still stops it, and lists only that scholar", !stopOther.ok && /SDP credits of people who are not test accounts/.test(stopOther.msg) && stopOther.msg.includes(nonTester[0]) && !stopOther.msg.includes(X1) && !stopOther.msg.includes(X2), stopOther.msg);
+await q("delete from sdp_attendance where scholar_id_number = $1 and semester = '2nd Semester'", [nonTester[0]]);
+const beforeNamed = await counts();
+const dry2 = await run(withNamed(DRY));
+check("with only the two named scholars' credits left, the dry run passes, changes nothing, and counts those credits (and the one of theirs that stays)", JSON.stringify(await counts()) === JSON.stringify(beforeNamed)
+  && Number(find(dry2, "SDP credits of the two named scholars (").rows) === 2 && Number(find(dry2, "SDP credits of the two named scholars in any other semester").rows) >= 1, JSON.stringify(dry2.filter(r => /named/.test(r.what))));
+check("it lists each of those credits (scholar, activity, category, credits, day) so you can see what goes", dry2.filter(r => r.step.startsWith("3b.")).length === 2 && dry2.some(r => r.step.startsWith("3b.") && r.what.startsWith(X1)));
+DRY = withNamed(DRY); REAL = withNamed(REAL);
+
 console.log("\nThe real run");
 const real = await run(REAL);
 const after = await counts();
@@ -87,6 +105,8 @@ check("in the real 1st semester only the test accounts' grades went; the real sc
   && (await q("select count(*)::int n from academic_periods where school_year = '2026-2027' and term = '1st Semester'"))[0].n === 1);
 check("the test submission of the real semester is gone, so no school stays locked out; its correction request and the history lines are gone too", (await q("select count(*)::int n from school_period_submissions"))[0].n === before.school_period_submissions - 2
   && after.grade_correction_requests === before.grade_correction_requests - 1 && after.school_submission_events === before.school_submission_events - 2);
+check("the two named scholars' 2nd-semester credits are gone; their 1st-semester credit stays", (await q("select count(*)::int n from sdp_attendance where scholar_id_number = any ($1) and semester = '2nd Semester' and school_year = '2026-2027'", [[X1, X2]]))[0].n === 0
+  && (await q("select count(*)::int n from sdp_attendance where scholar_id_number = $1 and semester = '1st Semester' and occurrence_number = 23", [X1]))[0].n === 1);
 check("the test accounts' credits since the tests began are gone (older credits of those accounts stay); everyone else's credit stays", (await q("select count(*)::int n from sdp_attendance where scholar_id_number = any ($1)", [testers]))[0].n === testerCreditsAll - testerCredits
   && (await q("select count(*)::int n from sdp_attendance where scholar_id_number = $1 and occurrence_number = 8", [nonTester[0]]))[0].n === 1);
 check("the audit trail shows nothing of the test accounts' grades in these periods; the real school's older lines stay", (await q("select count(*)::int n from scholar_grade_audit where scholar_id_number = any ($1) and school_year = '2026-2027' and semester in ('1st Semester', '2nd Semester')", [testers]))[0].n === 0
@@ -94,7 +114,7 @@ check("the audit trail shows nothing of the test accounts' grades in these perio
 check("everything else is untouched: scholars, schools, the other periods, credits set aside, the current grading period", after.scholars === before.scholars && after.schools === before.schools && after.sdp_reserved_credits === before.sdp_reserved_credits
   && after.grading_period_settings === before.grading_period_settings && after.academic_periods === before.academic_periods - 1);
 const backup = Object.fromEntries((await q("select table_name, count(*)::int n from public._period_test_backup group by 1")).map(b => [b.table_name, b.n]));
-check("every removed row was copied to the holding table first", backup.scholar_subjects_grades === 4 && backup.school_period_submissions === 2 && backup.grade_correction_requests === 1 && backup.grade_documents === 1 && backup.academic_periods === 1 && backup.sdp_attendance === testerCredits && backup.school_submission_events === 2, JSON.stringify(backup));
+check("every removed row was copied to the holding table first", backup.scholar_subjects_grades === 4 && backup.school_period_submissions === 2 && backup.grade_correction_requests === 1 && backup.grade_documents === 1 && backup.academic_periods === 1 && backup.sdp_attendance === testerCredits + 2 && backup.school_submission_events === 2, JSON.stringify(backup));
 check("the holding table is locked: signed-in people and visitors cannot read it", await (async () => {
   for (const role of ["authenticated", "anon"]) {
     try { await db.transaction(async tx => { await tx.exec(`set local role ${role}`); await tx.query("select count(*) from public._period_test_backup"); }); return false; } catch { /* refused, as it should be */ }
