@@ -6,6 +6,7 @@ import { NOTIFICATIONS_CHANGED } from "./NotificationBell";
 import { ConsultationSection } from "./ConsultationSection";
 import { CsrDownload } from "./CsrDownload";
 import { RenewalProgressBar } from "./RenewalProgressBar";
+import { SelfGradesSection } from "./SelfGradesSection";
 import { StudyPlanFormLink } from "./StudyPlanFormLink";
 import { buildNextSteps } from "../../renewalSummary";
 import {
@@ -238,6 +239,7 @@ function EvaluationSummary({ ev }: { ev: RenewalEvaluation }) {
       </div>
       <div className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3.5 py-3">
         <p className="text-[14px] font-bold text-[#062444] mb-1">Grades for {basis}</p>
+        {g?.self_reported && <p className="text-[14px] text-green-900 mb-1">These are the grades you entered, approved by the Grades Approver. They count until your school uploads its own.</p>}
         {g && g.state !== "ready" && <p className="text-[14px] text-slate-700">{g.reason}</p>}
         {g && g.state === "ready" && (
           <>
@@ -317,6 +319,7 @@ function Tracker({ data, overview, onChanged }: { data: MyRenewalWindow; overvie
 
       {record.isLate && record.stage !== "late_pending" && record.lateReason && <p className="text-[14px] text-slate-700">Late application: {record.lateReason}</p>}
       {ev.grades && ev.sdp && record.stage !== "late_pending" && <EvaluationSummary ev={ev} />}
+      {ev.grades && record.stage !== "late_pending" && canFlag && <SelfGradesSection record={record} ev={ev} scholarIdNumber={overview.scholar.scholarIdNumber} onChanged={onChanged} />}
       {record.ruleText && !["late_pending", "waiting_grades", "sdp_on_hold"].includes(record.stage) && (
         <p className="text-[14px] text-slate-700"><strong className="text-[#062444]">How your case is handled:</strong> {record.ruleText}</p>
       )}

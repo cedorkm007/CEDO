@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { School, Users, Pencil, Check, CalendarRange, AlertTriangle, FileSignature, Wrench, Download } from "lucide-react";
+import { School, Users, Pencil, Check, CalendarRange, AlertTriangle, FileSignature, Wrench, Download, SlidersHorizontal } from "lucide-react";
 import { ScholarsGradesMonitoringSchoolsTab } from "./pages/ScholarsGradesMonitoringSchoolsTab";
 import { ScholarsGradesMonitoringScholarsTab } from "./pages/ScholarsGradesMonitoringScholarsTab";
 import { ScholarsGradesMonitoringCorrectionsTab } from "./pages/ScholarsGradesMonitoringCorrectionsTab";
 import { ScholarsGradesMonitoringCleanupTab } from "./pages/ScholarsGradesMonitoringCleanupTab";
+import { ScholarsGradesMonitoringSetupTab } from "./pages/ScholarsGradesMonitoringSetupTab";
 import { GradesExportDialog } from "./components/GradesExportDialog";
 import { AcademicPeriodsModal } from "./components/AcademicPeriodsModal";
 import { Modal } from "./components/Modal";
@@ -15,7 +16,7 @@ import {
   findPeriod, deadlineSummary, type AcademicPeriod,
 } from "@/lib/academicPeriods";
 
-type MonitoringSubtab = "schools" | "scholars" | "corrections" | "cleanup";
+type MonitoringSubtab = "schools" | "scholars" | "corrections" | "setup" | "cleanup";
 
 /**
  * Gated by the "scholars_grades_monitoring" tag (src/app/staffToolTags.ts),
@@ -34,6 +35,7 @@ export function ScholarsGradesMonitoringPage() {
     { key: "schools", label: "Schools", icon: <School size={14} /> },
     { key: "scholars", label: "Scholars", icon: <Users size={14} /> },
     { key: "corrections", label: "Correction requests", icon: <FileSignature size={14} /> },
+    { key: "setup", label: "Grading setup", icon: <SlidersHorizontal size={14} /> },
     { key: "cleanup", label: "Clean-up", icon: <Wrench size={14} /> },
   ];
   const [tab, setTab] = useState<MonitoringSubtab>("schools");
@@ -171,6 +173,7 @@ export function ScholarsGradesMonitoringPage() {
       {tab === "schools" && <ScholarsGradesMonitoringSchoolsTab period={viewPeriod} periodId={viewing?.id ?? null} />}
       {tab === "scholars" && <ScholarsGradesMonitoringScholarsTab period={viewPeriod} periodId={viewing?.id ?? null} />}
       {tab === "corrections" && <ScholarsGradesMonitoringCorrectionsTab />}
+      {tab === "setup" && <ScholarsGradesMonitoringSetupTab />}
       {tab === "cleanup" && <ScholarsGradesMonitoringCleanupTab />}
 
       {exporting && <GradesExportDialog periods={periods} current={period} viewKey={effectiveKey} onClose={() => setExporting(false)} />}

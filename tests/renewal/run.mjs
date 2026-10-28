@@ -786,7 +786,7 @@ test("who can open Scholar Renewal: the evaluator, the Division Head, and the he
 });
 test("the SEAD head sees only the Dashboard; the filter boxes are on the dashboard; the database agrees on who may read", () => {
   const page = fs.readFileSync(path.join(root, "src/sead/ScholarRenewalPage.tsx"), "utf8");
-  assert.match(page, /t\.key !== "divisionHead" \|\| isEvaluator \|\| isDivisionHead/); assert.match(page, /isDivisionHead \? "divisionHead" : seesRenewals \? "dashboard" : isSdpApprover \? "sdpReconsideration" : "certificate"/);
+  assert.match(page, /t\.key !== "divisionHead" \|\| isEvaluator \|\| isDivisionHead/); assert.match(page, /isDivisionHead \? "divisionHead" : seesRenewals \? "dashboard" : isSdpApprover \? "sdpReconsideration" : isGradesApprover \? "enteredGrades" : "certificate"/);
   const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalDashboardTab.tsx"), "utf8");
   assert.match(tab, /Choose what goes into the Excel file/); assert.match(tab, /<fieldset/);
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p7_reports.sql"), "utf8");
@@ -960,7 +960,7 @@ test("the Appointments subtab sits inside the existing Consultation Tool (same t
   const sql = [...["p2_application", "p3_appointments", "p4_tracker", "p8b_test_windows"].map(n => "supabase_migration_renewal_" + n + ".sql"), "supabase_migration_consultation_types_b_booking.sql"].map(n => fs.readFileSync(path.join(root, n), "utf8")).join("\n");
   const called = new Set();
   for (const p of ["src/sead/appointmentsApi.ts", "src/scholar/renewalApi.ts", "src/sead/renewalApi.ts"]) for (const m of fs.readFileSync(path.join(root, p), "utf8").matchAll(/rpc\("([a-z_]+)"/g)) called.add(m[1]);
-  const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql + fs.readFileSync(path.join(root, "supabase_migration_renewal_not_applied_columns.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_referral_reason_c_functions.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_renewal_window_schools_b_functions.sql"), "utf8")));
+  const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql + fs.readFileSync(path.join(root, "supabase_migration_renewal_not_applied_columns.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_entered_grades_c_functions.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_referral_reason_c_functions.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_renewal_window_schools_b_functions.sql"), "utf8")));
   assert.deepEqual(missing, []);
 });
 test("the scholar-facing messages never show a time in UTC or the browser's own time zone", () => {
