@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLiveReload } from "@/lib/liveUpdates";
-import { AlertTriangle, CheckCircle2, CornerUpLeft, Loader2, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CornerUpLeft, Loader2, RotateCcw, RotateCw, Search } from "lucide-react";
 import {
   decideEnteredGrades, ENTERED_GRADES_PAGE_SIZE, fetchEnteredGrades, fetchEnteredGradesCounts, getEnteredGradeImageUrl,
   type EnteredGradesCounts, type EnteredGradesFilter, type EnteredGradesRow,
@@ -8,19 +8,54 @@ import {
 import { formatDateTime, selfGradeDifferenceText, selfGradesStatusText, termLabelOf } from "@/lib/renewal";
 import { ListPagination } from "@/app/components/PaginatedList";
 import { ReasonDialog } from "./ReasonDialog";
+import { nextQuarter, turnedLayout, type Quarter } from "@/lib/pictureTurn";
 
 const TONE: Record<"good" | "bad" | "warn" | "plain", string> = {
   good: "bg-green-100 text-green-950 border-green-300", bad: "bg-red-100 text-red-950 border-red-300", warn: "bg-amber-100 text-amber-950 border-amber-300", plain: "bg-slate-100 text-slate-900 border-slate-300",
 };
 const FILTERS: { key: EnteredGradesFilter; label: string }[] = [{ key: "pending", label: "Waiting for approval" }, { key: "approved", label: "Approved" }, { key: "returned", label: "Returned" }, { key: "all", label: "All" }];
 
-/** One image the scholar uploaded, as large as its half of the screen so it can be read next to the grades; clicking opens it full size in a new tab. */
+/**
+ * One image the scholar uploaded, as large as its half of the screen so it can be read next to the grades; clicking opens it full size in a new tab. The reviewer can turn it
+ * to the left or to the right (a sideways screenshot) with the two buttons on the picture: this only changes how it is shown here, the stored file is never changed.
+ */
 function Thumb({ path, name }: { path: string; name: string }) {
   const [url, setUrl] = useState<string | null | undefined>(undefined);
+  const [quarter, setQuarter] = useState<Quarter>(0);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  const [boxW, setBoxW] = useState(0);
+  const box = useRef<HTMLDivElement>(null);
   useEffect(() => { let live = true; void getEnteredGradeImageUrl(path).then(u => { if (live) setUrl(u); }); return () => { live = false; }; }, [path]);
+  // the width of the box the picture is shown in (it changes with the window and the pop-up), to lay a turned picture out
+  useEffect(() => {
+    const el = box.current; if (!el) return;
+    setBoxW(el.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setBoxW(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [url]);
   if (url === undefined) return <span className="flex h-40 w-full items-center justify-center rounded-md border border-[#e6ecf5] text-slate-700"><Loader2 size={16} className="animate-spin" aria-hidden="true" /></span>;
   if (!url) return <span className="rounded-md border border-[#e6ecf5] px-2 py-1 text-[13px] text-slate-800">{name} (can't be opened)</span>;
-  return <a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${name} full size`} className="block"><img src={url} alt={name} className="block h-auto max-w-full rounded-md border border-[#e6ecf5] bg-white object-contain" /></a>;
+  const sideways = quarter % 2 === 1 && !!natural && boxW > 0;
+  const layout = natural && boxW > 0 ? turnedLayout(natural.w, natural.h, boxW, quarter) : null;
+  const button = "inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#062444]/30 bg-white/95 text-[#062444] shadow hover:bg-[#f7f9fc]";
+  return (
+    <div className="relative">
+      <div ref={box} className="w-full">
+        <a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${name} full size`} className="block" style={sideways && layout ? { position: "relative", height: layout.boxHeight } : undefined}>
+          <img src={url} alt={name} onLoad={e => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+            className="block h-auto max-w-full rounded-md border border-[#e6ecf5] bg-white object-contain"
+            style={sideways && layout ? { position: "absolute", maxWidth: "none", width: layout.imageWidth, height: layout.imageHeight, left: layout.left, top: layout.top, transform: `rotate(${layout.degrees}deg)` }
+              : quarter === 2 ? { transform: "rotate(180deg)" } : undefined} />
+        </a>
+      </div>
+      <div className="absolute right-2 top-2 flex gap-1.5" role="group" aria-label={`Turn ${name}`}>
+        <button type="button" onClick={() => setQuarter(q => nextQuarter(q, -1))} aria-label={`Turn ${name} to the left`} title="Turn to the left" className={button}><RotateCcw size={15} aria-hidden="true" /></button>
+        <button type="button" onClick={() => setQuarter(q => nextQuarter(q, 1))} aria-label={`Turn ${name} to the right`} title="Turn to the right" className={button}><RotateCw size={15} aria-hidden="true" /></button>
+      </div>
+    </div>
+  );
 }
 
 /**
