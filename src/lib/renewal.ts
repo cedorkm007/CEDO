@@ -84,9 +84,9 @@ export const DIVISION_HEAD_DECISION_LABEL: Record<DivisionHeadDecision, string> 
 };
 /** The buttons the Division Head sees, in order, with plain words for what each one does. */
 export const DIVISION_HEAD_OPTION_INFO: Record<"approve_probationary" | "removed" | "reconsidered" | "return", { label: string; effect: string }> = {
-  approve_probationary: { label: "Approve Probationary", effect: "The scholar's status becomes Probationary and goes back to the evaluator, who confirms the renewal." },
-  reconsidered: { label: "Reconsidered", effect: "The scholar's status becomes Reconsidered and goes back to the evaluator, who confirms the renewal." },
-  removed: { label: "Removed", effect: "The scholar's status becomes Removed and their login is switched off (like the Removed Scholars tab). Any booked consultation is released." },
+  approve_probationary: { label: "Approve Probationary", effect: "You approve and sign. The consulting staff member who consulted the scholar then makes the final decision: only then does the status become Probationary, and the case goes to the evaluator, who confirms the renewal." },
+  reconsidered: { label: "Reconsidered", effect: "You approve and sign. The consulting staff member who consulted the scholar then makes the final decision: only then does the status become Reconsidered, and the case goes to the evaluator, who confirms the renewal." },
+  removed: { label: "Removed", effect: "You approve and sign. The consulting staff member who consulted the scholar then makes the final decision: only then is the scholar marked Removed and the login switched off (like the Removed Scholars tab); any booked consultation is released." },
   return: { label: "Send back to the evaluator", effect: "Nothing changes for the scholar. The evaluator reads your reason and sends the case again." },
 };
 

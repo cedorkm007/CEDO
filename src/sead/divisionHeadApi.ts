@@ -13,11 +13,14 @@ const str = (v: unknown) => (v == null ? "" : String(v));
 const strOrNull = (v: unknown) => (v == null ? null : String(v));
 const num = (v: unknown) => (v == null ? 0 : Number(v));
 
-export type DivisionHeadQueueState = "waiting" | "sent_back" | "decided";
+/** awaiting_final: the Division Head approved and signed; the consulting staff member makes the final decision (only then does the status change). */
+export type DivisionHeadQueueState = "waiting" | "sent_back" | "awaiting_final" | "decided";
 export interface DivisionHeadCase {
   recordId: string; referralId: string; scholarIdNumber: string; scholarName: string; school: string; program: string; yearLevel: string;
   scholarStatus: string; termLabel: string; stage: string; ruleCode: string; caseType: DivisionHeadCaseType; state: DivisionHeadQueueState;
   decision: DivisionHeadDecision | null; decidedAt: string | null; failedCount: number; consultationDoneAt: string | null; noShowCount: number; sentAt: string;
+  /** The consulting staff member who makes the final decision (when the case is waiting for it). */
+  finalBy: string | null;
 }
 
 export async function fetchDivisionHeadQueue(): Promise<{ ok: true; rows: DivisionHeadCase[] } | { ok: false; error: string }> {
@@ -29,7 +32,7 @@ export async function fetchDivisionHeadQueue(): Promise<{ ok: true; rows: Divisi
       recordId: str(r.record_id), referralId: str(r.referral_id), scholarIdNumber: str(r.scholar_id_number), scholarName: str(r.scholar_name), school: str(r.school),
       program: str(r.program), yearLevel: str(r.year_level), scholarStatus: str(r.scholar_status), termLabel: str(r.term_label), stage: str(r.stage), ruleCode: str(r.rule_code),
       caseType: r.case_type as DivisionHeadCaseType, state: r.state as DivisionHeadQueueState, decision: (r.decision as DivisionHeadDecision | null) ?? null,
-      decidedAt: strOrNull(r.decided_at), failedCount: num(r.failed_count), consultationDoneAt: strOrNull(r.consultation_done_at), noShowCount: num(r.no_show_count), sentAt: str(r.sent_at),
+      decidedAt: strOrNull(r.decided_at), failedCount: num(r.failed_count), consultationDoneAt: strOrNull(r.consultation_done_at), noShowCount: num(r.no_show_count), sentAt: str(r.sent_at), finalBy: strOrNull(r.final_by),
     })),
   };
 }

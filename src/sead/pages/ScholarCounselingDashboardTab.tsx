@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Users, Home, AlertTriangle, Clock, CalendarDays, ChevronRight, CheckCircle2, Printer } from "lucide-react";
-import { fetchDashboardSummary, fetchReferralQueue, fetchApprovedReferrals, type DashboardSummary, type QueuedReferral } from "../referralApi";
+import { fetchDashboardSummary, fetchReferralQueue, fetchApprovedReferrals, fetchFinalDecisions, finalizeDecision, type DashboardSummary, type FinalDecisionItem, type QueuedReferral } from "../referralApi";
 import { ReferralFormModal } from "../components/ReferralFormModal";
 import { printApprovedReferral } from "../referralPrint";
 
@@ -36,10 +36,15 @@ export function ScholarCounselingDashboardTab() {
   const [working, setWorking] = useState<QueuedReferral | null>(null);
   const [viewing, setViewing] = useState<QueuedReferral | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
+  // cases the Division Head approved and signed: the consulting staff member who consulted the scholar makes the final decision
+  const [finals, setFinals] = useState<FinalDecisionItem[]>([]);
+  const [finalBusy, setFinalBusy] = useState<string | null>(null);
+  const [finalError, setFinalError] = useState("");
 
   async function load() {
     setLoading(true);
-    const [s, q, a] = await Promise.all([fetchDashboardSummary(), fetchReferralQueue(), fetchApprovedReferrals()]);
+    const [s, q, a, fd] = await Promise.all([fetchDashboardSummary(), fetchReferralQueue(), fetchApprovedReferrals(), fetchFinalDecisions()]);
+    setFinals(fd);
     setSummary(s);
     setQueue(q);
     setApproved(a);
@@ -52,6 +57,16 @@ export function ScholarCounselingDashboardTab() {
     if (printingId) return;
     setPrintingId(r.id);
     try { await printApprovedReferral(r); } finally { setPrintingId(null); }
+  }
+
+  async function proceed(item: FinalDecisionItem) {
+    const what = item.decisionLabel === "Removed" ? "The scholar will be marked Removed" + (item.recordId ? " and the login will be switched off." : ".") : `The scholar's scholarship status will become ${item.decisionLabel}.`;
+    if (!window.confirm(`Proceed with the final decision for ${item.name}?\n\n${what}\n\nThe Division Head has approved and signed it. This is the last step before the scholarship status changes.`)) return;
+    setFinalBusy(item.referralId); setFinalError("");
+    const r = await finalizeDecision(item.referralId);
+    setFinalBusy(null);
+    if (!r.ok) { setFinalError(r.error || "The final decision could not be made."); return; }
+    await load();
   }
 
   if (loading) return <p className="text-center text-slate-400 py-10">Loading…</p>;
@@ -86,6 +101,32 @@ export function ScholarCounselingDashboardTab() {
           <Stat label="Clients Served" value={summary?.clientsServedThisMonth ?? 0} />
         </SummaryCard>
       </div>
+
+      {finals.length > 0 && (
+        <div className="bg-white rounded-2xl border-2 border-green-300 overflow-hidden mb-4" aria-label="Waiting for your final decision">
+          <div className="px-4 py-3 border-b border-green-200 bg-green-50 flex items-center gap-2">
+            <CheckCircle2 size={14} className="text-green-700" />
+            <p className="text-[13px] font-bold text-green-950">Waiting for your final decision ({finals.length})</p>
+          </div>
+          <p className="px-4 pt-2 text-[12.5px] text-slate-600">The Division Head approved and signed these. You consulted these scholars, so the final decision is yours: the scholarship status changes only when you proceed.</p>
+          {finalError && <p role="alert" className="px-4 pt-2 text-[13px] text-red-700">{finalError}</p>}
+          <div>
+            {finals.map(item => (
+              <div key={item.referralId} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-[#f0f3f8] first:border-t-0">
+                <div>
+                  <p className="text-[13.5px] font-semibold text-[#062444]">{item.name}</p>
+                  <p className="text-[12px] text-slate-500">{item.course} · {item.yearLevel} · {item.school}</p>
+                  <p className="text-[12.5px] text-slate-800 mt-0.5">Approved by the Division Head: <strong>{item.decisionLabel}</strong>{item.termLabel ? ` · renewal for ${item.termLabel}` : ""}{item.signedBy ? ` · signed by ${item.signedBy}` : ""}</p>
+                </div>
+                <button type="button" onClick={() => void proceed(item)} disabled={finalBusy === item.referralId}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-4 py-2 text-[13px] font-bold text-white hover:bg-green-900 disabled:opacity-60">
+                  <CheckCircle2 size={14} /> {finalBusy === item.referralId ? "Working…" : "Proceed with the final decision"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden">
         <div className="px-4 py-3 border-b border-[#f0f3f8] flex items-center gap-2">

@@ -329,6 +329,9 @@ export async function seedDb(db) {
   for (const s of SCHOLARS.filter(x => x.renewal?.reconsidered)) {
     const rec = await recOf(s.n);
     await as(id("staff:demo.divhead"), async tx => tx.query("select public.renewal_division_head_decide($1, 'reconsidered', $2, '', 'Given one more chance.')", [rec, `${id("staff:demo.divhead")}/signature.png`]));
+    // the final decision belongs to the consulting staff member the case is assigned to (after the Division Head approves and signs)
+    const waiting = (await db.query("select id, referred_to from scholar_counseling_referrals where renewal_record_id = $1 and status = 'division_head_approved'", [rec])).rows[0];
+    if (waiting) await as(waiting.referred_to, async tx => tx.query("select public.consult_finalize_decision($1)", [waiting.id]));
   }
 
   // The blank study plan form, as the office would add it in Forms Management (the Renewal tile links to it).

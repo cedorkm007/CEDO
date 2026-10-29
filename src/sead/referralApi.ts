@@ -13,7 +13,8 @@ export type EndorsedFor = "On Probation Status" | "Removal" | "Renewal";
 export const ENDORSED_FOR_OPTIONS: EndorsedFor[] = ["On Probation Status", "Removal", "Renewal"];
 
 /** awaiting_booking: the scholar was referred and has not booked yet; booked: the scholar booked; pending: the consultation happened (the counselor's queue); then the Division Head's steps. */
-export type ReferralStatus = "awaiting_booking" | "booked" | "pending" | "forwarded_to_division_head" | "reconsideration_requested" | "approved";
+/** ... division_head_approved: the Division Head approved and signed, and the consulting staff member who consulted the scholar now makes the final decision (only then does the scholarship status change); approved: that final decision was made. */
+export type ReferralStatus = "awaiting_booking" | "booked" | "pending" | "forwarded_to_division_head" | "division_head_approved" | "reconsideration_requested" | "approved";
 
 export interface StaffOption {
   id: string;
@@ -176,6 +177,29 @@ export async function forwardReferralToDivisionHead(
 
 export async function requestReferralReconsideration(referralId: string, reason: string): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.rpc("request_referral_reconsideration", { p_referral_id: referralId, p_reason: reason });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/** A case the Division Head approved and signed, waiting for the consulting staff member's final decision (supabase_migration_final_decision_b_functions.sql). */
+export interface FinalDecisionItem {
+  referralId: string; recordId: string | null; scholarIdNumber: string; name: string; course: string; yearLevel: string; school: string;
+  /** The status the scholar will get: Probationary, Reconsidered, Removed or Regular. */
+  decisionLabel: string; signedBy: string; approvedAt: string | null; termLabel: string | null;
+}
+/** The signed-in consulting staff member's cases waiting for their final decision. Empty (and no error) before the database update has been run. */
+export async function fetchFinalDecisions(): Promise<FinalDecisionItem[]> {
+  const { data, error } = await supabase.rpc("consult_final_decisions");
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({
+    referralId: String(r.referral_id), recordId: (r.record_id as string | null) ?? null, scholarIdNumber: String(r.scholar_id_number), name: String(r.name ?? ""), course: String(r.course ?? ""),
+    yearLevel: String(r.year_level ?? ""), school: String(r.school ?? ""), decisionLabel: String(r.decision_label ?? ""), signedBy: String(r.signed_by ?? ""), approvedAt: (r.approved_at as string | null) ?? null,
+    termLabel: (r.term_label as string | null) ?? null,
+  }));
+}
+/** The final decision: only the consulting staff member who consulted the scholar can make it; only now does the scholarship status change. */
+export async function finalizeDecision(referralId: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("consult_finalize_decision", { p_referral_id: referralId });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }

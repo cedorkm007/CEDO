@@ -29,6 +29,7 @@ async function as(uid, fn, role = "authenticated") {
 const rpc = (uid, sql, params = []) => as(uid, async tx => (await tx.query(sql, params)).rows);
 const fails = async (uid, sql, params, pattern, role) => { try { await (role ? as(uid, async tx => (await tx.query(sql, params)).rows, role) : rpc(uid, sql, params)); return false; } catch (e) { return pattern ? pattern.test(String(e.message)) : true; } };
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
+const finalize = async rec => { const f = (await q("select id, referred_to from scholar_counseling_referrals where renewal_record_id = $1 and status = 'division_head_approved'", [rec]))[0]; if (f) await rpc(f.referred_to, "select public.consult_finalize_decision($1)", [f.id]); };   // the consulting staff member makes the final decision after the Division Head signs
 const dash = async (uid = EVAL, sy = SY, term = TERM) => (await rpc(uid, "select public.renewal_dashboard($1, $2) d", [sy, term]))[0].d;
 const count = async (sql, params = []) => Number((await q(sql, params))[0].n);
 
@@ -81,6 +82,7 @@ console.log("\nThe numbers move when the work moves");
 const before = await dash();
 const recDh = (await q("select id from renewal_records where scholar_id_number = $1 and school_year = $2 and term = $3", [num(43), SY, TERM]))[0].id;
 await rpc(DH, "select public.renewal_division_head_decide($1, 'approve_probationary', 'sig.png', '')", [recDh]);
+await finalize(recDh);
 const mid = await dash();
 check("a Division Head approval: one less waiting, one more approved; not Renewed yet", mid.division_head.waiting === before.division_head.waiting - 1 && mid.division_head.approved_probationary === before.division_head.approved_probationary + 1 && mid.totals.renewed === before.totals.renewed);
 await rpc(EVAL, "select public.renewal_confirm_decision($1, 'ok')", [recDh]);
@@ -89,6 +91,7 @@ check("the evaluator's confirmation: Renewed + 1, split by result (probationary)
 check("Removed counts too", await (async () => {
   const rec41 = (await q("select id from renewal_records where scholar_id_number = $1 and school_year = $2 and term = $3", [num(41), SY, TERM]))[0].id;
   await rpc(DH, "select public.renewal_division_head_decide($1, 'removed', 'sig.png', '')", [rec41]);
+  await finalize(rec41);
   const x = await dash();
   return x.totals.removed === after.totals.removed + 1 && x.division_head.removed === after.division_head.removed + 1;
 })());

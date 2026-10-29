@@ -12,6 +12,7 @@ await seedDb(db);
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const read = f => fs.readFileSync(f, "utf8");
 const FILES = ["supabase_migration_referral_reason_a_referrals.sql", "supabase_migration_referral_reason_b_slots.sql", "supabase_migration_referral_reason_c_functions.sql"];
+const OPEN = "supabase_migration_consultation_open_and_choose_staff.sql", UNDO_OPEN = "undo_consultation_open_and_choose_staff.sql";   // the later consultation file (any-time booking, choose the staff) sits on top of these
 const UNDOS = ["undo_referral_reason_c.sql", "undo_referral_reason_b.sql", "undo_referral_reason_a.sql"];
 async function as(uid, fn, role = "authenticated") {
   return db.transaction(async tx => {
@@ -117,11 +118,13 @@ console.log("\nRunning again, the undo and putting it back");
 for (const f of FILES) await db.exec(read(f));
 check("running the three files again changes nothing", (await q("select count(*)::int n from scholar_counseling_referrals where reason is not null"))[0].n >= 1);
 await q("delete from scholar_counseling_referrals where status in ('awaiting_booking', 'booked')");
+await db.exec(read(UNDO_OPEN));      // the later consultation file goes first, then these files
 for (const f of UNDOS) await db.exec(read(f));
 check("the undo removes the new functions and puts the three counselor-side functions back", (await q("select count(*)::int n from pg_proc where proname in ('create_consultation_referral', 'referral_book_consultation', 'consultation_my_referrals', '_referral_place')"))[0].n === 0
   && (await q("select count(*)::int n from pg_proc where proname = 'counseling_mark_slot'"))[0].n === 1);
 check("after the undo the old rules are back: a referral must name a counselor and the old statuses only", !(await attempt(null, "select 1", [])).ok === false && await (async () => { try { await db.query("insert into scholar_counseling_referrals (scholar_id_number, referred_by, referred_to, previous_semester_status, endorsed_for, status) values ($1, $2, null, 'Retained', 'Renewal', 'pending')", [S3, EVALUATOR]); return false; } catch { return true; } })());
 for (const f of FILES) await db.exec(read(f));
+await db.exec(read(OPEN));
 check("it can be put back after the undo and referring works again", (await refer(EVALUATOR, S2, "ethical")).ok);
 const sqlText = read(FILES[2]).replace(/--.*$/gm, "");
 check("file C changes no table and deletes nothing except a released booking", !/\balter table\b|\bdrop table\b|\btruncate\b/i.test(sqlText) && (sqlText.match(/delete from public\.\w+/g) ?? []).every(s => s === "delete from public.counseling_slots"));
