@@ -128,8 +128,8 @@ test("without the facts the summary shows a dash and never breaks", () => assert
 
 console.log("The screens");
 const tab = src("src/sead/renewal/RenewalScholarListTab.tsx"), page = src("src/sead/ScholarRenewalPage.tsx"), api = src("src/sead/renewalScholarListApi.ts");
-test("the table has the two new columns and keeps the others", () => {
-  for (const h of ["Scholar ID", "Scholar name", "Scholarship status", "School", "Year level", "Program", "SDP status", "Grades", "Renewal eligibility", "Renewal status", "Action needed"]) assert.ok(tab.includes(`"${h}"`), h);
+test("the table has the two new columns; the scholar's ID, status, school, program and year level share the first cell", () => {
+  for (const h of ["Scholar", "SDP status", "Grades", "Renewal eligibility", "Renewal status", "Action needed"]) assert.ok(tab.includes(`"${h}"`), h);
 });
 test("the narrow-screen cards show both columns too", () => assert.ok(tab.includes(`<dt className="text-slate-600">Renewal status</dt>`) && tab.includes(`<dt className="text-slate-600">Action needed</dt>`)));
 test("the Action needed cell lets only the assigned staff click, and tells the others who it waits for", () => {

@@ -300,19 +300,19 @@ export function RenewalScholarListTab({ schoolYear, term, refreshKey, viewer = N
             <table className="w-full table-fixed text-left text-[14px]">
               <thead className="bg-[#f7f9fc] text-[#062444]">
                 <tr>
-                  {[["Scholar ID", "w-[7%]"], ["Scholar name", "w-[9%]"], ["Scholarship status", "w-[7%]"], ["School", "w-[9%]"], ["Year level", "w-[5%]"], ["Program", "w-[8%]"], ["SDP status", "w-[8%]"], ["Grades", "w-[9%]"], ["Renewal eligibility", "w-[8%]"], ["Renewal status", "w-[14%]"], ["Action needed", "w-[16%]"]]
+                  {[["Scholar", "w-[20%]"], ["SDP status", "w-[10%]"], ["Grades", "w-[12%]"], ["Renewal eligibility", "w-[12%]"], ["Renewal status", "w-[22%]"], ["Action needed", "w-[24%]"]]
                     .map(([h, w]) => <th key={h} scope="col" className={`px-2 py-2.5 font-bold align-bottom ${w}`}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {rows.map(r => (
                   <tr key={r.scholarIdNumber} className="border-t border-[#eef3fb] align-top">
-                    <td className="px-2 py-2.5 break-words text-slate-800">{r.scholarIdNumber}</td>
-                    <td className="px-2 py-2.5 break-words font-bold text-[#062444]">{r.name}</td>
-                    <td className="px-2 py-2.5 break-words text-slate-800">{r.status}</td>
-                    <td className="px-2 py-2.5 break-words text-slate-800">{r.school || "—"}</td>
-                    <td className="px-2 py-2.5 break-words text-slate-800">{r.yearLevel || "—"}</td>
-                    <td className="px-2 py-2.5 break-words text-slate-800">{r.program || "—"}</td>
+                    <td className="px-2 py-2.5 break-words">
+                      <div className="font-bold text-[#062444]">{r.name}</div>
+                      <div className="text-[13px] text-slate-700">{r.scholarIdNumber} · {r.status}</div>
+                      <div className="text-[13px] text-slate-800">{r.school || "No school"}</div>
+                      <div className="text-[13px] text-slate-800">{r.program || "No program"} · {r.yearLevel || "No year level"}</div>
+                    </td>
                     <td className="px-2 py-2.5 break-words"><SdpCell r={r} onView={setViewing} /></td>
                     <td className="px-2 py-2.5 break-words"><GradesCell r={r} /></td>
                     <td className="px-2 py-2.5"><EligibilityCell r={r} /></td>
