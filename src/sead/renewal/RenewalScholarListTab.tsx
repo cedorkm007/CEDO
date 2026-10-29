@@ -346,7 +346,7 @@ export function RenewalScholarListTab({ schoolYear, term, refreshKey, viewer = N
 
       {viewing && <SdpCreditsModal scholar={viewing} schoolYear={schoolYear} term={term} onClose={() => setViewing(null)} />}
       {acting?.key === "approve_grades" && (
-        <ModalShell title={`Entered grades of ${acting.row.name}`} onClose={() => setActing(null)} wide>
+        <ModalShell title={`Entered grades of ${acting.row.name}`} onClose={() => setActing(null)} extraWide>
           <RenewalEnteredGradesTab refreshKey={refreshKey} onChanged={() => onChanged?.()} only={{ scholarIdNumber: acting.row.scholarIdNumber, onDone: afterAct }} />
         </ModalShell>
       )}
