@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
 import type { ScholarEligibility } from "@/lib/renewal";
+import type { ScholarActionFacts } from "@/lib/renewalActions";
 
 type Row = Record<string, unknown>;
 const str = (v: unknown) => (v == null ? "" : String(v));
@@ -55,6 +56,22 @@ export async function fetchScholarList(schoolYear: string, term: string, f: Scho
       eligibility: ((r.eligibility ?? []) as string[]) as ScholarEligibility[], computedAt: strOrNull(r.computed_at),
     })),
   };
+}
+
+/** Where the scholars of one page of the list stand (application, grades, referrals), for the Action needed and Renewal status columns. `missing: true` = supabase_migration_renewal_actions_needed.sql has not been run yet. */
+export async function fetchScholarActions(schoolYear: string, term: string, ids: string[]): Promise<{ ok: true; facts: Record<string, ScholarActionFacts> } | Failed> {
+  if (ids.length === 0) return { ok: true, facts: {} };
+  const { data, error } = await supabase.rpc("renewal_scholar_actions", { p_school_year: schoolYear, p_term: term, p_ids: ids });
+  if (error) return failed(error);
+  const facts: Record<string, ScholarActionFacts> = {};
+  for (const r of (data ?? []) as Row[]) {
+    facts[str(r.scholar_id_number)] = {
+      recordId: strOrNull(r.record_id), stage: strOrNull(r.stage), isLate: !!r.is_late, appliedAt: strOrNull(r.applied_at), docsToReview: num(r.docs_to_review),
+      consultationRequired: !!r.consultation_required, consultationDoneAt: strOrNull(r.consultation_done_at), nextConsultation: strOrNull(r.next_consultation),
+      gradesStatus: str(r.grades_status) || "none", dhReferralId: strOrNull(r.dh_referral_id), dhStatus: strOrNull(r.dh_status), referralStatus: strOrNull(r.referral_status),
+    };
+  }
+  return { ok: true, facts };
 }
 
 export async function fetchScholarListMatrix(schoolYear: string, term: string, f: ScholarListFilters): Promise<{ ok: true; rows: ScholarListMatrixRow[] } | Failed> {

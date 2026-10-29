@@ -20,10 +20,11 @@ const FILTERS: { key: SdpReconsiderationFilter; label: string }[] = [{ key: "pen
  * appoints (tag "SDP Reconsideration Approver") approve or deny here; the renewal evaluator can read the list. Approval: the scholar counts as complied for the semester the renewal
  * looked at, and the lacking credits are added to the next semester's requirement. The database enforces who may decide; the buttons only show for those who may.
  */
-export function RenewalSdpReconsiderationTab({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
+export function RenewalSdpReconsiderationTab({ refreshKey, onChanged, only }: { refreshKey: number; onChanged: () => void; only?: { scholarIdNumber: string; onDone: () => void } }) {
+  // `only` = opened from the Scholar List for one scholar: just that scholar's request that waits for a decision, no filters, closes itself after a decision
   const [filter, setFilter] = useState<SdpReconsiderationFilter>("pending");
-  const [typed, setTyped] = useState("");
-  const [query, setQuery] = useState("");
+  const [typed, setTyped] = useState(only?.scholarIdNumber ?? "");
+  const [query, setQuery] = useState(only?.scholarIdNumber ?? "");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<SdpReconsiderationRow[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -53,29 +54,29 @@ export function RenewalSdpReconsiderationTab({ refreshKey, onChanged }: { refres
 
   return (
     <div>
-      <p className="text-[14px] text-slate-700 mb-3">
+      {!only && <p className="text-[14px] text-slate-700 mb-3">
         Scholars who lack SDP credits can ask, with their renewal application, to be treated as complied. <strong>If you approve</strong>, the scholar counts as complied with the SDP for the semester the renewal looks at, and the credits that were
         lacking are added to their SDP requirement for the next semester. <strong>If you deny</strong>, the renewal stays on hold until the missing credits are recorded. The scholar is told either way.
         {counts && !counts.canDecide && " You can read the requests; only it.admin1 and the staff he appoints can decide them."}
-      </p>
+      </p>}
       {notice && <p role="status" className="mb-3 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[14px] text-green-950">{notice}</p>}
 
-      <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Show requests">
+      {!only && <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Show requests">
         {FILTERS.map(f => (
           <button key={f.key} onClick={() => { setFilter(f.key); setPage(1); setRows(null); }} aria-pressed={filter === f.key}
             className={`rounded-full border px-3 py-1.5 text-[14px] font-semibold ${filter === f.key ? "border-[#062444] bg-[#062444] text-white" : "border-[#062444]/25 bg-white text-[#062444] hover:bg-[#f7f9fc]"}`}>
             {f.label}{countOf(f.key) != null ? ` (${countOf(f.key)})` : ""}
           </button>
         ))}
-      </div>
-      <div className="relative mb-3 max-w-sm">
+      </div>}
+      {!only && <div className="relative mb-3 max-w-sm">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" aria-hidden="true" />
         <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search by name or Scholar ID" aria-label="Search requests"
           className="w-full rounded-lg border border-[#062444]/25 py-2 pl-9 pr-3 text-[14px] outline-none focus:border-[#062444] bg-white" />
-      </div>
+      </div>}
 
       {!rows ? <p className="text-[14px] text-slate-700 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading…</p>
-      : rows.length === 0 ? <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{query ? "No request matches your search." : filter === "pending" ? "No request is waiting for a decision." : "No requests here."}</p>
+      : rows.length === 0 ? <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{only ? "No request is waiting for a decision for this scholar any more." : query ? "No request matches your search." : filter === "pending" ? "No request is waiting for a decision." : "No requests here."}</p>
       : (
         <>
           <ul className="space-y-3">
@@ -143,7 +144,7 @@ export function RenewalSdpReconsiderationTab({ refreshKey, onChanged }: { refres
             if (!r.ok) return r.error;
             setNotice(r.result === "not_needed" ? `${deciding.row.name}'s SDP credits became complete before the decision, so the request was closed as not needed and nothing is added to the next semester.`
               : r.result === "approved" ? `Approved. ${deciding.row.name} is treated as complied and was told.` : `Denied. ${deciding.row.name} was told.`);
-            setDeciding(null); onChanged(); await load(); return null;
+            setDeciding(null); onChanged(); await load(); only?.onDone(); return null;
           }}
         />
       )}
