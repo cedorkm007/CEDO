@@ -48,7 +48,7 @@ export function ReferralConsultationSection({ referral, onChanged }: { referral:
         </div>
       )}
       {picking && (
-        <ConsultationBlockPicker recordId="" reschedule={booked} currentType={null} referral={{ id: referral.referralId, reasonLabel: referral.reasonLabel, minutes: referral.minutes }}
+        <ConsultationBlockPicker recordId="" reschedule={booked} currentType={null} referral={{ id: referral.referralId, reason: referral.reason, reasonLabel: referral.reasonLabel, minutes: referral.minutes }}
           onLegacy={() => setPicking(false)} onCancel={() => setPicking(false)} onDone={async () => { setPicking(false); await onChanged(); }} />
       )}
       {error && <p role="alert" className="mt-2 text-[14px] text-red-700">{error}</p>}

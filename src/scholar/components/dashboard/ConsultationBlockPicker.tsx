@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { HALF_WORD, type ConsultHalf } from "@/lib/renewal";
 import {
-  bookConsultationBlock, bookReferralConsultation, fetchConsultTypes, fetchOpenBlocks, fetchReferralBlocks, rescheduleConsultationBlock, rescheduleReferralConsultation,
-  type ConsultType, type OpenBlock,
+  bookConsultationBlock, bookReferralConsultation, bookSelfConsultation, fetchBlockStaff, fetchConsultTypes, fetchOpenBlocks, fetchReferralBlocks, fetchSelfBlocks, fetchSelfConsultTypes,
+  rescheduleConsultationBlock, rescheduleReferralConsultation, rescheduleSelfConsultation, type BlockStaff, type ConsultType, type OpenBlock,
 } from "../../renewalApi";
 
 const MANILA = "Asia/Manila";
@@ -15,10 +15,12 @@ const dayText = (ymd: string) => new Date(`${ymd}T12:00:00+08:00`).toLocaleDateS
  * and morning (AM) or afternoon (PM). The database picks the staff member and decides how many fit (the staff's available minutes). `legacy` is reported to the
  * caller when the database update has not been run yet, so the old 10-minute picker can be used instead.
  */
-export function ConsultationBlockPicker({ recordId, reschedule, currentType, referral, onLegacy, onCancel, onDone }: {
+export function ConsultationBlockPicker({ recordId, reschedule, currentType, referral, self, onLegacy, onCancel, onDone }: {
   recordId: string; reschedule: boolean; currentType: string | null;
-  /** When the consultation comes from a CEDO referral, the reason is fixed (staff chose it) and the booking belongs to the referral, not to a renewal. */
-  referral?: { id: string; reasonLabel: string; minutes: number };
+  /** When the consultation comes from a CEDO referral, the reason is fixed (staff chose it) and the booking belongs to the referral, not to a renewal. `reason` is the type key (to ask who is available). */
+  referral?: { id: string; reason: string; reasonLabel: string; minutes: number };
+  /** A consultation booked any time: no renewal and no referral, the scholar chooses the type. */
+  self?: boolean;
   onLegacy: () => void; onCancel: () => void; onDone: () => Promise<void>;
 }) {
   const [types, setTypes] = useState<ConsultType[] | null>(null);
@@ -28,8 +30,19 @@ export function ConsultationBlockPicker({ recordId, reschedule, currentType, ref
   const [half, setHalf] = useState<ConsultHalf | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // who is available in the chosen morning / afternoon: undefined = not asked yet, null = the choice is not offered (before the database update), [] = nobody
+  const [staff, setStaff] = useState<BlockStaff[] | null | undefined>(undefined);
+  const [staffId, setStaffId] = useState<string | null>(null);      // null = anyone available (the staff member with the most minutes left)
 
   useEffect(() => {
+    if (self) {
+      let cancelled = false;
+      void fetchSelfConsultTypes().then(r => {
+        if (cancelled) return;
+        if (r.ok) { setTypes(r.types); setTypeKey(r.types.find(t => t.key === currentType)?.key ?? ""); } else if (r.legacy) onLegacy(); else setError(r.error);
+      });
+      return () => { cancelled = true; };
+    }
     if (referral) { setTypes([{ key: "referral", label: referral.reasonLabel, minutes: referral.minutes, suggested: true }]); setTypeKey("referral"); return; }
     let cancelled = false;
     void fetchConsultTypes(recordId).then(r => {
@@ -47,25 +60,38 @@ export function ConsultationBlockPicker({ recordId, reschedule, currentType, ref
     if (!typeKey) { setBlocks(null); return; }
     let cancelled = false;
     setBlocks(null); setDay(null); setHalf(null); setError("");
-    void (referral ? fetchReferralBlocks(referral.id) : fetchOpenBlocks(recordId, typeKey)).then(r => { if (cancelled) return; if (r.ok) setBlocks(r.blocks); else { setBlocks([]); setError(r.error); } });
+    void (self ? fetchSelfBlocks(typeKey) : referral ? fetchReferralBlocks(referral.id) : fetchOpenBlocks(recordId, typeKey)).then(r => { if (cancelled) return; if (r.ok) setBlocks(r.blocks); else { setBlocks([]); setError(r.error); } });
     return () => { cancelled = true; };
   }, [recordId, typeKey, referral?.id]);
 
   const days = useMemo(() => Array.from(new Set((blocks ?? []).map(b => b.day))), [blocks]);
   const shownDay = day ?? days[0] ?? null;
+  const realType = referral ? referral.reason : typeKey;       // the type key the database knows (a referral's reason)
+
+  // the staff who are available in the chosen morning / afternoon: the scholar may pick one (or leave it to us)
+  useEffect(() => {
+    setStaffId(null);
+    if (!realType || !shownDay || !half) { setStaff(undefined); return; }
+    let cancelled = false;
+    setStaff(undefined);
+    void fetchBlockStaff(realType, shownDay, half).then(r => { if (!cancelled) setStaff(r.ok ? r.staff : null); });
+    return () => { cancelled = true; };
+  }, [realType, shownDay, half]);
   const halves = (blocks ?? []).filter(b => b.day === shownDay);
   const chosenType = types?.find(t => t.key === typeKey) ?? null;
 
   async function confirm() {
     if (!typeKey || !shownDay || !half) return;
     setBusy(true); setError("");
-    const r = referral
-      ? (reschedule ? await rescheduleReferralConsultation(referral.id, shownDay, half) : await bookReferralConsultation(referral.id, shownDay, half))
-      : (reschedule ? await rescheduleConsultationBlock(recordId, typeKey, shownDay, half) : await bookConsultationBlock(recordId, typeKey, shownDay, half));
+    const r = self
+      ? (reschedule ? await rescheduleSelfConsultation(typeKey, shownDay, half, staffId) : await bookSelfConsultation(typeKey, shownDay, half, staffId))
+      : referral
+        ? (reschedule ? await rescheduleReferralConsultation(referral.id, shownDay, half, staffId) : await bookReferralConsultation(referral.id, shownDay, half, staffId))
+        : (reschedule ? await rescheduleConsultationBlock(recordId, typeKey, shownDay, half, staffId) : await bookConsultationBlock(recordId, typeKey, shownDay, half, staffId));
     setBusy(false);
     if (!r.ok) {
       setError(r.error); setHalf(null);
-      const again = referral ? await fetchReferralBlocks(referral.id) : await fetchOpenBlocks(recordId, typeKey); if (again.ok) setBlocks(again.blocks);
+      const again = self ? await fetchSelfBlocks(typeKey) : referral ? await fetchReferralBlocks(referral.id) : await fetchOpenBlocks(recordId, typeKey); if (again.ok) setBlocks(again.blocks);
       return;
     }
     await onDone();
@@ -117,6 +143,23 @@ export function ConsultationBlockPicker({ recordId, reschedule, currentType, ref
               );
             })}
           </div>
+          {half && staff && staff.length > 0 && (
+            <fieldset className="mt-3">
+              <legend className="text-[14px] font-semibold text-[#062444] mb-1.5">4. Who would you like to see?</legend>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-xl">
+                <label className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-[14px] ${staffId === null ? "border-[#062444] bg-sky-50 ring-2 ring-[#062444]" : "border-[#062444]/25 bg-white hover:bg-[#f7f9fc]"}`}>
+                  <input type="radio" name="consult-staff" className="mt-1" checked={staffId === null} onChange={() => setStaffId(null)} />
+                  <span><span className="block font-bold text-[#062444]">Anyone available</span><span className="block text-[13px] text-slate-700">We choose for you</span></span>
+                </label>
+                {staff.map(s => (
+                  <label key={s.staffId} className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-[14px] ${staffId === s.staffId ? "border-[#062444] bg-sky-50 ring-2 ring-[#062444]" : "border-[#062444]/25 bg-white hover:bg-[#f7f9fc]"}`}>
+                    <input type="radio" name="consult-staff" className="mt-1" checked={staffId === s.staffId} onChange={() => setStaffId(s.staffId)} />
+                    <span><span className="block font-bold text-[#062444]">{s.staffName}</span><span className="block text-[13px] text-slate-700">{s.freeMinutes} minutes still free</span></span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <p className="mt-2 text-[13.5px] text-slate-600">You do not get an exact time: please come to the CEDO office during the {half ? (half === "AM" ? "morning" : "afternoon") : "morning or afternoon"} you choose. We will tell you who your consultation is with.</p>
         </>
       )}

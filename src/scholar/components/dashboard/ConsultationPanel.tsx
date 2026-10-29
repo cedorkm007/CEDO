@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { CalendarCheck, CalendarX, Loader2, UserX } from "lucide-react";
 import { CONSULT_CHANGE_CUTOFF_HOURS, formatSlot, termLabelOf } from "@/lib/renewal";
-import { fetchMyAppointments, fetchMyReferrals, fetchMyRenewals, type MyAppointment, type MyReferral, type MyRenewalOverview } from "../../renewalApi";
+import { fetchMyAppointments, fetchMyReferrals, fetchMyRenewals, fetchMySelfConsultation, type MyAppointment, type MyReferral, type MyRenewalOverview, type MySelfConsultation } from "../../renewalApi";
+import { SelfConsultationSection } from "./SelfConsultationSection";
 import { ReferralConsultationSection } from "./ReferralConsultationSection";
 import { ConsultationSection } from "./ConsultationSection";
 import { NOTIFICATIONS_CHANGED } from "./NotificationBell";
@@ -15,12 +16,15 @@ export function ConsultationPanel() {
   const [overview, setOverview] = useState<MyRenewalOverview | null>(null);
   const [appointments, setAppointments] = useState<MyAppointment[] | null>(null);
   const [referrals, setReferrals] = useState<MyReferral[]>([]);
+  // a consultation booked any time: null = none booked; selfEnabled false = the database update (booking any time) has not been run yet
+  const [mine, setMine] = useState<MySelfConsultation | null>(null);
+  const [selfEnabled, setSelfEnabled] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    const [o, a, rf] = await Promise.all([fetchMyRenewals(), fetchMyAppointments(), fetchMyReferrals()]);
+    const [o, a, rf, sf] = await Promise.all([fetchMyRenewals(), fetchMyAppointments(), fetchMyReferrals(), fetchMySelfConsultation()]);
     if (!o.ok) setError(o.error); else if (!a.ok) setError(a.error);
-    else { setOverview(o.overview); setAppointments(a.rows); setReferrals(rf.ok ? rf.rows : []); setError(""); }
+    else { setOverview(o.overview); setAppointments(a.rows); setReferrals(rf.ok ? rf.rows : []); setSelfEnabled(sf.ok); setMine(sf.ok ? sf.row : null); setError(""); }
     window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED));
   }, []);
   useEffect(() => { void load(); }, [load]);
@@ -35,7 +39,7 @@ export function ConsultationPanel() {
 
   return (
     <div className="space-y-5">
-      <p className="text-[14px] text-slate-700">Face-to-face consultations at the CEDO office. You choose what it is about, a day, and morning or afternoon. You can change or cancel as often as you need, up to {CONSULT_CHANGE_CUTOFF_HOURS} hours before it starts.</p>
+      <p className="text-[14px] text-slate-700">Face-to-face consultations at the CEDO office. You can book one whenever a staff member has time available{selfEnabled ? "" : " for your case"}. You choose what it is about, a day, morning or afternoon{selfEnabled ? " and, if you wish, who you would like to see" : ""}. You can change or cancel as often as you need, up to {CONSULT_CHANGE_CUTOFF_HOURS} hours before it starts.</p>
 
       {referrals.length > 0 && (
         <section aria-label="Consultations CEDO referred you for" className="space-y-3">
@@ -43,7 +47,9 @@ export function ConsultationPanel() {
         </section>
       )}
 
-      {needing.length === 0 && upcoming.length === 0 && referrals.length === 0 && (
+      {selfEnabled && <SelfConsultationSection booking={mine} onChanged={load} />}
+
+      {!selfEnabled && needing.length === 0 && upcoming.length === 0 && referrals.length === 0 && (
         <div className="rounded-xl border border-[#e6ecf5] bg-[#f7f9fc] px-4 py-5 text-[14px] text-slate-800">
           <p className="font-bold text-[#062444] mb-1">You have no consultation to book right now</p>
           <p>If your renewal needs a consultation, it will appear here and you can book it. We will also tell you in your notifications.</p>

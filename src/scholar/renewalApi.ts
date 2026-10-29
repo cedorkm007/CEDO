@@ -154,12 +154,21 @@ export async function fetchOpenBlocks(recordId: string, type: string): Promise<{
   if (error) return { ok: false, error: error.message };
   return { ok: true, blocks: ((data ?? []) as Row[]).map(r => ({ day: str(r.day).slice(0, 10), half: r.half as "AM" | "PM", spots: Number(r.spots ?? 0), freeMinutes: Number(r.free_minutes ?? 0) })) };
 }
-export async function bookConsultationBlock(recordId: string, type: string, day: string, half: "AM" | "PM"): Promise<Done> {
-  const { error } = await supabase.rpc("renewal_book_consultation", { p_record_id: recordId, p_type: type, p_day: day, p_half: half });
+/** The staff available in one morning / afternoon for a type, for the scholar's choice (supabase_migration_consultation_open_and_choose_staff.sql). `legacy: true` = that database update has not been run, so no choice is offered. */
+export interface BlockStaff { staffId: string; staffName: string; freeMinutes: number }
+export async function fetchBlockStaff(type: string, day: string, half: "AM" | "PM"): Promise<{ ok: true; staff: BlockStaff[] } | { ok: false; error: string; legacy?: boolean }> {
+  const { data, error } = await supabase.rpc("consult_block_staff", { p_type: type, p_day: day, p_half: half });
+  if (error) return { ok: false, error: error.message, legacy: functionMissing(error) };
+  return { ok: true, staff: ((data ?? []) as Row[]).map(r => ({ staffId: str(r.staff_id), staffName: str(r.staff_name), freeMinutes: Number(r.free_minutes ?? 0) })) };
+}
+/** The staff argument is sent only when the scholar chose someone, so the call also works before that database update. */
+const staffArg = (staffId?: string | null) => (staffId ? { p_staff: staffId } : {});
+export async function bookConsultationBlock(recordId: string, type: string, day: string, half: "AM" | "PM", staffId?: string | null): Promise<Done> {
+  const { error } = await supabase.rpc("renewal_book_consultation", { p_record_id: recordId, p_type: type, p_day: day, p_half: half, ...staffArg(staffId) });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
-export async function rescheduleConsultationBlock(recordId: string, type: string, day: string, half: "AM" | "PM"): Promise<Done> {
-  const { error } = await supabase.rpc("renewal_reschedule_consultation", { p_record_id: recordId, p_type: type, p_day: day, p_half: half });
+export async function rescheduleConsultationBlock(recordId: string, type: string, day: string, half: "AM" | "PM", staffId?: string | null): Promise<Done> {
+  const { error } = await supabase.rpc("renewal_reschedule_consultation", { p_record_id: recordId, p_type: type, p_day: day, p_half: half, ...staffArg(staffId) });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
@@ -185,14 +194,46 @@ export async function fetchReferralBlocks(referralId: string): Promise<{ ok: tru
   if (error) return { ok: false, error: error.message };
   return { ok: true, blocks: ((data ?? []) as Row[]).map(r => ({ day: str(r.day).slice(0, 10), half: r.half as "AM" | "PM", spots: Number(r.spots ?? 0), freeMinutes: Number(r.free_minutes ?? 0) })) };
 }
-export async function bookReferralConsultation(referralId: string, day: string, half: "AM" | "PM"): Promise<Done> {
-  const { error } = await supabase.rpc("referral_book_consultation", { p_referral_id: referralId, p_day: day, p_half: half });
+export async function bookReferralConsultation(referralId: string, day: string, half: "AM" | "PM", staffId?: string | null): Promise<Done> {
+  const { error } = await supabase.rpc("referral_book_consultation", { p_referral_id: referralId, p_day: day, p_half: half, ...staffArg(staffId) });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
-export async function rescheduleReferralConsultation(referralId: string, day: string, half: "AM" | "PM"): Promise<Done> {
-  const { error } = await supabase.rpc("referral_reschedule_consultation", { p_referral_id: referralId, p_day: day, p_half: half });
+export async function rescheduleReferralConsultation(referralId: string, day: string, half: "AM" | "PM", staffId?: string | null): Promise<Done> {
+  const { error } = await supabase.rpc("referral_reschedule_consultation", { p_referral_id: referralId, p_day: day, p_half: half, ...staffArg(staffId) });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+// ── A consultation any time: no renewal and no referral needed (supabase_migration_consultation_open_and_choose_staff.sql) ──
+export interface MySelfConsultation { slotId: string; startsAt: string; endsAt: string; typeKey: string; typeLabel: string; minutes: number; staffId: string; staffName: string; canChange: boolean }
+/** The scholar's own booked consultation of this kind (at most one). `missing: true` = the database update has not been run, so booking any time is not offered. */
+export async function fetchMySelfConsultation(): Promise<{ ok: true; row: MySelfConsultation | null } | { ok: false; error: string; missing: boolean }> {
+  const { data, error } = await supabase.rpc("consult_my_self");
+  if (error) return { ok: false, error: error.message, missing: functionMissing(error) };
+  const r = ((data ?? []) as Row[])[0];
+  return { ok: true, row: r ? { slotId: str(r.slot_id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), typeKey: str(r.type_key), typeLabel: str(r.type_label), minutes: Number(r.minutes ?? 0), staffId: str(r.staff_id), staffName: str(r.staff_name), canChange: !!r.can_change } : null };
+}
+export async function fetchSelfConsultTypes(): Promise<{ ok: true; types: ConsultType[] } | { ok: false; error: string; legacy?: boolean }> {
+  const { data, error } = await supabase.rpc("consult_self_types");
+  if (error) return { ok: false, error: error.message, legacy: functionMissing(error) };
+  return { ok: true, types: ((data ?? []) as Row[]).map(r => ({ key: str(r.key), label: str(r.label), minutes: Number(r.minutes ?? 0), suggested: false })) };
+}
+export async function fetchSelfBlocks(type: string): Promise<{ ok: true; blocks: OpenBlock[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("consult_self_open_blocks", { p_type: type });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, blocks: ((data ?? []) as Row[]).map(r => ({ day: str(r.day).slice(0, 10), half: r.half as "AM" | "PM", spots: Number(r.spots ?? 0), freeMinutes: Number(r.free_minutes ?? 0) })) };
+}
+export async function bookSelfConsultation(type: string, day: string, half: "AM" | "PM", staffId?: string | null): Promise<Done> {
+  const { error } = await supabase.rpc("consult_self_book", { p_type: type, p_day: day, p_half: half, ...staffArg(staffId) });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+export async function rescheduleSelfConsultation(type: string, day: string, half: "AM" | "PM", staffId?: string | null): Promise<Done> {
+  const { error } = await supabase.rpc("consult_self_reschedule", { p_type: type, p_day: day, p_half: half, ...staffArg(staffId) });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+export async function cancelSelfConsultation(): Promise<Done> {
+  const { error } = await supabase.rpc("consult_self_cancel");
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 export async function cancelReferralConsultation(referralId: string): Promise<Done> {
   const { error } = await supabase.rpc("referral_cancel_booking", { p_referral_id: referralId });
   return error ? { ok: false, error: error.message } : { ok: true };
