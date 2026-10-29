@@ -31,6 +31,7 @@ async function as(uid, fn, role = "authenticated") {
 const rpc = (uid, sql, params = []) => as(uid, async tx => (await tx.query(sql, params)).rows);
 const fails = async (uid, sql, params, pattern) => { try { await rpc(uid, sql, params); return false; } catch (e) { return pattern ? pattern.test(String(e.message)) : true; } };
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
+const finalize = async rec => { const f = (await q("select id, referred_to from scholar_counseling_referrals where renewal_record_id = $1 and status = 'division_head_approved'", [rec]))[0]; if (f) await rpc(f.referred_to, "select public.consult_finalize_decision($1)", [f.id]); };   // the consulting staff member makes the final decision after the Division Head signs
 const recordOf = async (n, year = "2026-2027", term = "1st Semester") => (await q("select * from renewal_records where scholar_id_number = $1 and school_year = $2 and term = $3", [num(n), year, term]))[0];
 const referralOf = async recId => (await q("select * from scholar_counseling_referrals where renewal_record_id = $1 order by created_at desc", [recId]));
 const apply = async (n, uid = scholarUid(n)) => (await rpc(uid, "select public.renewal_apply($1, 'S', 'BS Test Studies', '2nd Year', '') as r", [W1]))[0].r;
@@ -117,6 +118,7 @@ check("an endorsed-case decision is refused for this case; a signature is requir
     && (await fails(DH, "select public.renewal_division_head_decide($1, 'maybe', $2, 'X')", [rec4, SIG], /Choose Removed or Reconsidered/));
 })());
 await rpc(DH, "select public.renewal_division_head_decide($1, 'reconsidered', $2, 'Dr. Printed Name', 'Give a chance')", [rec4, SIG]);
+await finalize(rec4);
 const after4 = await recordOf(4);
 check("Reconsidered: the scholar's status is Reconsidered and the case waits for the evaluator", (await statusOf(4)).status === "Reconsidered" && after4.stage === "reconsidered" && after4.division_head_decision === "reconsidered" && after4.division_head_note === "Give a chance" && after4.division_head_decided_by === DH);
 const signed4 = (await q("select * from scholar_counseling_referrals where id = $1", [ref4[0].id]))[0];
@@ -150,6 +152,7 @@ await rpc(EVAL, "select public.renewal_send_to_division_head($1, 'Missed the con
 const ref5 = (await referralOf(rec5));
 check("sent by hand: a forwarded referral exists, naming the evaluator's reason and that the consultation has not taken place", ref5.length === 1 && ref5[0].status === "forwarded_to_division_head" && /has not taken place/.test(ref5[0].remarks) && /Missed the consultation twice/.test(ref5[0].remarks) && ref5[0].previous_semester_status === "On Probation", JSON.stringify(ref5[0]));
 await rpc(DH, "select public.renewal_division_head_decide($1, 'removed', $2, '', 'No response to repeated notices')", [rec5, SIG]);
+await finalize(rec5);
 const rem = (await statusOf(5));
 check("Removed: the scholar's status is Removed (the one before is remembered) and the case is closed as removed", rem.status === "Removed" && rem.status_before_removal === "Probationary" && (await recordOf(5)).stage === "removed" && (await recordOf(5)).result === "removed");
 check("the login is switched off (banned for good, like the Removed Scholars flow)", new Date((await q("select banned_until from auth.users where id = $1", [scholarUid(5)]))[0].banned_until).getTime() > Date.now() + 50 * 365 * 86400000);
@@ -177,6 +180,7 @@ await rpc(EVAL, "select public.renewal_endorse($1, 'Notes added')", [rec3]);
 const ref3b = await referralOf(rec3);
 check("the evaluator endorses again: the SAME referral is forwarded again (one referral, not two)", ref3b.length === 1 && ref3b[0].status === "forwarded_to_division_head" && ref3b[0].id === ref3[0].id);
 await rpc(DH, "select public.renewal_division_head_decide($1, 'approve_probationary', $2, 'Dr. Printed Name')", [rec3, SIG]);
+await finalize(rec3);
 const ok3 = await recordOf(3);
 check("Approve Probationary: the scholar is Probationary, but the renewal is NOT Renewed yet - it waits for the evaluator", (await statusOf(3)).status === "Probationary" && ok3.stage === "division_head_approved" && ok3.result === null && ok3.confirmed_by === null && ok3.division_head_decision === "approved_probationary");
 check("the scholar is told it waits for the evaluator", (await q("select 1 from scholar_notifications where scholar_id_number = $1 and title = 'The Division Head approved your Probationary status'", [num(3)])).length === 1);
@@ -208,6 +212,7 @@ const normal = (await rpc(ADMIN, "select public.create_scholar_counseling_referr
 check("an ordinary referral still goes counselor -> Division Head and approving it still sets the status as before", await (async () => {
   await rpc(COUNSELOR, "select public.forward_referral_to_division_head($1, 'r', 'On Probation Status')", [normal]);
   await rpc(DH, "select public.approve_referral($1, $2)", [normal, SIG]);
+  await rpc(COUNSELOR, "select public.consult_finalize_decision($1)", [normal]);      // the consulting staff member makes the final decision
   return (await statusOf(2)).status === "Probationary";
 })());
 check("an ordinary referral has no renewal information", (await rpc(DH, "select public.renewal_referral_info($1) i", [normal]))[0].i === null);

@@ -14,13 +14,13 @@ const TONE: Record<"good" | "bad" | "warn" | "plain", string> = {
 };
 const FILTERS: { key: EnteredGradesFilter; label: string }[] = [{ key: "pending", label: "Waiting for approval" }, { key: "approved", label: "Approved" }, { key: "returned", label: "Returned" }, { key: "all", label: "All" }];
 
-/** A small preview of one image the scholar uploaded; clicking opens it full size in a new tab. */
+/** One image the scholar uploaded, as large as its half of the screen so it can be read next to the grades; clicking opens it full size in a new tab. */
 function Thumb({ path, name }: { path: string; name: string }) {
   const [url, setUrl] = useState<string | null | undefined>(undefined);
   useEffect(() => { let live = true; void getEnteredGradeImageUrl(path).then(u => { if (live) setUrl(u); }); return () => { live = false; }; }, [path]);
-  if (url === undefined) return <span className="flex h-24 w-24 items-center justify-center rounded-md border border-[#e6ecf5] text-slate-700"><Loader2 size={16} className="animate-spin" aria-hidden="true" /></span>;
+  if (url === undefined) return <span className="flex h-40 w-full items-center justify-center rounded-md border border-[#e6ecf5] text-slate-700"><Loader2 size={16} className="animate-spin" aria-hidden="true" /></span>;
   if (!url) return <span className="rounded-md border border-[#e6ecf5] px-2 py-1 text-[13px] text-slate-800">{name} (can't be opened)</span>;
-  return <a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${name} full size`}><img src={url} alt={name} className="h-24 w-24 rounded-md border border-[#e6ecf5] object-cover" /></a>;
+  return <a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${name} full size`} className="block"><img src={url} alt={name} className="w-full rounded-md border border-[#e6ecf5] bg-white object-contain" /></a>;
 }
 
 /**
@@ -103,13 +103,12 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
                   )}
                   {r.schoolSubmitted && <p className="mt-2 rounded-md border border-[#e6ecf5] bg-[#f7f9fc] px-2.5 py-2 text-slate-900">The school has already uploaded its grades for this semester; those are the grades that count.</p>}
 
-                  <table className="mt-2 w-full text-left">
+                  <div className="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div className="min-w-0">
+                  <table className="w-full text-left">
                     <thead className="text-[#062444]"><tr><th scope="col" className="py-1 pr-2 font-bold">Code</th><th scope="col" className="py-1 pr-2 font-bold">Subject</th><th scope="col" className="py-1 pr-2 text-right font-bold">Units</th><th scope="col" className="py-1 text-right font-bold">Grade</th></tr></thead>
                     <tbody>{r.lines.map(l => <tr key={l.code} className="border-t border-[#eef3fb]"><td className="py-1 pr-2">{l.code}</td><td className="py-1 pr-2 break-words">{l.subject}</td><td className="py-1 pr-2 text-right">{l.units}</td><td className="py-1 text-right font-semibold">{l.grade}</td></tr>)}</tbody>
                   </table>
-                  <p className="mt-2 font-semibold text-[#062444]">Screenshots ({r.files.length})</p>
-                  <div className="mt-1 flex flex-wrap gap-2">{r.files.map(f => <Thumb key={f.path} path={f.path} name={f.name} />)}</div>
-
                   {r.officialCheckedAt && (
                     <div className={`mt-2 rounded-md border px-2.5 py-2 ${r.differences && r.differences.length > 0 ? "border-red-300 bg-red-50 text-red-950" : "border-green-300 bg-green-50 text-green-950"}`}>
                       <p className="font-semibold">The school uploaded its grades ({formatDateTime(r.officialCheckedAt)}) and they were compared with these.</p>
@@ -126,6 +125,12 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
                       <button onClick={() => { setNotice(""); setDeciding({ row: r, approve: false }); }} className="inline-flex items-center gap-1.5 rounded-lg bg-red-700 px-3 py-1.5 font-bold text-white hover:bg-red-800"><CornerUpLeft size={15} aria-hidden="true" /> Return for correction</button>
                     </div>
                   )}
+                  </div>
+                  <section aria-label={`Screenshots of ${r.name}`} className="min-w-0 lg:sticky lg:top-2 lg:max-h-[85vh] lg:self-start lg:overflow-y-auto">
+                    <p className="mb-1 font-semibold text-[#062444]">Screenshots ({r.files.length})</p>
+                    <div className="space-y-2">{r.files.map(f => <Thumb key={f.path} path={f.path} name={f.name} />)}</div>
+                  </section>
+                  </div>
                 </li>
               );
             })}

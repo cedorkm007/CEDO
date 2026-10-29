@@ -33,6 +33,7 @@ const rpc = (uid, sql, params = []) => as(uid, async tx => (await tx.query(sql, 
 const asService = (sql, params = []) => as(null, async tx => (await tx.query(sql, params)).rows, "service_role");
 const fails = async (uid, sql, params, pattern, role) => { try { await (role ? as(uid, async tx => (await tx.query(sql, params)).rows, role) : rpc(uid, sql, params)); return false; } catch (e) { return pattern ? pattern.test(String(e.message)) : true; } };
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
+const finalize = async rec => { const f = (await q("select id, referred_to from scholar_counseling_referrals where renewal_record_id = $1 and status = 'division_head_approved'", [rec]))[0]; if (f) await rpc(f.referred_to, "select public.consult_finalize_decision($1)", [f.id]); };   // the consulting staff member makes the final decision after the Division Head signs
 const recordOf = async (n, year = "2026-2027", term = "1st Semester") => (await q("select * from renewal_records where scholar_id_number = $1 and school_year = $2 and term = $3", [num(n), year, term]))[0];
 const staffNotes = async (uid, title) => q("select * from notifications where user_id = $1 and type = 'renewal' and title = $2", [uid, title]);
 const manilaToday = () => new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
@@ -157,7 +158,9 @@ check("the Division Head's decisions and send-backs notify the evaluator; sendin
   const rec41 = (await recordOf(41)).id, rec43 = (await recordOf(43)).id, rec45 = (await recordOf(45)).id, rec44 = (await recordOf(44)).id;
   await q("delete from notifications where type = 'renewal'");
   await rpc(DH, "select public.renewal_division_head_decide($1, 'reconsidered', 'sig.png', '')", [rec41]);
+  await finalize(rec41);
   await rpc(DH, "select public.renewal_division_head_decide($1, 'approve_probationary', 'sig.png', '')", [rec43]);
+  await finalize(rec43);
   await rpc(EVAL, "select public.renewal_send_to_division_head($1, 'Missed twice and no reply')", [rec44]);
   return (await staffNotes(EVAL, "The Division Head reconsidered — please confirm")).length === 1
     && (await staffNotes(EVAL, "The Division Head approved — please confirm")).length === 1

@@ -32,6 +32,7 @@ export function RenewalDivisionHeadTab({ canDecide, onOpenRecord, onChanged, ref
 
   const waiting = rows.filter(r => r.state === "waiting");
   const sentBack = rows.filter(r => r.state === "sent_back");
+  const awaitingFinal = rows.filter(r => r.state === "awaiting_final");
   const decided = rows.filter(r => r.state === "decided");
 
   const group = (title: string, hint: string, list: DivisionHeadCase[]) => (
@@ -53,6 +54,7 @@ export function RenewalDivisionHeadTab({ canDecide, onOpenRecord, onChanged, ref
                 </p>
                 {c.state === "decided" && c.decision && <p className="mt-0.5 text-[14px] font-semibold text-green-800">{DIVISION_HEAD_DECISION_LABEL[c.decision]}{c.decidedAt ? ` · ${dayOf(c.decidedAt)}` : ""}</p>}
                 {c.state === "sent_back" && <p className="mt-0.5 text-[14px] font-semibold text-amber-900">Sent back to the evaluator</p>}
+                {c.state === "awaiting_final" && <p className="mt-0.5 text-[14px] font-semibold text-sky-900">{c.decision ? DIVISION_HEAD_DECISION_LABEL[c.decision] : "Approved"}{c.decidedAt ? ` · ${dayOf(c.decidedAt)}` : ""} · waiting for {c.finalBy ?? "the consulting staff member"} to make the final decision (the status has not changed yet)</p>}
               </div>
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={() => setOpen(c)} className="rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e]">
@@ -72,6 +74,7 @@ export function RenewalDivisionHeadTab({ canDecide, onOpenRecord, onChanged, ref
   return (
     <div>
       {group("Waiting for the Division Head", canDecide ? "These cases need your decision and signature." : "These cases are with the Division Head.", waiting)}
+      {group("Approved — waiting for the final decision", "You approved and signed these. The consulting staff member who consulted the scholar makes the final decision; only then does the scholar's status change.", awaitingFinal)}
       {group("Sent back to the evaluator", "The Division Head asked for more review. The evaluator sends the case again when ready.", sentBack)}
       {group("Decided in the last 60 days", "", decided)}
       {open && (

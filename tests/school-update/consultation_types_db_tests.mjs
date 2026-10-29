@@ -12,6 +12,7 @@ await seedDb(db);
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const read = f => fs.readFileSync(f, "utf8");
 const FILES = ["supabase_migration_consultation_types_a_slots_columns.sql", "supabase_migration_consultation_types_b_booking.sql"];
+const OPEN = "supabase_migration_consultation_open_and_choose_staff.sql", UNDO_OPEN = "undo_consultation_open_and_choose_staff.sql";   // the later consultation file (any-time booking, choose the staff) sits on top of these
 const UNDOS = ["undo_consultation_types_b.sql", "undo_consultation_types_a.sql"];
 async function as(uid, fn, role = "authenticated") {
   return db.transaction(async tx => {
@@ -163,6 +164,7 @@ check("the types table can be read by anyone signed in but changed by nobody thr
   && !(await attempt(COUNSELOR, "update consultation_types set minutes = 1")).ok === false ? (await q("select count(*) n from consultation_types where minutes = 1"))[0].n == 0 : true);
 
 console.log("\nThe undo and putting it back");
+await db.exec(read(UNDO_OPEN));      // the later consultation file goes first, then these files
 for (const f of UNDOS) await db.exec(read(f));
 check("after the undo the old functions are back: availability makes 10-minute slots again", await (async () => {
   await save(COUNSELOR, manilaDate(25), "09:00", "09:30");
@@ -171,6 +173,7 @@ check("after the undo the old functions are back: availability makes 10-minute s
 check("the new functions and the types table are gone", (await q("select count(*) n from pg_proc where proname in ('renewal_book_consultation', 'renewal_open_blocks', '_consult_blocks', 'renewal_consult_types')"))[0].n == 0 && (await q("select to_regclass('public.consultation_types') t"))[0].t === null);
 check("bookings made with the new system are still there after the undo", (await q("select count(*) n from counseling_slots where state in ('booked', 'attended')"))[0].n >= 1);
 for (const f of FILES) await db.exec(read(f));
+await db.exec(read(OPEN));
 check("both files can be put back, and booking works again", await (async () => {
   const again = await attempt(scholarUid(C.scholar_id_number), "select public.renewal_book_consultation($1, 'inc', $2, 'AM')", [C.record_id, D]);
   return again.ok;

@@ -599,7 +599,7 @@ test("a Reconsidered case is NOT finished: the evaluator still has to confirm it
 });
 test("the Division Head's choices and what each one does are worded for the screen", () => {
   assert.deepEqual(Object.keys(R.DIVISION_HEAD_OPTION_INFO).sort(), ["approve_probationary", "reconsidered", "removed", "return"]);
-  assert.match(R.DIVISION_HEAD_OPTION_INFO.removed.effect, /login is switched off/);
+  assert.match(R.DIVISION_HEAD_OPTION_INFO.removed.effect, /login switched off/);
   assert.match(R.DIVISION_HEAD_OPTION_INFO.return.effect, /Nothing changes for the scholar/);
   assert.equal(R.DIVISION_HEAD_DECISION_LABEL.approved_probationary, "Approved — Probationary");
   assert.deepEqual(Object.keys(R.DIVISION_HEAD_CASE_LABEL).sort(), ["probationary_approval", "removal_decision"]);
@@ -957,7 +957,7 @@ test("the appointment screens only ask the database (no direct writes to slots, 
 test("the Appointments subtab sits inside the existing Consultation Tool (same tag), and every function the website calls exists in the migration", () => {
   const page = fs.readFileSync(path.join(root, "src/sead/ScholarCounselingToolPage.tsx"), "utf8");
   assert.match(page, /key: "appointments"/);
-  const sql = [...["p2_application", "p3_appointments", "p4_tracker", "p8b_test_windows"].map(n => "supabase_migration_renewal_" + n + ".sql"), "supabase_migration_consultation_types_b_booking.sql"].map(n => fs.readFileSync(path.join(root, n), "utf8")).join("\n");
+  const sql = [...["p2_application", "p3_appointments", "p4_tracker", "p8b_test_windows"].map(n => "supabase_migration_renewal_" + n + ".sql"), "supabase_migration_consultation_types_b_booking.sql", "supabase_migration_consultation_open_and_choose_staff.sql"].map(n => fs.readFileSync(path.join(root, n), "utf8")).join("\n");
   const called = new Set();
   for (const p of ["src/sead/appointmentsApi.ts", "src/scholar/renewalApi.ts", "src/sead/renewalApi.ts"]) for (const m of fs.readFileSync(path.join(root, p), "utf8").matchAll(/rpc\("([a-z_]+)"/g)) called.add(m[1]);
   const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql + fs.readFileSync(path.join(root, "supabase_migration_renewal_not_applied_columns.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_entered_grades_c_functions.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_referral_reason_c_functions.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_renewal_window_schools_b_functions.sql"), "utf8")));

@@ -30,6 +30,7 @@ const rpc = (uid, sql, params = []) => as(uid, async tx => (await tx.query(sql, 
 const asService = (sql, params = []) => as(null, async tx => (await tx.query(sql, params)).rows, "service_role");
 const fails = async (uid, sql, params, pattern, role) => { try { await (role ? as(uid, async tx => (await tx.query(sql, params)).rows, role) : rpc(uid, sql, params)); return false; } catch (e) { return pattern ? pattern.test(String(e.message)) : true; } };
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
+const finalize = async rec => { const f = (await q("select id, referred_to from scholar_counseling_referrals where renewal_record_id = $1 and status = 'division_head_approved'", [rec]))[0]; if (f) await rpc(f.referred_to, "select public.consult_finalize_decision($1)", [f.id]); };   // the consulting staff member makes the final decision after the Division Head signs
 const recordOf = async (n, year = "2026-2027", term = "1st Semester") => (await q("select * from renewal_records where scholar_id_number = $1 and school_year = $2 and term = $3", [num(n), year, term]))[0];
 const prepare = async (uid, rec, reason = null) => (await rpc(uid, "select public.csr_prepare($1, $2) r", [rec, reason]))[0].r;
 const complete = async (id, path) => asService("select public.csr_complete($1, $2)", [id, path]);
@@ -68,6 +69,7 @@ check("a renewal that is not confirmed yet gets no certificate (ready for confir
 check("a renewal the Division Head approved but the evaluator has not confirmed gets none either", await (async () => {
   const rec = (await recordOf(43)).id;
   await rpc(DH, "select public.renewal_division_head_decide($1, 'approve_probationary', 'sig.png', '')", [rec]);
+  await finalize(rec);
   return await fails(scholarUid(43), "select public.csr_prepare($1)", [rec], /once the evaluator has confirmed/);
 })());
 check("certificates switched OFF: nobody can get one", await (async () => { await rpc(EVAL, SAVE, args({ enabled: false })); const refused = await fails(scholarUid(46), "select public.csr_prepare($1)", [rec46], /not switched on/); return refused; })());

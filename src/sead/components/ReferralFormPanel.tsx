@@ -102,7 +102,7 @@ export function ReferralFormPanel({
         if (r) {
           setRemarks(r.remarks);
           setEndorsedFor(r.endorsedFor);
-          if (r.status === "approved" && r.signaturePath) fetchSignatureUrl(r.signaturePath).then(setApprovedSignatureUrl);
+          if ((r.status === "approved" || r.status === "division_head_approved") && r.signaturePath) fetchSignatureUrl(r.signaturePath).then(setApprovedSignatureUrl);
         }
         setLoading(false);
       });
@@ -257,7 +257,7 @@ export function ReferralFormPanel({
         )}
       </div>
 
-      {referral?.status === "approved" && (
+      {(referral?.status === "approved" || referral?.status === "division_head_approved") && (
         <div>
           {fieldLabel("Noted By")}
           <div className="flex items-center gap-4 bg-white border border-[#e6ecf5] rounded-lg p-3">

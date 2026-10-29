@@ -133,6 +133,7 @@ export function RenewalDecisionPanel({ info, canDecide, onDone }: { info: Renewa
         </div>
       )}
       {waiting && !canDecide && <p className="text-[14px] text-slate-700">Waiting for the Division Head's decision.</p>}
+      {info.referralStatus === "division_head_approved" && <p className="text-[14px] text-sky-900"><strong>Approved and signed.</strong> The consulting staff member who consulted the scholar now makes the final decision; the scholar's status has not changed yet.</p>}
     </section>
   );
 }
