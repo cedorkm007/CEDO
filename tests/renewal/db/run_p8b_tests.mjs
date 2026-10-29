@@ -10,6 +10,7 @@ const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok 
 
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+await db.exec(fs.readFileSync("undo_entered_grades_e.sql", "utf8"));      // these checks are about who a window is open for; the later rule that grades must be in before applying (file E) has its own tests
 // The demo builder retries a few statements of older files at the very end (statements that had to wait for a table); on the real project the files
 // simply run in order, so apply this one once more to get exactly that final state.
 await db.exec(fs.readFileSync(new URL("../../../supabase_migration_renewal_p8b_test_windows.sql", import.meta.url), "utf8"));
