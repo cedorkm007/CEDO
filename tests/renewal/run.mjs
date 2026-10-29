@@ -1026,6 +1026,24 @@ await testAsync("the certificate is one A4 page that prints the scholar, school,
   for (const raw of ["JUAN -TEST N. DELA CRUZ", "2108-00001", "BESIGAN", "BSMARE-5", "PHINMA CAGAYAN DE ORO COLLEGE", "1ST Semester", "1ST SEMESTER CLASS", "2026-2027",
     "CSR-2026-1S-00012", "MS. TEST OFFICER, LPT", "HON. TEST MAYOR", "City Mayor", "4th", "July 2026", "the City of Cagayan de Oro, Philippines"]) assert.ok(text.includes(raw.replace(/\s+/g, "")), "missing on the certificate: " + raw);
 });
+test("the Mayor's printed name is split where the Klarex picture goes: after ROLANDO, only when something follows it", () => {
+  assert.deepEqual(CSR.splitNameForMark("HON. ROLANDO A. UY"), { before: "HON. ROLANDO", after: "A. UY" });
+  assert.deepEqual(CSR.splitNameForMark("Hon. Rolando A. Uy"), { before: "Hon. Rolando", after: "A. Uy" });
+  assert.equal(CSR.splitNameForMark("HON. ROLANDO"), null);
+  assert.equal(CSR.splitNameForMark("HON. TEST MAYOR"), null);
+  assert.equal(CSR.splitNameForMark("HON. ROLANDOS A. UY"), null, "a different name that only starts with ROLANDO is not split");
+  assert.equal(CSR.splitNameForMark(""), null);
+});
+await testAsync("the Klarex picture is in the name line between ROLANDO and A., a name without ROLANDO keeps the picture beside the signature", async () => {
+  const { PDFDocument } = await import("pdf-lib");
+  const rolando = await CSR.buildCsrPdf({ ...csrBase, mayor: { name: "Hon. Rolando A. Uy", title: "City Mayor" } });
+  const other = await CSR.buildCsrPdf({ ...csrBase, mayor: { name: "Hon. Test Mayor", title: "City Mayor" } });
+  const text = pdfText(rolando).join("").replace(/\s+/g, "");
+  assert.ok(text.includes("HON.ROLANDO") && text.includes("A.UY"), "both halves of the name are printed");
+  assert.equal((await PDFDocument.load(rolando)).getPageCount(), 1);
+  const src = fs.readFileSync(path.join(root, "supabase/functions/_shared/csrPdf.ts"), "utf8");
+  assert.ok(/markBytes && markSplit/.test(src) && /markBytes && !markSplit/.test(src), "inline when the name has ROLANDO, beside the signature otherwise");
+});
 await testAsync("a corrected copy says which copy it is; the original does not", async () => {
   const one = pdfText(await CSR.buildCsrPdf(csrBase)).join("\n"), two = pdfText(await CSR.buildCsrPdf({ ...csrBase, version: 2 })).join("\n");
   assert.equal(/Copy 2/.test(one), false); assert.ok(/Copy 2/.test(two));

@@ -375,13 +375,15 @@ export function SdpCreditsModal({ scholar, schoolYear, term, onClose }: { schola
     return () => { live = false; };
   }, [scholar.scholarIdNumber, schoolYear, term]);
   const cats: [string, number | undefined][] = data ? [["community_service", data.sdp.communityService], ["community_volunteerism", data.sdp.communityVolunteerism], ["formation_program", data.sdp.formationProgram]] : [];
-  const need = (k: string) => data?.sdp.required[k] ?? data?.required ?? 3;
+  const base = data?.required ?? 3;
+  const owedOf = (k: string) => Math.max(0, (data?.sdp.required[k] ?? base) - base);      // credits lacking last semester (approved SDP reconsideration): they count against this semester
+  const need = (_k: string) => base;
   return (
     <ModalShell title="SDP credits" onClose={onClose} wide>
       <p className="text-[14px] text-slate-900"><strong>{scholar.name}</strong> · {scholar.scholarIdNumber}</p>
       {error ? <p role="alert" className="text-[14px] text-red-700">{error}</p> : !data ? <p className="text-[14px] text-slate-700 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading…</p> : (
         <>
-          <p className="text-[14px] text-slate-800">The renewal for {termLabelOf(schoolYear, term)} looks at the SDP credits of {termLabelOf(data.basisSchoolYear, data.basisTerm)}. Each category needs {data.required} credits, plus any credits owed from an approved SDP reconsideration (credits left over from earlier semesters are counted).</p>
+          <p className="text-[14px] text-slate-800">The renewal for {termLabelOf(schoolYear, term)} looks at the SDP credits of {termLabelOf(data.basisSchoolYear, data.basisTerm)}. Each category needs {data.required} credits, Credits lacking last semester after an approved SDP reconsideration count against this semester, so they show as negative credits (credits left over from earlier semesters are counted).</p>
           {data.sdp.reconsideration && <p className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3 py-2 text-[14px] text-slate-900"><strong>SDP reconsideration: {sdpReconsiderationStatusText(data.sdp.reconsideration.status as SdpReconsiderationStatus).text}.</strong>{data.sdp.reconsideration.note ? ` Note: ${data.sdp.reconsideration.note}` : ""}</p>}
           <table className="w-full text-left text-[14px]">
             <thead className="text-[#062444]"><tr><th scope="col" className="py-1.5 pr-2 font-bold">Category</th><th scope="col" className="py-1.5 px-2 text-right font-bold">Credits</th><th scope="col" className="py-1.5 pl-2 font-bold">Status</th></tr></thead>
@@ -389,8 +391,8 @@ export function SdpCreditsModal({ scholar, schoolYear, term, onClose }: { schola
               {cats.map(([k, n]) => (
                 <tr key={k} className="border-t border-[#eef3fb]">
                   <td className="py-1.5 pr-2 text-slate-900">{SDP_CATEGORY_LABELS[k] ?? k}</td>
-                  <td className="py-1.5 px-2 text-right text-slate-900">{n ?? 0} of {need(k)}</td>
-                  <td className={`py-1.5 pl-2 font-semibold ${(n ?? 0) >= need(k) ? "text-green-900" : "text-red-800"}`}>{(n ?? 0) >= need(k) ? "Complete" : `Lacks ${need(k) - (n ?? 0)}`}</td>
+                  <td className="py-1.5 px-2 text-right text-slate-900">{(n ?? 0) - owedOf(k)} of {need(k)}</td>
+                  <td className={`py-1.5 pl-2 font-semibold ${(n ?? 0) - owedOf(k) >= need(k) ? "text-green-900" : "text-red-800"}`}>{(n ?? 0) - owedOf(k) >= need(k) ? "Complete" : `Lacks ${need(k) - ((n ?? 0) - owedOf(k))}`}</td>
                 </tr>
               ))}
             </tbody>

@@ -33,7 +33,7 @@ test("the implication tells a scholar what approval means: complied for the seme
   const s = R.sdpReconsiderationImplication({ basis_school_year: "2026-2027", basis_term: "1st Semester", sdp: { applicable: true, complied: false, missing: "x", lacking: { formation_program: 2 }, next_school_year: "2026-2027", next_semester: "2nd Semester" } });
   assert.match(s, /treated as complied with the SDP for 1st Semester 2026-2027/);
   assert.match(s, /Formation Program: 2 more credits/);
-  assert.match(s, /added to your SDP requirement for 2nd Semester 2026-2027/);
+  assert.match(s, /count against your SDP credits for 2nd Semester 2026-2027/);
 });
 test("the status words: waiting, approved, not approved, not needed", () => {
   assert.deepEqual(R.sdpReconsiderationStatusText("pending"), { text: "Waiting for a decision", tone: "warn" });
@@ -99,7 +99,7 @@ test("the approvers' tab has approve and deny (a denial needs a reason), the cre
   assert.match(tab, /\{r\.canDecide && \(/);
   assert.match(tab, /View SDP credits/);
   assert.match(tab, /Earlier requests/);
-  assert.match(tab, /added to their SDP requirement for/);
+  assert.match(tab, /count against their SDP credits for/);
   assert.equal(/text-slate-[45]00/.test(tab) || /text-slate-[45]00/.test(src("src/sead/sdpReconsiderationApi.ts")), false, "no faint text");
   const api = src("src/sead/sdpReconsiderationApi.ts");
   for (const fn of ["sdp_reconsideration_list", "sdp_reconsideration_counts", "renewal_sdp_reconsideration_decide"]) assert.ok(api.includes(`rpc("${fn}"`), fn);
@@ -110,7 +110,7 @@ test("the evaluator's application page, the Scholar List and SDP Monitoring show
   const list = src("src/sead/renewal/RenewalScholarListTab.tsx");
   assert.match(list, /Reconsideration requested/); assert.match(list, /by SDP reconsideration/); assert.match(list, /Reconsideration not approved/);
   const mon = src("src/sead/pages/SDPMonitoringTab.tsx");
-  assert.match(mon, /const goal = SDP_CATEGORY_CREDIT_GOAL \+ owed/);
+  assert.match(mon, /const shown = credits - owed/); assert.match(mon, /\{shown\} \/ \{goal\}/);
   assert.match(mon, /owed=\{owed\.get\(s\.scholarIdNumber\)\?\.communityService\}/);
   assert.match(src("src/sead/sdpMonitorApi.ts"), /scholars_sdp_extra_required/);
 });

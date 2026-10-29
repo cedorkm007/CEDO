@@ -56,7 +56,7 @@ export function RenewalSdpReconsiderationTab({ refreshKey, onChanged, only }: { 
     <div>
       {!only && <p className="text-[14px] text-slate-700 mb-3">
         Scholars who lack SDP credits can ask, with their renewal application, to be treated as complied. <strong>If you approve</strong>, the scholar counts as complied with the SDP for the semester the renewal looks at, and the credits that were
-        lacking are added to their SDP requirement for the next semester. <strong>If you deny</strong>, the renewal stays on hold until the missing credits are recorded. The scholar is told either way.
+        lacking count against their SDP credits in the next semester (those categories start with negative credits). <strong>If you deny</strong>, the renewal stays on hold until the missing credits are recorded. The scholar is told either way.
         {counts && !counts.canDecide && " You can read the requests; only it.admin1 and the staff he appoints can decide them."}
       </p>}
       {notice && <p role="status" className="mb-3 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[14px] text-green-950">{notice}</p>}
@@ -97,7 +97,7 @@ export function RenewalSdpReconsiderationTab({ refreshKey, onChanged, only }: { 
                     <dt className="text-slate-600">SDP checked for</dt><dd className="text-slate-900">{termLabelOf(r.basisSchoolYear, r.basisTerm)}</dd>
                     <dt className="text-slate-600">Lacking</dt><dd className="font-semibold text-red-800">{sdpLackingText(r.lacking)}</dd>
                     {r.gradesStatus != null && <><dt className="text-slate-600">Grades</dt><dd className={r.gradesComplete ? "font-semibold text-green-900" : "font-semibold text-amber-900"}>{r.gradesStatus === "school" ? "Uploaded by the school" : r.gradesStatus === "approved" ? "Entered by the scholar and approved" : r.gradesStatus === "pending" ? "Entered by the scholar, waiting for the Grades Approver" : r.gradesStatus === "returned" ? "Returned to the scholar for correction" : "Not entered yet"}</dd></>}
-                    <dt className="text-slate-600">If approved</dt><dd className="text-slate-900">Complied for {termLabelOf(r.basisSchoolYear, r.basisTerm)}; the lacking credits are added to the SDP requirement for {nextLabel}.</dd>
+                    <dt className="text-slate-600">If approved</dt><dd className="text-slate-900">Complied for {termLabelOf(r.basisSchoolYear, r.basisTerm)}; the lacking credits count against the SDP credits for {nextLabel} (negative credits until earned back).</dd>
                     {r.status !== "pending" && <>
                       <dt className="text-slate-600">Decided</dt><dd className="text-slate-900">{r.decidedAt ? formatDateTime(r.decidedAt) : "—"}{r.decidedByLabel ? ` by ${r.decidedByLabel}` : ""}</dd>
                       {r.decisionNote && <><dt className="text-slate-600">Note</dt><dd className="text-slate-900 break-words">{r.decisionNote}</dd></>}
@@ -135,7 +135,7 @@ export function RenewalSdpReconsiderationTab({ refreshKey, onChanged, only }: { 
         <ReasonDialog
           title={deciding.approve ? "Approve SDP reconsideration" : "Deny SDP reconsideration"}
           intro={deciding.approve
-            ? <><strong>{deciding.row.name}</strong> will be treated as complied with the SDP for {termLabelOf(deciding.row.basisSchoolYear, deciding.row.basisTerm)}, and the lacking credits ({sdpLackingText(deciding.row.lacking)}) will be added to their SDP requirement for {deciding.row.nextSchoolYear ? termLabelOf(deciding.row.nextSchoolYear, deciding.row.nextSemester) : "the next semester"}. The scholar is told.</>
+            ? <><strong>{deciding.row.name}</strong> will be treated as complied with the SDP for {termLabelOf(deciding.row.basisSchoolYear, deciding.row.basisTerm)}, and the lacking credits ({sdpLackingText(deciding.row.lacking)}) will count against their SDP credits for {deciding.row.nextSchoolYear ? termLabelOf(deciding.row.nextSchoolYear, deciding.row.nextSemester) : "the next semester"}. The scholar is told.</>
             : <>The renewal of <strong>{deciding.row.name}</strong> stays on hold until the missing SDP credits ({sdpLackingText(deciding.row.lacking)}) are recorded. The scholar is told, and sees your reason.</>}
           label={deciding.approve ? "Note to the scholar" : "Reason (the scholar will see this)"} confirmLabel={deciding.approve ? "Approve request" : "Deny request"}
           required={!deciding.approve} danger={!deciding.approve} minLength={3} onCancel={() => setDeciding(null)}

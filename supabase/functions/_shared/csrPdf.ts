@@ -15,6 +15,12 @@ export function csrFullName(first: string, middle: string, last: string): string
   return [first, initial, last].map(s => (s ?? "").trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").toUpperCase();
 }
 
+/** The printed name of the Mayor split where the "Klarex" picture goes: "HON. ROLANDO A. UY" -> before "HON. ROLANDO", after "A. UY". Null when the name has no "ROLANDO" with something after it (the picture then goes beside the signature as before). */
+export function splitNameForMark(name: string): { before: string; after: string } | null {
+  const m = /^(.*?\bROLANDO)\s+(\S.*)$/i.exec((name ?? "").trim());
+  return m ? { before: m[1], after: m[2] } : null;
+}
+
 /** The Program as stored, then "-" and the year number ("BS Marine" + "5th Year" -> "BS Marine-5"); the program alone when the year has no number. */
 export function csrProgramCode(program: string, yearLevel: string): string {
   const p = (program ?? "").trim().toUpperCase();
@@ -220,12 +226,29 @@ export async function buildCsrPdf(d: CsrData): Promise<Uint8Array> {
   const customOfficer = !!d.officer.signature, customMayor = !!d.mayor.signature;
   await sig(d.officer.signature, customOfficer ? null : CSR_ASSETS.officerSignature, 88, officerTop - 50, 60, 52);
   await sig(d.mayor.signature, customMayor ? null : CSR_ASSETS.mayorSignature, 80, mayorTop - 62, 58, 86);
-  await sig(d.mayor.mark, customMayor ? null : CSR_ASSETS.mayorMark, 150, mayorTop - 38, 44, 26);
   const nameSize = 11.5;
+  const mayorPrinted = pdfSafe(bold, d.mayor.name.toUpperCase());
+  const markSplit = splitNameForMark(mayorPrinted);
+  const markBytes = d.mayor.mark ?? (customMayor ? null : b64(CSR_ASSETS.mayorMark));
+  if (markBytes && !markSplit) await sig(d.mayor.mark, customMayor ? null : CSR_ASSETS.mayorMark, 150, mayorTop - 38, 44, 26);   // no "ROLANDO" in the name: the picture stays beside the signature
   page.drawText(pdfSafe(bold, d.officer.name.toUpperCase()), { x: LEFT, y: PAGE_H - officerTop, size: nameSize, font: bold, color: rgb(0, 0, 0) });
   const titleLines = breakLines(toWords([{ text: d.officer.title }], regular, bold, 11), 300, 0);
   titleLines.forEach((l, i) => drawLine(page, l, LEFT, PAGE_H - (officerTop + 15 + i * 14), 11, regular, bold, null));
-  page.drawText(pdfSafe(bold, d.mayor.name.toUpperCase()), { x: LEFT, y: PAGE_H - mayorTop, size: nameSize, font: bold, color: rgb(0, 0, 0) });
+  if (markBytes && markSplit) {
+    // the "Klarex" picture sits in the name line, between "ROLANDO" and "A."
+    const gap = 3, markH = 27;
+    page.drawText(markSplit.before, { x: LEFT, y: PAGE_H - mayorTop, size: nameSize, font: bold, color: rgb(0, 0, 0) });
+    let after = LEFT + bold.widthOfTextAtSize(markSplit.before, nameSize) + gap;
+    try {
+      const img = await embedPng(doc, markBytes);
+      const k = markH / img.height;
+      page.drawImage(img, { x: after, y: PAGE_H - mayorTop - 3, width: img.width * k, height: markH });
+      after += img.width * k + gap;
+    } catch { after += bold.widthOfTextAtSize(" ", nameSize); /* a picture that cannot be read is left out; the printed name stays */ }
+    page.drawText(markSplit.after, { x: after, y: PAGE_H - mayorTop, size: nameSize, font: bold, color: rgb(0, 0, 0) });
+  } else {
+    page.drawText(mayorPrinted, { x: LEFT, y: PAGE_H - mayorTop, size: nameSize, font: bold, color: rgb(0, 0, 0) });
+  }
   page.drawText(pdfSafe(regular, d.mayor.title), { x: LEFT + 90, y: PAGE_H - (mayorTop + 15), size: 11, font: regular, color: rgb(0, 0, 0) });
 
   // The scholar's QR (the same code as their ID) and the CSR number under it
