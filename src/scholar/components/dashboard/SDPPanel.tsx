@@ -3,6 +3,7 @@ import { useLiveReload } from "@/lib/liveUpdates";
 import { motion, AnimatePresence } from "motion/react";
 import { X, ClipboardList, Lightbulb, CheckCircle2 } from "lucide-react";
 import { SectionCard } from "./SectionCard";
+import { sdpShownCredits } from "@/lib/renewal";
 import {
   fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPProgress, fetchScholarSDPRequirements, SDP_CATEGORIES, subCategoryLabel, daySubName, manilaDay,
   type SDPActivity, type SDPCreditCounts,
@@ -117,8 +118,9 @@ function CreditProgress({ credits, required }: { credits: SDPCreditCounts; requi
   return (
     <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 mb-5">
       {SDP_CATEGORIES.map(c => {
-        const count = credits[c.key] ?? 0;
-        const need = required[c.key] ?? CREDITS_REQUIRED;   // 3, plus credits owed after an approved SDP reconsideration
+        // credit that was lacking last semester (an approved SDP reconsideration) counts against this semester: it shows as fewer credits, negative while nothing has been earned, against the usual 3
+        const count = sdpShownCredits(credits[c.key] ?? 0, required[c.key]);
+        const need = CREDITS_REQUIRED;
         const complete = count >= need;
         return (
           <div key={c.key} className={`rounded-lg sm:rounded-xl border px-1.5 py-1.5 sm:p-3 ${complete ? "bg-green-50 border-green-200" : "bg-[#f7f9fc] border-transparent"}`}>
@@ -128,7 +130,7 @@ function CreditProgress({ credits, required }: { credits: SDPCreditCounts; requi
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
               <div className="flex-1 h-1 sm:h-1.5 rounded-full bg-white overflow-hidden">
-                <div className={`h-full rounded-full ${complete ? "bg-green-500" : "bg-[#0088cc]"}`} style={{ width: `${Math.min(100, (count / need) * 100)}%` }} />
+                <div className={`h-full rounded-full ${complete ? "bg-green-500" : "bg-[#0088cc]"}`} style={{ width: `${Math.max(0, Math.min(100, (count / need) * 100))}%` }} />
               </div>
               <span className="text-[8.5px] sm:text-[10.5px] font-bold text-slate-500 shrink-0">{count}/{need}</span>
             </div>
@@ -177,7 +179,7 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
     <SectionCard icon={<Lightbulb size={14} />} title="Scholars' Development Program (SDP)">
       {!loading && <CreditProgress credits={credits} required={required} />}
       {!loading && SDP_CATEGORIES.some(c => (required[c.key] ?? CREDITS_REQUIRED) > CREDITS_REQUIRED) && (
-        <p className="-mt-3 mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-950">Part of this semester's requirement is credit that was lacking last semester and was added after your SDP reconsideration was approved.</p>
+        <p className="-mt-3 mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-950">Your SDP reconsideration was approved, so the credits that were lacking last semester count against this semester: a category you lacked in shows negative credits until you earn them back.</p>
       )}
 
       <div className="flex items-center gap-2 mb-3">

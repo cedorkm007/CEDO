@@ -1371,13 +1371,14 @@ const SDP_CATEGORY_CREDIT_GOAL = 3;
 
 /** Credit above the requirement is not capped or banked — it shows as the real total (6 / 3, 4 / 3). See supabase_migration_sdp_show_total_credits_over_required.sql. */
 function CreditCell({ credits, owed = 0 }: { credits: number; owed?: number }) {
-  // owed = extra credits this scholar owes for the semester (an approved SDP reconsideration of the semester before): the requirement is 3 + owed
-  const goal = SDP_CATEGORY_CREDIT_GOAL + owed;
-  const complete = credits >= goal;
+  // owed = credits this scholar lacked last semester (an approved SDP reconsideration): they count AGAINST this semester, so the credits shown are the credits earned less what is owed (negative while nothing has been earned), against the usual 3
+  const goal = SDP_CATEGORY_CREDIT_GOAL;
+  const shown = credits - owed;
+  const complete = shown >= goal;
   return (
     <span className={`inline-flex items-center gap-1 text-[11px] font-bold whitespace-nowrap ${complete ? "text-green-700" : "text-slate-600"}`}>
       {complete ? <CheckCircle2 size={13} /> : null}
-      {credits} / {goal}
+      {shown} / {goal}
     </span>
   );
 }

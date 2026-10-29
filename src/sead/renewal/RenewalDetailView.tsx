@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { ArrowLeft, CheckCircle2, Loader2, Paperclip, ShieldCheck, XCircle } from "lucide-react";
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
-import { DIVISION_HEAD_DECISION_LABEL, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, sdpLackingText, sdpReconsiderationStatusText, termLabelOf, type DivisionHeadDecision } from "@/lib/renewal";
+import { DIVISION_HEAD_DECISION_LABEL, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, sdpLackingText, sdpReconsiderationStatusText, sdpShownCredits, termLabelOf, type DivisionHeadDecision } from "@/lib/renewal";
 import {
   confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, getStaffRenewalDocumentUrl, returnRenewal, reviewDocument, type DetailDocument, type RenewalDetail,
 } from "../renewalApi";
@@ -129,7 +129,7 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
         {ev.sdp?.applicable && (
           <>
             <p className="flex items-center gap-1.5 font-semibold">{ev.sdp.complied ? <><CheckCircle2 size={15} className="text-green-700" aria-hidden="true" /> {ev.sdp.by_reconsideration ? "Complied by SDP reconsideration" : "Complied"}</> : <><XCircle size={15} className="text-red-700" aria-hidden="true" /> Not complied — {ev.sdp.missing}</>}</p>
-            <p className="text-[13.5px] text-slate-600 mt-1">Institutional Volunteerism {ev.sdp.community_service ?? 0} · Community Volunteerism {ev.sdp.community_volunteerism ?? 0} · Formation Program {ev.sdp.formation_program ?? 0} (needed: {ev.sdp.required?.community_service ?? 3} / {ev.sdp.required?.community_volunteerism ?? 3} / {ev.sdp.required?.formation_program ?? 3}; credit above the requirement carries over)</p>
+            <p className="text-[13.5px] text-slate-600 mt-1">Institutional Volunteerism {sdpShownCredits(ev.sdp.community_service, ev.sdp.required?.community_service)} · Community Volunteerism {sdpShownCredits(ev.sdp.community_volunteerism, ev.sdp.required?.community_volunteerism)} · Formation Program {sdpShownCredits(ev.sdp.formation_program, ev.sdp.required?.formation_program)} (needed: 3 in each; credits lacking last semester after an approved reconsideration count as negative credits; credit above the requirement carries over)</p>
             {ev.sdp.reconsideration && (
               <p className="mt-1.5 rounded-md border border-[#e6ecf5] bg-white px-2.5 py-2 text-[14px] text-slate-900">
                 <strong>SDP reconsideration: {sdpReconsiderationStatusText(ev.sdp.reconsideration.status).text}.</strong>{" "}
