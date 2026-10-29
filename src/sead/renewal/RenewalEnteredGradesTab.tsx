@@ -28,10 +28,11 @@ function Thumb({ path, name }: { path: string; name: string }) {
  * false information means disciplinary action or removal). The Grades Approver (a tag it.admin1 gives) approves or returns them; the evaluator can read. When the school later
  * uploads, its grades replace these and the differences are shown here. The database enforces who may decide.
  */
-export function RenewalEnteredGradesTab({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
+export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refreshKey: number; onChanged: () => void; only?: { scholarIdNumber: string; onDone: () => void } }) {
+  // `only` = opened from the Scholar List for one scholar: just that scholar's entered grades that wait for approval, no filters, closes itself after a decision
   const [filter, setFilter] = useState<EnteredGradesFilter>("pending");
-  const [typed, setTyped] = useState("");
-  const [query, setQuery] = useState("");
+  const [typed, setTyped] = useState(only?.scholarIdNumber ?? "");
+  const [query, setQuery] = useState(only?.scholarIdNumber ?? "");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<EnteredGradesRow[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -58,28 +59,28 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged }: { refreshKey:
 
   return (
     <div>
-      <p className="text-[14px] text-slate-700 mb-3">
+      {!only && <p className="text-[14px] text-slate-700 mb-3">
         Grades the scholars enter themselves while their school has not uploaded the grades. Check each one against the screenshot. <strong>Approve</strong> and the scholar counts as having complete grades until the school uploads;
         <strong> return</strong> it with a reason and the scholar enters it again. When a school uploads its grades they replace these, and any differences show here ({counts?.differing ?? 0} now).
         {counts && !counts.canDecide && " You can read them; only a Grades Approver can approve or return them."}
-      </p>
+      </p>}
       {notice && <p role="status" className="mb-3 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[14px] text-green-950">{notice}</p>}
-      <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Show entered grades">
+      {!only && <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Show entered grades">
         {FILTERS.map(f => (
           <button key={f.key} onClick={() => { setFilter(f.key); setPage(1); setRows(null); }} aria-pressed={filter === f.key}
             className={`rounded-full border px-3 py-1.5 text-[14px] font-semibold ${filter === f.key ? "border-[#062444] bg-[#062444] text-white" : "border-[#062444]/25 bg-white text-[#062444] hover:bg-[#f7f9fc]"}`}>
             {f.label}{countOf(f.key) != null ? ` (${countOf(f.key)})` : ""}
           </button>
         ))}
-      </div>
-      <div className="relative mb-3 max-w-sm">
+      </div>}
+      {!only && <div className="relative mb-3 max-w-sm">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" aria-hidden="true" />
         <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search by name or Scholar ID" aria-label="Search entered grades"
           className="w-full rounded-lg border border-[#062444]/25 py-2 pl-9 pr-3 text-[14px] outline-none focus:border-[#062444] bg-white" />
-      </div>
+      </div>}
 
       {!rows ? <p className="text-[14px] text-slate-700 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading…</p>
-      : rows.length === 0 ? <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{query ? "Nothing matches your search." : filter === "pending" ? "No entered grades are waiting for approval." : "Nothing here."}</p>
+      : rows.length === 0 ? <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{only ? "Nothing is waiting for approval for this scholar any more." : query ? "Nothing matches your search." : filter === "pending" ? "No entered grades are waiting for approval." : "Nothing here."}</p>
       : (
         <>
           <ul className="space-y-3">
@@ -146,7 +147,7 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged }: { refreshKey:
             if (!r.ok) return r.error;
             setNotice(r.result === "returned" ? `Returned. ${deciding.row.name} was told.`
               : r.result === "approved_needs_setup" ? `Approved and ${deciding.row.name} was told. But this school has no passing mark yet, so the grades cannot be judged: ask Scholars' Grades Monitoring staff to set up the school's grading system.` : `Approved. ${deciding.row.name} counts as having complete grades and was told.`);
-            setDeciding(null); onChanged(); await load(); return null;
+            setDeciding(null); onChanged(); await load(); only?.onDone(); return null;
           }}
         />
       )}

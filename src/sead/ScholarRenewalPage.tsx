@@ -35,6 +35,8 @@ export function ScholarRenewalPage(props: ScholarRenewalPageProps) {
 
 function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivisionHead = false, isSeadHead = false, isItAdmin = false, isSdpApprover = false, isGradesApprover = false }: { canAct?: boolean; isEvaluator?: boolean; isDivisionHead?: boolean; isSeadHead?: boolean; isItAdmin?: boolean; isSdpApprover?: boolean; isGradesApprover?: boolean }) {
   const seesRenewals = isEvaluator || isDivisionHead || isSeadHead;   // a lone IT admin sees only the Certificate tab
+  const seesList = isEvaluator || isDivisionHead || isSdpApprover || isGradesApprover;      // the Scholar List: the evaluator and the people who act on it
+  const viewer = useMemo(() => ({ evaluator: isEvaluator, gradesApprover: isGradesApprover, sdpApprover: isSdpApprover, divisionHead: isDivisionHead }), [isEvaluator, isGradesApprover, isSdpApprover, isDivisionHead]);
   const [windows, setWindows] = useState<RenewalWindowRow[] | null>(null);
   const [error, setError] = useState("");
   const [windowId, setWindowId] = useState<string | null>(null);
@@ -43,10 +45,10 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
   const [refreshKey, setRefreshKey] = useState(0);
 
   const loadWindows = useCallback(async () => {
-    if (!seesRenewals) return;
+    if (!seesRenewals && !seesList) return;
     const r = await fetchRenewalWindows();
     if (r.ok) { setWindows(r.rows); setError(""); } else setError(r.error);
-  }, [seesRenewals]);
+  }, [seesRenewals, seesList]);
   useEffect(() => { void loadWindows(); }, [loadWindows]);
   useLiveReload(loadWindows);
 
@@ -78,6 +80,7 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
   // The Certificate tab is for the evaluator and the IT admin; the Division Head and the heads of SEAD never see it.
   // The SDP Reconsideration tab is for the evaluator (read-only) and for the people who decide (it.admin1 and the accounts he appoints).
   const TABS = ALL_TABS.filter(t => t.key === "certificate" ? (isEvaluator || isItAdmin)
+    : t.key === "scholarList" ? seesList
     : t.key === "sdpReconsideration" ? (isEvaluator || isSdpApprover)
     : t.key === "enteredGrades" ? (isEvaluator || isGradesApprover)
     : seesRenewals && (isEvaluator || !t.evaluatorOnly) && (t.key !== "divisionHead" || isEvaluator || isDivisionHead));
@@ -119,10 +122,10 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
           {tab === "calendar" && <AppointmentsTab readOnly onOpenRecord={setDetailId} />}
           {tab === "dashboard" && current && <RenewalDashboardTab schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} />}
           {tab === "windows" && <RenewalWindowsTab windows={windows ?? []} onChanged={async () => { await loadWindows(); bump(); }} />}
-          {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && tab !== "certificate" && tab !== "sdpReconsideration" && tab !== "enteredGrades" && !current && <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">Open a renewal window first (Windows tab).</p>}
+          {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && tab !== "certificate" && tab !== "sdpReconsideration" && tab !== "enteredGrades" && !current && <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{isEvaluator ? "Open a renewal window first (Windows tab)." : "No renewal window has been opened yet."}</p>}
           {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && tab !== "certificate" && tab !== "dashboard" && tab !== "sdpReconsideration" && tab !== "enteredGrades" && current && (
             <>
-              {tab === "scholarList" && <RenewalScholarListTab schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} />}
+              {tab === "scholarList" && <RenewalScholarListTab schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} />}
               {tab === "applications" && <RenewalBoardTab schoolYear={current.schoolYear} term={current.term} onOpen={setDetailId} refreshKey={refreshKey} />}
               {tab === "late" && <RenewalLateTab schoolYear={current.schoolYear} term={current.term} onOpen={setDetailId} onChanged={bump} refreshKey={refreshKey} />}
               {tab === "notApplied" && <RenewalNotAppliedTab schoolYear={current.schoolYear} term={current.term} onChanged={bump} refreshKey={refreshKey} />}

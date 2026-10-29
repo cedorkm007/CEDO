@@ -1278,9 +1278,9 @@ test("the tab sits between Dashboard and Applications, is for the evaluator, and
   assert.ok(page.indexOf('key: "dashboard"') < page.indexOf('key: "scholarList"') && page.indexOf('key: "scholarList"') < page.indexOf('key: "applications"'));
   assert.match(page, /key: "scholarList", label: "Scholar List".*evaluatorOnly: true/);
   const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalScholarListTab.tsx"), "utf8");
-  for (const h of ["Scholar ID", "Scholar name", "Scholarship status", "School", "Year level", "Program", "SDP status", "Grades", "Renewal eligibility"]) assert.ok(tab.includes(`"${h}"`), h);
+  for (const h of ["Scholar", "SDP status", "Grades", "Renewal eligibility", "Renewal status", "Action needed"]) assert.ok(tab.includes(`"${h}"`), h);
   assert.match(tab, /View SDP credits/);
-  assert.match(tab, /hidden lg:block/); assert.match(tab, /lg:hidden/);
+  assert.match(tab, /hidden xl:block/); assert.match(tab, /xl:hidden/);
   assert.equal(/text-slate-[45]00/.test(tab), false, "no faint text");
 });
 test("the website asks the database for the list, the count table, the choices, the check and the SDP credits, and a missing database update is told, not shown as an error", () => {
