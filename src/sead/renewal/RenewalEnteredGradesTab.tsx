@@ -58,7 +58,7 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
   const countOf = (k: EnteredGradesFilter) => counts ? (k === "pending" ? counts.pending : k === "approved" ? counts.approved : k === "returned" ? counts.returned : counts.pending + counts.approved + counts.returned) : null;
 
   return (
-    <div>
+    <div className={only ? "flex min-h-0 flex-1 flex-col" : undefined}>
       {!only && <p className="text-[14px] text-slate-700 mb-3">
         Grades the scholars enter themselves while their school has not uploaded the grades. Check each one against the screenshot. <strong>Approve</strong> and the scholar counts as having complete grades until the school uploads;
         <strong> return</strong> it with a reason and the scholar enters it again. When a school uploads its grades they replace these, and any differences show here ({counts?.differing ?? 0} now).
@@ -83,11 +83,11 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
       : rows.length === 0 ? <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{only ? "Nothing is waiting for approval for this scholar any more." : query ? "Nothing matches your search." : filter === "pending" ? "No entered grades are waiting for approval." : "Nothing here."}</p>
       : (
         <>
-          <ul className="space-y-3">
+          <ul className={only ? "flex min-h-0 flex-1 flex-col" : "space-y-3"}>
             {rows.map(r => {
               const st = selfGradesStatusText(r.status);
               return (
-                <li key={r.id} className="@container rounded-xl border border-[#e6ecf5] bg-white px-4 py-3.5 text-[14px]">
+                <li key={r.id} className={`@container rounded-xl border border-[#e6ecf5] bg-white px-4 py-3.5 text-[14px] ${only ? "flex min-h-0 flex-1 flex-col overflow-y-auto @2xl:overflow-hidden" : ""}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <p className="font-bold text-[#062444] text-[15px]">{r.name} <span className="font-normal text-slate-600">· {r.scholarIdNumber}</span></p>
@@ -103,8 +103,8 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
                   )}
                   {r.schoolSubmitted && <p className="mt-2 rounded-md border border-[#e6ecf5] bg-[#f7f9fc] px-2.5 py-2 text-slate-900">The school has already uploaded its grades for this semester; those are the grades that count.</p>}
 
-                  <div className="mt-2 grid grid-cols-1 gap-4 @2xl:grid-cols-2">
-                  <div className="min-w-0">
+                  <div className={`mt-2 grid grid-cols-1 gap-4 @2xl:grid-cols-2 ${only ? "min-h-0 flex-1 @2xl:grid-rows-[minmax(0,1fr)]" : ""}`}>
+                  <div className={only ? "min-w-0 @2xl:overflow-y-auto" : "min-w-0"}>
                   <table className="w-full text-left">
                     <thead className="text-[#062444]"><tr><th scope="col" className="py-1 pr-2 font-bold">Code</th><th scope="col" className="py-1 pr-2 font-bold">Subject</th><th scope="col" className="py-1 pr-2 text-right font-bold">Units</th><th scope="col" className="py-1 text-right font-bold">Grade</th></tr></thead>
                     <tbody>{r.lines.map(l => <tr key={l.code} className="border-t border-[#eef3fb]"><td className="py-1 pr-2">{l.code}</td><td className="py-1 pr-2 break-words">{l.subject}</td><td className="py-1 pr-2 text-right">{l.units}</td><td className="py-1 text-right font-semibold">{l.grade}</td></tr>)}</tbody>
@@ -126,7 +126,7 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
                     </div>
                   )}
                   </div>
-                  <section aria-label={`Screenshots of ${r.name}`} className="min-w-0 @2xl:sticky @2xl:top-2 @2xl:max-h-[80vh] @2xl:self-start @2xl:overflow-y-auto">
+                  <section aria-label={`Screenshots of ${r.name}`} className={only ? "min-w-0 @2xl:overflow-y-auto" : "min-w-0 @2xl:sticky @2xl:top-2 @2xl:max-h-[80vh] @2xl:self-start @2xl:overflow-y-auto"}>
                     <p className="mb-1 font-semibold text-[#062444]">Screenshots ({r.files.length})</p>
                     <div className="space-y-2">{r.files.map(f => <Thumb key={f.path} path={f.path} name={f.name} />)}</div>
                   </section>

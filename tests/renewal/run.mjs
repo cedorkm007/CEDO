@@ -1026,6 +1026,13 @@ await testAsync("the certificate is one A4 page that prints the scholar, school,
   for (const raw of ["JUAN -TEST N. DELA CRUZ", "2108-00001", "BESIGAN", "BSMARE-5", "PHINMA CAGAYAN DE ORO COLLEGE", "1ST Semester", "1ST SEMESTER CLASS", "2026-2027",
     "CSR-2026-1S-00012", "MS. TEST OFFICER, LPT", "HON. TEST MAYOR", "City Mayor", "4th", "July 2026", "the City of Cagayan de Oro, Philippines"]) assert.ok(text.includes(raw.replace(/\s+/g, "")), "missing on the certificate: " + raw);
 });
+test("the Mayor's signature is drawn LAST (text wrapping 'through'), over the name, the Klarex picture and 'City Mayor'; 'City Mayor' sits under ROLANDO", () => {
+  const src = fs.readFileSync(path.join(root, "supabase/functions/_shared/csrPdf.ts"), "utf8");
+  const sigAt = src.indexOf("await sig(d.mayor.signature"), titleAt = src.indexOf("pdfSafe(regular, d.mayor.title)"), markAt = src.indexOf("page.drawImage(img, { x: after"), qrAt = src.indexOf("drawQr(page, d.qrUrl");
+  assert.ok(sigAt > titleAt && sigAt > markAt && sigAt < qrAt, "the signature comes after the name, the Klarex picture and the title, and before the QR code");
+  assert.equal(src.split("await sig(d.mayor.signature").length - 1, 1, "drawn once");
+  assert.ok(src.includes("x: LEFT + 61, y: PAGE_H - (mayorTop + 15)"), "City Mayor starts under ROLANDO, one line below the name");
+});
 test("the Mayor's printed name is split where the Klarex picture goes: after ROLANDO, only when something follows it", () => {
   assert.deepEqual(CSR.splitNameForMark("HON. ROLANDO A. UY"), { before: "HON. ROLANDO", after: "A. UY" });
   assert.deepEqual(CSR.splitNameForMark("Hon. Rolando A. Uy"), { before: "Hon. Rolando", after: "A. Uy" });
