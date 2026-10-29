@@ -225,7 +225,6 @@ export async function buildCsrPdf(d: CsrData): Promise<Uint8Array> {
   };
   const customOfficer = !!d.officer.signature, customMayor = !!d.mayor.signature;
   await sig(d.officer.signature, customOfficer ? null : CSR_ASSETS.officerSignature, 88, officerTop - 50, 60, 52);
-  await sig(d.mayor.signature, customMayor ? null : CSR_ASSETS.mayorSignature, 80, mayorTop - 62, 58, 86);
   const nameSize = 11.5;
   const mayorPrinted = pdfSafe(bold, d.mayor.name.toUpperCase());
   const markSplit = splitNameForMark(mayorPrinted);
@@ -236,20 +235,24 @@ export async function buildCsrPdf(d: CsrData): Promise<Uint8Array> {
   titleLines.forEach((l, i) => drawLine(page, l, LEFT, PAGE_H - (officerTop + 15 + i * 14), 11, regular, bold, null));
   if (markBytes && markSplit) {
     // the "Klarex" picture sits in the name line, between "ROLANDO" and "A."
-    const gap = 3, markH = 27;
+    // the picture has some empty space around its lettering (about 12% each side), so the gaps are measured from the lettering: ~5.6 pt after ROLANDO, ~1.8 pt before A.
+    const gapBefore = -0.5, gapAfter = -3.6, markH = 27;
     page.drawText(markSplit.before, { x: LEFT, y: PAGE_H - mayorTop, size: nameSize, font: bold, color: rgb(0, 0, 0) });
-    let after = LEFT + bold.widthOfTextAtSize(markSplit.before, nameSize) + gap;
+    let after = LEFT + bold.widthOfTextAtSize(markSplit.before, nameSize) + gapBefore;
     try {
       const img = await embedPng(doc, markBytes);
       const k = markH / img.height;
-      page.drawImage(img, { x: after, y: PAGE_H - mayorTop - 3, width: img.width * k, height: markH });
-      after += img.width * k + gap;
+      page.drawImage(img, { x: after, y: PAGE_H - mayorTop - 4.5, width: img.width * k, height: markH });
+      after += img.width * k + gapAfter;
     } catch { after += bold.widthOfTextAtSize(" ", nameSize); /* a picture that cannot be read is left out; the printed name stays */ }
     page.drawText(markSplit.after, { x: after, y: PAGE_H - mayorTop, size: nameSize, font: bold, color: rgb(0, 0, 0) });
   } else {
     page.drawText(mayorPrinted, { x: LEFT, y: PAGE_H - mayorTop, size: nameSize, font: bold, color: rgb(0, 0, 0) });
   }
-  page.drawText(pdfSafe(regular, d.mayor.title), { x: LEFT + 90, y: PAGE_H - (mayorTop + 15), size: 11, font: regular, color: rgb(0, 0, 0) });
+  page.drawText(pdfSafe(regular, d.mayor.title), { x: LEFT + 61, y: PAGE_H - (mayorTop + 15), size: 11, font: regular, color: rgb(0, 0, 0) });
+  // The Mayor's signature goes over everything else (text wrapping "through"): its lines cross the name, the Klarex picture and "City Mayor", as on the office's own certificate.
+  // (the sample picture has some empty space around its lines, so it is drawn a little larger than what shows: the lines run from about 64 pt above the name to 39 pt below it)
+  await sig(d.mayor.signature, customMayor ? null : CSR_ASSETS.mayorSignature, LEFT + 54.5, mayorTop - 71.7, 74, 127);
 
   // The scholar's QR (the same code as their ID) and the CSR number under it
   drawQr(page, d.qrUrl, 417, officerTop, 113);

@@ -1,16 +1,16 @@
 import { X as XIcon, Plus } from "lucide-react";
 
 /** Shared modal chrome — matches the app's existing modal convention. Used by Question Bank and Survey Tools. */
-/** `wide` = a roomy pop-up (about 512 px); `extraWide` = for reading two things side by side, such as the grades beside their screenshots (up to about 1150 px, never wider than the screen). */
+/** `wide` = a roomy pop-up (about 512 px); `extraWide` = for reading two things side by side, such as the grades beside their screenshots (up to about 1150 px, never wider than the screen). An extra-wide pop-up does not scroll as a whole: it fits the screen, and what it holds scrolls inside it (for the review, only the pictures). */
 export function ModalShell({ title, onClose, children, wide, extraWide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean; extraWide?: boolean }) {
   return (
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8" onClick={onClose}>
-      <div className={`w-full ${extraWide ? "max-w-6xl" : wide ? "max-w-lg" : "max-w-md"} bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto`} onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4 rounded-t-2xl sticky top-0">
+      <div className={`w-full ${extraWide ? "max-w-6xl flex flex-col overflow-hidden" : wide ? "max-w-lg overflow-y-auto" : "max-w-md overflow-y-auto"} bg-white rounded-2xl shadow-2xl max-h-[90vh]`} onClick={e => e.stopPropagation()}>
+        <div className="flex shrink-0 items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4 rounded-t-2xl sticky top-0">
           <h2 className="text-white font-bold text-[15px]">{title}</h2>
           <button onClick={onClose} aria-label="Close" className="text-white/70 hover:text-white"><XIcon size={18} /></button>
         </div>
-        <div className="p-6 space-y-3">{children}</div>
+        <div className={extraWide ? "flex min-h-0 flex-1 flex-col gap-3 p-6" : "p-6 space-y-3"}>{children}</div>
       </div>
     </div>
   );
