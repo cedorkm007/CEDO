@@ -106,8 +106,9 @@ await test("the scholar's Renewal tile shows a card to download the form, also w
 });
 await test("the consulting staff's dashboard lists the termination forms to download, for the removals the Division Head approved", () => {
   const d = src("src/sead/pages/ScholarCounselingDashboardTab.tsx");
-  assert.ok(d.includes("Scholarship termination forms (") && d.includes("fetchConsultRemovalForms()") && d.includes("downloadRemovalForm(id)") && d.includes("Download the form (PDF)"));
-  assert.ok(d.includes("waiting for your final decision") && d.includes("final decision made"));
+  assert.ok(d.includes("Scholarship termination forms (") && d.includes("fetchConsultRemovalForms()") && d.includes("downloadRemovalForm(id)") && d.includes("<TerminationFormsModal"));
+  const m = src("src/sead/components/TerminationFormsModal.tsx");
+  assert.ok(m.includes("Download (PDF)") && m.includes("Approved: waiting for your final decision") && m.includes("Approved: final decision made") && m.includes("Waiting for the Division Head"));
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);

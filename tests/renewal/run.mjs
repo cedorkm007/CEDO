@@ -1234,7 +1234,7 @@ test("the scholar sees the referral in the Consultation tile and books a morning
 test("the counselor's calendar says a booking is a referral, and the referral statuses read plainly", () => {
   const modal = fs.readFileSync(path.join(root, "src/sead/appointments/SlotDetailModal.tsx"), "utf8");
   assert.match(modal, /Referred for a consultation/);
-  assert.match(fs.readFileSync(path.join(root, "src/sead/appointments/AppointmentsTab.tsx"), "utf8"), /Referral/);
+  assert.match(fs.readFileSync(path.join(root, "src/sead/appointments/BookingListModal.tsx"), "utf8"), /Referral/);      // the booking list pop-up marks a referral booking
   const referralApi = fs.readFileSync(path.join(root, "src/sead/referralApi.ts"), "utf8");
   assert.match(referralApi, /"awaiting_booking" \| "booked" \| "pending"/);
 });
