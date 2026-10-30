@@ -568,6 +568,33 @@ export function sdpReconsiderationImplication(ev: { basis_school_year?: string; 
   const next = s?.next_school_year && s?.next_semester ? termLabelOf(s.next_school_year, s.next_semester) : "the next semester";
   return `If it is approved, you will be treated as complied with the SDP for ${basis}, and the lacking credits (${sdpLackingText(s?.lacking)}) will be added to your SDP requirement for ${next}.`;
 }
+/**
+ * Whether the scholar may leave the "Check your SDP and grades" screen of the application, and why not. Two things must be settled:
+ *   grades: the school's grades are in, or the scholar's own grades are approved or completely entered here;
+ *   SDP: complied (or no SDP is required), or not complied with an SDP reconsideration asked for (ticked here, or already requested/approved).
+ * Anything else stays on this screen. With entered grades and/or a reconsideration the scholar goes on and submits; the Grades Approver and the
+ * SDP reconsideration approver then decide, and the renewal waits on them (the tracker says so).
+ */
+export type RenewalGateWait = "grades" | "sdp";
+export interface RenewalGate { open: boolean; blocker: "grades" | "sdp" | null; waitsFor: RenewalGateWait[] }
+export function renewalNextGate(ev: RenewalEvaluation | null | undefined, o: { gradesEntered: boolean; reconsiderationAsked: boolean }): RenewalGate {
+  if (!ev) return { open: false, blocker: null, waitsFor: [] };
+  const waitsFor: RenewalGateWait[] = [];
+  // grades: before the database update that puts grades in the form there is nothing to enter
+  if (ev.grades_in_form) {
+    const g = ev.grades;
+    const schoolHas = !!g?.school_submitted || g?.self_status === "approved";
+    if (!schoolHas) { if (!o.gradesEntered) return { open: false, blocker: "grades", waitsFor: [] }; waitsFor.push("grades"); }
+  }
+  const sdp = ev.sdp;
+  if (sdp?.applicable && sdp.complied === false) {
+    const rc = sdp.reconsideration;
+    const requested = !!rc && rc.status !== "denied" && rc.status !== "not_needed";
+    if (!requested && !o.reconsiderationAsked) return { open: false, blocker: "sdp", waitsFor: [] };
+    if (!(rc?.status === "approved")) waitsFor.push("sdp");
+  }
+  return { open: true, blocker: null, waitsFor };
+}
 /** The reconsideration status shown to people: label and colour tone. */
 export function sdpReconsiderationStatusText(status: SdpReconsiderationStatus): { text: string; tone: "good" | "bad" | "warn" | "plain" } {
   switch (status) {
