@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Users, Home, AlertTriangle, Clock, CalendarDays, ChevronRight, CheckCircle2, Printer } from "lucide-react";
 import { downloadRemovalForm, fetchConsultRemovalForms, type RemovalFormItem } from "@/lib/removalFormApi";
+import { TerminationFormsModal } from "../components/TerminationFormsModal";
 import { fetchDashboardSummary, fetchReferralQueue, fetchApprovedReferrals, fetchFinalDecisions, finalizeDecision, type DashboardSummary, type FinalDecisionItem, type QueuedReferral } from "../referralApi";
 import { ReferralFormModal } from "../components/ReferralFormModal";
 import { printApprovedReferral } from "../referralPrint";
@@ -45,6 +46,7 @@ export function ScholarCounselingDashboardTab() {
   const [forms, setForms] = useState<RemovalFormItem[]>([]);
   const [formBusy, setFormBusy] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
+  const [formsOpen, setFormsOpen] = useState(false);      // the pop-up with the list of the termination forms
 
   async function load() {
     setLoading(true);
@@ -142,28 +144,16 @@ export function ScholarCounselingDashboardTab() {
       )}
 
       {forms.length > 0 && (
-        <div className="bg-white rounded-2xl border-2 border-red-300 overflow-hidden mb-4" aria-label="Scholarship termination forms">
-          <div className="px-4 py-3 border-b border-red-200 bg-red-50 flex items-center gap-2">
-            <p className="text-[13px] font-bold text-red-950">Scholarship termination forms ({forms.length})</p>
-          </div>
-          <p className="px-4 pt-2 text-[12.5px] text-slate-600">The Division Head approved these removals. Download the form, print it and have it signed by the scholar and the parent or guardian. The Division Head's and the City Education and Development Officer's signatures are already on it. The scholar can download it too until their login is switched off.</p>
-          {formError && <p role="alert" className="px-4 pt-2 text-[13px] text-red-700">{formError}</p>}
-          <div>
-            {forms.map(f => (
-              <div key={f.referralId} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-[#f0f3f8] first:border-t-0">
-                <div>
-                  <p className="text-[13.5px] font-semibold text-[#062444]">{f.name} <span className="font-normal text-slate-600">· {f.scholarIdNumber}</span></p>
-                  <p className="text-[12px] text-slate-500">Approved {f.issuedOn}{f.finalDecisionMade ? " · final decision made" : " · waiting for your final decision"}</p>
-                </div>
-                <button type="button" onClick={() => void downloadForm(f.referralId)} disabled={formBusy === f.referralId}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#062444] px-4 py-2 text-[13px] font-bold text-white hover:bg-[#0a3a6e] disabled:opacity-60">
-                  <Printer size={14} /> {formBusy === f.referralId ? "Preparing…" : "Download the form (PDF)"}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <button type="button" onClick={() => setFormsOpen(true)} aria-label="Open the list of scholarship termination forms"
+          className="mb-4 flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-red-300 bg-red-50 px-4 py-3 text-left hover:bg-red-100">
+          <span>
+            <span className="block text-[13px] font-bold text-red-950">Scholarship termination forms ({forms.length})</span>
+            <span className="block text-[12.5px] text-slate-700">{forms.filter(f => f.state !== "waiting").length} ready to download · {forms.filter(f => f.state === "waiting").length} waiting for the Division Head. Open the list.</span>
+          </span>
+          <Printer size={16} className="text-red-900" aria-hidden="true" />
+        </button>
       )}
+      {formsOpen && <TerminationFormsModal items={forms} busyId={formBusy} error={formError} onDownload={id => void downloadForm(id)} onClose={() => setFormsOpen(false)} />}
 
       <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden">
         <div className="px-4 py-3 border-b border-[#f0f3f8] flex items-center gap-2">

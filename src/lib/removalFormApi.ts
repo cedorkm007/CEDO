@@ -10,20 +10,26 @@ type Row = Record<string, unknown>;
 const str = (v: unknown) => (v == null ? "" : String(v));
 const missing = (e: { code?: string; message?: string }) => e.code === "PGRST202" || /could not find the function|does not exist/i.test(e.message ?? "");
 
-export interface RemovalFormItem { referralId: string; issuedOn: string; scholarIdNumber: string; name: string; finalDecisionMade: boolean }
+/** state: waiting = endorsed for removal, waiting for the Division Head (no form yet); ready = approved and signed, the form can be downloaded (the final decision is still to be made); done = the final decision was made. */
+export type RemovalFormState = "waiting" | "ready" | "done";
+export interface RemovalFormItem { referralId: string; issuedOn: string; scholarIdNumber: string; name: string; yearLevel: string; school: string; program: string; state: RemovalFormState; finalDecisionMade: boolean }
 
 /** The scholar's own forms. Empty (and no error) before the database update has been run. */
 export async function fetchMyRemovalForms(): Promise<RemovalFormItem[]> {
   const { data, error } = await supabase.rpc("removal_forms_mine");
   if (error || !Array.isArray(data)) return [];
-  return (data as Row[]).map(r => ({ referralId: str(r.referral_id), issuedOn: str(r.issued_on).slice(0, 10), scholarIdNumber: "", name: "", finalDecisionMade: false }));
+  return (data as Row[]).map(r => ({ referralId: str(r.referral_id), issuedOn: str(r.issued_on).slice(0, 10), scholarIdNumber: "", name: "", yearLevel: "", school: "", program: "", state: "ready" as RemovalFormState, finalDecisionMade: false }));
 }
 
 /** The consulting staff member's forms (their own cases only). Empty (and no error) before the database update has been run. */
 export async function fetchConsultRemovalForms(): Promise<RemovalFormItem[]> {
   const { data, error } = await supabase.rpc("consult_removal_forms");
   if (error || !Array.isArray(data)) return [];
-  return (data as Row[]).map(r => ({ referralId: str(r.referral_id), issuedOn: str(r.issued_on).slice(0, 10), scholarIdNumber: str(r.scholar_id_number), name: str(r.name), finalDecisionMade: !!r.final_decision_made }));
+  return (data as Row[]).map(r => {
+    // before the list update (supabase_migration_removal_form_list.sql) the rows have no state: they are the forms that can be downloaded
+    const state: RemovalFormState = r.state === "waiting" || r.state === "ready" || r.state === "done" ? r.state : r.final_decision_made ? "done" : "ready";
+    return { referralId: str(r.referral_id), issuedOn: str(r.issued_on).slice(0, 10), scholarIdNumber: str(r.scholar_id_number), name: str(r.name), yearLevel: str(r.year_level), school: str(r.school), program: str(r.program), state, finalDecisionMade: state === "done" };
+  });
 }
 
 /** Asks for the form and saves it as a file on the person's computer. */

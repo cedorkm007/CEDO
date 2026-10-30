@@ -8,6 +8,7 @@ import {
 } from "../appointmentsApi";
 import { ModalShell } from "../components/SeadUiShell";
 import { SlotDetailModal } from "./SlotDetailModal";
+import { BookingListModal } from "./BookingListModal";
 
 type View = "week" | "day";
 
@@ -23,14 +24,6 @@ function weekStart(ymd: string): string {
   return addDays(ymd, dow === 0 ? -6 : 1 - dow);
 }
 const dayLabel = (ymd: string) => new Date(`${ymd}T00:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
-
-const STATE_STYLE: Record<string, string> = {
-  open: "border-slate-300 bg-white text-slate-800",
-  booked: "border-sky-400 bg-sky-50 text-sky-950",
-  attended: "border-green-400 bg-green-50 text-green-950",
-  no_show: "border-red-300 bg-red-50 text-red-900",
-};
-const STATE_LABEL: Record<string, string> = { open: "Open", booked: "Booked", attended: "Attended", no_show: "No-show" };
 
 /**
  * "Appointments": consultation staff set the time ranges they are available. Scholars book a TYPE of consultation (each with its own minutes) for a
@@ -48,6 +41,7 @@ export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?:
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<AvailabilityRange | "new" | null>(null);
   const [selected, setSelected] = useState<CalendarSlot | null>(null);
+  const [listFor, setListFor] = useState<{ day: string; half: ConsultHalf } | null>(null);      // the booking list of one morning or afternoon
   const [confirmRemove, setConfirmRemove] = useState<{ range: AvailabilityRange; booked: AffectedBooking[] } | null>(null);
 
   const days = useMemo(() => {
@@ -85,8 +79,8 @@ export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?:
   return (
     <div>
       <p className="text-[14px] text-slate-700 mb-4">{readOnly
-        ? "The consultation staff's calendars, for your information only. Scholars book a type of consultation for a morning or an afternoon; the available minutes decide how many fit. Click a booking to open that scholar's renewal."
-        : "Set when you are available. Scholars book a type of consultation (each takes its own minutes) for a morning or an afternoon, up to the minutes you are available. You mark each appointment Attended or No-show."}</p>
+        ? "The consultation staff's calendars, for your information only. Scholars book a type of consultation for a morning or an afternoon; the available minutes decide how many fit. Press “Booking list” on a morning or afternoon to see who booked, and press a scholar to open that scholar's renewal."
+        : "Set when you are available. Scholars book a type of consultation (each takes its own minutes) for a morning or an afternoon, up to the minutes you are available. Press “Booking list” on a morning or afternoon to see who booked, the type and the status, and to mark each appointment Attended or No-show."}</p>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <button onClick={() => setAnchor(addDays(anchor, -step))} aria-label="Previous" className="rounded-lg border border-[#062444]/25 p-2 text-[#062444] hover:bg-[#f7f9fc]"><ChevronLeft size={16} aria-hidden="true" /></button>
@@ -143,19 +137,14 @@ export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?:
                   return (
                     <div key={half} className="rounded-lg border border-[#e6ecf5]">
                       <p className="px-2.5 py-1.5 text-[14px] font-bold text-[#062444] bg-[#f7f9fc] rounded-t-lg">{half === "AM" ? "Morning (AM)" : "Afternoon (PM)"} <span className="font-normal text-slate-700">· {used} of {capacity} minutes booked</span></p>
-                      <ul className="p-2 grid gap-1.5 grid-cols-1">
-                        {bookings.length === 0 && <li className="text-[14px] text-slate-700 px-1">No bookings yet.</li>}
-                        {bookings.map(s => (
-                          <li key={s.slotId}>
-                            <button onClick={() => { if (readOnly) { if (s.recordId) onOpenRecord?.(s.recordId); } else setSelected(s); }}
-                              className={`w-full rounded-md border px-2 py-1.5 text-left text-[14px] ${STATE_STYLE[s.state]} hover:shadow-sm`}>
-                              <span className="font-bold">{s.scholarName}</span> <span className="font-semibold">({STATE_LABEL[s.state]})</span>
-                              <span className="block text-[13px] text-slate-700">{s.typeLabel ?? "Consultation"} · {s.minutes ?? 10} min{!s.recordId ? " · Referral" : ""}{readOnly && s.staffName ? ` · ${s.staffName}` : ""}</span>
-                              {s.caseSummary && <span className="block text-[13px] text-slate-700">{s.termLabel} · {s.caseSummary}</span>}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+                      <div className="p-2">
+                        {bookings.length === 0 ? <p className="text-[14px] text-slate-700 px-1">No bookings yet.</p> : (
+                          <button type="button" onClick={() => setListFor({ day, half })} className="w-full rounded-md border border-[#062444]/40 bg-white px-3 py-2 text-left text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]">
+                            Booking list ({bookings.length})
+                            <span className="block text-[13px] font-normal text-slate-700">{bookings.filter(b => b.state === "booked").length} booked · {bookings.filter(b => b.state === "attended").length} attended · {bookings.filter(b => b.state === "no_show").length} no-show</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -166,6 +155,12 @@ export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?:
       </div>
 
       {editing && !readOnly && <RangeForm initial={editing === "new" ? null : editing} defaultDay={anchor} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await load(); }} />}
+      {listFor && (
+        <BookingListModal title={`Booking list · ${dayLabel(listFor.day)} · ${listFor.half === "AM" ? "Morning (AM)" : "Afternoon (PM)"}`}
+          slots={slots.filter(s => s.state !== "open" && manilaDay(s.startsAt) === listFor.day && consultHalf(s.startsAt) === listFor.half)} showStaff={readOnly}
+          openable={s => (readOnly ? !!s.recordId : true)}
+          onOpen={s => { if (readOnly) { setListFor(null); if (s.recordId) onOpenRecord?.(s.recordId); } else setSelected(s); }} onClose={() => setListFor(null)} />
+      )}
       {selected && !readOnly && <SlotDetailModal slot={selected} onClose={() => setSelected(null)} onChanged={async () => { setSelected(null); await load(); }} />}
       {confirmRemove && (
         <ModalShell title="Scholars have booked this range" onClose={() => setConfirmRemove(null)} wide>
