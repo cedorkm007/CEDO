@@ -13,7 +13,7 @@ import { useLiveReload } from "@/lib/liveUpdates";
 import { StudyPlanFormLink } from "./StudyPlanFormLink";
 import { buildNextSteps } from "../../renewalSummary";
 import {
-  DOC_ACCEPT, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, renewalBasis, renewalProgress, sdpLackingText, sdpLackingTotal, sdpReconsiderationImplication, termLabelOf,
+  DOC_ACCEPT, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, renewalBasis, renewalNextGate, renewalProgress, sdpLackingText, sdpLackingTotal, sdpReconsiderationImplication, termLabelOf,
   type DocKind, type RenewalEvaluation, type WindowState,
 } from "@/lib/renewal";
 import {
@@ -150,6 +150,8 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
   const gradeProblem = enterGrades ? gradeFormProblem(gRows, gFiles.length, gAck) : null;
   const gradesReady = !gradesInForm || schoolGrades || preview?.grades?.self_status === "approved" || (enterGrades && !gradeProblem);
   const wantsReconsideration = canAskReconsideration && gradesReady && askReconsideration;
+  // Next opens only when the grades are settled (the school's, or entered here) and the SDP is complied or a reconsideration is asked for.
+  const gate = renewalNextGate(preview, { gradesEntered: enterGrades && !gradeProblem, reconsiderationAsked: wantsReconsideration });
   const inputCls = "w-full rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] outline-none focus:border-[#062444] bg-white";
   return (
     <div>
@@ -225,8 +227,18 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
             Something wrong? Tell the evaluator (optional)
             <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} maxLength={1000} placeholder="For example: my Science grade should be 1.5, not 2.0." className={`${inputCls} mt-1 font-normal`} />
           </label>
+          {preview && !gate.open && gate.blocker === "sdp" && (
+            <p role="status" className="rounded-lg border border-red-300 bg-red-50 px-3.5 py-2.5 text-[14px] text-red-900">
+              You cannot go on yet: your SDP is not complete. {canAskReconsideration && gradesReady ? "Tick the box above to ask for an SDP reconsideration, and you can go on." : canAskReconsideration ? "Enter your grades first; then you can ask for an SDP reconsideration and go on." : "Complete your SDP credits before you apply."}
+            </p>
+          )}
+          {preview && gate.open && gate.waitsFor.length > 0 && (
+            <p role="status" className="rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-[14px] text-sky-900">
+              You can go on and submit. Your renewal then waits for {gate.waitsFor.map(w => (w === "grades" ? "the Grades Approver" : "the SDP reconsideration approver")).join(" and ")} before the next step.
+            </p>
+          )}
           <div className="flex gap-2 pt-1">
-            <button onClick={() => setStep(3)} disabled={!preview || !!gradeProblem} className="rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white disabled:opacity-50">Next</button>
+            <button onClick={() => setStep(3)} disabled={!preview || !gate.open} className="rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white disabled:opacity-50">Next</button>
             <button onClick={() => setStep(1)} className="rounded-lg border border-[#062444]/25 px-4 py-2 text-[14px] font-semibold text-[#062444]">Back</button>
           </div>
         </div>
