@@ -12,7 +12,7 @@ import { useLiveReload } from "@/lib/liveUpdates";
 import { StudyPlanFormLink } from "./StudyPlanFormLink";
 import { buildNextSteps } from "../../renewalSummary";
 import {
-  DOC_ACCEPT, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, renewalBasis, renewalProgress, sdpLackingText, sdpLackingTotal, sdpReconsiderationImplication, sdpShownCredits, termLabelOf,
+  DOC_ACCEPT, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, renewalBasis, renewalProgress, sdpLackingText, sdpLackingTotal, sdpReconsiderationImplication, termLabelOf,
   type DocKind, type RenewalEvaluation, type WindowState,
 } from "@/lib/renewal";
 import {
@@ -205,7 +205,7 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
               <p className="mt-1.5">{sdpReconsiderationImplication(preview)}</p>
               <label className="mt-2.5 flex cursor-pointer items-start gap-2 font-semibold">
                 <input type="checkbox" checked={askReconsideration} onChange={e => setAskReconsideration(e.target.checked)} className="mt-1 h-4 w-4 shrink-0" />
-                <span>Yes, I want to ask for an SDP reconsideration. I understand that if it is approved, the lacking credits count against my SDP credits in the next semester: those categories start with negative credits until I earn them back.</span>
+                <span>Yes, I want to ask for an SDP reconsideration. I understand that if it is approved, the lacking credits are added to my SDP requirement for the next semester.</span>
               </label>
             </div>
           )}
@@ -262,13 +262,13 @@ function EvaluationSummary({ ev }: { ev: RenewalEvaluation }) {
         {sdp?.applicable && sdp.by_reconsideration && <p className="text-[14px] text-green-800 flex items-center gap-1.5"><CheckCircle2 size={15} aria-hidden="true" /> Complied through your approved SDP reconsideration.</p>}
         {sdp?.applicable && !sdp.complied && <p className="text-[14px] text-amber-900 flex items-center gap-1.5"><XCircle size={15} aria-hidden="true" /> Not complied yet — {sdp.missing ?? "some credits are missing"}.</p>}
         {sdp?.applicable && (
-          <p className="text-[13.5px] text-slate-600 mt-1">Institutional Volunteerism {sdpShownCredits(sdp.community_service, sdp.required?.community_service)}/3 · Community Volunteerism {sdpShownCredits(sdp.community_volunteerism, sdp.required?.community_volunteerism)}/3 · Formation Program {sdpShownCredits(sdp.formation_program, sdp.required?.formation_program)}/3</p>
+          <p className="text-[13.5px] text-slate-600 mt-1">Institutional Volunteerism {sdp.community_service ?? 0}/{sdp.required?.community_service ?? 3} · Community Volunteerism {sdp.community_volunteerism ?? 0}/{sdp.required?.community_volunteerism ?? 3} · Formation Program {sdp.formation_program ?? 0}/{sdp.required?.formation_program ?? 3}</p>
         )}
         {sdp?.applicable && sdp.reconsideration?.status === "pending" && (
           <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-[14px] text-amber-950"><strong>SDP reconsideration: waiting for a decision.</strong> {sdpReconsiderationImplication(ev)}</p>
         )}
         {sdp?.applicable && sdp.reconsideration?.status === "approved" && (
-          <p className="mt-2 rounded-md border border-green-300 bg-green-50 px-2.5 py-2 text-[14px] text-green-950"><strong>SDP reconsideration approved{sdp.reconsideration.decided_at ? ` on ${formatDay(sdp.reconsideration.decided_at)}` : ""}.</strong> The credits that were lacking ({sdpLackingText(sdp.reconsideration.lacking)}) count against your SDP credits for {sdp.next_school_year && sdp.next_semester ? termLabelOf(sdp.next_school_year, sdp.next_semester) : "the next semester"}: those categories start with negative credits until you earn them back.{sdp.reconsideration.note ? ` Note: ${sdp.reconsideration.note}` : ""}</p>
+          <p className="mt-2 rounded-md border border-green-300 bg-green-50 px-2.5 py-2 text-[14px] text-green-950"><strong>SDP reconsideration approved{sdp.reconsideration.decided_at ? ` on ${formatDay(sdp.reconsideration.decided_at)}` : ""}.</strong> The credits that were lacking ({sdpLackingText(sdp.reconsideration.lacking)}) are added to your SDP requirement for {sdp.next_school_year && sdp.next_semester ? termLabelOf(sdp.next_school_year, sdp.next_semester) : "the next semester"}.{sdp.reconsideration.note ? ` Note: ${sdp.reconsideration.note}` : ""}</p>
         )}
         {sdp?.applicable && sdp.reconsideration?.status === "denied" && (
           <p className="mt-2 rounded-md border border-red-300 bg-red-50 px-2.5 py-2 text-[14px] text-red-950"><strong>SDP reconsideration was not approved.</strong>{sdp.reconsideration.note ? ` Reason: ${sdp.reconsideration.note}` : ""} Your renewal stays on hold until the missing credits are recorded.</p>

@@ -3,12 +3,12 @@ import { useLiveReload } from "@/lib/liveUpdates";
 import { motion, AnimatePresence } from "motion/react";
 import { X, ClipboardList, Lightbulb, CheckCircle2 } from "lucide-react";
 import { SectionCard } from "./SectionCard";
-import { sdpShownCredits } from "@/lib/renewal";
 import {
-  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPProgress, fetchScholarSDPRequirements, SDP_CATEGORIES, subCategoryLabel, daySubName, manilaDay,
+  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPOwed, fetchScholarSDPProgress, fetchScholarSDPRequirements, type SDPOwedRow, SDP_CATEGORIES, subCategoryLabel, daySubName, manilaDay,
   type SDPActivity, type SDPCreditCounts,
 } from "../../sdpApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
+import { termLabelOf } from "@/lib/renewal";
 import { DefaultPubmat, AttendedBadge, EndedBadge, NextScheduleBadge, isPastDate, formatShortDate } from "./activityCardKit";
 
 /**
@@ -114,13 +114,38 @@ function twoLineLabel(label: string) {
   return <>{label.slice(0, splitAt)}<br />{label.slice(splitAt + 1)}</>;
 }
 
+/**
+ * The credits added to the requirement of the semesters coming, because the scholar's SDP reconsideration was approved: "3 + what was lacking", shown as soon as it is approved
+ * (the progress boxes above show the requirement of the CURRENT semester; this semester's requirement appears there when the semester starts).
+ */
+function ComingRequirement({ rows }: { rows: SDPOwedRow[] }) {
+  const semesters = Array.from(new Set(rows.map(r => `${r.schoolYear}|${r.semester}`)));
+  return (
+    <div className="-mt-3 mb-4 space-y-2" aria-label="Credits added to your SDP requirement for the coming semester">
+      {semesters.map(key => {
+        const [schoolYear, semester] = key.split("|");
+        const mine = rows.filter(r => r.schoolYear === schoolYear && r.semester === semester);
+        const total = mine.reduce((n, r) => n + r.amount, 0);
+        return (
+          <div key={key} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2.5 text-[13px] text-sky-950">
+            <p className="font-bold">Added to your SDP requirement for {termLabelOf(schoolYear, semester)}: {total} credit{total === 1 ? "" : "s"}</p>
+            <p>Your SDP reconsideration was approved, so the credits you lacked are added to the requirement of that semester. It shows in the boxes above when that semester starts.</p>
+            <ul className="mt-1 list-disc pl-5">
+              {mine.map(r => <li key={r.category}>{SDP_CATEGORIES.find(c => c.key === r.category)?.label ?? r.category}: {CREDITS_REQUIRED} + {r.amount} = <strong>{CREDITS_REQUIRED + r.amount} credits</strong></li>)}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CreditProgress({ credits, required }: { credits: SDPCreditCounts; required: SDPCreditCounts }) {
   return (
     <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 mb-5">
       {SDP_CATEGORIES.map(c => {
-        // credit that was lacking last semester (an approved SDP reconsideration) counts against this semester: it shows as fewer credits, negative while nothing has been earned, against the usual 3
-        const count = sdpShownCredits(credits[c.key] ?? 0, required[c.key]);
-        const need = CREDITS_REQUIRED;
+        const count = credits[c.key] ?? 0;
+        const need = required[c.key] ?? CREDITS_REQUIRED;   // 3, plus credits owed after an approved SDP reconsideration
         const complete = count >= need;
         return (
           <div key={c.key} className={`rounded-lg sm:rounded-xl border px-1.5 py-1.5 sm:p-3 ${complete ? "bg-green-50 border-green-200" : "bg-[#f7f9fc] border-transparent"}`}>
@@ -130,7 +155,7 @@ function CreditProgress({ credits, required }: { credits: SDPCreditCounts; requi
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
               <div className="flex-1 h-1 sm:h-1.5 rounded-full bg-white overflow-hidden">
-                <div className={`h-full rounded-full ${complete ? "bg-green-500" : "bg-[#0088cc]"}`} style={{ width: `${Math.max(0, Math.min(100, (count / need) * 100))}%` }} />
+                <div className={`h-full rounded-full ${complete ? "bg-green-500" : "bg-[#0088cc]"}`} style={{ width: `${Math.min(100, (count / need) * 100)}%` }} />
               </div>
               <span className="text-[8.5px] sm:text-[10.5px] font-bold text-slate-500 shrink-0">{count}/{need}</span>
             </div>
@@ -160,12 +185,15 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   const [selectedActivity, setSelectedActivity] = useState<SDPActivity | null>(null);
   const [credits, setCredits] = useState<SDPCreditCounts>({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
   const [required, setRequired] = useState<SDPCreditCounts>({ community_service: CREDITS_REQUIRED, community_volunteerism: CREDITS_REQUIRED, formation_program: CREDITS_REQUIRED });
+  // credits added to the requirement of the semesters AFTER the current one (an approved SDP reconsideration), shown as soon as it is approved
+  const [coming, setComing] = useState<SDPOwedRow[]>([]);
 
   async function loadAll(quiet = false) {
     if (!quiet) setLoading(true);
-    const [a, progress, attended, req] = await Promise.all([
-      fetchApprovedSDPActivities(), fetchScholarSDPProgress(), fetchAttendedSDPActivityIds(scholarIdNumber), fetchScholarSDPRequirements(),
+    const [a, progress, attended, req, owed] = await Promise.all([
+      fetchApprovedSDPActivities(), fetchScholarSDPProgress(), fetchAttendedSDPActivityIds(scholarIdNumber), fetchScholarSDPRequirements(), fetchScholarSDPOwed(),
     ]);
+    setComing(owed.filter(o => !o.isCurrent));
     setActivities(a);
     setCredits(progress.credits);
     setRequired(req);
@@ -179,8 +207,10 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
     <SectionCard icon={<Lightbulb size={14} />} title="Scholars' Development Program (SDP)">
       {!loading && <CreditProgress credits={credits} required={required} />}
       {!loading && SDP_CATEGORIES.some(c => (required[c.key] ?? CREDITS_REQUIRED) > CREDITS_REQUIRED) && (
-        <p className="-mt-3 mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-950">Your SDP reconsideration was approved, so the credits that were lacking last semester count against this semester: a category you lacked in shows negative credits until you earn them back.</p>
+        <p className="-mt-3 mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-950">Part of this semester's requirement is credit that was lacking last semester and was added after your SDP reconsideration was approved.</p>
       )}
+
+      {!loading && coming.length > 0 && <ComingRequirement rows={coming} />}
 
       <div className="flex items-center gap-2 mb-3">
         <h4 className="text-[#062444] font-bold text-sm flex-1">SDP Activities</h4>

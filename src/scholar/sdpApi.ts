@@ -196,6 +196,17 @@ export async function fetchScholarSDPRequirements(): Promise<SDPCreditCounts> {
   return req;
 }
 
+/** Credits added to the scholar's SDP requirement because an SDP reconsideration was approved: this semester and the ones coming (supabase_migration_sdp_owed_for_scholar.sql). */
+export interface SDPOwedRow { schoolYear: string; semester: string; category: SDPCategory; amount: number; isCurrent: boolean }
+/** Empty (and no error) before the database update has been run, or when nothing is owed. */
+export async function fetchScholarSDPOwed(): Promise<SDPOwedRow[]> {
+  const { data, error } = await supabase.rpc("fetch_scholar_sdp_owed");
+  if (error || !Array.isArray(data)) return [];
+  return (data as { school_year: string; semester: string; category: SDPCategory; amount: number; is_current: boolean }[])
+    .map(r => ({ schoolYear: String(r.school_year), semester: String(r.semester), category: r.category, amount: Number(r.amount) || 0, isCurrent: !!r.is_current }))
+    .filter(r => r.amount > 0);
+}
+
 const zeroCreditCounts = (): SDPCreditCounts => ({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
 
 /**
