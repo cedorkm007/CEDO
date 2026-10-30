@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Users, Home, AlertTriangle, Clock, CalendarDays, ChevronRight, CheckCircle2, Printer } from "lucide-react";
+import { downloadRemovalForm, fetchConsultRemovalForms, type RemovalFormItem } from "@/lib/removalFormApi";
 import { fetchDashboardSummary, fetchReferralQueue, fetchApprovedReferrals, fetchFinalDecisions, finalizeDecision, type DashboardSummary, type FinalDecisionItem, type QueuedReferral } from "../referralApi";
 import { ReferralFormModal } from "../components/ReferralFormModal";
 import { printApprovedReferral } from "../referralPrint";
@@ -40,11 +41,16 @@ export function ScholarCounselingDashboardTab() {
   const [finals, setFinals] = useState<FinalDecisionItem[]>([]);
   const [finalBusy, setFinalBusy] = useState<string | null>(null);
   const [finalError, setFinalError] = useState("");
+  // the termination forms of the removals the Division Head approved (to download, print and have signed by the scholar and the parent or guardian)
+  const [forms, setForms] = useState<RemovalFormItem[]>([]);
+  const [formBusy, setFormBusy] = useState<string | null>(null);
+  const [formError, setFormError] = useState("");
 
   async function load() {
     setLoading(true);
-    const [s, q, a, fd] = await Promise.all([fetchDashboardSummary(), fetchReferralQueue(), fetchApprovedReferrals(), fetchFinalDecisions()]);
+    const [s, q, a, fd, rf] = await Promise.all([fetchDashboardSummary(), fetchReferralQueue(), fetchApprovedReferrals(), fetchFinalDecisions(), fetchConsultRemovalForms()]);
     setFinals(fd);
+    setForms(rf);
     setSummary(s);
     setQueue(q);
     setApproved(a);
@@ -67,6 +73,13 @@ export function ScholarCounselingDashboardTab() {
     setFinalBusy(null);
     if (!r.ok) { setFinalError(r.error || "The final decision could not be made."); return; }
     await load();
+  }
+
+  async function downloadForm(id: string) {
+    setFormBusy(id); setFormError("");
+    const r = await downloadRemovalForm(id);
+    setFormBusy(null);
+    if (!r.ok) setFormError(r.error);
   }
 
   if (loading) return <p className="text-center text-slate-400 py-10">Loading…</p>;
@@ -121,6 +134,30 @@ export function ScholarCounselingDashboardTab() {
                 <button type="button" onClick={() => void proceed(item)} disabled={finalBusy === item.referralId}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-4 py-2 text-[13px] font-bold text-white hover:bg-green-900 disabled:opacity-60">
                   <CheckCircle2 size={14} /> {finalBusy === item.referralId ? "Working…" : "Proceed with the final decision"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {forms.length > 0 && (
+        <div className="bg-white rounded-2xl border-2 border-red-300 overflow-hidden mb-4" aria-label="Scholarship termination forms">
+          <div className="px-4 py-3 border-b border-red-200 bg-red-50 flex items-center gap-2">
+            <p className="text-[13px] font-bold text-red-950">Scholarship termination forms ({forms.length})</p>
+          </div>
+          <p className="px-4 pt-2 text-[12.5px] text-slate-600">The Division Head approved these removals. Download the form, print it and have it signed by the scholar and the parent or guardian. The Division Head's and the City Education and Development Officer's signatures are already on it. The scholar can download it too until their login is switched off.</p>
+          {formError && <p role="alert" className="px-4 pt-2 text-[13px] text-red-700">{formError}</p>}
+          <div>
+            {forms.map(f => (
+              <div key={f.referralId} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-[#f0f3f8] first:border-t-0">
+                <div>
+                  <p className="text-[13.5px] font-semibold text-[#062444]">{f.name} <span className="font-normal text-slate-600">· {f.scholarIdNumber}</span></p>
+                  <p className="text-[12px] text-slate-500">Approved {f.issuedOn}{f.finalDecisionMade ? " · final decision made" : " · waiting for your final decision"}</p>
+                </div>
+                <button type="button" onClick={() => void downloadForm(f.referralId)} disabled={formBusy === f.referralId}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#062444] px-4 py-2 text-[13px] font-bold text-white hover:bg-[#0a3a6e] disabled:opacity-60">
+                  <Printer size={14} /> {formBusy === f.referralId ? "Preparing…" : "Download the form (PDF)"}
                 </button>
               </div>
             ))}

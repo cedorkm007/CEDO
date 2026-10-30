@@ -66,17 +66,17 @@ export interface CsrData {
 }
 
 // ── Layout ──────────────────────────────────────────────────
-const PAGE_W = 595.28, PAGE_H = 841.89;
-const LEFT = 34.5, TEXT_W = 527;
+export const PAGE_W = 595.28, PAGE_H = 841.89;
+export const LEFT = 34.5, TEXT_W = 527;
 const BODY = 12, LEADING = 17.2, PARA_GAP = 9;
 
 interface Run { text: string; bold?: boolean; underline?: boolean }
 interface Word { text: string; bold: boolean; underline: boolean; width: number; space: number; joinsNext: boolean }
 
-const b64 = (s: string): Uint8Array => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+export const b64 = (s: string): Uint8Array => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 
 /** Standard PDF fonts only know Latin text: anything else becomes "?" instead of making the whole certificate fail. */
-function pdfSafe(font: PDFFont, text: string): string {
+export function pdfSafe(font: PDFFont, text: string): string {
   const set = new Set(font.getCharacterSet());
   return Array.from(text).map(ch => (set.has(ch.codePointAt(0) as number) ? ch : "?")).join("");
 }
