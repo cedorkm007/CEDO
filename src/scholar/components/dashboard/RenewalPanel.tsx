@@ -7,6 +7,7 @@ import { ConsultationSection } from "./ConsultationSection";
 import { CsrDownload } from "./CsrDownload";
 import { RenewalProgressBar } from "./RenewalProgressBar";
 import { SelfGradesSection } from "./SelfGradesSection";
+import { RemovalFormCard } from "./RemovalFormCard";
 import { SelfGradesForm, emptyGradeRow, gradeFormProblem, type GradeFormRow } from "./SelfGradesForm";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { StudyPlanFormLink } from "./StudyPlanFormLink";
@@ -49,14 +50,18 @@ export function RenewalPanel() {
   if (!overview) return <p className="text-[14px] text-slate-600 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading your renewal…</p>;
   if (overview.windows.length === 0) {
     return (
-      <div className="rounded-xl border border-[#e6ecf5] bg-[#f7f9fc] px-4 py-5 text-[14px] text-slate-700">
-        <p className="font-bold text-[#062444] mb-1">No renewal is open right now</p>
-        <p>When the CEDO office opens renewal for a term, it will appear here and you will get a notification.</p>
+      <div className="space-y-4">
+        <RemovalFormCard />
+        <div className="rounded-xl border border-[#e6ecf5] bg-[#f7f9fc] px-4 py-5 text-[14px] text-slate-700">
+          <p className="font-bold text-[#062444] mb-1">No renewal is open right now</p>
+          <p>When the CEDO office opens renewal for a term, it will appear here and you will get a notification.</p>
+        </div>
       </div>
     );
   }
   return (
     <div className="space-y-4">
+      <RemovalFormCard />
       <p className="text-[14px] text-slate-700">Renew your scholarship for each term, online. We check your SDP credits and grades for you.</p>
       <PushSettings variant="banner" />
       {overview.windows.map(w => <WindowCard key={w.window.id} data={w} overview={overview} onChanged={load} />)}

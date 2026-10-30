@@ -161,6 +161,7 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
     const notInDemo = () => json(res, 200, { error: "This action is not available in the local demo." });
     switch (name) {
       case "csr-issue": return await csrIssue(res, who, body);
+      case "removal-form-issue": return await removalFormIssue(res, who, body);
       case "it-reset-staff-password": case "it-create-staff-account": case "sead-reset-scholar-password": {
         try { const out = await phase6[name](body, who); return json(res, out.status, out.json); }
         catch (e) { return json(res, 500, { error: String(e.message ?? e) }); }
@@ -215,6 +216,42 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
     await db.query("insert into storage.objects (bucket_id, name, metadata) values ('csr-issued', $1, $2::jsonb)", [path, JSON.stringify({ mimetype: "application/pdf", size: pdf.length, base64: Buffer.from(pdf).toString("base64") })]);
     try { await db.query("select public.csr_complete($1, $2)", [prep.csr_id, path]); } catch (e) { return answer(500, { error: String(e.message ?? e) }); }
     return link(path, d.scholar_id_number, d.term, d.school_year, prep.csr_number, prep.version);
+  }
+
+  // ── The stand-in for the removal-form-issue edge function: the same steps, with the same PDF builder (bundled from supabase/functions/_shared/removalFormPdf.ts) ──
+  let removalBuilder = null;
+  async function removalBuilderModule() {
+    if (!removalBuilder) {
+      const { build } = await import("esbuild");
+      const os = await import("node:os"), fsm = await import("node:fs"), pathm = await import("node:path"), { pathToFileURL, fileURLToPath } = await import("node:url");
+      const root = pathm.resolve(pathm.dirname(fileURLToPath(import.meta.url)), "..");
+      const outDir = fsm.mkdtempSync(pathm.join(os.tmpdir(), "removal-demo-"));
+      const outfile = pathm.join(outDir, "removalFormPdf.mjs");
+      await build({ entryPoints: [pathm.join(root, "supabase/functions/_shared/removalFormPdf.ts")], bundle: true, format: "esm", platform: "node", outfile, logLevel: "error" });
+      removalBuilder = await import(pathToFileURL(outfile).href);
+    }
+    return removalBuilder;
+  }
+  async function removalFormIssue(res, who, body) {
+    const referralId = String(body.referralId ?? "").trim();
+    if (!referralId) return json(res, 400, { error: "Missing the case." });
+    let d;
+    try { d = await rest.withRole({ role: who.role, claims: who.claims }, async tx => (await tx.query("select public.removal_form_data($1) r", [referralId])).rows[0].r); }
+    catch (e) { return json(res, 400, { error: String(e.message ?? e) }); }
+    const M = await removalBuilderModule();
+    const picture = async (bucket, path) => {
+      if (!path) return null;
+      const row = (await db.query("select metadata from storage.objects where bucket_id = $1 and name = $2", [bucket, path])).rows[0];
+      return row?.metadata?.base64 ? new Uint8Array(Buffer.from(row.metadata.base64, "base64")) : null;
+    };
+    const pdf = await M.buildRemovalFormPdf({
+      first: d.first_name ?? "", middle: d.middle_name ?? "", last: d.last_name ?? "", program: d.program ?? "", yearLevel: d.year_level ?? "", school: d.school ?? "", barangay: d.barangay ?? "",
+      failed: (d.failed ?? []).map(r => ({ semesterYear: r.semester_year ?? "", yearLevel: r.year_level ?? "", code: r.code ?? "", subject: r.subject ?? "" })),
+      issuedOn: String(d.issued_on ?? ""),
+      divisionHead: { name: d.division_head?.name ?? "", title: M.DIVISION_HEAD_TITLE, signature: await picture("staff-signatures", d.division_head?.signature_path) },
+      officer: { name: d.officer?.name ?? "", title: d.officer?.title ?? "", signature: await picture("csr-assets", d.officer?.signature_path) },
+    });
+    return json(res, 200, { fileName: `Scholarship Termination Form - ${d.scholar_id_number}.pdf`, pdfBase64: Buffer.from(pdf).toString("base64") });
   }
 
   // ── The stand-in for the storage-tool-public edge function: the very same request handler (bundled from supabase/functions/_shared/storageToolPublic.ts),
