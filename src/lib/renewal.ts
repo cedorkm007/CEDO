@@ -291,14 +291,6 @@ export function formatSlotShort(startIso: string | null | undefined): string {
 
 /** Credits needed in each SDP category in a semester (the database's sdp_category_credit_required()). Used only to word "1 more credit". */
 export const SDP_CREDITS_REQUIRED = 3;
-/**
- * Credit that was lacking last semester (an approved SDP reconsideration) counts AGAINST the new semester: the category shows fewer credits than were earned, negative while nothing
- * has been earned yet, against the usual 3. The database still says "needs 3 plus what is owed"; the two are the same sum (earned - owed >= 3  is  earned >= 3 + owed).
- * `required` is what the database says the category needs (3 plus what is owed); the owed part is what it is above 3.
- */
-export const sdpOwedFrom = (required: number | null | undefined, base: number = SDP_CREDITS_REQUIRED): number => Math.max(0, (Number.isFinite(Number(required)) ? Number(required) : base) - base);
-/** The credits to SHOW for a category: earned, less what is owed from last semester (can be negative). */
-export const sdpShownCredits = (earned: number | null | undefined, required: number | null | undefined, base: number = SDP_CREDITS_REQUIRED): number => (earned ?? 0) - sdpOwedFrom(required, base);
 const SDP_CATEGORIES: { key: "community_service" | "community_volunteerism" | "formation_program"; label: string }[] = [
   { key: "community_service", label: "Institutional Volunteerism" },
   { key: "community_volunteerism", label: "Community Volunteerism" },
@@ -574,7 +566,7 @@ export function sdpReconsiderationImplication(ev: { basis_school_year?: string; 
   const s = ev.sdp;
   const basis = ev.basis_school_year && ev.basis_term ? termLabelOf(ev.basis_school_year, ev.basis_term) : "the previous semester";
   const next = s?.next_school_year && s?.next_semester ? termLabelOf(s.next_school_year, s.next_semester) : "the next semester";
-  return `If it is approved, you will be treated as complied with the SDP for ${basis}, and the lacking credits (${sdpLackingText(s?.lacking)}) will count against your SDP credits for ${next}: those categories start with negative credits until you earn them back.`;
+  return `If it is approved, you will be treated as complied with the SDP for ${basis}, and the lacking credits (${sdpLackingText(s?.lacking)}) will be added to your SDP requirement for ${next}.`;
 }
 /** The reconsideration status shown to people: label and colour tone. */
 export function sdpReconsiderationStatusText(status: SdpReconsiderationStatus): { text: string; tone: "good" | "bad" | "warn" | "plain" } {
