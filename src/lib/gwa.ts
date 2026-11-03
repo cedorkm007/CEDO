@@ -106,3 +106,74 @@ export function computeGwa(rows: GradeLike[], letterGrades: LetterGrade[]): numb
 export function formatGwa(gwa: number | null): string {
   return gwa === null ? "—" : gwa.toFixed(2);
 }
+
+// ── GWA under a school's own GWA settings (School Portal > Grading System > GWA Computation) ──────────
+// Phase 1 uses it for the "sample computation" and the preview of what a change would do; Phase 2 switches every screen to it. With the default settings it gives the same number as
+// computeGwa() above. Everything a school can choose is in GwaSettings.
+
+export interface GwaSettings {
+  method: "weighted" | "simple";
+  gradeUsed: "equivalent" | "percentage";
+  decimals: 2 | 3 | 4;
+  rounding: "round" | "cut";
+  includeFailed: boolean;
+  /** Special marks that count as a number in the GWA (e.g. DRP counts as 5). Marks not listed are left out. */
+  specialValues: Record<string, number>;
+  /** Subject codes excluded from the GWA when a subject is first saved (e.g. NSTP, PE). The per-subject tick still decides each subject. */
+  excludedCodes: string[];
+  /** The GWA a scholar must keep, on the scale of the GWA (a percentage when the GWA uses percentages). null = the school's existing requirement. */
+  retentionThreshold: number | null;
+}
+
+/** Today's behaviour: units-weighted, the equivalent grade, 2 decimals, rounded, failed grades included, special marks left out. */
+export const DEFAULT_GWA_SETTINGS: GwaSettings = { method: "weighted", gradeUsed: "equivalent", decimals: 2, rounding: "round", includeFailed: true, specialValues: {}, excludedCodes: [], retentionThreshold: null };
+
+/** Rounds (or cuts off) to the chosen decimals without the binary-fraction surprises (1.005 rounds to 1.01; 1.7483 cuts to 1.74). */
+export function roundTo(value: number, decimals: number, mode: "round" | "cut"): number {
+  const s = String(value);
+  if (s.includes("e")) return mode === "round" ? Number(value.toFixed(decimals)) : Math.trunc(value * 10 ** decimals) / 10 ** decimals;
+  const shifted = Number(`${s}e${decimals}`);
+  const whole = mode === "round" ? Math.round(shifted) : Math.trunc(shifted);
+  return Number(`${whole}e-${decimals}`);
+}
+
+/** The GWA as shown: "—" when there is none, otherwise rounded or cut off to the school's decimals. */
+export function formatWith(value: number | null, s: Pick<GwaSettings, "decimals" | "rounding">): string {
+  return value === null ? "—" : roundTo(value, s.decimals, s.rounding).toFixed(s.decimals);
+}
+
+export interface GwaSettingsRow extends GradeLike {
+  /** The percentage of the subject, when the school enters percentages. */
+  percentage?: number | null;
+  /** True when the subject is judged failed (only looked at when failed grades are left out). */
+  failed?: boolean;
+}
+export type GwaLineReason = "" | "special" | "excluded" | "no_number" | "failed";
+export interface GwaSettingsLine { value: number | null; units: number; counted: boolean; reason: GwaLineReason }
+export interface GwaSettingsResult { gwa: number | null; lines: GwaSettingsLine[]; subjectsCounted: number; unitsCounted: number; formula: string }
+
+/**
+ * A subject counts when it is not excluded, has a number to use (its grade, or its percentage when the GWA uses percentages, or the special number set for its mark) and is not a
+ * failed subject while failed grades are left out. A subject without units weighs 1 unit. null GWA when nothing counts.
+ */
+export function gwaWithSettings(rows: GwaSettingsRow[], letterGrades: LetterGrade[], s: GwaSettings): GwaSettingsResult {
+  const lines: GwaSettingsLine[] = rows.map(r => {
+    const units = effectiveUnits(r);
+    if (r.excludeFromGwa) return { value: null, units, counted: false, reason: "excluded" };
+    const special = Object.entries(s.specialValues).find(([k]) => k.trim().toLowerCase() === r.grade.trim().toLowerCase());
+    const value = special ? special[1] : s.gradeUsed === "percentage" ? (r.percentage ?? null) : resolveGradeValue(r.grade, letterGrades);
+    if (value === null) return { value: null, units, counted: false, reason: "no_number" };
+    if (!s.includeFailed && r.failed) return { value, units, counted: false, reason: "failed" };
+    return { value, units, counted: true, reason: special ? "special" : "" };
+  });
+  const counted = lines.filter(l => l.counted);
+  if (counted.length === 0) return { gwa: null, lines, subjectsCounted: 0, unitsCounted: 0, formula: "" };
+  const num = (n: number) => (Math.abs(n * 100 - Math.round(n * 100)) < 1e-9 ? n.toFixed(2) : String(n));      // 1.5 is shown as 1.50, 1.375 as it is
+  if (s.method === "weighted") {
+    const sumU = counted.reduce((a, l) => a + l.units, 0);
+    const gwa = counted.reduce((a, l) => a + (l.value as number) * l.units, 0) / sumU;
+    return { gwa, lines, subjectsCounted: counted.length, unitsCounted: sumU, formula: `(${counted.map(l => `${num(l.value as number)}×${l.units}`).join(" + ")}) ÷ ${sumU}` };
+  }
+  const gwa = counted.reduce((a, l) => a + (l.value as number), 0) / counted.length;
+  return { gwa, lines, subjectsCounted: counted.length, unitsCounted: counted.reduce((a, l) => a + l.units, 0), formula: `(${counted.map(l => num(l.value as number)).join(" + ")}) ÷ ${counted.length}` };
+}
