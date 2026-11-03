@@ -5,7 +5,7 @@ import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
   fetchAttendanceForActivity, fetchCreditHistory, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, creditScholarForDay, removeAttendance, moveCreditSemester, type CreditPeriod, type AttendedWithoutCredit, type CreditHistoryEntry,
-  fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpChecklistSummary, fetchSdpOwed,
+  fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpAdvanced, fetchSdpChecklistSummary, fetchSdpOwed,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
   isSubCategorySupported, isDayLabelsSupported, type ChecklistSummary, type ChecklistSortKey, type SDPActivity, type SDPCategory, type SDPSubCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
@@ -1478,10 +1478,13 @@ function ChecklistSection() {
 
   // Who owes extra credits for the chosen semester (usually nobody, or a few): the credit columns then show "3 / 5".
   const [owed, setOwed] = useState<Awaited<ReturnType<typeof fetchSdpOwed>>>(() => new Map());
+  // Scholars renewed for the current semester are shown with the NEXT semester's numbers (3 credits per category used, the rest carried on).
+  const [advanced, setAdvanced] = useState<Awaited<ReturnType<typeof fetchSdpAdvanced>>>(() => new Map());
   useEffect(() => {
     if (!chosen) return;
     let cancelled = false;
     void fetchSdpOwed(chosen.schoolYear, chosen.term).then(m => { if (!cancelled) setOwed(m); });
+    void fetchSdpAdvanced(chosen.schoolYear, chosen.term).then(m => { if (!cancelled) setAdvanced(m); });
     return () => { cancelled = true; };
   }, [chosen]);
 
@@ -1596,7 +1599,13 @@ function ChecklistSection() {
               paged.map(s => (
                 <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
                   <td className="px-2.5 py-2.5 text-slate-600 whitespace-nowrap">{s.scholarIdNumber}</td>
-                  <td className="px-2.5 py-2.5 font-medium text-[#062444] break-words">{s.name}</td>
+                  <td className="px-2.5 py-2.5 font-medium text-[#062444] break-words">{s.name}
+                    {advanced.has(s.scholarIdNumber) && (
+                      <span className="mt-0.5 block text-[11.5px] font-semibold text-[#0077b6]" title="This scholar is renewed, so the credits shown are for the next semester: 3 per category were used, credits above that carry on, and lacking credits are added to the requirement.">
+                        Renewed — showing {termLabel(advanced.get(s.scholarIdNumber)!.semester)} {advanced.get(s.scholarIdNumber)!.schoolYear}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-2.5 py-2.5 text-center"><CreditCell credits={s.communityService} owed={owed.get(s.scholarIdNumber)?.communityService} /></td>
                   <td className="px-2.5 py-2.5 text-center"><CreditCell credits={s.communityVolunteerism} owed={owed.get(s.scholarIdNumber)?.communityVolunteerism} /></td>
                   <td className="px-2.5 py-2.5 text-center"><CreditCell credits={s.formationProgram} owed={owed.get(s.scholarIdNumber)?.formationProgram} /></td>

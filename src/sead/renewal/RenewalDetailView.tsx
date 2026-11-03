@@ -4,7 +4,7 @@ import { ArrowLeft, CheckCircle2, Loader2, Paperclip, ShieldCheck, XCircle } fro
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
 import { DIVISION_HEAD_DECISION_LABEL, DOC_LABEL, DOC_NEEDS_APPROVAL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, sdpLackingText, sdpReconsiderationStatusText, termLabelOf, type DivisionHeadDecision } from "@/lib/renewal";
 import {
-  confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, getStaffRenewalDocumentUrl, returnRenewal, reviewDocument, type DetailDocument, type RenewalDetail,
+  confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, fetchRenewalSdpAfter, getStaffRenewalDocumentUrl, returnRenewal, reviewDocument, type DetailDocument, type RenewalDetail,
 } from "../renewalApi";
 import { ReasonDialog } from "./ReasonDialog";
 import { RenewalCsrSection } from "./RenewalCsrSection";
@@ -22,6 +22,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 /** One scholar's renewal for one term: the application, the documents, the SDP result, the grades with failed/INC subjects, probation history, and the rule that was applied. The evaluator's actions are at the top. */
 export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { recordId: string; canAct: boolean; onBack: () => void; onChanged: () => void }) {
   const [detail, setDetail] = useState<RenewalDetail | null>(null);
+  const [sdpAfter, setSdpAfter] = useState<Awaited<ReturnType<typeof fetchRenewalSdpAfter>>>(null);
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<"confirm" | "confirmReconsidered" | "sendDivisionHead" | "endorse" | "return" | "accept" | "decline" | null>(null);
   const [dh, setDh] = useState<DivisionHeadStatus | null>(null);
@@ -30,6 +31,7 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
 
   const load = useCallback(async () => {
     const r = await fetchRenewalDetail(recordId);
+    setSdpAfter(r.ok && r.detail.record.stage === "renewed" ? await fetchRenewalSdpAfter(recordId) : null);
     if (r.ok) {
       setDetail(r.detail); setError("");
       setDh(["endorsed_division_head", "needs_consultation_division_head", "ready_to_endorse", "reconsidered", "removed", "renewed"].includes(r.detail.record.stage) ? await fetchDivisionHeadStatus(recordId) : null);
@@ -142,6 +144,13 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
               </p>
             )}
           </>
+        )}
+        {sdpAfter && (
+          <p className="mt-1.5 rounded-md border border-[#0077b6]/40 bg-[#eef6fc] px-2.5 py-2 text-[14px] text-slate-900" aria-label="SDP after the renewal">
+            <strong>After the renewal — {termLabelOf(sdpAfter.schoolYear, sdpAfter.semester)}:</strong>{" "}
+            Institutional Volunteerism {sdpAfter.communityService} / {sdpAfter.requiredCommunityService} · Community Volunteerism {sdpAfter.communityVolunteerism} / {sdpAfter.requiredCommunityVolunteerism} · Formation Program {sdpAfter.formationProgram} / {sdpAfter.requiredFormationProgram}.
+            <span className="block text-[13.5px] text-slate-700">3 credits per category were used for the semester that was renewed; credits above that carry on, and credits that were lacking (SDP reconsideration) are added to the requirement.</span>
+          </p>
         )}
       </Section>
 

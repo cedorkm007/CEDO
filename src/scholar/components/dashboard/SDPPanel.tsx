@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { X, ClipboardList, Lightbulb, CheckCircle2 } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import {
-  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPOwed, fetchScholarSDPProgress, fetchScholarSDPRequirements, type SDPOwedRow, SDP_CATEGORIES, subCategoryLabel, daySubName, manilaDay,
+  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPOwed, fetchScholarSDPProgress, fetchScholarSDPRequirements, fetchScholarSDPView, type SDPOwedRow, SDP_CATEGORIES, subCategoryLabel, daySubName, manilaDay,
   type SDPActivity, type SDPCreditCounts,
 } from "../../sdpApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
@@ -187,12 +187,15 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   const [required, setRequired] = useState<SDPCreditCounts>({ community_service: CREDITS_REQUIRED, community_volunteerism: CREDITS_REQUIRED, formation_program: CREDITS_REQUIRED });
   // credits added to the requirement of the semesters AFTER the current one (an approved SDP reconsideration), shown as soon as it is approved
   const [coming, setComing] = useState<SDPOwedRow[]>([]);
+  // set once the scholar is renewed: the boxes then show the NEXT semester (3 credits per category used, the rest carried on)
+  const [nextSemester, setNextSemester] = useState<{ schoolYear: string; semester: string } | null>(null);
 
   async function loadAll(quiet = false) {
     if (!quiet) setLoading(true);
-    const [a, progress, attended, req, owed] = await Promise.all([
-      fetchApprovedSDPActivities(), fetchScholarSDPProgress(), fetchAttendedSDPActivityIds(scholarIdNumber), fetchScholarSDPRequirements(), fetchScholarSDPOwed(),
+    const [a, progress, attended, req, owed, view] = await Promise.all([
+      fetchApprovedSDPActivities(), fetchScholarSDPProgress(), fetchAttendedSDPActivityIds(scholarIdNumber), fetchScholarSDPRequirements(), fetchScholarSDPOwed(), fetchScholarSDPView(),
     ]);
+    setNextSemester(view?.shifted ? { schoolYear: view.schoolYear, semester: view.semester } : null);
     setComing(owed.filter(o => !o.isCurrent));
     setActivities(a);
     setCredits(progress.credits);
@@ -205,6 +208,11 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
 
   return (
     <SectionCard icon={<Lightbulb size={14} />} title="Scholars' Development Program (SDP)">
+      {!loading && nextSemester && (
+        <p className="mb-3 rounded-lg border border-[#0077b6]/40 bg-[#eef6fc] px-3 py-2 text-[13px] text-[#062444]" role="status">
+          <strong>You are renewed.</strong> The boxes below show your SDP for {termLabelOf(nextSemester.schoolYear, nextSemester.semester)}: 3 credits per category were used for the semester that was renewed, credits above that carry on, and any credits you lacked are added to the requirement.
+        </p>
+      )}
       {!loading && <CreditProgress credits={credits} required={required} />}
       {!loading && SDP_CATEGORIES.some(c => (required[c.key] ?? CREDITS_REQUIRED) > CREDITS_REQUIRED) && (
         <p className="-mt-3 mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-950">Part of this semester's requirement is credit that was lacking last semester and was added after your SDP reconsideration was approved.</p>
