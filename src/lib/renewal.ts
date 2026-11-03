@@ -122,6 +122,19 @@ export function validateRenewalFile(file: { name: string; type: string; size: nu
   return null;
 }
 
+/** The three documents of an INC are renamed when they are uploaded, so the approver sees whose they are: "Study Plan - Dela Cruz, Juan - 2024-0001.pdf". */
+export const RENAMED_DOC_LABEL: Partial<Record<DocKind, string>> = { study_plan: "Study Plan", inc_letter: "INC Letter", clearance: "Clearance" };
+/** The new file name for a document of the three kinds above (null for the others: they keep the scholar's own file name). A second file of the same kind gets " (2)", and so on. */
+export function renamedDocumentName(kind: DocKind, lastName: string, firstName: string, scholarIdNumber: string, fileName: string, position = 1): string | null {
+  const label = RENAMED_DOC_LABEL[kind];
+  if (!label) return null;
+  const ext = /\.[A-Za-z0-9]{1,5}$/.exec(fileName)?.[0].toLowerCase() ?? "";
+  const clean = (t: string) => t.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
+  const name = [clean(lastName), clean(firstName)].filter(Boolean).join(", ");
+  const who = [name, clean(scholarIdNumber)].filter(Boolean).join(" - ");
+  return `${label}${who ? ` - ${who}` : ""}${position > 1 ? ` (${position})` : ""}${ext}`;
+}
+
 /** <scholar id>/<record id>/<kind>/<uuid>-<safe file name> — the folder the storage rules and the database guard expect. */
 export function renewalDocumentPath(scholarIdNumber: string, recordId: string, kind: DocKind, fileName: string, uniqueId: string): string {
   // Keep a plain extension, make the rest of the name safe (no slashes, no "..", no odd characters).

@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
 import {
-  DOC_LABEL, RENEWAL_DOCUMENT_BUCKET, renewalDocumentPath, validateRenewalFile, validateSelfGradeImage, validateSelfGradeLines,
+  DOC_LABEL, RENAMED_DOC_LABEL, RENEWAL_DOCUMENT_BUCKET, renamedDocumentName, renewalDocumentPath, validateRenewalFile, validateSelfGradeImage, validateSelfGradeLines,
   type ConsultState, type DocKind, type RenewalEvaluation, type RenewalStage, type SelfGradeDifference, type SelfGradeLine, type SelfGradesStatus, type WindowState,
 } from "@/lib/renewal";
 
@@ -120,7 +120,9 @@ export async function applyForRenewal(args: {
     if (up.error) { await undo(); return { ok: false, error: up.error.message }; }
     uploaded.push({ path, name: f.name, mime: f.type, size: f.size });
   }
-  for (const d of incDocs) for (const f of d.files) {
+  const who = incDocs.length > 0 ? await myNameForFiles() : { lastName: "", firstName: "" };
+  for (const d of incDocs) for (const [i, orig] of d.files.entries()) {
+    const f = renamedFile(orig, d.kind, who, args.scholarIdNumber ?? "", i + 1);
     const safe = f.name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80);
     const path = `${args.scholarIdNumber}/${args.windowId}/inc-docs/${d.kind}/${crypto.randomUUID()}-${safe}`;
     const up = await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).upload(path, f, { contentType: f.type, upsert: false });
@@ -140,6 +142,21 @@ export async function applyForRenewal(args: {
     return { ok: false, error: functionMissing(error) ? "The application form cannot carry your grades yet. Please apply without them and enter them afterwards." : error.message };
   }
   return { ok: true };
+}
+
+/** The scholar's own name, for naming the INC documents (the scholar can read only their own row). Empty names when it can't be read: the file is then named with the ID only. */
+async function myNameForFiles(): Promise<{ lastName: string; firstName: string }> {
+  try {
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) return { lastName: "", firstName: "" };
+    const { data } = await supabase.from("scholars").select("first_name, last_name").eq("id", u.user.id).maybeSingle();
+    return { lastName: String(data?.last_name ?? ""), firstName: String(data?.first_name ?? "") };
+  } catch { return { lastName: "", firstName: "" }; }
+}
+/** The same file under the name the approver should see (Study plan, INC letter and Clearance only; any other kind is returned as it is). */
+function renamedFile(f: File, kind: DocKind, who: { lastName: string; firstName: string }, scholarIdNumber: string, position: number): File {
+  const name = renamedDocumentName(kind, who.lastName, who.firstName, scholarIdNumber, f.name, position);
+  return name ? new File([f], name, { type: f.type, lastModified: f.lastModified }) : f;
 }
 
 export async function resubmitRenewal(recordId: string, note: string): Promise<Done> {
@@ -278,12 +295,13 @@ export async function cancelConsultation(recordId: string): Promise<Done> {
 export async function uploadRenewalDocument(args: { file: File; scholarIdNumber: string; recordId: string; kind: DocKind; existingOfKind: number }): Promise<Done> {
   const problem = validateRenewalFile(args.file, args.existingOfKind);
   if (problem) return { ok: false, error: problem };
-  const path = renewalDocumentPath(args.scholarIdNumber, args.recordId, args.kind, args.file.name, crypto.randomUUID());
-  const up = await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).upload(path, args.file, { contentType: args.file.type, upsert: false });
+  const file = RENAMED_DOC_LABEL[args.kind] ? renamedFile(args.file, args.kind, await myNameForFiles(), args.scholarIdNumber, args.existingOfKind + 1) : args.file;
+  const path = renewalDocumentPath(args.scholarIdNumber, args.recordId, args.kind, file.name, crypto.randomUUID());
+  const up = await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).upload(path, file, { contentType: file.type, upsert: false });
   if (up.error) return { ok: false, error: up.error.message };
   const { error } = await supabase.from("renewal_documents").insert({
     record_id: args.recordId, scholar_id_number: args.scholarIdNumber, kind: args.kind, storage_path: path,
-    file_name: args.file.name, mime_type: args.file.type, size_bytes: args.file.size,
+    file_name: file.name, mime_type: file.type, size_bytes: file.size,
   });
   if (error) {
     await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).remove([path]);

@@ -84,5 +84,23 @@ test("two files and their undo files exist; no table is dropped or emptied", () 
   assert.ok(src("supabase_migration_inc_docs_a_clearance_kind.sql").includes("set lock_timeout = '5s'"));
 });
 
+console.log("\nThe file names");
+test("the three INC documents are renamed 'Document - Last name, First name - ID' with the original extension", () => {
+  assert.equal(R.renamedDocumentName("study_plan", "Dela Cruz", "Juan", "2024-0001", "scan 123.PDF"), "Study Plan - Dela Cruz, Juan - 2024-0001.pdf");
+  assert.equal(R.renamedDocumentName("inc_letter", "Dela Cruz", "Juan", "2024-0001", "IMG_5.jpeg"), "INC Letter - Dela Cruz, Juan - 2024-0001.jpeg");
+  assert.equal(R.renamedDocumentName("clearance", "Dela Cruz", "Juan", "2024-0001", "c.png"), "Clearance - Dela Cruz, Juan - 2024-0001.png");
+});
+test("a second file of the same kind gets (2); a missing name falls back to the ID; characters a file name cannot hold are dropped", () => {
+  assert.equal(R.renamedDocumentName("clearance", "Reyes", "Ana", "T-1", "a.pdf", 2), "Clearance - Reyes, Ana - T-1 (2).pdf");
+  assert.equal(R.renamedDocumentName("study_plan", "", "", "T-1", "a.pdf"), "Study Plan - T-1.pdf");
+  assert.equal(R.renamedDocumentName("inc_letter", "O/Brien:", "Sean?", "T-1", "a"), "INC Letter - O Brien, Sean - T-1");
+});
+test("the other kinds keep the scholar's own file name", () => assert.equal(R.renamedDocumentName("prospectus", "Reyes", "Ana", "T-1", "a.pdf"), null));
+test("the application form and the later upload both rename before uploading", () => {
+  const api = src("src/scholar/renewalApi.ts");
+  assert.ok(api.includes('renamedFile(orig, d.kind, who, args.scholarIdNumber ?? "", i + 1)') && api.includes("renamedFile(args.file, args.kind, await myNameForFiles(), args.scholarIdNumber, args.existingOfKind + 1)"));
+  assert.ok(api.includes("file_name: file.name"));
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);
 fs.rmSync(tmp, { recursive: true, force: true });
