@@ -13,7 +13,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "incdoc-"));
 const outfile = path.join(tmp, "renewal.mjs");
 await build({ entryPoints: [path.join(root, "src/lib/renewal.ts")], bundle: true, format: "esm", platform: "node", outfile, logLevel: "error", absWorkingDir: root, alias: { "@": path.join(root, "src") } });
 const R = await import(pathToFileURL(outfile).href);
-const src = rel => fs.readFileSync(path.join(root, rel), "utf8");
+const src = rel => fs.readFileSync(path.join(root, rel), "utf8").split("\r\n").join("\n");      // the files may be saved with Windows line ends
 let passed = 0;
 const test = (name, fn) => { try { fn(); passed++; console.log(`  ok   ${name}`); } catch (e) { process.exitCode = 1; console.log(`  FAIL ${name}\n       ${e.message}`); } };
 

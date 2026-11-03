@@ -39,6 +39,7 @@ const STAFF = [
   { username: "demo.sead", first: "TEST", last: "SEAD Staff", role: "staff", sead: true, tags: ["scholar_management", "scholars_grades_monitoring", "sdp_monitoring"], label: "SEAD staff (Grades Monitoring, SDP, Scholars)" },
   { username: "demo.counselor", first: "TEST", last: "Counselor", role: "staff", sead: true, tags: ["scholar_counseling"], label: "Scholar counselor" },
   { username: "demo.evaluator", first: "TEST", last: "Renewal Evaluator", role: "staff", sead: true, tags: ["scholar_renewal_evaluator"], label: "Scholar Renewal Evaluator" },
+  { username: "demo.docs", first: "TEST", last: "Documents Approver", role: "staff", sead: true, tags: ["renewal_documents_approver"], label: "Renewal Documents Approver (INC letter, clearance, study plan)" },
   { username: "demo.divhead", first: "TEST", last: "Division Head", role: "staff", sead: true, tags: ["sead_division_head"], label: "Division Head" },
   { username: "demo.seadhead", first: "TEST", last: "SEAD Head", role: "division_admin", sead: true, tags: [], label: "Head of SEAD (Scholar Renewal Dashboard and Excel only)" },
   { username: "it.admin1", first: "TEST", last: "IT Admin", role: "staff", sead: false, tags: [], label: "IT admin" },

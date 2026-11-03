@@ -16,7 +16,7 @@ const FILE_C = "supabase_migration_inc_docs_c_lock_approved.sql", UNDO_C = "undo
 
 const num = n => `TEST-${String(n).padStart(4, "0")}`;
 const uidOf = n => seedId(`scholar:${n}`);
-const EVAL = seedId("staff:demo.evaluator");
+const EVAL = seedId("staff:demo.evaluator"), DOCS = seedId("staff:demo.docs");
 const W1 = seedId("window:w1");
 const T = "2026-2027", S1 = "1st Semester";
 async function as(uid, fn, role = "authenticated") {
@@ -41,7 +41,7 @@ const apply = await attempt(uidOf(7), "select public.renewal_apply($1,'S','BS Te
 const rec = await recordOf(7);
 check("a scholar with an INC applies with the three documents", apply.ok && !!rec, apply.msg);
 const ids = Object.fromEntries((await q("select id, kind from renewal_documents where record_id = $1", [rec.id])).map(d => [d.kind, d.id]));
-const approve = await attempt(EVAL, "select public.renewal_review_document($1, true, '')", [ids.study_plan]);
+const approve = await attempt(DOCS, "select public.renewal_review_document($1, true, '')", [ids.study_plan]);
 check("the evaluator approves the study plan", approve.ok && (await q("select status from renewal_documents where id = $1", [ids.study_plan]))[0].status === "accepted", approve.msg);
 const before = await addAgain(7, rec, "study_plan");
 check("without the new file another study plan could still be added after the approval (the case in the report)", before.ok, before.msg);
@@ -55,7 +55,7 @@ const clr = await addAgain(7, rec, "clearance");
 check("a clearance that is only received (not approved) can still get another file", clr.ok, clr.msg);
 const del = await attempt(uidOf(7), "delete from renewal_documents where id = $1 returning id", [ids.study_plan]);
 check("the approved study plan cannot be removed either", del.ok && del.rows.length === 0 && (await q("select count(*)::int n from renewal_documents where id = $1", [ids.study_plan]))[0].n === 1, del.msg);
-await attempt(EVAL, "select public.renewal_review_document($1, true, '')", [ids.inc_letter]);
+await attempt(DOCS, "select public.renewal_review_document($1, true, '')", [ids.inc_letter]);
 const inc = await addAgain(7, rec, "inc_letter");
 check("the same for an approved INC letter", !inc.ok && /already been approved/.test(inc.msg), inc.msg);
 const other = await addAgain(7, rec, "prospectus");

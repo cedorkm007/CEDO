@@ -5,6 +5,7 @@
 //   - the IT admin (it.admin1): the Certificate tab (the signatories of the Certificate of Scholarship Renewal) and the SDP Reconsideration tab (he decides requests)
 //   - an account with the tag sdp_reconsideration_approver (appointed by it.admin1): only the SDP Reconsideration tab
 //   - an account with the tag scholar_grades_approver (appointed by it.admin1): only the Entered grades tab (the evaluator can read that tab too)
+//   - an account with the tag renewal_documents_approver (appointed by it.admin1): the Documents tab (the evaluator can read that tab too) and the lists
 // Mirrors can_view_renewal_reports() in supabase_migration_renewal_p7_reports.sql.
 export interface RenewalAccessUser { tags: string[]; role: string; division: string; username?: string }
 
@@ -19,6 +20,9 @@ export const canDecideSdpReconsideration = (u: RenewalAccessUser): boolean => u.
 /** Who may APPROVE or RETURN grades a scholar entered: the accounts it.admin1 gives the Grades Approver tag (the database checks it in can_approve_scholar_grades()). */
 export const canApproveScholarGrades = (u: RenewalAccessUser): boolean => u.tags.includes("scholar_grades_approver");
 
+/** Who may APPROVE or RETURN a scholar's study plan, INC letter and clearance: the accounts it.admin1 gives the Renewal Documents Approver tag (the database checks it in can_approve_renewal_documents()). The evaluator can only read them. */
+export const canApproveRenewalDocuments = (u: RenewalAccessUser): boolean => u.tags.includes("renewal_documents_approver");
+
 export function canSeeScholarRenewal(u: RenewalAccessUser): boolean {
-  return u.tags.includes("scholar_renewal_evaluator") || u.tags.includes("sead_division_head") || isSeadHead(u) || isItAdmin(u) || canDecideSdpReconsideration(u) || canApproveScholarGrades(u);
+  return u.tags.includes("scholar_renewal_evaluator") || u.tags.includes("sead_division_head") || isSeadHead(u) || isItAdmin(u) || canDecideSdpReconsideration(u) || canApproveScholarGrades(u) || canApproveRenewalDocuments(u);
 }

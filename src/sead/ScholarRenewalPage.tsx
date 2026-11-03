@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BarChart3, CalendarClock, CalendarRange, CheckCheck, ClipboardCheck, ClipboardList, FileCheck2, Scale, ShieldCheck, UserX } from "lucide-react";
+import { BarChart3, CalendarClock, CalendarRange, CheckCheck, ClipboardCheck, ClipboardList, FileCheck2, FileText, Scale, ShieldCheck, UserX } from "lucide-react";
 import { formatDay, termLabelOf, windowState } from "@/lib/renewal";
 import { fetchRenewalWindows, type RenewalWindowRow } from "./renewalApi";
 import { RenewalListTab } from "./renewal/RenewalListTab";
+import { RenewalDocumentsTab } from "./renewal/RenewalDocumentsTab";
 import { RenewalSdpReconsiderationTab } from "./renewal/RenewalSdpReconsiderationTab";
 import { RenewalEnteredGradesTab } from "./renewal/RenewalEnteredGradesTab";
 import { LiveProvider, useLiveReload } from "@/lib/liveUpdates";
@@ -13,7 +14,7 @@ import { RenewalDivisionHeadTab } from "./renewal/RenewalDivisionHeadTab";
 import { RenewalDashboardTab } from "./renewal/RenewalDashboardTab";
 import { RenewalCertificateTab } from "./renewal/RenewalCertificateTab";
 
-type Tab = "applications" | "renewed" | "notApplied" | "sdpReconsideration" | "enteredGrades" | "calendar" | "windows" | "divisionHead" | "dashboard" | "certificate";
+type Tab = "applications" | "renewed" | "notApplied" | "sdpReconsideration" | "enteredGrades" | "documents" | "calendar" | "windows" | "divisionHead" | "dashboard" | "certificate";
 
 /**
  * "Scholar Renewal" — the evaluator's tool. Gated by the "scholar_renewal_evaluator" tag (src/app/staffToolTags.ts). The Division Head
@@ -22,21 +23,21 @@ type Tab = "applications" | "renewed" | "notApplied" | "sdpReconsideration" | "e
  * included); then the Dashboard, the approvers' tabs, the Consultations calendar, the Division Head tab, the renewal windows, and a detail page per scholar. The rules are decided by the database; this page shows them and records the evaluator's decisions.
  * The IT admin (it.admin1) opens it only for the "Certificate" tab (the signatories of the Certificate of Scholarship Renewal).
  */
-type ScholarRenewalPageProps = { canAct?: boolean; isEvaluator?: boolean; isDivisionHead?: boolean; isSeadHead?: boolean; isItAdmin?: boolean; isSdpApprover?: boolean; isGradesApprover?: boolean };
+type ScholarRenewalPageProps = { canAct?: boolean; isEvaluator?: boolean; isDivisionHead?: boolean; isSeadHead?: boolean; isItAdmin?: boolean; isSdpApprover?: boolean; isGradesApprover?: boolean; isDocumentsApprover?: boolean };
 
 /** Scholar Renewal, kept up to date while it is open: when a scholar applies, a document is reviewed, a booking is made, the school uploads grades... every tab shows it without refreshing (src/lib/liveUpdates.tsx). */
 export function ScholarRenewalPage(props: ScholarRenewalPageProps) {
   return <LiveProvider kind="staff"><ScholarRenewalPageInner {...props} /></LiveProvider>;
 }
 
-function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivisionHead = false, isSeadHead = false, isItAdmin = false, isSdpApprover = false, isGradesApprover = false }: { canAct?: boolean; isEvaluator?: boolean; isDivisionHead?: boolean; isSeadHead?: boolean; isItAdmin?: boolean; isSdpApprover?: boolean; isGradesApprover?: boolean }) {
+function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivisionHead = false, isSeadHead = false, isItAdmin = false, isSdpApprover = false, isGradesApprover = false, isDocumentsApprover = false }: { canAct?: boolean; isEvaluator?: boolean; isDivisionHead?: boolean; isSeadHead?: boolean; isItAdmin?: boolean; isSdpApprover?: boolean; isGradesApprover?: boolean; isDocumentsApprover?: boolean }) {
   const seesRenewals = isEvaluator || isDivisionHead || isSeadHead;   // a lone IT admin sees only the Certificate tab
-  const seesList = isEvaluator || isDivisionHead || isSdpApprover || isGradesApprover;      // the three lists: the evaluator and the people who act on them
-  const viewer = useMemo(() => ({ evaluator: isEvaluator, gradesApprover: isGradesApprover, sdpApprover: isSdpApprover, divisionHead: isDivisionHead }), [isEvaluator, isGradesApprover, isSdpApprover, isDivisionHead]);
+  const seesList = isEvaluator || isDivisionHead || isSdpApprover || isGradesApprover || isDocumentsApprover;      // the three lists: the evaluator and the people who act on them
+  const viewer = useMemo(() => ({ evaluator: isEvaluator, gradesApprover: isGradesApprover, sdpApprover: isSdpApprover, documentsApprover: isDocumentsApprover, divisionHead: isDivisionHead }), [isEvaluator, isGradesApprover, isSdpApprover, isDocumentsApprover, isDivisionHead]);
   const [windows, setWindows] = useState<RenewalWindowRow[] | null>(null);
   const [error, setError] = useState("");
   const [windowId, setWindowId] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>(isEvaluator ? "applications" : isDivisionHead ? "divisionHead" : seesRenewals ? "dashboard" : isSdpApprover ? "sdpReconsideration" : isGradesApprover ? "enteredGrades" : "certificate");
+  const [tab, setTab] = useState<Tab>(isEvaluator ? "applications" : isDivisionHead ? "divisionHead" : seesRenewals ? "dashboard" : isSdpApprover ? "sdpReconsideration" : isGradesApprover ? "enteredGrades" : isDocumentsApprover ? "documents" : "certificate");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -65,6 +66,7 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
     { key: "dashboard", label: "Dashboard", icon: <BarChart3 size={14} aria-hidden="true" /> },
     { key: "enteredGrades", label: "Entered grades", icon: <ClipboardCheck size={14} aria-hidden="true" />, evaluatorOnly: true },
     { key: "sdpReconsideration", label: "SDP Reconsideration", icon: <Scale size={14} aria-hidden="true" />, evaluatorOnly: true },
+    { key: "documents", label: "Documents", icon: <FileText size={14} aria-hidden="true" />, evaluatorOnly: true },
     { key: "calendar", label: "Consultations", icon: <CalendarClock size={14} aria-hidden="true" />, evaluatorOnly: true },
     { key: "divisionHead", label: "Division Head", icon: <ShieldCheck size={14} aria-hidden="true" /> },
     { key: "windows", label: "Windows", icon: <CalendarRange size={14} aria-hidden="true" />, evaluatorOnly: true },
@@ -77,17 +79,18 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
     : (t.key === "applications" || t.key === "renewed" || t.key === "notApplied") ? seesList
     : t.key === "sdpReconsideration" ? (isEvaluator || isSdpApprover)
     : t.key === "enteredGrades" ? (isEvaluator || isGradesApprover)
+    : t.key === "documents" ? (isEvaluator || isDocumentsApprover)
     : seesRenewals && (isEvaluator || !t.evaluatorOnly) && (t.key !== "divisionHead" || isEvaluator || isDivisionHead));
-  const termBarNeeded = tab !== "divisionHead" && tab !== "certificate" && tab !== "sdpReconsideration" && tab !== "enteredGrades";   // the dashboard and the lists work on the chosen term
+  const termBarNeeded = tab !== "divisionHead" && tab !== "certificate" && tab !== "sdpReconsideration" && tab !== "enteredGrades" && tab !== "documents";   // the dashboard and the lists work on the chosen term
 
   return (
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Scholar Renewal</h1>
-      <p className="text-sm text-slate-700 mb-4">{!seesRenewals ? (isSdpApprover ? "Requests from scholars who lack SDP credits and ask, with their renewal application, to be treated as complied." : isGradesApprover ? "Grades that scholars entered themselves during renewal, waiting for your approval." : "The signatories and the on/off switch of the Certificate of Scholarship Renewal.") : isEvaluator ? "Review renewal applications, accept late ones, track INC subjects, send cases to the Division Head, and confirm every renewal." : isDivisionHead ? "The renewal cases that wait for your decision, and how each term is going." : "How each renewal term is going, and the Excel report."}</p>
+      <p className="text-sm text-slate-700 mb-4">{!seesRenewals ? (isSdpApprover ? "Requests from scholars who lack SDP credits and ask, with their renewal application, to be treated as complied." : isGradesApprover ? "Grades that scholars entered themselves during renewal, waiting for your approval." : isDocumentsApprover ? "The study plans, INC letters and clearances that scholars sent for their renewal, waiting for your approval." : "The signatories and the on/off switch of the Certificate of Scholarship Renewal.") : isEvaluator ? "Review renewal applications, accept late ones, track INC subjects, send cases to the Division Head, and confirm every renewal." : isDivisionHead ? "The renewal cases that wait for your decision, and how each term is going." : "How each renewal term is going, and the Excel report."}</p>
       {error && <p role="alert" className="mb-3 text-[14px] text-red-700">Couldn't load the renewal windows: {error}</p>}
 
       {detailId ? (
-        <RenewalDetailView recordId={detailId} canAct={canAct && isEvaluator} onBack={() => setDetailId(null)} onChanged={bump} />
+        <RenewalDetailView recordId={detailId} canAct={canAct && isEvaluator} canReviewDocuments={isDocumentsApprover} onBack={() => setDetailId(null)} onChanged={bump} />
       ) : (
         <>
           {termBarNeeded && <div className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-[#f7f9fc] border border-[#e6ecf5] rounded-xl px-4 py-3 mb-4 text-[14px]">
@@ -112,16 +115,17 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
           {tab === "certificate" && <RenewalCertificateTab />}
           {tab === "sdpReconsideration" && <RenewalSdpReconsiderationTab refreshKey={refreshKey} onChanged={bump} />}
           {tab === "enteredGrades" && <RenewalEnteredGradesTab refreshKey={refreshKey} onChanged={bump} />}
+          {tab === "documents" && <RenewalDocumentsTab canApprove={isDocumentsApprover} refreshKey={refreshKey} onChanged={bump} />}
           {tab === "divisionHead" && <RenewalDivisionHeadTab canDecide={isDivisionHead} onOpenRecord={setDetailId} onChanged={bump} refreshKey={refreshKey} />}
           {tab === "calendar" && <AppointmentsTab readOnly onOpenRecord={setDetailId} />}
           {tab === "dashboard" && current && <RenewalDashboardTab schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} />}
           {tab === "windows" && <RenewalWindowsTab windows={windows ?? []} onChanged={async () => { await loadWindows(); bump(); }} />}
-          {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && tab !== "certificate" && tab !== "sdpReconsideration" && tab !== "enteredGrades" && !current && <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{isEvaluator ? "Open a renewal window first (Windows tab)." : "No renewal window has been opened yet."}</p>}
-          {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && tab !== "certificate" && tab !== "dashboard" && tab !== "sdpReconsideration" && tab !== "enteredGrades" && current && (
+          {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && tab !== "certificate" && tab !== "sdpReconsideration" && tab !== "enteredGrades" && tab !== "documents" && !current && <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{isEvaluator ? "Open a renewal window first (Windows tab)." : "No renewal window has been opened yet."}</p>}
+          {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && tab !== "certificate" && tab !== "dashboard" && tab !== "sdpReconsideration" && tab !== "enteredGrades" && tab !== "documents" && current && (
             <>
-              {tab === "applications" && <RenewalListTab tab="applications" schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} />}
-              {tab === "renewed" && <RenewalListTab tab="renewed" schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} />}
-              {tab === "notApplied" && <RenewalListTab tab="not_applied" schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} />}
+              {tab === "applications" && <RenewalListTab tab="applications" schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} onGoToDocuments={() => setTab("documents")} />}
+              {tab === "renewed" && <RenewalListTab tab="renewed" schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} onGoToDocuments={() => setTab("documents")} />}
+              {tab === "notApplied" && <RenewalListTab tab="not_applied" schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} onGoToDocuments={() => setTab("documents")} />}
             </>
           )}
         </>

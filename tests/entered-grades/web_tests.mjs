@@ -72,7 +72,7 @@ test("only an account with the Grades Approver tag can approve; it.admin1 appoin
 test("an approver with no other renewal tag can open Scholar Renewal, and lands on the Entered grades tab", () => {
   assert.equal(A.canSeeScholarRenewal({ tags: ["scholar_grades_approver"], role: "staff", division: "OTHER", username: "x" }), true);
   const page = src("src/sead/ScholarRenewalPage.tsx");
-  assert.match(page, /isGradesApprover \? "enteredGrades" : "certificate"/);
+  assert.match(page, /isGradesApprover \? "enteredGrades" : isDocumentsApprover \? "documents" : "certificate"/);
   assert.match(page, /key: "enteredGrades", label: "Entered grades"/);
   assert.match(page, /t\.key === "enteredGrades" \? \(isEvaluator \|\| isGradesApprover\)/);
   assert.match(page, /<RenewalEnteredGradesTab refreshKey=\{refreshKey\} onChanged=\{bump\} \/>/);

@@ -17,7 +17,7 @@ const FILE_A = "supabase_migration_inc_docs_a_clearance_kind.sql", UNDO_A = "und
 
 const num = n => `TEST-${String(n).padStart(4, "0")}`;
 const uidOf = n => seedId(`scholar:${n}`);
-const EVAL = seedId("staff:demo.evaluator"), COUNSELOR = seedId("staff:demo.counselor");
+const EVAL = seedId("staff:demo.evaluator"), COUNSELOR = seedId("staff:demo.counselor"), DOCS = seedId("staff:demo.docs");
 const W1 = seedId("window:w1");
 const T = "2026-2027", S1 = "1st Semester";
 async function as(uid, fn, role = "authenticated") {
@@ -48,6 +48,7 @@ check("the application with the documents does not exist and 'clearance' is not 
   && await q("insert into renewal_documents (record_id, scholar_id_number, kind, storage_path, file_name, mime_type, size_bytes) select id, scholar_id_number, 'clearance', 'x/y/z', 'a', 'application/pdf', 1 from renewal_records limit 1").then(() => false, () => true));
 await db.exec(read(FILE_A)); await db.exec(read(FILE_A));      // safe to run twice
 await db.exec(read(FILE_B)); await db.exec(read(FILE_B));
+await db.exec(read("supabase_migration_renewal_documents_approver.sql"));      // the file B on its own gives the approval back to the evaluator; the approver file (a later file) puts it with the tag
 
 console.log("\nThe application with an INC");
 const before7 = await apply10(7, []);
@@ -70,10 +71,10 @@ check("the history says the documents were sent with the application", (await q(
 
 console.log("\nThe evaluator approves; booking opens only when all three are approved");
 const byKind = Object.fromEntries((await q("select id, kind from renewal_documents where record_id = $1", [r7.id])).map(d => [d.kind, d.id]));
-await rows(EVAL, "select public.renewal_review_document($1, true, '')", [byKind.study_plan]);
-await rows(EVAL, "select public.renewal_review_document($1, true, '')", [byKind.inc_letter]);
+await rows(DOCS, "select public.renewal_review_document($1, true, '')", [byKind.study_plan]);
+await rows(DOCS, "select public.renewal_review_document($1, true, '')", [byKind.inc_letter]);
 check("study plan and INC letter approved, the clearance still waits: still cannot book", await stateOf(7) === "clearance_pending", await stateOf(7));
-await rows(EVAL, "select public.renewal_review_document($1, true, '')", [byKind.clearance]);
+await rows(DOCS, "select public.renewal_review_document($1, true, '')", [byKind.clearance]);
 check("all three approved: the scholar can book, and is told so", await stateOf(7) === "ok" && (await notes(7, "document_approved")).some(n => /clearance was approved/.test(n.title) && /book your consultation/.test(n.body)));
 
 console.log("\nA returned clearance");
@@ -81,11 +82,11 @@ const ok22 = await apply10(22, docs(22, ALL3));
 const r22 = await recordOf(22);
 check("a scholar with a failed subject AND an INC also sends the three documents", ok22.ok && r22.rule_code === "B+D" && r22.evaluation.required_documents.map(d => d.kind).sort().join() === "clearance,inc_letter,study_plan", ok22.msg);
 const doc22 = (await q("select id from renewal_documents where record_id = $1 and kind = 'clearance'", [r22.id]))[0].id;
-const retNoReason = await attempt(EVAL, "select public.renewal_review_document($1, false, '')", [doc22]);
+const retNoReason = await attempt(DOCS, "select public.renewal_review_document($1, false, '')", [doc22]);
 check("returning a clearance needs a reason", !retNoReason.ok && /what to fix/.test(retNoReason.msg));
-await rows(EVAL, "select public.renewal_review_document($1, false, 'The clearance is not signed')", [doc22]);
+await rows(DOCS, "select public.renewal_review_document($1, false, 'The clearance is not signed')", [doc22]);
 check("a returned clearance sends the scholar to upload a new one before booking", await stateOf(22) === "study_plan_pending" || await stateOf(22) === "inc_letter_pending" || await stateOf(22) === "clearance_missing", await stateOf(22));
-for (const kind of ["study_plan", "inc_letter"]) await rows(EVAL, "select public.renewal_review_document($1, true, '')", [(await q("select id from renewal_documents where record_id = $1 and kind = $2", [r22.id, kind]))[0].id]);
+for (const kind of ["study_plan", "inc_letter"]) await rows(DOCS, "select public.renewal_review_document($1, true, '')", [(await q("select id from renewal_documents where record_id = $1 and kind = $2", [r22.id, kind]))[0].id]);
 const refusal = await db.query("select public._renewal_require_can_book($1)", [r22.id]).then(() => "", e => String(e.message));
 check("with the other two approved, booking is refused until a new clearance is uploaded, and says so", await stateOf(22) === "clearance_missing" && /upload your clearance first/.test(refusal), refusal);
 check("the scholar is told what to fix", (await notes(22, "document_returned")).some(n => /clearance was returned/.test(n.title) && /not signed/.test(n.body)));
