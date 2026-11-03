@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Settings, Users, FileSignature } from "lucide-react";
+import { Settings, Users, FileSignature, ClipboardCheck } from "lucide-react";
 import { fetchCurrentSchoolProfile, fetchSchoolAccountUsername, schoolSignOut } from "../schoolApi";
 import { GradingConfigPanel } from "../components/GradingConfigPanel";
 import { ScholarsDrilldownPanel } from "../components/ScholarsDrilldownPanel";
 import { ScholarGradeEntryModal } from "../components/ScholarGradeEntryModal";
 import { CorrectionsPanel } from "../components/CorrectionsPanel";
+import { RenewalMonitorPanel } from "../components/RenewalMonitorPanel";
 import { openRequestCount } from "../submissionLogic";
 import { SchoolAccountMenu } from "../components/SchoolAccountMenu";
 import { SchoolPeriodBar } from "../components/SchoolPeriodBar";
@@ -14,8 +15,8 @@ import { LiveProvider } from "@/lib/liveUpdates";
 import { useUrlState } from "@/app/useUrlState";
 import type { SchoolProfile, SchoolScholarRow } from "../types";
 
-type SchoolPanelKey = "grading-config" | "scholars" | "corrections";
-const PANEL_VALUES: readonly SchoolPanelKey[] = ["grading-config", "scholars", "corrections"];
+type SchoolPanelKey = "grading-config" | "scholars" | "renewal" | "corrections";
+const PANEL_VALUES: readonly SchoolPanelKey[] = ["grading-config", "scholars", "renewal", "corrections"];
 
 interface SchoolPortalPageProps {
   onSignOut: () => void;
@@ -39,6 +40,7 @@ export function SchoolWorkspaceView({ profile, username, onSignOut, data, gradin
 
   const TABS: { key: SchoolPanelKey; label: string; icon: React.ReactNode }[] = [
     { key: "scholars", label: "Scholars", icon: <Users size={16} aria-hidden="true" /> },
+    { key: "renewal", label: "Renewal", icon: <ClipboardCheck size={16} aria-hidden="true" /> },
     { key: "corrections", label: openRequests > 0 ? `Corrections (${openRequests})` : "Corrections", icon: <FileSignature size={16} aria-hidden="true" /> },
     { key: "grading-config", label: "Grading System", icon: <Settings size={16} aria-hidden="true" /> },
   ];
@@ -73,6 +75,7 @@ export function SchoolWorkspaceView({ profile, username, onSignOut, data, gradin
 
         {panel === "grading-config" && (gradingPanel ?? <GradingConfigPanel schoolId={profile.schoolId} onSaved={data.reloadConfig} />)}
         {panel === "scholars" && <ScholarsDrilldownPanel data={data} schoolName={profile.schoolName} onGoToGradingSystem={() => setPanel("grading-config")} onOpenScholar={setViewingScholar} />}
+        {panel === "renewal" && <RenewalMonitorPanel />}
         {panel === "corrections" && (
           <CorrectionsPanel corrections={data.corrections} error={data.correctionsError} scholars={data.scholars}
             onOpenScholar={setViewingScholar} onChanged={data.reloadSubmission} />
