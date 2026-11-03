@@ -49,9 +49,20 @@ function reference(all, { search, filter, sort, dir }) {
 }
 
 const asSead = (sql, p) => rows(SEAD, sql, p);
+// The old answers (the renewal check's), except that a scholar RENEWED for the current semester is shown the NEXT semester (supabase_migration_sdp_after_renewal.sql): for those the expected answer is the next semester's.
+async function oldAnswers(sy, sem) {
+  const old = await asSead("select * from public.scholars_sdp_compliance($1, $2)", [sy, sem]);
+  if (!(await q("select to_regprocedure('public._sdp_advanced_ids(text,text)') is not null as ok"))[0].ok) return old;
+  const adv = (await q("select scholar_id_number s from public._sdp_advanced_ids($1, $2)", [sy, sem])).map(r => r.s);
+  if (adv.length === 0) return old;
+  const nx = (await q("select * from public._sdp_next_semester($1, $2)", [sy, sem]))[0];
+  const shifted = await q("select * from public._sdp_compliance_ids($1, $2, $3::text[])", [nx.school_year, nx.semester, adv]);
+  const byId = new Map(shifted.map(r => [r.scholar_id_number, r]));
+  return old.map(r => (byId.has(r.scholar_id_number) ? { ...r, ...byId.get(r.scholar_id_number) } : r));      // same order and names, the numbers of the next semester
+}
 let comparisons = 0, mismatches = 0, firstBad = "";
 for (const [sy, sem] of periods) {
-  const old = await asSead("select * from public.scholars_sdp_compliance($1, $2)", [sy, sem]);
+  const old = await oldAnswers(sy, sem);
   const sum = (await asSead("select * from public.scholars_sdp_checklist_summary($1, $2)", [sy, sem]))[0];
   const exp = { total: old.length, complied: old.filter(r => r.complied === true).length, notComplied: old.filter(r => r.complied === false).length };
   comparisons++;
@@ -89,7 +100,7 @@ check("a search made of quote and percent characters is just text and does not b
 console.log("\nSaved totals (Phase 2b) stay correct after every kind of change");
 const SY = "2025-2026", SEM = "2nd Semester";
 async function sameAsOld() {
-  const old = await asSead("select * from public.scholars_sdp_compliance($1, $2)", [SY, SEM]);
+  const old = await oldAnswers(SY, SEM);
   const sum = (await asSead("select * from public.scholars_sdp_checklist_summary($1, $2)", [SY, SEM]))[0];
   let ok = Number(sum.total) === old.length && Number(sum.complied) === old.filter(r => r.complied === true).length && Number(sum.not_complied) === old.filter(r => r.complied === false).length;
   for (const filter of ["complied", "not_complied"]) {

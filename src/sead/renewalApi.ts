@@ -204,6 +204,18 @@ export interface RenewalDetail {
   statusHistory: { status: string; previousStatus: string | null; isTemporary: boolean; schoolYear: string | null; term: string | null; changedAt: string; source: string; note: string }[];
 }
 
+/** What a renewed scholar's SDP is after the renewal (the next semester: 3 credits per category used, the rest carried on, lacking credits added to the requirement). Null when it does not apply, or before the database update. */
+export interface RenewalSdpAfter { schoolYear: string; semester: string; communityService: number; communityVolunteerism: number; formationProgram: number; requiredCommunityService: number; requiredCommunityVolunteerism: number; requiredFormationProgram: number }
+export async function fetchRenewalSdpAfter(recordId: string): Promise<RenewalSdpAfter | null> {
+  const { data, error } = await supabase.rpc("renewal_sdp_after", { p_record_id: recordId });
+  const d = data as Row | null;
+  if (error || !d || !d.applies) return null;
+  return {
+    schoolYear: str(d.school_year), semester: str(d.semester), communityService: num(d.community_service), communityVolunteerism: num(d.community_volunteerism), formationProgram: num(d.formation_program),
+    requiredCommunityService: num(d.required_community_service), requiredCommunityVolunteerism: num(d.required_community_volunteerism), requiredFormationProgram: num(d.required_formation_program),
+  };
+}
+
 export async function fetchRenewalDetail(recordId: string): Promise<{ ok: true; detail: RenewalDetail } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("renewal_record_detail", { p_record_id: recordId });
   if (error || !data) return { ok: false, error: error?.message ?? "Couldn't load this renewal." };

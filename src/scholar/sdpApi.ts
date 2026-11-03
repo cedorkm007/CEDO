@@ -196,6 +196,18 @@ export async function fetchScholarSDPRequirements(): Promise<SDPCreditCounts> {
   return req;
 }
 
+/**
+ * Which semester the SDP tab is showing: the current grading period, or the NEXT semester once the scholar is renewed for the current one
+ * (3 credits per category are used, what is above carries on, what was lacking is added to the requirement) — supabase_migration_sdp_after_renewal.sql.
+ * Null before that database update is run.
+ */
+export async function fetchScholarSDPView(): Promise<{ schoolYear: string; semester: string; shifted: boolean } | null> {
+  const { data, error } = await supabase.rpc("fetch_scholar_sdp_view");
+  const r = Array.isArray(data) ? data[0] : null;
+  if (error || !r) return null;
+  return { schoolYear: String(r.school_year ?? ""), semester: String(r.semester ?? ""), shifted: !!r.shifted };
+}
+
 /** Credits added to the scholar's SDP requirement because an SDP reconsideration was approved: this semester and the ones coming (supabase_migration_sdp_owed_for_scholar.sql). */
 export interface SDPOwedRow { schoolYear: string; semester: string; category: SDPCategory; amount: number; isCurrent: boolean }
 /** Empty (and no error) before the database update has been run, or when nothing is owed. */

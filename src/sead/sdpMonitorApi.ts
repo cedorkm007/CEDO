@@ -747,6 +747,15 @@ export async function fetchAttendanceRoster(sessionId: string): Promise<Attendan
   }));
 }
 
+/** The scholars whose Checklist row shows the NEXT semester because they were renewed for the semester asked about (only when that is the current grading period), with that semester. Empty before the database update. */
+export async function fetchSdpAdvanced(schoolYear: string, semester: string): Promise<Map<string, { schoolYear: string; semester: string }>> {
+  const out = new Map<string, { schoolYear: string; semester: string }>();
+  const { data, error } = await supabase.rpc("scholars_sdp_advanced", { p_school_year: schoolYear, p_semester: semester });
+  if (error || !Array.isArray(data)) return out;
+  for (const r of data as { scholar_id_number: string; next_school_year: string; next_semester: string }[]) out.set(String(r.scholar_id_number), { schoolYear: String(r.next_school_year), semester: String(r.next_semester) });
+  return out;
+}
+
 /** Scholars who owe EXTRA credits for a semester (an approved SDP reconsideration of the semester before): only those who do. Empty before the SDP reconsideration database update. */
 export async function fetchSdpOwed(schoolYear: string, semester: string): Promise<Map<string, { communityService: number; communityVolunteerism: number; formationProgram: number }>> {
   const out = new Map<string, { communityService: number; communityVolunteerism: number; formationProgram: number }>();
