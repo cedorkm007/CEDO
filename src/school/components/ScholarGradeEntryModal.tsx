@@ -205,7 +205,7 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
         <div className="flex items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-5 py-4 rounded-t-2xl shrink-0">
           <div>
             <h3 className="text-white font-bold text-[14.5px]">{displayName(scholar)}</h3>
-            <p className="text-white/70 text-[11.5px]">{scholar.scholarIdNumber} — {period.schoolYear || "—"} · {period.semester || "—"}</p>
+            <p className="text-white/70 text-[11.5px]">{scholar.scholarIdNumber}{scholar.schoolStudentNo ? ` · School ID ${scholar.schoolStudentNo}` : ""} — {period.schoolYear || "—"} · {period.semester || "—"}</p>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-white/70 hover:text-white"><X size={18} /></button>
         </div>

@@ -72,7 +72,7 @@ export function SchoolWorkspaceView({ profile, username, onSignOut, data, gradin
         </div>
 
         {panel === "grading-config" && (gradingPanel ?? <GradingConfigPanel schoolId={profile.schoolId} onSaved={data.reloadConfig} />)}
-        {panel === "scholars" && <ScholarsDrilldownPanel data={data} onGoToGradingSystem={() => setPanel("grading-config")} onOpenScholar={setViewingScholar} />}
+        {panel === "scholars" && <ScholarsDrilldownPanel data={data} schoolName={profile.schoolName} onGoToGradingSystem={() => setPanel("grading-config")} onOpenScholar={setViewingScholar} />}
         {panel === "corrections" && (
           <CorrectionsPanel corrections={data.corrections} error={data.correctionsError} scholars={data.scholars}
             onOpenScholar={setViewingScholar} onChanged={data.reloadSubmission} />

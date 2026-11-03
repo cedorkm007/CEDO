@@ -97,7 +97,7 @@ export async function saveLetterGrades(letters: LetterGrade[]): Promise<{ ok: bo
 export async function fetchOwnScholars(schoolId: string): Promise<SchoolScholarRow[]> {
   const { data, error } = await supabase
     .from("scholars")
-    .select("scholar_id_number, first_name, last_name, middle_name, year_level, course")
+    .select("scholar_id_number, first_name, last_name, middle_name, year_level, course, school_student_no")
     .eq("school_id", schoolId)
     .neq("status", "Removed") // removed scholars cannot be graded; they are not counted or listed
     .order("last_name");
@@ -105,8 +105,23 @@ export async function fetchOwnScholars(schoolId: string): Promise<SchoolScholarR
   return data.map(r => ({
     scholarIdNumber: String(r.scholar_id_number), firstName: String(r.first_name ?? ""),
     lastName: String(r.last_name ?? ""), middleName: String(r.middle_name ?? ""),
-    yearLevel: String(r.year_level ?? ""), course: String(r.course ?? ""),
+    yearLevel: String(r.year_level ?? ""), course: String(r.course ?? ""), schoolStudentNo: String(r.school_student_no ?? ""),
   }));
+}
+
+/** The School ID of one scholar (a blank clears it). `missing` = the database update has not been run yet. */
+export async function setSchoolStudentNo(scholarIdNumber: string, value: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.rpc("school_set_student_no", { p_scholar_id_number: scholarIdNumber, p_value: value });
+  if (!error) return { ok: true };
+  return { ok: false, error: error.code === "PGRST202" || /could not find the function/i.test(error.message) ? "The School ID cannot be saved yet: CEDO still has to run a database update." : error.message };
+}
+
+/** The links a school confirmed on an upload. One result per link, in order. */
+export async function linkStudentNos(links: { scholarIdNumber: string; studentNo: string }[]): Promise<{ ok: true; results: { ok: boolean; error: string | null }[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("school_link_student_nos", { p_links: links });
+  if (error) return { ok: false, error: error.code === "PGRST202" || /could not find the function/i.test(error.message) ? "The School ID cannot be saved yet: CEDO still has to run a database update." : error.message };
+  const byIndex = new Map(((data ?? []) as Record<string, unknown>[]).map(r => [Number(r.row_index), r]));
+  return { ok: true, results: links.map((_, i) => { const r = byIndex.get(i); return r ? { ok: !!r.ok, error: r.error == null ? null : String(r.error) } : { ok: false, error: "The database did not report a result for this link." }; }) };
 }
 
 function toSubjectGrade(r: Record<string, unknown>): SchoolSubjectGrade {

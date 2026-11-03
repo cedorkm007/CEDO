@@ -139,11 +139,12 @@ export interface RowFilter {
 
 const words = (s: string) => s.toLowerCase().split(/[^a-z0-9ñ-]+/).filter(Boolean);
 
-/** Name or ID, in any word order: "maria santos", "santos maria" and "2409-0001" all find the right scholar. */
+/** Name or ID (the Scholar ID or the school's own School ID), in any word order: "maria santos", "santos maria" and "2409-0001" all find the right scholar. */
 export function matchesSearch(s: SchoolScholarRow, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   if (s.scholarIdNumber.toLowerCase().includes(q)) return true;
+  if (s.schoolStudentNo && s.schoolStudentNo.toLowerCase().includes(q)) return true;
   const hay = `${s.firstName} ${s.middleName} ${s.lastName}`.toLowerCase();
   return words(q).every(w => hay.includes(w));
 }

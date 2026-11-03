@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState } from "react";
-import { X, Upload, AlertTriangle, CheckCircle2, UploadCloud, Download, XCircle, Info, MinusCircle } from "lucide-react";
-import { downloadCsv } from "@/sead/csvUtils";
-import { downloadGradeTemplate } from "../templateDownload";
+import { X, Upload, AlertTriangle, CheckCircle2, UploadCloud, Download, XCircle, Info, MinusCircle, Link2 } from "lucide-react";
+import { downloadCsv, parseCsv } from "@/sead/csvUtils";
+import { readXlsx } from "@/lib/xlsxLite";
+import { TemplateDownloadMenu } from "./TemplateDownloadMenu";
 import { PeriodSelect } from "@/app/components/PeriodSelect";
-import { fetchGradingConfig, fetchLetterGrades, fetchSchoolMarksAsLetters, fetchGradesForScholars, bulkUpsertGrades } from "../schoolApi";
+import { fetchGradingConfig, fetchLetterGrades, fetchSchoolMarksAsLetters, fetchGradesForScholars, bulkUpsertGrades, linkStudentNos } from "../schoolApi";
 import {
-  parseGradeUpload, countRows, rowsToSave, summaryText, buildErrorReport,
+  parseUploadedGrid, countRows, rowsToSave, summaryText, buildUploadErrorReport,
   type ParseResult, type PreviewRow, type SaveOutcome,
 } from "../bulkGradeLogic";
 import { periodOptions, periodKey, periodRefOf, periodTitle, type AcademicPeriod } from "@/lib/academicPeriods";
@@ -23,15 +24,16 @@ function statusChip(r: PreviewRow) {
 
 /**
  * Bulk grade upload with validate-then-save:
- *   1. pick the period (Open periods only) -> 2. download the template for it -> 3. upload the filled file ->
+ *   1. pick the period (Open periods only) -> 2. download the template for it (pre-filled or blank, asked each time) -> 3. upload the filled file (Excel or CSV) ->
  *   4. every row is checked and previewed, NOTHING is saved yet -> 5. "Save valid rows" or cancel -> 6. summary + error report.
- * Rows are matched to scholars by Scholar ID, never by name. The checks live in ../bulkGradeLogic.ts; the database re-checks
- * the period, the school's own scholars and the grading scale on every row it saves.
+ * The school's Promotional Report / Enrollment List finds each scholar by STUDENT NO. (the School ID); a Student No. the system does not know yet is matched
+ * to a scholar by name and saved only after the school confirms the link. The earlier CSV layout finds scholars by Scholar ID. The checks live in
+ * ../bulkGradeLogic.ts; the database re-checks the period, the school's own scholars and the grading scale on every row it saves.
  */
 export function BulkGradeUploadModal({
-  scholars, schoolId, periods, initialKey, onClose, onDone,
+  scholars, schoolId, schoolName, periods, initialKey, onClose, onDone,
 }: {
-  scholars: SchoolScholarRow[]; schoolId: string; periods: AcademicPeriod[]; initialKey: string; onClose: () => void; onDone: () => void;
+  scholars: SchoolScholarRow[]; schoolId: string; schoolName: string; periods: AcademicPeriod[]; initialKey: string; onClose: () => void; onDone: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const openPeriods = useMemo(() => periods.filter(p => p.status === "open"), [periods]);
@@ -42,11 +44,14 @@ export function BulkGradeUploadModal({
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
-  const [busy, setBusy] = useState<"" | "template" | "checking" | "saving">("");
+  const [busy, setBusy] = useState<"" | "checking" | "saving">("");
+  const [linksOk, setLinksOk] = useState(false);              // the school ticked "these links are right"
+  const [linkedCount, setLinkedCount] = useState(0);
   const [problem, setProblem] = useState("");
   const [outcomes, setOutcomes] = useState<SaveOutcome[] | null>(null);
 
   const counts = useMemo(() => (parsed ? countRows(parsed.rows) : null), [parsed]);
+  const links = parsed?.links ?? [];
   const shownRows = useMemo(() => {
     if (!parsed) return [];
     return parsed.rows.filter(r => {
@@ -64,6 +69,8 @@ export function BulkGradeUploadModal({
     setOutcomes(null);
     setProblem("");
     setFilter("all");
+    setLinksOk(false);
+    setLinkedCount(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -72,29 +79,22 @@ export function BulkGradeUploadModal({
     resetUpload();
   }
 
-  async function handleDownloadTemplate() {
-    if (!period) return;
-    setBusy("template");
-    setProblem("");
-    const result = await downloadGradeTemplate(scholars, periodRefOf(period));
-    setBusy("");
-    if (!result.ok) setProblem(`Couldn't prepare the template: ${result.error}`);
-  }
-
   async function handleFile(file: File) {
     if (!period) return;
     setFileName(file.name);
     setOutcomes(null);
     setProblem("");
     setParsed(null);
+    setLinksOk(false);
     setBusy("checking");
     try {
-      const text = await file.text();
+      if (/\.xls$/i.test(file.name)) { setProblem("That is an older Excel file (.xls). Please open it in Excel, choose Save As, pick Excel Workbook (.xlsx), and upload that."); setBusy(""); return; }
+      const grid = /\.xlsx$/i.test(file.name) ? await readXlsx(await file.arrayBuffer()) : parseCsv((await file.text()).replace(/^\ufeff/, ""));
       // Fresh copies of what is already saved and of the school's scale, so warnings and range checks are current.
       const [existing, config] = await Promise.all([fetchGradesForScholars(scholars.map(s => s.scholarIdNumber), periodRefOf(period)), fetchGradingConfig()]);
       if (!existing.ok) { setProblem(`Couldn't compare the file with your saved grades: ${existing.error}`); setBusy(""); return; }
       const letters = [...(config?.usesLetterGrades ? await fetchLetterGrades(schoolId) : []), ...(await fetchSchoolMarksAsLetters(schoolId))];
-      const result = parseGradeUpload(text, {
+      const result = parseUploadedGrid(grid, {
         period: periodRefOf(period), periodStatus: period.status, scholars, existing: existing.rows, config, letters,
       });
       setParsed(result);
@@ -107,11 +107,24 @@ export function BulkGradeUploadModal({
 
   async function handleSave() {
     if (!parsed || parsed.fileError) return;
-    const toSave = rowsToSave(parsed.rows);
-    if (toSave.length === 0) return;
+    let toSave = rowsToSave(parsed.rows);
+    if (toSave.length === 0 && links.length === 0) return;
+    if (links.length > 0 && !linksOk) return;
     setBusy("saving");
     setProblem("");
     const done: SaveOutcome[] = [];
+    // 1. the Student Nos. the school confirmed are linked to their scholars; a scholar whose link fails is not saved (the rows would be matched to nobody next time)
+    if (links.length > 0) {
+      const linked = await linkStudentNos(links.map(l => ({ scholarIdNumber: l.scholarIdNumber, studentNo: l.studentNo })));
+      const failedIds = new Map<string, string>();
+      if (!linked.ok) links.forEach(l => failedIds.set(l.scholarIdNumber, linked.error));
+      else linked.results.forEach((r, i) => { if (!r.ok) failedIds.set(links[i].scholarIdNumber, r.error ?? "The link could not be saved."); });
+      setLinkedCount(links.length - failedIds.size);
+      if (failedIds.size > 0) {
+        for (const row of toSave) { const why = failedIds.get(row.payload!.scholarIdNumber); if (why) done.push({ row, ok: false, error: `The Student No. could not be linked: ${why}` }); }
+        toSave = toSave.filter(row => !failedIds.has(row.payload!.scholarIdNumber));
+      }
+    }
     for (let i = 0; i < toSave.length; i += SAVE_CHUNK) {
       const chunk = toSave.slice(i, i + SAVE_CHUNK);
       const result = await bulkUpsertGrades(chunk.map(r => r.payload!));
@@ -132,14 +145,14 @@ export function BulkGradeUploadModal({
 
   function downloadErrorReport() {
     if (!parsed) return;
-    const csv = buildErrorReport(parsed.headers, parsed.rows, outcomes ?? []);
+    const csv = period ? buildUploadErrorReport(parsed, periodRefOf(period), outcomes ?? []) : null;
     if (csv) downloadCsv(`grades-error-report_${selectedKey.replace("|", "_").replace(/\s+/g, "-")}.csv`, csv);
   }
 
   const savedCount = outcomes?.filter(o => o.ok).length ?? 0;
   const failedAtSave = outcomes?.filter(o => !o.ok) ?? [];
   const skippedCount = (counts?.error ?? 0) + failedAtSave.length;
-  const hasReport = !!parsed && !parsed.fileError && !!buildErrorReport(parsed.headers, parsed.rows, outcomes ?? []);
+  const hasReport = !!parsed && !parsed.fileError && !!period && !!buildUploadErrorReport(parsed, periodRefOf(period), outcomes ?? []);
 
   return (
     <div className="fixed inset-0 z-[110] bg-black/40 flex items-center justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
@@ -155,6 +168,7 @@ export function BulkGradeUploadModal({
               <CheckCircle2 size={36} className="mx-auto text-green-600 mb-2" />
               <p role="status" className="text-[15px] font-bold text-[#062444] mb-1">{summaryText(savedCount, skippedCount, counts?.unchanged ?? 0)}</p>
               <p className="text-[14px] text-slate-700">{period ? periodTitle(periodRefOf(period)) : ""}</p>
+              {linkedCount > 0 && <p className="text-[14px] text-slate-700 mt-1">{linkedCount} School ID{linkedCount === 1 ? "" : "s"} linked to the scholars.</p>}
               {failedAtSave.length > 0 && (
                 <div className="text-left mt-4 bg-red-50 border border-red-100 rounded-lg p-3 max-h-40 overflow-y-auto">
                   <p className="text-[14px] font-semibold text-red-700 mb-1.5">{failedAtSave.length} row(s) could not be saved:</p>
@@ -195,28 +209,26 @@ export function BulkGradeUploadModal({
               <section className="mb-5">
                 <h4 className="text-[13.5px] font-bold text-[#062444] mb-1.5">2. Download the template</h4>
                 <p className="text-[14px] text-slate-700 mb-2">
-                  It comes pre-filled with the period, each of your scholars (Scholar ID and name) and the subjects already declared, so you only need to type
-                  grades. Columns: school_year, semester, scholar_id, scholar_name, subject_code, subject_name, units, grade. A blank grade means “not graded yet”.
-                  Scholars are matched by <strong>Scholar ID</strong>, not by name.
+                  The template is your Promotional Report / Enrollment List (Excel). You choose whether it comes <strong>pre-filled</strong> with your scholars and the subjects
+                  already saved, or <strong>blank</strong>. Each student is found by <strong>STUDENT NO.</strong> (the School ID); a blank grade means “not graded yet”.
+                  The remark (PASSED, FAILED, DROPPED, INCOMPLETE) is saved with the grade.
                 </p>
-                <button onClick={() => void handleDownloadTemplate()} disabled={!period || busy !== ""}
-                  className="flex items-center gap-1.5 text-[14px] font-semibold text-[#0077b6] hover:opacity-80 disabled:opacity-50">
-                  <Download size={14} /> {busy === "template" ? "Preparing…" : "Download CSV template"}
-                </button>
+                {period && <TemplateDownloadMenu scholars={scholars} period={periodRefOf(period)} schoolName={schoolName} disabled={busy !== ""}
+                  buttonClassName="flex items-center gap-1.5 text-[14px] font-semibold text-[#0077b6] hover:opacity-80 disabled:opacity-50" />}
               </section>
 
               {/* 3. Upload */}
               <section className="mb-4">
-                <h4 className="text-[13.5px] font-bold text-[#062444] mb-1.5">3. Upload your filled file</h4>
+                <h4 className="text-[13.5px] font-bold text-[#062444] mb-1.5">3. Upload your filled file (Excel or CSV)</h4>
                 <div className="border-2 border-dashed border-[#062444]/20 rounded-xl px-4 py-5 text-center">
-                  <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden" aria-label="Choose CSV file"
+                  <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" aria-label="Choose Excel or CSV file"
                     onChange={e => { const f = e.target.files?.[0]; if (f) void handleFile(f); }} />
                   <Upload size={20} className="mx-auto text-slate-700 mb-2" />
                   <button onClick={() => fileInputRef.current?.click()} disabled={!period || busy !== ""} className="text-[14px] font-semibold text-[#0077b6] hover:opacity-80 disabled:opacity-50">
-                    {fileName ? "Choose a different CSV file" : "Choose CSV file"}
+                    {fileName ? "Choose a different file" : "Choose Excel or CSV file"}
                   </button>
                   {fileName && <p className="text-[13.5px] text-slate-700 mt-1">{fileName}</p>}
-                  <p className="text-[13.5px] text-slate-700 mt-1">Nothing is saved until you review the preview below and confirm.</p>
+                  <p className="text-[13.5px] text-slate-700 mt-1">Nothing is saved until you review the preview below and confirm. A CSV in the older layout (matched by Scholar ID) still works.</p>
                 </div>
                 {busy === "checking" && <p className="text-[14px] text-slate-700 mt-2">Checking every row…</p>}
               </section>
@@ -275,7 +287,7 @@ export function BulkGradeUploadModal({
                           <tr key={r.rowNumber} className="border-t border-[#f0f3f8] align-top">
                             <td className="px-3 py-2 text-slate-700">{r.rowNumber}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{statusChip(r)}</td>
-                            <td className="px-3 py-2 text-slate-800">{r.scholarId}{r.scholarName ? <span className="block text-slate-700">{r.scholarName}</span> : null}</td>
+                            <td className="px-3 py-2 text-slate-800">{r.studentNo !== undefined ? (r.studentNo || "—") : r.scholarId}{r.scholarName ? <span className="block text-slate-700">{r.scholarName}</span> : null}</td>
                             <td className="px-3 py-2 text-slate-800">{r.subject || "—"}{r.subjectCode ? <span className="block text-slate-700">{r.subjectCode}</span> : null}</td>
                             <td className="px-3 py-2 font-semibold text-[#062444]">{r.grade || "—"}</td>
                             <td className={`px-3 py-2 ${r.status === "error" ? "text-red-700" : r.status === "warning" ? "text-amber-900" : "text-slate-700"}`}>
@@ -286,6 +298,19 @@ export function BulkGradeUploadModal({
                       </tbody>
                     </table>
                   </div>
+                  {links.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3" aria-label="New School IDs to link">
+                      <p className="flex items-center gap-1.5 text-[14px] font-bold text-amber-950"><Link2 size={14} aria-hidden="true" /> {links.length} new School ID{links.length === 1 ? "" : "s"} to link</p>
+                      <p className="mt-1 text-[14px] text-amber-950">The system did not know these Student Nos. yet. Each one matches exactly one of your scholars by name. After you confirm, the next uploads find them by Student No.</p>
+                      <ul className="mt-2 max-h-32 overflow-y-auto text-[14px] text-amber-950">
+                        {links.map(l => <li key={l.scholarIdNumber}>Student No. <strong>{l.studentNo}</strong> → {l.scholarName} <span className="text-amber-900">({l.scholarIdNumber})</span></li>)}
+                      </ul>
+                      <label className="mt-2 flex items-start gap-2 text-[14px] font-semibold text-amber-950">
+                        <input type="checkbox" checked={linksOk} onChange={e => setLinksOk(e.target.checked)} className="mt-1" />
+                        <span>I checked these. They are the right scholars.</span>
+                      </label>
+                    </div>
+                  )}
                   <p className="flex items-start gap-1.5 text-[14px] text-slate-700 mt-2">
                     <Info size={14} className="shrink-0 mt-0.5" />
                     <span>
@@ -308,9 +333,10 @@ export function BulkGradeUploadModal({
                     {counts && counts.error > 0 && counts.toSave > 0 && (
                       <button onClick={() => { setFilter("error"); }} className="px-4 py-2.5 text-[14px] font-semibold text-red-700">Show errors</button>
                     )}
-                    <button onClick={() => void handleSave()} disabled={!counts || counts.toSave === 0 || busy !== ""}
+                    <button onClick={() => void handleSave()} disabled={!counts || (counts.toSave === 0 && links.length === 0) || (links.length > 0 && !linksOk) || busy !== ""}
+                      title={links.length > 0 && !linksOk ? "Tick the box to confirm the new School IDs first" : undefined}
                       className="bg-gradient-to-br from-[#062444] to-[#0a3a6b] disabled:opacity-50 text-white text-[14px] font-semibold rounded-lg px-5 py-2.5">
-                      {busy === "saving" ? "Saving…" : `Save valid rows${counts && counts.toSave > 0 ? ` (${counts.toSave})` : ""}`}
+                      {busy === "saving" ? "Saving…" : counts && counts.toSave === 0 && links.length > 0 ? "Save the new School IDs" : `Save valid rows${counts && counts.toSave > 0 ? ` (${counts.toSave})` : ""}`}
                     </button>
                   </>
                 )}
