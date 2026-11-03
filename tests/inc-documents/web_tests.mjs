@@ -102,5 +102,18 @@ test("the application form and the later upload both rename before uploading", (
   assert.ok(api.includes("file_name: file.name"));
 });
 
+console.log("\nAn approved document is final");
+test("an approved study plan, INC letter or clearance shows 'Approved' and has no upload button; the picker also refuses it", () => {
+  const panel = src("src/scholar/components/dashboard/RenewalPanel.tsx");
+  assert.ok(panel.includes('const locked = DOC_NEEDS_APPROVAL.includes(req.kind) && (req.approved || files.some(d => d.status === "accepted"))'));
+  assert.ok(panel.includes("{editable && !locked && (") && panel.includes("</span>}\n                {editable && !locked"));
+  assert.ok(panel.includes('f.status === "accepted" ? "approved"'));
+  assert.ok(panel.includes('DOC_NEEDS_APPROVAL.includes(kind) && data.documents.some(d => d.kind === kind && d.status === "accepted")'));
+});
+test("the database refuses another file once one is approved (file C and its undo exist; the file replaces one function)", () => {
+  assert.ok(fs.existsSync(path.join(root, "supabase_migration_inc_docs_c_lock_approved.sql")) && fs.existsSync(path.join(root, "undo_inc_docs_c.sql")));
+  assert.ok(src("supabase_migration_inc_docs_c_lock_approved.sql").includes("This document has already been approved, so no other file can be added."));
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);
 fs.rmSync(tmp, { recursive: true, force: true });

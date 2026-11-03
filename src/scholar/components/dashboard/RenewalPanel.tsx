@@ -508,7 +508,7 @@ function DocumentsSection({ data, overview, onChanged }: { data: MyRenewalWindow
   if (required.length === 0 && data.documents.length === 0) return null;
 
   async function onPick(kind: DocKind, file: File | undefined) {
-    if (!file) return;
+    if (!file || (DOC_NEEDS_APPROVAL.includes(kind) && data.documents.some(d => d.kind === kind && d.status === "accepted"))) return;      // an approved document is final
     setBusyKind(kind); setError("");
     const r = await uploadRenewalDocument({ file, scholarIdNumber: overview.scholar.scholarIdNumber, recordId: record.id, kind, existingOfKind: data.documents.filter(d => d.kind === kind).length });
     setBusyKind(null);
@@ -533,11 +533,13 @@ function DocumentsSection({ data, overview, onChanged }: { data: MyRenewalWindow
       <ul className="space-y-3">
         {required.map(req => {
           const files = data.documents.filter(d => d.kind === req.kind);
+          const locked = DOC_NEEDS_APPROVAL.includes(req.kind) && (req.approved || files.some(d => d.status === "accepted"));      // approved = final: no other file can be added
           return (
             <li key={req.kind} className="rounded-lg border border-[#e6ecf5] px-3.5 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[14px] font-semibold text-[#062444]">{req.label} {!req.satisfied ? <span className="text-amber-900 font-bold">— needed</span> : DOC_NEEDS_APPROVAL.includes(req.kind) && !req.approved ? <span className="text-sky-900 font-bold">— uploaded, waiting for approval</span> : <span className="text-green-800 font-bold">— {DOC_NEEDS_APPROVAL.includes(req.kind) ? "approved" : "uploaded"} ✓</span>}</p>
-                {editable && (
+                {locked && <span className="inline-flex items-center gap-1.5 rounded-lg bg-green-50 border border-green-300 px-3 py-1.5 text-[14px] font-bold text-green-900"><CheckCircle2 size={14} aria-hidden="true" /> Approved</span>}
+                {editable && !locked && (
                   <>
                     <input ref={el => { refs.current[req.kind] = el; }} type="file" accept={DOC_ACCEPT} className="sr-only" id={`up-${req.kind}`} aria-label={`Upload ${DOC_LABEL[req.kind]}`} onChange={e => void onPick(req.kind, e.target.files?.[0])} />
                     <label htmlFor={`up-${req.kind}`} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#062444]/25 px-3 py-1.5 text-[14px] font-semibold text-[#062444] hover:bg-[#f7f9fc]">
@@ -553,7 +555,7 @@ function DocumentsSection({ data, overview, onChanged }: { data: MyRenewalWindow
                     <li key={f.id} className="flex flex-wrap items-center gap-2 text-[14px] text-slate-700">
                       <Paperclip size={14} aria-hidden="true" />
                       <button onClick={() => void open(f)} className="font-semibold text-[#00709f] hover:underline">{f.fileName}</button>
-                      <span>· {f.status === "accepted" ? "accepted" : f.status === "returned" ? "returned — please upload a new one" : "received"}</span>
+                      <span>· {f.status === "accepted" ? "approved" : f.status === "returned" ? "returned — please upload a new one" : "received"}</span>
                       {f.reviewerComment && <span>· “{f.reviewerComment}”</span>}
                       {editable && f.status !== "accepted" && <button onClick={() => void remove(f)} aria-label={`Remove ${f.fileName}`} className="ml-auto inline-flex items-center gap-1 text-red-700 hover:underline"><Trash2 size={13} aria-hidden="true" /> Remove</button>}
                     </li>
