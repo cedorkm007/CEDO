@@ -7,8 +7,10 @@ import { focusRing } from "./portalParts";
  * screen-reader users: role="dialog" + aria-modal + a title it is labelled by, Escape and a click on the backdrop close it,
  * focus moves into it when it opens and returns to where it came from when it closes, and Tab stays inside it.
  */
-export function SchoolDialog({ title, onClose, returnFocusTo, children }: {
+export function SchoolDialog({ title, onClose, returnFocusTo, wide = false, children }: {
   title: string; onClose: () => void;
+  /** A wider dialog for tables. */
+  wide?: boolean;
   /** Where focus goes when the dialog closes, when whatever opened it no longer exists (e.g. a menu item). */
   returnFocusTo?: React.RefObject<HTMLElement | null>;
   children: React.ReactNode;
@@ -49,7 +51,7 @@ export function SchoolDialog({ title, onClose, returnFocusTo, children }: {
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/45" onClick={onClose} aria-hidden="true" />
       <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
-        className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden outline-none">
+        className={`relative bg-white rounded-2xl shadow-xl w-full ${wide ? "max-w-3xl" : "max-w-lg"} max-h-[90vh] flex flex-col overflow-hidden outline-none`}>
         <div className="flex items-center justify-between gap-3 px-5 py-4 bg-[#062444] shrink-0">
           <h2 id={titleId} className="text-[16px] font-bold text-white">{title}</h2>
           <button type="button" onClick={onClose} aria-label="Close" className={`p-1.5 rounded-md text-white hover:bg-white/15 ${focusRing}`}>

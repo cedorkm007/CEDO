@@ -5,6 +5,8 @@ import { fieldClass, focusRing } from "./portalParts";
 import { atRiskExplanation, retentionSentence } from "@/lib/standing";
 import { MARK_OUTCOME_LABEL, markAsLetter, type GradingConfig, type LetterGrade, type MarkOutcome, type SchoolMark } from "../types";
 import { MarksGuide } from "@/app/components/MarksGuide";
+import { GradingRulesPanel } from "./GradingRulesPanel";
+import type { RulesPreset, RuleScale } from "@/lib/gradingRules";
 
 const DEFAULT_CONFIG: GradingConfig = { scaleMin: 1, scaleMax: 5, direction: "lower_is_better", usesLetterGrades: false, retentionThreshold: null, passingMark: null };
 
@@ -39,6 +41,12 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  // What is saved now (the scale, the letters and the other marks), to tell the rules below when the form above has changes that are not saved yet
+  const [savedKey, setSavedKey] = useState("");
+  const scaleKey = (c: GradingConfig, l: LetterGrade[], m: SchoolMark[]) => JSON.stringify({
+    a: c.scaleMin, b: c.scaleMax, d: c.direction, u: c.usesLetterGrades,
+    l: c.usesLetterGrades ? l.filter(x => x.letter.trim()).map(x => [x.letter.trim(), x.numericValue ?? null]) : [], m: m.filter(x => x.mark.trim()).map(x => x.mark.trim().toLowerCase()).sort(),
+  });
 
   useEffect(() => {
     Promise.all([fetchGradingConfig(), fetchLetterGrades(schoolId), fetchSchoolMarks(schoolId)]).then(([c, l, m]) => {
@@ -51,6 +59,7 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
       }
       setAlreadySaved(c !== null);
       setLetters(l.length > 0 ? l : [{ letter: "", numericValue: null }]);
+      setSavedKey(scaleKey(c ?? DEFAULT_CONFIG, l, m));
       setLoading(false);
     });
   }, [schoolId]);
@@ -102,15 +111,27 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
       setSavedMarkCount(filled.length);
     }
     setMarks(filled.map(m => ({ ...m, mark: m.mark.trim(), meaning: m.meaning.trim() })));
+    setSavedKey(scaleKey({ ...config, retentionThreshold: threshold, passingMark: passing }, letters, filled));
     setSaving(false);
     setSaved(true);
     setAlreadySaved(true);
     onSaved?.();
   }
 
+  /** A template of the conversion table also sets the scale above (and the letters it needs, and the old passing mark); the school still presses Save. */
+  function applyPreset(p: RulesPreset) {
+    setConfig(c => ({ ...c, scaleMin: p.scale.scaleMin, scaleMax: p.scale.scaleMax, direction: p.scale.direction, usesLetterGrades: p.letters.length > 0 }));
+    if (p.letters.length > 0) setLetters(p.letters.map(x => ({ letter: x.letter, numericValue: x.numericValue })));
+    if (p.scalePassingMark != null) setPassingText(String(p.scalePassingMark));
+  }
+
   if (loading) return <p className="text-[14.5px] text-slate-700 text-center py-8">Loading…</p>;
 
+  const formScale: RuleScale = { scaleMin: config.scaleMin, scaleMax: config.scaleMax, direction: config.direction, letters: config.usesLetterGrades ? letters.filter(l => l.letter.trim()).map(l => ({ letter: l.letter.trim(), numericValue: l.numericValue })) : [] };
+  const scaleDirty = scaleKey(config, letters, marks) !== savedKey;
+
   return (
+    <div className="space-y-6">
     <div className="bg-white border border-[#e6ecf5] rounded-xl p-5 max-w-xl">
       <h2 className="text-[18px] font-bold text-[#062444] mb-1">Grading System</h2>
       <p className="text-[14.5px] text-slate-700 mb-4">Set how your school grades scholars. You can change this anytime.</p>
@@ -235,6 +256,8 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
         </button>
         {saved && <span role="status" className="text-[14.5px] font-semibold text-green-800">Saved.</span>}
       </div>
+    </div>
+    <GradingRulesPanel schoolId={schoolId} formScale={formScale} formMarks={marks} scaleDirty={scaleDirty} scaleSaved={alreadySaved} onApplyPreset={applyPreset} />
     </div>
   );
 }
