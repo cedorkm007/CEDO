@@ -1298,10 +1298,9 @@ test("the eligibility groups are the three of the request plus Waiting for grade
   assert.equal(R.eligibilityLabel("sdp_reconsideration"), "For SDP reconsideration");
   assert.equal(R.SDP_CATEGORY_LABELS.community_service, "Institutional Volunteerism");
 });
-test("the tab sits between Dashboard and Applications, is for the evaluator, and every column of the request is on the page", () => {
+test("the Scholar List screen (its parts are used by the Applications, Renewed and Not applied lists) still has every column of the request on the page", () => {
   const page = fs.readFileSync(path.join(root, "src/sead/ScholarRenewalPage.tsx"), "utf8");
-  assert.ok(page.indexOf('key: "dashboard"') < page.indexOf('key: "scholarList"') && page.indexOf('key: "scholarList"') < page.indexOf('key: "applications"'));
-  assert.match(page, /key: "scholarList", label: "Scholar List".*evaluatorOnly: true/);
+  assert.equal(page.includes('key: "scholarList"'), false, "the Scholar List tab was folded into Applications, Renewed and Not applied (tests/renewal-tabs)");
   const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalScholarListTab.tsx"), "utf8");
   for (const h of ["Scholar", "SDP status", "Grades", "Renewal eligibility", "Renewal status", "Action needed"]) assert.ok(tab.includes(`"${h}"`), h);
   assert.match(tab, /View SDP credits/);

@@ -16,7 +16,7 @@ export const NO_ROLES: ViewerRoles = { evaluator: false, gradesApprover: false, 
 export const hasRole = (v: ViewerRoles, r: StaffRole): boolean => (r === "evaluator" ? v.evaluator : r === "grades_approver" ? v.gradesApprover : r === "sdp_approver" ? v.sdpApprover : v.divisionHead);
 
 /** What a button does: open the entered grades, the SDP reconsideration request or the Division Head's case of the scholar; start a consultation referral; or open the application. */
-export type ActionKey = "approve_grades" | "decide_sdp" | "decide_case" | "refer_consultation" | "open_application";
+export type ActionKey = "approve_grades" | "decide_sdp" | "decide_case" | "refer_consultation" | "open_application" | "decide_inc" | "mark_not_required";
 export interface NeededAction { key: ActionKey; role: StaffRole; label: string }
 
 /** Where one scholar stands for the term, as renewal_scholar_actions() reports it (null for a scholar it did not report). */
@@ -50,7 +50,7 @@ export function neededActions(row: ActionRowInput, facts: ScholarActionFacts | n
   }
   const stage = facts.stage as RenewalStage | null;
   const byStage = stage ? EVALUATOR_STAGE_ACTION[stage] : undefined;
-  if (byStage) out.push({ key: "open_application", role: "evaluator", label: byStage });
+  if (byStage) out.push({ key: stage === "inc_deadline_passed" ? "decide_inc" : "open_application", role: "evaluator", label: byStage });
   if (stage === "needs_consultation_division_head" && facts.dhStatus !== "forwarded_to_division_head") out.push({ key: "open_application", role: "evaluator", label: "Send to the Division Head" });
   if (facts.docsToReview > 0) out.push({ key: "open_application", role: "evaluator", label: `Review ${facts.docsToReview} document${facts.docsToReview === 1 ? "" : "s"}` });
   return out;

@@ -15,13 +15,13 @@ import { canDoAction, neededActions, NO_ROLES, renewalSummary, waitingForText, t
 import { RenewalEnteredGradesTab } from "./RenewalEnteredGradesTab";
 import { RenewalSdpReconsiderationTab } from "./RenewalSdpReconsiderationTab";
 
-const TONE_CHIP: Record<"good" | "bad" | "warn" | "plain", string> = {
+export const TONE_CHIP: Record<"good" | "bad" | "warn" | "plain", string> = {
   good: "bg-green-100 text-green-950 border-green-300", bad: "bg-red-100 text-red-950 border-red-300", warn: "bg-amber-100 text-amber-950 border-amber-300", plain: "bg-slate-100 text-slate-900 border-slate-300",
 };
 const toneOf = (key: string) => ELIGIBILITY_OPTIONS.find(o => o.key === key)?.tone ?? "plain";
 
 /** A drop-down of tick boxes: nothing ticked = no filter on that. */
-function MultiSelect({ label, options, selected, onChange }: { label: string; options: { value: string; label: string }[]; selected: string[]; onChange: (next: string[]) => void }) {
+export function MultiSelect({ label, options, selected, onChange }: { label: string; options: { value: string; label: string }[]; selected: string[]; onChange: (next: string[]) => void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -52,7 +52,7 @@ function MultiSelect({ label, options, selected, onChange }: { label: string; op
   );
 }
 
-function SdpCell({ r, onView }: { r: ScholarListRow; onView: (r: ScholarListRow) => void }) {
+export function SdpCell({ r, onView }: { r: ScholarListRow; onView: (r: ScholarListRow) => void }) {
   const s = sdpStatusText({ applicable: r.sdpApplicable, complied: r.sdpComplied, missing: r.sdpMissing });
   return (
     <div>
@@ -65,7 +65,7 @@ function SdpCell({ r, onView }: { r: ScholarListRow; onView: (r: ScholarListRow)
   );
 }
 
-function GradesCell({ r }: { r: ScholarListRow }) {
+export function GradesCell({ r }: { r: ScholarListRow }) {
   const chips = gradeIndicators(r);
   const notIn = r.gradesState === "waiting" || r.gradesState === "no_grades";
   return (
@@ -92,9 +92,13 @@ function SummaryCell({ r, facts, ready }: { r: ScholarListRow; facts: ScholarAct
 }
 
 /** The Action needed column: what waits on staff. Only the staff assigned to an action can click it; everybody else sees who it is waiting for. */
-function ActionCell({ r, facts, ready, viewer, busy, onAct }: { r: ScholarListRow; facts: ScholarActionFacts | null; ready: boolean; viewer: ViewerRoles; busy: string | null; onAct: (a: NeededAction, r: ScholarListRow, f: ScholarActionFacts) => void }) {
+export function ActionCell({ r, facts, ready, viewer, busy, onAct, actionsFor }: {
+  r: ScholarListRow; facts: ScholarActionFacts | null; ready: boolean; viewer: ViewerRoles; busy: string | null; onAct: (a: NeededAction, r: ScholarListRow, f: ScholarActionFacts) => void;
+  /** The list of actions when it is not just neededActions() (the Not applied list adds "Mark not required"). */
+  actionsFor?: (r: ScholarListRow, f: ScholarActionFacts | null) => NeededAction[];
+}) {
   if (!ready || !facts) return <span className="text-slate-700">—</span>;
-  const list = neededActions(r, facts);
+  const list = actionsFor ? actionsFor(r, facts) : neededActions(r, facts);
   if (list.length === 0) return <span className="text-slate-700">No action needed</span>;
   return (
     <ul className="space-y-1.5">
@@ -184,7 +188,8 @@ export function RenewalScholarListTab({ schoolYear, term, refreshKey, viewer = N
   /** A button of the Action needed column: opens the screen where the person with that role decides (the database checks the role again). */
   async function act(a: NeededAction, r: ScholarListRow, f: ScholarActionFacts) {
     setActionError("");
-    if (a.key === "open_application") { if (f.recordId && onOpenRecord) onOpenRecord(f.recordId); return; }
+    if (a.key === "open_application" || a.key === "decide_inc") { if (f.recordId && onOpenRecord) onOpenRecord(f.recordId); return; }
+    if (a.key === "mark_not_required") return;
     if (a.key === "refer_consultation") {
       setReferBusy(r.scholarIdNumber);
       const scholar = await fetchScholarInformationByIdNumber(r.scholarIdNumber);
