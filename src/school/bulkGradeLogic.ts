@@ -8,10 +8,11 @@
 // ─────────────────────────────────────────────────────────────
 import { parseCsv, toCsv, normalizeHeader, findColumn, cell } from "@/sead/csvUtils";
 import {
-  periodKey, periodTitle, normalizeTerm, statusLabel,
+  periodKey, periodTitle, normalizeTerm, statusLabel, termLabel,
   type PeriodRef, type PeriodStatus,
 } from "@/lib/academicPeriods";
-import { reservedMark } from "@/lib/subjectOutcome";
+import { classifyGrade, reservedMark } from "@/lib/subjectOutcome";
+import { looksLikePromoReport, readPromoReport, type PromoEntry } from "./promoReport";
 import type { GradingConfig, LetterGrade, SchoolScholarRow, SchoolSubjectGrade } from "./types";
 
 /** `remarks` is optional: a file without that column still uploads, and leaves every stored remark as it is. */
@@ -106,6 +107,8 @@ export interface PreviewRow {
   messages: string[];
   scholarId: string;
   scholarName: string;
+  /** The school's own number for the scholar, when the file is the promotional report. */
+  studentNo?: string;
   subjectCode: string;
   subject: string;
   units: string;
@@ -126,6 +129,9 @@ export interface UploadContext {
   letters: LetterGrade[];
 }
 
+/** A Student No. the system does not know yet, matched to a scholar of the school by name. Saved only after the school confirms it. */
+export interface ProposedLink { scholarIdNumber: string; studentNo: string; scholarName: string }
+
 export interface ParseResult {
   /** Set when the WHOLE file is rejected (nothing to preview). */
   fileError?: string;
@@ -133,6 +139,10 @@ export interface ParseResult {
   rows: PreviewRow[];
   /** Rows with a scholar but nothing typed in code / subject / units / grade — the template's placeholder rows. They are ignored, not errors. */
   ignoredBlank: number;
+  /** Student Nos. to link to scholars (the promotional report only); the school confirms them before the grades are saved. */
+  links: ProposedLink[];
+  /** csv = the earlier CSV layout; promo = the promotional report / enrollment list. */
+  format: "csv" | "promo";
 }
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
@@ -149,18 +159,159 @@ function nameLooksDifferent(fileName: string, scholar: SchoolScholarRow): boolea
   return !typed.some(t => known.has(t));
 }
 
-export function parseGradeUpload(text: string, ctx: UploadContext): ParseResult {
-  const fail = (fileError: string): ParseResult => ({ fileError, headers: [], rows: [], ignoredBlank: 0 });
-  const title = periodTitle(ctx.period);
+/** One row of an upload in the shape the checks work on, whichever file layout it came from. */
+interface InputRow {
+  rowNumber: number;
+  scholarId: string;
+  scholarName: string;
+  /** The school's own number for the scholar (the promotional report), when the file has one. */
+  studentNo?: string;
+  code: string;
+  subject: string;
+  unitsText: string;
+  grade: string;
+  remarksText: string;
+  raw: string[];
+  /** Problems found before the grade checks (a Student No. that is nobody's) and notes (a Student No. that will be linked to a scholar). */
+  preErrors?: string[];
+  preWarnings?: string[];
+}
+/** none = the file has no remarks column (stored remarks stay); set = the file's remark is saved, blank clears it; setIfFilled = a filled remark is saved, a blank one leaves the stored remark (and the remark is compared with the grade). */
+type RemarkMode = "none" | "set" | "setIfFilled";
 
-  if (ctx.periodStatus !== "open") {
-    return fail(ctx.periodStatus
-      ? `${title} is ${statusLabel(ctx.periodStatus)} — schools can only upload grades into an Open period.`
-      : `${title} has not been set up by CEDO yet, so grades cannot be uploaded for it.`);
+/** The word the promotional report uses for each result, to compare with the REMARKS column. */
+const REMARK_WORDS: Record<string, string[]> = {
+  passed: ["PASSED", "PASS"], failed: ["FAILED", "FAIL"], drp: ["DROPPED", "DRP", "DROP"], inc: ["INCOMPLETE", "INC"],
+};
+const REMARK_RESULT_TEXT: Record<string, string> = { passed: "a pass", failed: "a fail", drp: "dropped (DRP)", inc: "incomplete (INC)" };
+
+/** A warning when the REMARKS word (PASSED, FAILED, DROPPED, INCOMPLETE) says something other than the grade does. Other remarks (NSTP, Cross-enrolled …) are just information. */
+function remarkDisagreesWithGrade(remark: string, grade: string, config: GradingConfig, letters: LetterGrade[]): string | null {
+  const word = remark.trim().toUpperCase();
+  if (!word || !grade.trim()) return null;
+  const said = Object.keys(REMARK_WORDS).find(k => REMARK_WORDS[k].includes(word));
+  if (!said) return null;
+  const outcome = classifyGrade(grade, config, letters);
+  if (!(outcome in REMARK_WORDS)) return null;      // ungraded, needs review, no passing mark set: nothing to compare with
+  if (outcome === said) return null;
+  return `The remark says ${remark.trim()}, but the grade ${grade.trim()} is ${REMARK_RESULT_TEXT[outcome]} on your grading scale. Check the grade or the remark.`;
+}
+
+function checkRows(inputs: InputRow[], ctx: UploadContext, headers: string[], ignoredBlank: number, remarkMode: RemarkMode, format: ParseResult["format"]): ParseResult {
+  // 2. Per-row checks.
+  const scholarById = new Map(ctx.scholars.map(s => [s.scholarIdNumber, s]));
+  const existingByScholar = new Map<string, SchoolSubjectGrade[]>();
+  for (const g of ctx.existing) {
+    const list = existingByScholar.get(g.scholarIdNumber);
+    if (list) list.push(g); else existingByScholar.set(g.scholarIdNumber, [g]);
   }
-  if (!ctx.config) return fail("Set up your grading scale in the Grading System tab before uploading grades.");
+  const findExisting = (scholarId: string, code: string, name: string): SchoolSubjectGrade | null => {
+    const list = existingByScholar.get(scholarId) ?? [];
+    if (code) {
+      const byCode = list.find(g => norm(g.subjectCode) === norm(code));
+      if (byCode) return byCode;
+      return list.find(g => !g.subjectCode.trim() && norm(g.subject) === norm(name)) ?? null;
+    }
+    return list.find(g => norm(g.subject) === norm(name)) ?? null;
+  };
+  const dupKey = (scholarId: string, code: string, name: string) => `${scholarId}|${code ? `c:${norm(code)}` : `n:${norm(name)}`}`;
 
-  const raw = parseCsv(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+  const groups = new Map<string, number[]>();
+  for (const inp of inputs) {
+    if (!inp.scholarId || !inp.subject) continue;
+    const key = dupKey(inp.scholarId, inp.code, inp.subject);
+    const list = groups.get(key);
+    if (list) list.push(inp.rowNumber); else groups.set(key, [inp.rowNumber]);
+  }
+
+  const term = normalizeTerm(ctx.period.semester) ?? ctx.period.semester;
+  const rows: PreviewRow[] = inputs.map(inp => {
+    const { rowNumber, scholarId, scholarName, code, subject, unitsText, grade, remarksText, raw } = inp;
+    const errors: string[] = [...(inp.preErrors ?? [])];
+    const warnings: string[] = [...(inp.preWarnings ?? [])];
+
+    const scholar = scholarId ? scholarById.get(scholarId) : undefined;
+    if (!inp.preErrors?.length) {
+      if (!scholarId) errors.push("Scholar ID is required.");
+      else if (!scholar) errors.push(`Scholar ID ${scholarId} is not one of your school's scholars.`);
+    }
+    if (!subject) errors.push("Subject name is required.");
+
+    let units: number | null = null;
+    if (unitsText) {
+      if (/^\d+(\.\d+)?$/.test(unitsText) && Number(unitsText) > 0) units = Number(unitsText);
+      else errors.push(`Units "${unitsText}" must be a positive number.`);
+    }
+
+    const gradeError = validateGradeValue(grade, ctx.config!, ctx.letters);
+    if (gradeError) errors.push(gradeError);
+    if (remarksText.length > MAX_REMARKS_LENGTH) errors.push(`Remarks are too long (${remarksText.length} characters; the limit is ${MAX_REMARKS_LENGTH}).`);
+    if (remarkMode === "setIfFilled" && !gradeError) {
+      const disagree = remarkDisagreesWithGrade(remarksText, grade, ctx.config!, ctx.letters);
+      if (disagree) warnings.push(disagree);
+    }
+
+    if (scholarId && subject) {
+      const others = (groups.get(dupKey(scholarId, code, subject)) ?? []).filter(n => n !== rowNumber);
+      if (others.length > 0) errors.push(`Duplicate: the same scholar and subject also appear in row${others.length === 1 ? "" : "s"} ${others.join(", ")}. Keep only one.`);
+    }
+
+    if (scholar && scholarName && nameLooksDifferent(scholarName, scholar)) {
+      warnings.push(`Name in the file (${scholarName}) does not look like the scholar with ${inp.studentNo !== undefined ? `Student No. ${inp.studentNo}` : `ID ${scholarId}`} (${scholarDisplayName(scholar)}). Rows are matched by ${inp.studentNo !== undefined ? "Student No." : "ID"} — check it is right.`);
+    }
+
+    const existing = scholar && subject ? findExisting(scholarId, code, subject) : null;
+    let action: RowAction = "add";
+    let effectiveGrade = grade;
+    if (existing) {
+      action = "update";
+      if (!grade && existing.grade.trim()) {
+        effectiveGrade = existing.grade;
+        warnings.push(`Grade left blank — the existing grade (${existing.grade}) is kept.`);
+      } else if (grade && existing.grade.trim() && grade !== existing.grade.trim()) {
+        warnings.push(`Will overwrite the existing grade ${existing.grade} with ${grade}.`);
+      }
+      if (subject !== existing.subject) warnings.push(`Subject name will change from "${existing.subject}" to "${subject}".`);
+      const sameCode = code === existing.subjectCode.trim() || (!code && !existing.subjectCode.trim());
+      const sameUnits = units === null || units === existing.units;
+      const sameRemarks = remarkMode === "none" || (remarkMode === "setIfFilled" && remarksText === "") || remarksText === (existing.remarks ?? "").trim();
+      if (sameCode && subject === existing.subject && effectiveGrade.trim() === existing.grade.trim() && sameUnits && sameRemarks) action = "unchanged";
+    }
+
+    const status: RowStatus = errors.length > 0 ? "error" : warnings.length > 0 ? "warning" : "valid";
+    const payload: PayloadRow | null = status === "error" ? null : {
+      id: existing?.id ?? null, scholarIdNumber: scholarId, schoolYear: ctx.period.schoolYear.trim(), semester: term,
+      subjectCode: code, subject, grade: effectiveGrade.trim(), units, remarks: remarkMode === "none" ? null : remarkMode === "setIfFilled" ? (remarksText || null) : remarksText,
+    };
+    return {
+      rowNumber, status, action, messages: errors.length > 0 ? errors : warnings,
+      scholarId, scholarName, studentNo: inp.studentNo, subjectCode: code, subject, units: unitsText, grade, raw, payload,
+    };
+  });
+
+  return { headers, rows, ignoredBlank, links: [], format };
+}
+
+/** The checks every upload starts with. */
+function startChecks(ctx: UploadContext): string | null {
+  const title = periodTitle(ctx.period);
+  if (ctx.periodStatus !== "open") {
+    return ctx.periodStatus
+      ? `${title} is ${statusLabel(ctx.periodStatus)} — schools can only upload grades into an Open period.`
+      : `${title} has not been set up by CEDO yet, so grades cannot be uploaded for it.`;
+  }
+  if (!ctx.config) return "Set up your grading scale in the Grading System tab before uploading grades.";
+  return null;
+}
+const failResult = (fileError: string): ParseResult => ({ fileError, headers: [], rows: [], ignoredBlank: 0, links: [], format: "csv" });
+
+/** A CSV in the earlier layout (school_year, semester, scholar_id, scholar_name, subject_code, subject_name, units, grade, remarks), already split into cells. */
+export function parseGradeGrid(raw: string[][], ctx: UploadContext): ParseResult {
+  const fail = failResult;
+  const title = periodTitle(ctx.period);
+  const early = startChecks(ctx);
+  if (early) return fail(early);
+
   if (raw.length === 0) return fail("The file is empty.");
 
   const headerCells = raw[0].map(h => h.trim());
@@ -203,100 +354,109 @@ export function parseGradeUpload(text: string, ctx: UploadContext): ParseResult 
   const ignoredBlank = entries.length - filled.length;
   if (filled.length === 0) return fail("Nothing is filled in yet — type subjects and grades into the template (the rows for scholars with no subjects are placeholders), then upload it again.");
 
-  // 2. Per-row checks.
-  const scholarById = new Map(ctx.scholars.map(s => [s.scholarIdNumber, s]));
-  const existingByScholar = new Map<string, SchoolSubjectGrade[]>();
-  for (const g of ctx.existing) {
-    const list = existingByScholar.get(g.scholarIdNumber);
-    if (list) list.push(g); else existingByScholar.set(g.scholarIdNumber, [g]);
+  const inputs: InputRow[] = filled.map(({ r, rowNumber }) => ({
+    rowNumber, scholarId: cell(r, idx.scholarId), scholarName: cell(r, idx.scholarName), code: cell(r, idx.subjectCode), subject: cell(r, idx.subjectName),
+    unitsText: cell(r, idx.units), grade: cell(r, idx.grade), remarksText: idx.remarks === -1 ? "" : cell(r, idx.remarks), raw: r,
+  }));
+  return checkRows(inputs, ctx, headerCells, ignoredBlank, idx.remarks === -1 ? "none" : "set", "csv");
+}
+
+export function parseGradeUpload(text: string, ctx: UploadContext): ParseResult {
+  return parseGradeGrid(parseCsv(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text), ctx);
+}
+
+// ── The school's promotional report / enrollment list ────────
+/** Names compared without capitals, accents or punctuation: "DE LA CRUZ" and "De la Cruz" are the same. */
+const nameKey = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9ñ]+/g, " ").trim();
+/** A Student No. compared without capitals or spaces. */
+export const studentNoKey = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+const initialOf = (s: string) => nameKey(s).charAt(0);
+
+/** True when a scholar on record is the person named on the sheet: the same last and first name, and the same first letter of the middle name when both have one. */
+function sameName(e: { last: string; first: string; middle: string }, s: SchoolScholarRow): boolean {
+  if (!e.last.trim() || !e.first.trim()) return false;
+  if (nameKey(e.last) !== nameKey(s.lastName) || nameKey(e.first) !== nameKey(s.firstName)) return false;
+  return !e.middle.trim() || !s.middleName.trim() || initialOf(e.middle) === initialOf(s.middleName);
+}
+
+/**
+ * A promotional report / enrollment list (the grid read from the Excel sheet or from a CSV saved from it).
+ * The period comes from the top of the sheet. Each student is found by STUDENT NO.; a Student No. the system does not know yet is matched to a scholar
+ * of the school by name (exactly one without a School ID), and shown as a link the school must confirm before anything is saved.
+ */
+export function parsePromoUpload(grid: string[][], ctx: UploadContext): ParseResult {
+  const early = startChecks(ctx);
+  if (early) return { ...failResult(early), format: "promo" };
+  const fail = (msg: string): ParseResult => ({ ...failResult(msg), format: "promo" });
+  const title = periodTitle(ctx.period);
+
+  const sheet = readPromoReport(grid);
+  if ("error" in sheet) return fail(sheet.error);
+  if (!sheet.schoolYear || !sheet.semester) {
+    return fail(`The sheet does not say its school year and semester at the top (for example "SY ${ctx.period.schoolYear}" and "FIRST SEMESTER"). Nothing was checked. Download a fresh template for ${title}.`);
   }
-  const findExisting = (scholarId: string, code: string, name: string): SchoolSubjectGrade | null => {
-    const list = existingByScholar.get(scholarId) ?? [];
-    if (code) {
-      const byCode = list.find(g => norm(g.subjectCode) === norm(code));
-      if (byCode) return byCode;
-      return list.find(g => !g.subjectCode.trim() && norm(g.subject) === norm(name)) ?? null;
-    }
-    return list.find(g => norm(g.subject) === norm(name)) ?? null;
-  };
-  const dupKey = (scholarId: string, code: string, name: string) => `${scholarId}|${code ? `c:${norm(code)}` : `n:${norm(name)}`}`;
-
-  const groups = new Map<string, number[]>();
-  for (const { r, rowNumber } of filled) {
-    const subject = cell(r, idx.subjectName);
-    const scholarId = cell(r, idx.scholarId);
-    if (!scholarId || !subject) continue;
-    const key = dupKey(scholarId, cell(r, idx.subjectCode), subject);
-    const list = groups.get(key);
-    if (list) list.push(rowNumber); else groups.set(key, [rowNumber]);
+  if (periodKey(sheet.schoolYear, sheet.semester) !== periodKey(ctx.period.schoolYear, ctx.period.semester)) {
+    return fail(`This file does not match the period you chose (${title}). It says SY ${sheet.schoolYear} · ${sheet.semester}. Nothing was checked. Choose the right period, or download a fresh template.`);
   }
+  if (sheet.entries.length === 0) return fail("Nothing is filled in yet — type the students' subjects and grades into the template, then upload it again.");
 
-  const term = normalizeTerm(ctx.period.semester) ?? ctx.period.semester;
-  const rows: PreviewRow[] = filled.map(({ r, rowNumber }) => {
-    const scholarId = cell(r, idx.scholarId);
-    const scholarName = cell(r, idx.scholarName);
-    const code = cell(r, idx.subjectCode);
-    const subject = cell(r, idx.subjectName);
-    const unitsText = cell(r, idx.units);
-    const grade = cell(r, idx.grade);
-    const remarksText = idx.remarks === -1 ? "" : cell(r, idx.remarks);
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    const scholar = scholarId ? scholarById.get(scholarId) : undefined;
-    if (!scholarId) errors.push("Scholar ID is required.");
-    else if (!scholar) errors.push(`Scholar ID ${scholarId} is not one of your school's scholars.`);
-    if (!subject) errors.push("Subject name is required.");
-
-    let units: number | null = null;
-    if (unitsText) {
-      if (/^\d+(\.\d+)?$/.test(unitsText) && Number(unitsText) > 0) units = Number(unitsText);
-      else errors.push(`Units "${unitsText}" must be a positive number.`);
-    }
-
-    const gradeError = validateGradeValue(grade, ctx.config!, ctx.letters);
-    if (gradeError) errors.push(gradeError);
-    if (remarksText.length > MAX_REMARKS_LENGTH) errors.push(`Remarks are too long (${remarksText.length} characters; the limit is ${MAX_REMARKS_LENGTH}).`);
-
-    if (scholarId && subject) {
-      const others = (groups.get(dupKey(scholarId, code, subject)) ?? []).filter(n => n !== rowNumber);
-      if (others.length > 0) errors.push(`Duplicate: the same scholar and subject also appear in row${others.length === 1 ? "" : "s"} ${others.join(", ")}. Keep only one.`);
-    }
-
-    if (scholar && scholarName && nameLooksDifferent(scholarName, scholar)) {
-      warnings.push(`Name in the file (${scholarName}) does not look like the scholar with ID ${scholarId} (${scholarDisplayName(scholar)}). Rows are matched by ID — check the ID is right.`);
-    }
-
-    const existing = scholar && subject ? findExisting(scholarId, code, subject) : null;
-    let action: RowAction = "add";
-    let effectiveGrade = grade;
-    if (existing) {
-      action = "update";
-      if (!grade && existing.grade.trim()) {
-        effectiveGrade = existing.grade;
-        warnings.push(`Grade left blank — the existing grade (${existing.grade}) is kept.`);
-      } else if (grade && existing.grade.trim() && grade !== existing.grade.trim()) {
-        warnings.push(`Will overwrite the existing grade ${existing.grade} with ${grade}.`);
+  // who is each student?
+  const byNo = new Map<string, SchoolScholarRow>();
+  for (const s of ctx.scholars) if (s.schoolStudentNo.trim()) byNo.set(studentNoKey(s.schoolStudentNo), s);
+  const claimed = new Set<string>();          // scholars already taken by a link proposed in this file
+  type Who = { scholarId: string; error?: string; warning?: string };
+  const resolved = new Map<string, Who>();
+  const links: ProposedLink[] = [];
+  const whoIs = (e: PromoEntry): Who => {
+    const display = [e.last, e.first, e.middle].map(x => x.trim()).filter(Boolean).join(", ").replace(/, ([^,]*), /, ", $1 ");
+    const key = e.studentNo.trim() ? `no:${studentNoKey(e.studentNo)}` : `blank:${nameKey(`${e.last} ${e.first}`)}:${e.rowNumber}`;
+    const known = resolved.get(key);
+    if (known) return known;
+    let who: Who;
+    if (!e.studentNo.trim()) {
+      who = { scholarId: "", error: "STUDENT NO. is required — type the student's number from your school." };
+    } else {
+      const hit = byNo.get(studentNoKey(e.studentNo));
+      if (hit) who = { scholarId: hit.scholarIdNumber };
+      else {
+        const sameNamed = ctx.scholars.filter(s => sameName(e, s));
+        const free = sameNamed.filter(s => !s.schoolStudentNo.trim() && !claimed.has(s.scholarIdNumber));
+        if (free.length === 1) {
+          const s = free[0];
+          claimed.add(s.scholarIdNumber);
+          links.push({ scholarIdNumber: s.scholarIdNumber, studentNo: e.studentNo.trim(), scholarName: scholarDisplayName(s) });
+          who = { scholarId: s.scholarIdNumber, warning: `New: Student No. ${e.studentNo.trim()} will be linked to ${scholarDisplayName(s)} (${s.scholarIdNumber}). Please confirm the link below.` };
+        } else if (free.length > 1) {
+          who = { scholarId: "", error: `Student No. ${e.studentNo.trim()} is not linked to a scholar yet, and ${display || "this name"} fits more than one scholar of your school without a School ID. Type the School ID in the Scholars list, then upload again.` };
+        } else if (sameNamed.some(s => s.schoolStudentNo.trim())) {
+          const other = sameNamed.find(s => s.schoolStudentNo.trim())!;
+          who = { scholarId: "", error: `${scholarDisplayName(other)} already has the School ID ${other.schoolStudentNo} in the system, not ${e.studentNo.trim()}. If ${e.studentNo.trim()} is right, change it in the Scholars list, then upload again.` };
+        } else {
+          who = { scholarId: "", error: `Student No. ${e.studentNo.trim()} is not linked to one of your scholars yet, and ${display || "the name"} does not match any scholar of your school without a School ID. Type the School ID in the Scholars list, then upload again.` };
+        }
       }
-      if (subject !== existing.subject) warnings.push(`Subject name will change from "${existing.subject}" to "${subject}".`);
-      const sameCode = code === existing.subjectCode.trim() || (!code && !existing.subjectCode.trim());
-      const sameUnits = units === null || units === existing.units;
-      const sameRemarks = idx.remarks === -1 || remarksText === (existing.remarks ?? "").trim();
-      if (sameCode && subject === existing.subject && effectiveGrade.trim() === existing.grade.trim() && sameUnits && sameRemarks) action = "unchanged";
     }
+    resolved.set(key, who);
+    return who;
+  };
 
-    const status: RowStatus = errors.length > 0 ? "error" : warnings.length > 0 ? "warning" : "valid";
-    const payload: PayloadRow | null = status === "error" ? null : {
-      id: existing?.id ?? null, scholarIdNumber: scholarId, schoolYear: ctx.period.schoolYear.trim(), semester: term,
-      subjectCode: code, subject, grade: effectiveGrade.trim(), units, remarks: idx.remarks === -1 ? null : remarksText,
-    };
+  const inputs: InputRow[] = sheet.entries.map(e => {
+    const who = whoIs(e);
     return {
-      rowNumber, status, action, messages: errors.length > 0 ? errors : warnings,
-      scholarId, scholarName, subjectCode: code, subject, units: unitsText, grade, raw: r, payload,
+      rowNumber: e.rowNumber, scholarId: who.scholarId, studentNo: e.studentNo, code: e.code, subject: e.description, unitsText: e.units, grade: e.grade, remarksText: e.remarks, raw: e.cells,
+      scholarName: [`${e.last},`, e.first, e.middle, e.ext].map(x => x.trim()).filter(x => x && x !== ",").join(" "),
+      preErrors: who.error ? [who.error] : undefined, preWarnings: who.warning ? [who.warning] : undefined,
     };
   });
+  const result = checkRows(inputs, ctx, sheet.headers, sheet.ignoredBlank, "setIfFilled", "promo");
+  // a link is only worth confirming when at least one of the student's rows can be saved
+  result.links = links.filter(l => result.rows.some(r => r.payload?.scholarIdNumber === l.scholarIdNumber));
+  return result;
+}
 
-  return { headers: headerCells, rows, ignoredBlank };
+/** Whichever layout the file is in: the promotional report, or the earlier CSV. */
+export function parseUploadedGrid(grid: string[][], ctx: UploadContext): ParseResult {
+  return looksLikePromoReport(grid) ? parsePromoUpload(grid, ctx) : parseGradeGrid(grid, ctx);
 }
 
 // ── Preview counts, save payload, summary, error report ──────
@@ -350,4 +510,13 @@ export function buildErrorReport(headers: string[], rows: PreviewRow[], outcomes
     ["row_number", "problem", ...headers],
     problems.map(p => [p.rowNumber, p.reason, ...Array.from({ length: width }, (_, i) => p.raw[i] ?? "")]),
   );
+}
+
+/** The error report for either layout. For the promotional report it starts with the school year and semester, so the corrected file can be uploaded again as it is. */
+export function buildUploadErrorReport(parsed: ParseResult, period: PeriodRef, outcomes: SaveOutcome[]): string | null {
+  const csv = buildErrorReport(parsed.headers, parsed.rows, outcomes);
+  if (!csv || parsed.format !== "promo") return csv;
+  const term = normalizeTerm(period.semester);
+  const quote = (t: string) => `"${t.replace(/"/g, '""')}"`;
+  return `${quote(`SY ${period.schoolYear}`)}\r\n${quote((term ? termLabel(term) : period.semester).toUpperCase())}\r\n\r\n${csv}`;
 }

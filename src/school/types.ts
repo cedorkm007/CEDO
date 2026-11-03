@@ -44,6 +44,8 @@ export interface SchoolScholarRow {
   middleName: string;
   yearLevel: string;
   course: string;
+  /** The school's own number for the scholar (the STUDENT NO. of its promotional report); empty until the school gives it. */
+  schoolStudentNo: string;
 }
 
 export interface SchoolSubjectGrade {

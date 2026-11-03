@@ -1,4 +1,5 @@
-import { AlertTriangle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, Check, Pencil, X } from "lucide-react";
 import { formatGwa } from "@/lib/gwa";
 import { scholarName, programOf, yearLevelOf, type ScholarRowData } from "../portalLogic";
 import { StatusChip, StandingChip, linkButton } from "./portalParts";
@@ -8,11 +9,58 @@ import type { SchoolScholarRow } from "../types";
 const TH = "text-left px-4 py-3 font-bold text-[13px] uppercase tracking-wide text-slate-700 whitespace-nowrap";
 
 /**
- * One table of scholars: Scholar ID, Name, Program, Year, Subjects, Graded, Status, GWA, Actions.
+ * The school's own number for the scholar (the STUDENT NO. of its promotional report). The school can type or correct it right here;
+ * the upload uses it to find the scholar.
+ */
+function SchoolIdCell({ scholar, onSave }: { scholar: SchoolScholarRow; onSave?: (scholarIdNumber: string, value: string) => Promise<string | null> }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [justSaved, setJustSaved] = useState<string | null>(null);      // shown until the reloaded list arrives
+  useEffect(() => { setJustSaved(null); }, [scholar.schoolStudentNo]);
+  const current = justSaved ?? scholar.schoolStudentNo;
+  const name = scholarName(scholar);
+  async function save() {
+    if (!onSave) return;
+    setBusy(true); setError("");
+    const problem = await onSave(scholar.scholarIdNumber, value);
+    setBusy(false);
+    if (problem) { setError(problem); return; }
+    setJustSaved(value.trim());
+    setEditing(false);
+  }
+  if (editing) {
+    return (
+      <div className="min-w-[10rem] max-w-[15rem] whitespace-normal">
+        <div className="flex items-center gap-1">
+          <input value={value} onChange={e => setValue(e.target.value)} maxLength={40} autoFocus disabled={busy} aria-label={`School ID of ${name}`}
+            onKeyDown={e => { if (e.key === "Enter") void save(); if (e.key === "Escape") setEditing(false); }}
+            className="w-32 rounded-md border border-[#062444]/30 px-2 py-1 text-[14px] outline-none focus:border-[#062444]" />
+          <button onClick={() => void save()} disabled={busy} aria-label={`Save the School ID of ${name}`} className="rounded-md p-1 text-green-800 hover:bg-green-50 disabled:opacity-50"><Check size={16} aria-hidden="true" /></button>
+          <button onClick={() => setEditing(false)} disabled={busy} aria-label="Cancel" className="rounded-md p-1 text-slate-700 hover:bg-slate-100"><X size={16} aria-hidden="true" /></button>
+        </div>
+        {error && <p role="alert" className="mt-1 max-w-[14rem] text-[13px] text-red-700">{error}</p>}
+      </div>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {current ? <span>{current}</span> : <span className="text-slate-600">—</span>}
+      {onSave && (
+        <button onClick={() => { setValue(current); setError(""); setEditing(true); }} aria-label={`${current ? "Change" : "Add"} the School ID of ${name}`}
+          className="rounded-md p-1 text-[#0077b6] hover:bg-[#f0f6fb]"><Pencil size={14} aria-hidden="true" /></button>
+      )}
+    </span>
+  );
+}
+
+/**
+ * One table of scholars: Scholar ID, School ID, Name, Program, Year, Subjects, Graded, Status, GWA, Actions.
  * Used for the "Table view", for search results, and at the last level of the year-level / program drill-down,
  * so the same columns and chips appear everywhere. Scrolls sideways on a phone instead of squeezing.
  */
-export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, showStanding = false }: {
+export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, showStanding = false, onSetSchoolId }: {
   rows: ScholarRowData[];
   /** The selected period is Open (grades may be entered). */
   editable: boolean;
@@ -23,6 +71,8 @@ export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, sho
   empty: React.ReactNode;
   /** Show the scholarship Standing column (only when the school has saved a retention requirement). */
   showStanding?: boolean;
+  /** Saves the School ID of a scholar; returns a message when it could not be saved. Without it the column is read-only. */
+  onSetSchoolId?: (scholarIdNumber: string, value: string) => Promise<string | null>;
 }) {
   if (rows.length === 0) {
     return <div className="bg-white border border-dashed border-[#062444]/30 rounded-xl px-5 py-8 text-center text-[14.5px] text-slate-800">{empty}</div>;
@@ -30,11 +80,12 @@ export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, sho
   const canEnter = editable && gradingReady;
   return (
     <div className="relative bg-white border border-[#e6ecf5] rounded-xl overflow-x-auto">
-      <table className="w-full min-w-[980px] text-[14.5px]">
+      <table className="w-full min-w-[1080px] text-[14.5px]">
         <caption className="sr-only">Scholars of your school with their subjects, grading progress, status and GWA for the selected period</caption>
         <thead className="bg-[#f7f9fc]">
           <tr>
             <th scope="col" className={TH}>Scholar ID</th>
+            <th scope="col" className={TH}>School ID</th>
             <th scope="col" className={TH}>Name</th>
             <th scope="col" className={TH}>Program</th>
             <th scope="col" className={TH}>Year</th>
@@ -50,6 +101,7 @@ export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, sho
           {rows.map(({ scholar: s, summary, status, standing, outcomes }) => (
             <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f7f9fc]">
               <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{s.scholarIdNumber}</td>
+              <td className="px-4 py-3 text-slate-800 whitespace-nowrap"><SchoolIdCell scholar={s} onSave={onSetSchoolId} /></td>
               <td className="px-4 py-3 font-semibold text-[#062444]">{scholarName(s)}</td>
               <td className="px-4 py-3 text-slate-800">{programOf(s)}</td>
               <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{yearLevelOf(s)}</td>

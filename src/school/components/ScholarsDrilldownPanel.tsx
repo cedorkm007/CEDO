@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { GraduationCap, BookOpen, UploadCloud, Download, Search, ChevronRight, LayoutGrid, Table2, AlertTriangle, Settings } from "lucide-react";
+import { GraduationCap, BookOpen, UploadCloud, Search, ChevronRight, LayoutGrid, Table2, AlertTriangle, Settings } from "lucide-react";
 import { useUrlState } from "@/app/useUrlState";
 import { statusLabel, canSchoolEdit } from "@/lib/academicPeriods";
 import {
@@ -7,7 +7,8 @@ import {
   type Drill, type ScholarStatus,
 } from "../portalLogic";
 import { periodLabel } from "../gradeSaveLogic";
-import { downloadGradeTemplate } from "../templateDownload";
+import { setSchoolStudentNo } from "../schoolApi";
+import { TemplateDownloadMenu } from "./TemplateDownloadMenu";
 import { SubmitGradesDialog } from "./SubmitGradesDialog";
 import { submitReadiness } from "../submissionLogic";
 import { periodTitle } from "@/lib/academicPeriods";
@@ -38,8 +39,8 @@ function Notice({ tone, children, role }: { tone: "amber" | "red"; children: Rea
  * CSV upload, view toggle), year-level cards with progress that drill down through programs to a table — or one
  * "Table view" of every scholar with filters — plus guidance for every empty state. All data comes from useSchoolData.
  */
-export function ScholarsDrilldownPanel({ data, onGoToGradingSystem, onOpenScholar }: {
-  data: SchoolData; onGoToGradingSystem: () => void;
+export function ScholarsDrilldownPanel({ data, schoolName, onGoToGradingSystem, onOpenScholar }: {
+  data: SchoolData; schoolName: string; onGoToGradingSystem: () => void;
   /** Opens the grade-entry window for a scholar (the window lives in the workspace so the Corrections tab can open it too). */
   onOpenScholar: (scholar: SchoolScholarRow) => void;
 }) {
@@ -53,7 +54,6 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem, onOpenSchola
   const [standingFilter, setStandingFilter] = useState<StandingResult | "">("");
   const [submitting, setSubmitting] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [toolbarError, setToolbarError] = useState("");
 
   const searching = search.trim() !== "";
@@ -80,12 +80,12 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem, onOpenSchola
   const standingCounts = useMemo(() => (hasRequirement ? countStandings(rows.map(r => r.standing)) : null), [rows, hasRequirement]);
   const searchRows = useMemo(() => filterRows(rows, { search }), [rows, search]);
 
-  async function handleDownloadTemplate() {
-    setToolbarError("");
-    setDownloading(true);
-    const result = await downloadGradeTemplate(data.scholars, period);
-    setDownloading(false);
-    if (!result.ok) setToolbarError(`Couldn't prepare the template: ${result.error}`);
+  /** Saves the School ID typed in the list; the list is read again afterwards. Returns a message when it could not be saved. */
+  async function setSchoolId(scholarIdNumber: string, value: string): Promise<string | null> {
+    const r = await setSchoolStudentNo(scholarIdNumber, value);
+    if (!r.ok) return r.error;
+    data.reloadScholars();
+    return null;
   }
 
   const openScholar = onOpenScholar;
@@ -99,7 +99,7 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem, onOpenSchola
       ) : !editable ? (
         <p>This period is not Open, so subjects can't be added to it. Choose an Open period in the bar above.</p>
       ) : (
-        <p>Open a scholar's grades with <strong>Enter grades</strong> to add subjects — or use <strong>Download template</strong>, fill it in, and <strong>Upload CSV</strong>.</p>
+        <p>Open a scholar's grades with <strong>Enter grades</strong> to add subjects — or use <strong>Download template</strong>, fill it in, and <strong>Upload grades</strong>.</p>
       )}
     </>
   );
@@ -162,14 +162,12 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem, onOpenSchola
               className={`${fieldClass} w-full pl-9`} />
           </div>
         </div>
-        <button onClick={() => void handleDownloadTemplate()} disabled={downloading || !period.schoolYear || rows.length === 0}
-          className={`flex items-center gap-2 border border-[#062444]/40 bg-white text-[#062444] text-[14px] font-semibold rounded-lg px-4 py-2 disabled:opacity-50 ${focusRing}`}>
-          <Download size={15} aria-hidden="true" /> {downloading ? "Preparing…" : "Download template"}
-        </button>
+        <TemplateDownloadMenu scholars={data.scholars} period={period} schoolName={schoolName} disabled={!period.schoolYear || rows.length === 0}
+          buttonClassName={`flex items-center gap-2 border border-[#062444]/40 bg-white text-[#062444] text-[14px] font-semibold rounded-lg px-4 py-2 disabled:opacity-50 ${focusRing}`} />
         <button onClick={() => setShowBulkUpload(true)} disabled={!hasOpenPeriod || !gradingReady || rows.length === 0}
           title={!gradingReady ? "Set up your grading scale first" : !hasOpenPeriod ? "Needs an Open period" : undefined}
           className={`flex items-center gap-2 bg-gradient-to-br from-[#062444] to-[#0a3a6b] text-white text-[14px] font-semibold rounded-lg px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed ${focusRing}`}>
-          <UploadCloud size={15} aria-hidden="true" /> Upload CSV
+          <UploadCloud size={15} aria-hidden="true" /> Upload grades
         </button>
         <div role="group" aria-label="View" className="flex rounded-lg border border-[#062444]/40 overflow-hidden bg-white">
           <button onClick={() => setView("browse")} aria-pressed={view === "browse"}
@@ -195,7 +193,7 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem, onOpenSchola
       ) : searching ? (
         <section aria-label="Search results">
           <p className="text-[14.5px] text-slate-800 mb-2" aria-live="polite">{searchRows.length} scholar{searchRows.length === 1 ? "" : "s"} found for “{search.trim()}”</p>
-          <ScholarsTable rows={searchRows} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar}
+          <ScholarsTable rows={searchRows} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar} onSetSchoolId={setSchoolId}
             empty={<p>No scholars match “{search.trim()}”. Check the spelling, or try the Scholar ID.</p>} />
         </section>
       ) : view === "table" ? (
@@ -237,7 +235,7 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem, onOpenSchola
             )}
             <p className="text-[14px] text-slate-800 pb-2 sm:ml-auto" aria-live="polite">Showing {tableRows.length} of {rows.length} scholars</p>
           </div>
-          <ScholarsTable rows={tableRows} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar}
+          <ScholarsTable rows={tableRows} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar} onSetSchoolId={setSchoolId}
             empty={<p>No scholars match these filters. Try clearing one of them.</p>} />
         </section>
       ) : (
@@ -295,7 +293,7 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem, onOpenSchola
           )}
 
           {drill.level === "scholars" && (
-            <ScholarsTable rows={scholarsInScope} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar}
+            <ScholarsTable rows={scholarsInScope} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar} onSetSchoolId={setSchoolId}
               empty={<p>No scholars in {drill.yearLevel} — {drill.program}.</p>} />
           )}
         </section>
@@ -306,8 +304,8 @@ export function ScholarsDrilldownPanel({ data, onGoToGradingSystem, onOpenSchola
           onClose={() => setSubmitting(false)} onSubmitted={() => { data.reloadSubmission(); data.reloadGrades(); }} />
       )}
       {showBulkUpload && (
-        <BulkGradeUploadModal scholars={data.scholars} schoolId={data.schoolId} periods={periods} initialKey={data.selectedKey}
-          onClose={() => setShowBulkUpload(false)} onDone={data.reloadGrades} />
+        <BulkGradeUploadModal scholars={data.scholars} schoolId={data.schoolId} schoolName={schoolName} periods={periods} initialKey={data.selectedKey}
+          onClose={() => setShowBulkUpload(false)} onDone={() => { data.reloadGrades(); data.reloadScholars(); }} />
       )}
     </div>
   );
