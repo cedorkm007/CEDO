@@ -67,6 +67,9 @@ test("the numbers on the sub-tabs follow the filters, and a sub-tab choice goes 
 test("the scholar's name opens the application (when there is one); the stage and a late mark show under it on Applications", () => {
   assert.ok(list.includes("onOpenRecord(r.recordId as string)") && list.includes("RenewalStageBadge") && list.includes('tab === "applications"'));
 });
+test("a list opens on its first sub-tab that has scholars, unless the person chose one; an empty sub-tab points to the others", () => {
+  assert.ok(list.includes("picked.current || !counts || (counts[sub] ?? 0) > 0") && list.includes("picked.current = true; setSub(s.key)") && list.includes("on the other sub-tabs above"));
+});
 test("the status column of Renewed is from-to", () => assert.ok(list.includes("statusColumnText(tab, r.status, r.fromStatus, r.toStatus)")));
 
 console.log("\nThe actions");

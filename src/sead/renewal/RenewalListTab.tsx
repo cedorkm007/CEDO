@@ -60,10 +60,11 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
   const [marking, setMarking] = useState<RenewalListRow | null>(null);
   const [actionError, setActionError] = useState("");
   const autoTried = useRef("");
+  const picked = useRef(false);        // the person chose a sub-tab: the list stops moving to a sub-tab by itself
   const hasActions = tab !== "renewed";
 
   // a new list or a new term starts from the first sub-tab with no filter
-  useEffect(() => { setSub(FIRST_SUBTAB[tab]); setFilters(EMPTY_RENEWAL_LIST_FILTERS); setTyped(""); setPage(1); setRows(null); setCounts(null); }, [tab, schoolYear, term]);
+  useEffect(() => { picked.current = false; setSub(FIRST_SUBTAB[tab]); setFilters(EMPTY_RENEWAL_LIST_FILTERS); setTyped(""); setPage(1); setRows(null); setCounts(null); }, [tab, schoolYear, term]);
   // the search waits for a pause in typing, then starts again from page 1
   useEffect(() => { const t = setTimeout(() => { setFilters(f => (f.query === typed ? f : { ...f, query: typed })); setPage(1); }, 350); return () => clearTimeout(t); }, [typed]);
   const change = (patch: Partial<RenewalListFilters>) => { setFilters(f => ({ ...f, ...patch })); setPage(1); };
@@ -86,6 +87,12 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
   }, [schoolYear, term, tab, sub, filters, page, hasActions]);
 
   useEffect(() => { setOptions(null); void loadOptions(); }, [loadOptions, refreshKey]);
+  // a list opens on its first sub-tab that has scholars (the first one, "Complete", is empty while the grades are not in yet)
+  useEffect(() => {
+    if (picked.current || !counts || (counts[sub] ?? 0) > 0) return;
+    const next = SUBTABS[tab].find(x => (counts[x.key] ?? 0) > 0);
+    if (next) { setSub(next.key); setPage(1); setRows(null); }
+  }, [counts, sub, tab]);
   useEffect(() => { if (!missing) void loadList(); }, [loadList, missing, refreshKey]);
   useLiveReload(async () => { if (!missing) { void loadOptions(); await loadList(); } });      // a decision, a booking or new grades: update in place
 
@@ -141,8 +148,9 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
   const emptyText = useMemo(() => {
     if (refreshing) return "Checking the scholars…";
     if (anyFilter) return "No scholar matches these filters.";
-    return EMPTY[tab];
-  }, [refreshing, anyFilter, tab]);
+    const elsewhere = counts ? Object.entries(counts).filter(([k]) => k !== sub).reduce((n, [, v]) => n + (v ?? 0), 0) : 0;
+    return elsewhere > 0 ? `Nobody here. ${elsewhere} scholar${elsewhere === 1 ? " is" : "s are"} on the other sub-tabs above.` : EMPTY[tab];
+  }, [refreshing, anyFilter, tab, counts, sub]);
 
   if (missing) return <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[14px] text-amber-950">These lists need the latest database update (supabase_migration_renewal_tabs.sql). Until it is run, this tab cannot show the list.</p>;
   if (error) return <p role="alert" className="text-[14px] text-red-700">{error}</p>;
@@ -193,7 +201,7 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
       {/* the sub-tabs, with the number of scholars on each */}
       <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label={`${LIST_TAB_LABEL[tab]} sub-tabs`}>
         {subtabs.map(s => (
-          <button key={s.key} onClick={() => { setSub(s.key); setPage(1); setRows(null); }} aria-pressed={sub === s.key} title={s.hint}
+          <button key={s.key} onClick={() => { picked.current = true; setSub(s.key); setPage(1); setRows(null); }} aria-pressed={sub === s.key} title={s.hint}
             className={`rounded-full border px-3 py-1.5 text-[14px] font-semibold ${sub === s.key ? "border-[#062444] bg-[#062444] text-white" : "border-[#062444]/25 bg-white text-[#062444] hover:bg-[#f7f9fc]"}`}>
             {s.label} <span className={`ml-1 font-bold ${sub === s.key ? "text-[#F3BC00]" : "text-[#006aa3]"}`}>{counts ? counts[s.key] ?? 0 : "…"}</span>
           </button>
