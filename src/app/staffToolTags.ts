@@ -54,6 +54,11 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     description: "Approve or deny scholars' requests for SDP reconsideration (a scholar who lacks SDP credits asks, with the renewal application, to be treated as complied; the lacking credits are added to the next semester). it.admin1 can always decide; this tag appoints someone else.",
   },
   {
+    key: "renewal_documents_approver",
+    label: "Renewal Documents Approver",
+    description: "Approve or return the study plan, the INC letter and the clearance that scholars send for their renewal, in Scholar Renewal > Documents. The renewal evaluator can see these documents but can no longer approve them, so give this tag to at least one account.",
+  },
+  {
     key: "scholar_grades_approver",
     label: "Grades Approver",
     description: "Approve or return the grades that scholars enter themselves during renewal (with their screenshots) while their school has not uploaded the grades yet. The renewal evaluator can only read them.",

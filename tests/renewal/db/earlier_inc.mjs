@@ -5,6 +5,7 @@ import fs from "node:fs";
 
 export async function useEarlierInc(db) {
   const read = f => fs.readFileSync(new URL(`../../../${f}`, import.meta.url), "utf8");
+  await db.exec(read("undo_renewal_documents_approver.sql"));      // the approver file (a later file) goes first: before it the evaluator approved the documents
   await db.exec(read("undo_inc_docs_b.sql"));
   await db.exec(read("undo_inc_docs_a.sql"));
 }

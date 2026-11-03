@@ -7,16 +7,16 @@
 import { formatSlotShort, gradesStatusText, referralStatusText, sdpStatusText, STAGE_INFO, type RenewalStage } from "./renewal";
 
 /** The staff who act on a renewal. Each action belongs to exactly one of them. */
-export type StaffRole = "evaluator" | "grades_approver" | "sdp_approver" | "division_head";
+export type StaffRole = "evaluator" | "grades_approver" | "sdp_approver" | "documents_approver" | "division_head";
 export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
-  evaluator: "Scholar Renewal Evaluator", grades_approver: "Grades Approver", sdp_approver: "SDP Reconsideration Approver", division_head: "Division Head",
+  evaluator: "Scholar Renewal Evaluator", grades_approver: "Grades Approver", sdp_approver: "SDP Reconsideration Approver", documents_approver: "Renewal Documents Approver", division_head: "Division Head",
 };
-export type ViewerRoles = { evaluator: boolean; gradesApprover: boolean; sdpApprover: boolean; divisionHead: boolean };
-export const NO_ROLES: ViewerRoles = { evaluator: false, gradesApprover: false, sdpApprover: false, divisionHead: false };
-export const hasRole = (v: ViewerRoles, r: StaffRole): boolean => (r === "evaluator" ? v.evaluator : r === "grades_approver" ? v.gradesApprover : r === "sdp_approver" ? v.sdpApprover : v.divisionHead);
+export type ViewerRoles = { evaluator: boolean; gradesApprover: boolean; sdpApprover: boolean; documentsApprover?: boolean; divisionHead: boolean };
+export const NO_ROLES: ViewerRoles = { evaluator: false, gradesApprover: false, sdpApprover: false, documentsApprover: false, divisionHead: false };
+export const hasRole = (v: ViewerRoles, r: StaffRole): boolean => (r === "evaluator" ? v.evaluator : r === "grades_approver" ? v.gradesApprover : r === "sdp_approver" ? v.sdpApprover : r === "documents_approver" ? !!v.documentsApprover : v.divisionHead);
 
 /** What a button does: open the entered grades, the SDP reconsideration request or the Division Head's case of the scholar; start a consultation referral; or open the application. */
-export type ActionKey = "approve_grades" | "decide_sdp" | "decide_case" | "refer_consultation" | "open_application" | "decide_inc" | "mark_not_required";
+export type ActionKey = "approve_grades" | "decide_sdp" | "decide_case" | "refer_consultation" | "open_application" | "decide_inc" | "mark_not_required" | "review_documents";
 export interface NeededAction { key: ActionKey; role: StaffRole; label: string }
 
 /** Where one scholar stands for the term, as renewal_scholar_actions() reports it (null for a scholar it did not report). */
@@ -52,7 +52,7 @@ export function neededActions(row: ActionRowInput, facts: ScholarActionFacts | n
   const byStage = stage ? EVALUATOR_STAGE_ACTION[stage] : undefined;
   if (byStage) out.push({ key: stage === "inc_deadline_passed" ? "decide_inc" : "open_application", role: "evaluator", label: byStage });
   if (stage === "needs_consultation_division_head" && facts.dhStatus !== "forwarded_to_division_head") out.push({ key: "open_application", role: "evaluator", label: "Send to the Division Head" });
-  if (facts.docsToReview > 0) out.push({ key: "open_application", role: "evaluator", label: `Review ${facts.docsToReview} document${facts.docsToReview === 1 ? "" : "s"}` });
+  if (facts.docsToReview > 0) out.push({ key: "review_documents", role: "documents_approver", label: `Review ${facts.docsToReview} document${facts.docsToReview === 1 ? "" : "s"}` });
   return out;
 }
 

@@ -20,7 +20,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 /** One scholar's renewal for one term: the application, the documents, the SDP result, the grades with failed/INC subjects, probation history, and the rule that was applied. The evaluator's actions are at the top. */
-export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { recordId: string; canAct: boolean; onBack: () => void; onChanged: () => void }) {
+export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false, onBack, onChanged }: { recordId: string; canAct: boolean; /** The Renewal Documents Approver: only the approver approves or returns the study plan, INC letter and clearance. */ canReviewDocuments?: boolean; onBack: () => void; onChanged: () => void }) {
   const [detail, setDetail] = useState<RenewalDetail | null>(null);
   const [sdpAfter, setSdpAfter] = useState<Awaited<ReturnType<typeof fetchRenewalSdpAfter>>>(null);
   const [error, setError] = useState("");
@@ -187,7 +187,7 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
         {(ev.required_documents ?? []).length === 0 && detail.documents.length === 0 && <p>No documents are needed for this case.</p>}
         {(ev.required_documents ?? []).map(d => (
           <p key={d.kind}>{d.label}: {!d.satisfied ? <strong className="text-amber-900">still needed</strong>
-            : DOC_NEEDS_APPROVAL.includes(d.kind) ? (d.approved ? <strong className="text-green-800">approved</strong> : <strong className="text-sky-900">uploaded — waiting for your approval (the scholar cannot book a consultation until you approve it)</strong>)
+            : DOC_NEEDS_APPROVAL.includes(d.kind) ? (d.approved ? <strong className="text-green-800">approved</strong> : <strong className="text-sky-900">uploaded — waiting for the Renewal Documents Approver (the scholar cannot book a consultation until it is approved)</strong>)
             : <strong className="text-green-800">uploaded</strong>}</p>
         ))}
         {detail.documents.length > 0 && (
@@ -197,12 +197,13 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
                 <Paperclip size={14} aria-hidden="true" /> <span className="text-slate-700">{DOC_LABEL[d.kind]}:</span>
                 <button onClick={() => void openFile(d.storagePath)} className="font-semibold text-[#00709f] hover:underline">{d.fileName}</button>
                 <span className="text-slate-600">· {formatDay(d.uploadedAt)} · {d.status === "accepted" ? "approved" : d.status === "returned" ? "returned" : "waiting for review"}</span>
-                {canAct && d.status === "submitted" && (
+                {canReviewDocuments && d.status === "submitted" && (
                   <span className="flex gap-2">
                     <button onClick={() => setReviewing({ doc: d, approve: true })} className="rounded-md bg-green-800 px-2.5 py-1 text-[13px] font-bold text-white hover:bg-green-900">Approve</button>
                     <button onClick={() => setReviewing({ doc: d, approve: false })} className="rounded-md border border-red-700 px-2.5 py-1 text-[13px] font-bold text-red-800 hover:bg-red-50">Return</button>
                   </span>
                 )}
+                {!canReviewDocuments && d.status === "submitted" && DOC_NEEDS_APPROVAL.includes(d.kind) && <span className="text-[13.5px] text-slate-700">Waiting for the Renewal Documents Approver</span>}
               </li>
             ))}
           </ul>

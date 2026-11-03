@@ -36,8 +36,10 @@ type ActingKey = "approve_grades" | "decide_sdp" | "decide_case" | "decide_inc";
  * grades) and the columns Scholar ID, Name, Year level, School, Program, Scholarship status, SDP, Grades and (Applications, Not applied) Actions. The Actions column shows what waits on staff; only the
  * staff assigned to an action can press it, the others see who it is waiting for. A table on a wide screen, one card per scholar on a narrow one.
  */
-export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_ROLES, onOpenRecord, onChanged }: {
+export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_ROLES, onOpenRecord, onChanged, onGoToDocuments }: {
   tab: RenewalListTab; schoolYear: string; term: string; refreshKey: number; viewer?: ViewerRoles; onOpenRecord: (recordId: string) => void; onChanged?: () => void;
+  /** Opens the Documents tab (the "Review N documents" button of the Renewal Documents Approver). */
+  onGoToDocuments?: () => void;
 }) {
   const [sub, setSub] = useState<RenewalSubTab>(FIRST_SUBTAB[tab]);
   const [filters, setFilters] = useState<RenewalListFilters>(EMPTY_RENEWAL_LIST_FILTERS);
@@ -122,6 +124,7 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
   async function act(a: NeededAction, r: RenewalListRow, f: ScholarActionFacts) {
     setActionError("");
     if (a.key === "open_application") { if (f.recordId) onOpenRecord(f.recordId); return; }
+    if (a.key === "review_documents") { onGoToDocuments?.(); return; }
     if (a.key === "mark_not_required") { setMarking(r); return; }
     if (a.key === "refer_consultation") {
       setReferBusy(r.scholarIdNumber);
