@@ -16,7 +16,11 @@ const CHOICES: { value: Choice; label: string; help: string }[] = [
 ];
 
 /** INC compliance (open INCs, soonest deadline first) and the "INC deadline passed — decision needed" list. */
-export function RenewalIncTab({ schoolYear, term, onOpen, onChanged, refreshKey }: { schoolYear: string; term: string; onOpen: (id: string) => void; onChanged: () => void; refreshKey: number }) {
+export function RenewalIncTab({ schoolYear, term, onOpen, onChanged, refreshKey, only }: {
+  schoolYear: string; term: string; onOpen: (id: string) => void; onChanged: () => void; refreshKey: number;
+  /** Only this application's INC subjects (the decision opened from the Actions column of Applications); onDone runs after a decision is saved. */
+  only?: { recordId: string; onDone: () => void };
+}) {
   const [rows, setRows] = useState<IncRow[] | null>(null);
   const [error, setError] = useState("");
   const [deciding, setDeciding] = useState<IncRow | null>(null);
@@ -25,8 +29,8 @@ export function RenewalIncTab({ schoolYear, term, onOpen, onChanged, refreshKey 
 
   const load = useCallback(async () => {
     const r = await fetchIncList(schoolYear, term);
-    if (r.ok) { setRows(r.rows); setError(""); } else setError(r.error);
-  }, [schoolYear, term]);
+    if (r.ok) { setRows(only ? r.rows.filter(x => x.recordId === only.recordId) : r.rows); setError(""); } else setError(r.error);
+  }, [schoolYear, term, only?.recordId]);
   useEffect(() => { setRows(null); void load(); }, [load, refreshKey]);
   useLiveReload(load);
 
@@ -95,7 +99,7 @@ export function RenewalIncTab({ schoolYear, term, onOpen, onChanged, refreshKey 
           onConfirm={async reason => {
             const r = await decideInc(deciding.itemId, build(reason));
             if (!r.ok) return r.error;
-            setDeciding(null); onChanged(); await load(); return null;
+            setDeciding(null); onChanged(); await load(); only?.onDone(); return null;
           }}
         >
           <fieldset className="mb-3">

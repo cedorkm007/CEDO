@@ -160,9 +160,9 @@ test("the approval screens have a one-scholar mode with no filters that closes a
     assert.ok(t.includes("only?.onDone()"), f);
   }
 });
-test("the Scholar List tab is shown to the evaluator, the Division Head and the two approvers, and they get the windows", () => {
+test("the lists (they took over the Scholar List) are shown to the evaluator, the Division Head and the two approvers, and they get the windows", () => {
   assert.ok(page.includes("const seesList = isEvaluator || isDivisionHead || isSdpApprover || isGradesApprover"));
-  assert.ok(page.includes('t.key === "scholarList" ? seesList'));
+  assert.ok(page.includes('(t.key === "applications" || t.key === "renewed" || t.key === "notApplied") ? seesList'));
   assert.ok(page.includes("if (!seesRenewals && !seesList) return;"));
   assert.ok(page.includes("viewer={viewer} onOpenRecord={setDetailId} onChanged={bump}"));
 });
