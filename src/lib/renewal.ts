@@ -90,12 +90,21 @@ export const DIVISION_HEAD_OPTION_INFO: Record<"approve_probationary" | "removed
   return: { label: "Send back to the evaluator", effect: "Nothing changes for the scholar. The evaluator reads your reason and sends the case again." },
 };
 
-export type DocKind = "study_plan" | "inc_letter" | "prospectus";
+export type DocKind = "study_plan" | "inc_letter" | "prospectus" | "clearance";
 export const DOC_LABEL: Record<DocKind, string> = {
   study_plan: "Study plan",
   inc_letter: "INC letter from your dean",
   prospectus: "Prospectus",
+  clearance: "Clearance",
 };
+/** The documents the evaluator must approve before the scholar can book a consultation (the prospectus is only reviewed). */
+export const DOC_NEEDS_APPROVAL: DocKind[] = ["study_plan", "inc_letter", "clearance"];
+/** The three documents a scholar with an INC sends WITH the application, each with its own upload button and a hint on where to get it. */
+export const INC_FORM_DOCS: { kind: DocKind; label: string; hint: string }[] = [
+  { kind: "inc_letter", label: "INC letter from your dean", hint: "The letter from your dean about your INC." },
+  { kind: "study_plan", label: "Study plan", hint: "Your study plan for completing the INC." },
+  { kind: "clearance", label: "Clearance", hint: "Claim it from your school Guidance office or School coordinator." },
+];
 export const DOC_ACCEPT = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp";
 export const DOC_MAX_BYTES = 10 * 1024 * 1024;
 export const DOC_MAX_PER_KIND = 3;
@@ -275,10 +284,10 @@ export interface RenewalEvaluation {
   error?: string;
 }
 
-export type ConsultState = "ok" | "study_plan_missing" | "study_plan_pending" | "inc_letter_missing" | "inc_letter_pending" | "not_needed";
+export type ConsultState = "ok" | "study_plan_missing" | "study_plan_pending" | "inc_letter_missing" | "inc_letter_pending" | "clearance_missing" | "clearance_pending" | "not_needed";
 /** The documents the evaluator must approve before a scholar can book. */
-export function consultBlockedBy(state: ConsultState): "study plan" | "INC letter" | null {
-  return state === "study_plan_missing" || state === "study_plan_pending" ? "study plan" : state === "inc_letter_missing" || state === "inc_letter_pending" ? "INC letter" : null;
+export function consultBlockedBy(state: ConsultState): "study plan" | "INC letter" | "clearance" | null {
+  return state === "study_plan_missing" || state === "study_plan_pending" ? "study plan" : state === "inc_letter_missing" || state === "inc_letter_pending" ? "INC letter" : state === "clearance_missing" || state === "clearance_pending" ? "clearance" : null;
 }
 
 /** "Oct 20, morning (AM)" in Philippine time (short form used in the next-step sentences). */
@@ -340,7 +349,7 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
   const missingDocs = (ev?.required_documents ?? []).filter(d => !d.satisfied);
   const upload = () => {
     for (const d of missingDocs) {
-      steps.push(d.kind === "inc_letter" ? "Upload the INC letter from your dean." : d.kind === "study_plan" ? "Upload your study plan." : "Upload your prospectus.");
+      steps.push(d.kind === "inc_letter" ? "Upload the INC letter from your dean." : d.kind === "study_plan" ? "Upload your study plan." : d.kind === "clearance" ? "Upload your clearance (claim it from your school Guidance office or School coordinator)." : "Upload your prospectus.");
     }
   };
   switch (stage) {
@@ -576,8 +585,9 @@ export function sdpReconsiderationImplication(ev: { basis_school_year?: string; 
  * SDP reconsideration approver then decide, and the renewal waits on them (the tracker says so).
  */
 export type RenewalGateWait = "grades" | "sdp";
-export interface RenewalGate { open: boolean; blocker: "grades" | "sdp" | null; waitsFor: RenewalGateWait[] }
-export function renewalNextGate(ev: RenewalEvaluation | null | undefined, o: { gradesEntered: boolean; reconsiderationAsked: boolean }): RenewalGate {
+export interface RenewalGate { open: boolean; blocker: "grades" | "sdp" | "documents" | null; waitsFor: RenewalGateWait[] }
+/** incDocsNeeded: the grades carry an INC, so the INC letter, study plan and clearance go with the application; incDocsReady: each of the three has a file. */
+export function renewalNextGate(ev: RenewalEvaluation | null | undefined, o: { gradesEntered: boolean; reconsiderationAsked: boolean; incDocsNeeded?: boolean; incDocsReady?: boolean }): RenewalGate {
   if (!ev) return { open: false, blocker: null, waitsFor: [] };
   const waitsFor: RenewalGateWait[] = [];
   // grades: before the database update that puts grades in the form there is nothing to enter
@@ -593,6 +603,7 @@ export function renewalNextGate(ev: RenewalEvaluation | null | undefined, o: { g
     if (!requested && !o.reconsiderationAsked) return { open: false, blocker: "sdp", waitsFor: [] };
     if (!(rc?.status === "approved")) waitsFor.push("sdp");
   }
+  if (o.incDocsNeeded && !o.incDocsReady) return { open: false, blocker: "documents", waitsFor: [] };
   return { open: true, blocker: null, waitsFor };
 }
 /** The reconsideration status shown to people: label and colour tone. */

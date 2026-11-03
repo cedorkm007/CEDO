@@ -11,9 +11,10 @@ import { RemovalFormCard } from "./RemovalFormCard";
 import { SelfGradesForm, emptyGradeRow, gradeFormProblem, type GradeFormRow } from "./SelfGradesForm";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { StudyPlanFormLink } from "./StudyPlanFormLink";
+import { reservedMark } from "@/lib/subjectOutcome";
 import { buildNextSteps } from "../../renewalSummary";
 import {
-  DOC_ACCEPT, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, renewalBasis, renewalNextGate, renewalProgress, sdpLackingText, sdpLackingTotal, sdpReconsiderationImplication, termLabelOf,
+  DOC_ACCEPT, DOC_LABEL, DOC_NEEDS_APPROVAL, INC_FORM_DOCS, validateRenewalFile, daysLeftText, daysUntil, formatDateTime, formatDay, renewalBasis, renewalNextGate, renewalProgress, sdpLackingText, sdpLackingTotal, sdpReconsiderationImplication, termLabelOf,
   type DocKind, type RenewalEvaluation, type WindowState,
 } from "@/lib/renewal";
 import {
@@ -120,6 +121,9 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
   const [gFiles, setGFiles] = useState<File[]>([]);
   const [gAck, setGAck] = useState(false);
   const [gError, setGError] = useState("");
+  const [incFiles, setIncFiles] = useState<Record<string, File[]>>({ inc_letter: [], study_plan: [], clearance: [] });
+  const [serverNeedsInc, setServerNeedsInc] = useState(false);
+  const [incNote, setIncNote] = useState("");
   const [preview, setPreview] = useState<RenewalEvaluation | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -134,9 +138,17 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
 
   async function submit() {
     setBusy(true); setError("");
-    const r = await applyForRenewal({ windowId: w.id, school, program, yearLevel, note, requestSdpReconsideration: wantsReconsideration, scholarIdNumber: overview.scholar.scholarIdNumber, grades: enterGrades ? { lines: gRows, newFiles: gFiles, acknowledged: gAck } : undefined });
+    const r = await applyForRenewal({
+      windowId: w.id, school, program, yearLevel, note, requestSdpReconsideration: wantsReconsideration, scholarIdNumber: overview.scholar.scholarIdNumber,
+      grades: enterGrades ? { lines: gRows, newFiles: gFiles, acknowledged: gAck } : undefined,
+      incDocuments: incDocsNeeded ? INC_FORM_DOCS.map(d => ({ kind: d.kind, files: incFiles[d.kind] })) : undefined,
+    });
     setBusy(false);
-    if (!r.ok) { setError(r.error); return; }
+    if (!r.ok) {
+      // the database found an INC the form did not: go back and ask for the three documents
+      if (/You have an INC/.test(r.error)) { setServerNeedsInc(true); setIncNote(r.error); setStep(2); return; }
+      setError(r.error); return;
+    }
     await onDone();
   }
 
@@ -150,8 +162,12 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
   const gradeProblem = enterGrades ? gradeFormProblem(gRows, gFiles.length, gAck) : null;
   const gradesReady = !gradesInForm || schoolGrades || preview?.grades?.self_status === "approved" || (enterGrades && !gradeProblem);
   const wantsReconsideration = canAskReconsideration && gradesReady && askReconsideration;
+  // A scholar with an INC (in the school's grades, or among the grades entered here) sends the INC letter, the study plan and the clearance with the application; each has its own upload button.
+  const enteredInc = enterGrades && gRows.some(r => reservedMark(r.grade) === "INC");
+  const incDocsNeeded = !!preview && ((preview.grades?.counts?.inc ?? 0) > 0 || enteredInc || serverNeedsInc);
+  const incDocsReady = INC_FORM_DOCS.every(d => incFiles[d.kind].length > 0);
   // Next opens only when the grades are settled (the school's, or entered here) and the SDP is complied or a reconsideration is asked for.
-  const gate = renewalNextGate(preview, { gradesEntered: enterGrades && !gradeProblem, reconsiderationAsked: wantsReconsideration });
+  const gate = renewalNextGate(preview, { gradesEntered: enterGrades && !gradeProblem, reconsiderationAsked: wantsReconsideration, incDocsNeeded, incDocsReady });
   const inputCls = "w-full rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] outline-none focus:border-[#062444] bg-white";
   return (
     <div>
@@ -216,10 +232,23 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
               </label>
             </div>
           )}
-          {preview && (preview.required_documents?.length ?? 0) > 0 && (
+          {preview && incDocsNeeded && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3 text-[14px] text-amber-950">
+              <p className="font-bold">Your INC documents</p>
+              <p className="mt-1">You have an INC, so send these three documents with your application. <strong>You cannot submit without them.</strong> The evaluator approves each one, and you can book your consultation only after all three are approved.</p>
+              {incNote && <p role="alert" className="mt-1.5 text-red-800">{incNote}</p>}
+              <ul className="mt-2 space-y-2">
+                {INC_FORM_DOCS.map(d => (
+                  <IncDocPicker key={d.kind} kind={d.kind} label={d.label} hint={d.hint} files={incFiles[d.kind]} setFiles={fs => setIncFiles(p => ({ ...p, [d.kind]: fs }))} />
+                ))}
+              </ul>
+              {!incDocsReady && <p className="mt-2">Still needed before you can go on: {INC_FORM_DOCS.filter(d => incFiles[d.kind].length === 0).map(d => d.label).join(", ")}.</p>}
+            </div>
+          )}
+          {preview && (preview.required_documents ?? []).filter(d => !(incDocsNeeded && INC_FORM_DOCS.some(x => x.kind === d.kind))).length > 0 && (
             <div className="rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 text-[14px] text-sky-900">
               <p className="font-bold mb-1">Documents you will need</p>
-              <ul className="list-disc pl-5">{preview.required_documents!.map(d => <li key={d.kind}>{d.label}</li>)}</ul>
+              <ul className="list-disc pl-5">{preview.required_documents!.filter(d => !(incDocsNeeded && INC_FORM_DOCS.some(x => x.kind === d.kind))).map(d => <li key={d.kind}>{d.label}</li>)}</ul>
               <p className="mt-1.5">You can upload them right after you submit.</p>
             </div>
           )}
@@ -230,6 +259,11 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
           {preview && !gate.open && gate.blocker === "sdp" && (
             <p role="status" className="rounded-lg border border-red-300 bg-red-50 px-3.5 py-2.5 text-[14px] text-red-900">
               You cannot go on yet: your SDP is not complete. {canAskReconsideration && gradesReady ? "Tick the box above to ask for an SDP reconsideration, and you can go on." : canAskReconsideration ? "Enter your grades first; then you can ask for an SDP reconsideration and go on." : "Complete your SDP credits before you apply."}
+            </p>
+          )}
+          {preview && !gate.open && gate.blocker === "documents" && (
+            <p role="status" className="rounded-lg border border-red-300 bg-red-50 px-3.5 py-2.5 text-[14px] text-red-900">
+              You cannot go on yet: upload the INC letter, the study plan and the clearance (each has its own button above).
             </p>
           )}
           {preview && gate.open && gate.waitsFor.length > 0 && (
@@ -251,6 +285,7 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
             <li>School: {school}</li><li>Program: {program}</li><li>Year level: {yearLevel}</li>
             {note.trim() && <li>Your note: {note.trim()}</li>}
             {enterGrades && <li>Your grades: <strong>{gRows.length} subject{gRows.length === 1 ? "" : "s" } entered</strong> with {gFiles.length} image{gFiles.length === 1 ? "" : "s"}, sent with your application for the Grades Approver to check</li>}
+            {incDocsNeeded && <li>INC documents: <strong>{INC_FORM_DOCS.map(d => `${d.label} (${incFiles[d.kind].length})`).join(", ")}</strong>, sent with your application for the evaluator to approve</li>}
             {wantsReconsideration && <li>SDP reconsideration: <strong>requested</strong> (lacking {sdpLackingText(preview?.sdp?.lacking)})</li>}
           </ul>
           {error && <p role="alert" className="text-[14px] text-red-700">{error}</p>}
@@ -263,6 +298,44 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
         </div>
       )}
     </div>
+  );
+}
+
+/** One upload button of the INC documents in the application form: choose a file (more can be added, up to 3), see it listed, remove it. */
+function IncDocPicker({ kind, label, hint, files, setFiles }: { kind: DocKind; label: string; hint: string; files: File[]; setFiles: (f: File[]) => void }) {
+  const [problem, setProblem] = useState("");
+  const input = useRef<HTMLInputElement | null>(null);
+  function pick(file: File | undefined) {
+    if (!file) return;
+    const p = validateRenewalFile(file, files.length);
+    if (input.current) input.current.value = "";
+    if (p) { setProblem(p); return; }
+    setProblem(""); setFiles([...files, file]);
+  }
+  return (
+    <li className="rounded-lg border border-amber-200 bg-white px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="font-semibold text-[#062444]">{label} {files.length > 0 ? <span className="font-bold text-green-800">— added ✓</span> : <span className="font-bold text-amber-900">— needed</span>}</p>
+          <p className="text-[13.5px] text-slate-700">{hint}</p>
+        </div>
+        <input ref={input} type="file" accept={DOC_ACCEPT} className="sr-only" id={`inc-up-${kind}`} aria-label={`Upload ${label}`} onChange={e => pick(e.target.files?.[0])} />
+        <label htmlFor={`inc-up-${kind}`} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#062444]/25 bg-white px-3 py-1.5 text-[14px] font-semibold text-[#062444] hover:bg-[#f7f9fc]">
+          <FileUp size={14} aria-hidden="true" /> {files.length ? "Add another file" : "Upload file"}
+        </label>
+      </div>
+      {files.length > 0 && (
+        <ul className="mt-1.5 space-y-1">
+          {files.map((f, i) => (
+            <li key={`${f.name}-${i}`} className="flex flex-wrap items-center gap-2 text-[14px] text-slate-700">
+              <Paperclip size={14} aria-hidden="true" /> <span className="font-semibold">{f.name}</span>
+              <button type="button" onClick={() => setFiles(files.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`} className="ml-auto inline-flex items-center gap-1 text-red-700 hover:underline"><Trash2 size={13} aria-hidden="true" /> Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {problem && <p role="alert" className="mt-1 text-red-700">{problem}</p>}
+    </li>
   );
 }
 
@@ -463,7 +536,7 @@ function DocumentsSection({ data, overview, onChanged }: { data: MyRenewalWindow
           return (
             <li key={req.kind} className="rounded-lg border border-[#e6ecf5] px-3.5 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[14px] font-semibold text-[#062444]">{req.label} {!req.satisfied ? <span className="text-amber-900 font-bold">— needed</span> : (req.kind === "study_plan" || req.kind === "inc_letter") && !req.approved ? <span className="text-sky-900 font-bold">— uploaded, waiting for approval</span> : <span className="text-green-800 font-bold">— {req.kind === "study_plan" || req.kind === "inc_letter" ? "approved" : "uploaded"} ✓</span>}</p>
+                <p className="text-[14px] font-semibold text-[#062444]">{req.label} {!req.satisfied ? <span className="text-amber-900 font-bold">— needed</span> : DOC_NEEDS_APPROVAL.includes(req.kind) && !req.approved ? <span className="text-sky-900 font-bold">— uploaded, waiting for approval</span> : <span className="text-green-800 font-bold">— {DOC_NEEDS_APPROVAL.includes(req.kind) ? "approved" : "uploaded"} ✓</span>}</p>
                 {editable && (
                   <>
                     <input ref={el => { refs.current[req.kind] = el; }} type="file" accept={DOC_ACCEPT} className="sr-only" id={`up-${req.kind}`} aria-label={`Upload ${DOC_LABEL[req.kind]}`} onChange={e => void onPick(req.kind, e.target.files?.[0])} />

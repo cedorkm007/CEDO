@@ -67,7 +67,7 @@ test("before the database update that puts grades in the form, grades do not blo
 console.log("\nThe screen");
 const panel = src("src/scholar/components/dashboard/RenewalPanel.tsx");
 test("the Next button of the check screen follows the gate and says why it is closed or what happens next", () => {
-  assert.ok(panel.includes("renewalNextGate(preview, { gradesEntered: enterGrades && !gradeProblem, reconsiderationAsked: wantsReconsideration })"));
+  assert.ok(panel.includes("renewalNextGate(preview, { gradesEntered: enterGrades && !gradeProblem, reconsiderationAsked: wantsReconsideration, incDocsNeeded, incDocsReady })"));
   assert.ok(panel.includes("onClick={() => setStep(3)} disabled={!preview || !gate.open}"));
   assert.ok(panel.includes("You cannot go on yet: your SDP is not complete.") && panel.includes("before the next step."));
 });

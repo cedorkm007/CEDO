@@ -3,6 +3,7 @@
 // Same setup as the earlier suites (every real migration file in memory + the demo's TEST data, run as signed-in people).  Run:  node tests/renewal/db/run_p8b_tests.mjs
 import { buildDb } from "../../../localdemo/build.mjs";
 import { seedDb, seedId } from "../../../localdemo/seed.mjs";
+import { useEarlierInc } from "./earlier_inc.mjs";
 import fs from "node:fs";
 
 let passed = 0, failed = 0;
@@ -10,6 +11,7 @@ const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok 
 
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+await useEarlierInc(db);      // these tests cover the INC process before the INC documents update (see earlier_inc.mjs)
 await db.exec(fs.readFileSync("undo_entered_grades_e.sql", "utf8"));      // these checks are about who a window is open for; the later rule that grades must be in before applying (file E) has its own tests
 // The demo builder retries a few statements of older files at the very end (statements that had to wait for a table); on the real project the files
 // simply run in order, so apply this one once more to get exactly that final state.

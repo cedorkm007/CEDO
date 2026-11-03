@@ -4,6 +4,7 @@
 // Run:  node tests/renewal/db/run_p4_tests.mjs
 import { buildDb } from "../../../localdemo/build.mjs";
 import { seedDb, seedId } from "../../../localdemo/seed.mjs";
+import { useEarlierInc } from "./earlier_inc.mjs";
 import fs from "node:fs";
 import { useLegacySlots } from "./legacy_slots.mjs";
 
@@ -12,6 +13,7 @@ const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok 
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
 await useLegacySlots(db);   // these tests cover the original 10-minute-slot booking model (see legacy_slots.mjs)
+await useEarlierInc(db);      // these tests cover the INC process before the INC documents update (see earlier_inc.mjs)
 
 const num = n => `TEST-${String(n).padStart(4, "0")}`;
 const scholarUid = n => seedId(`scholar:${n}`);

@@ -9,8 +9,8 @@ import { ScholarSearchField, type ScholarSearchResult } from "./ScholarSearchFie
 
 /**
  * The Daily Record form. Opened from the Appointments calendar after "Attended", it arrives PRE-FILLED (`prefill`): the scholar, the date, the
- * status and the failed / INC subjects are copied from the renewal, and two renewal fields appear — "Days given to comply" (required when an
- * INC has no deadline yet; it sets the deadline) and, for Summer, "Prospectus hard copy received".
+ * status and the failed / INC subjects are copied from the renewal, and two renewal fields appear — the "INC deadline" (a date after the consultation date,
+ * required when an INC has no deadline yet) next to the findings and recommendations, and, for Summer, "Prospectus hard copy received".
  */
 export function AddDailyRecordModal({ onClose, onCreated, prefill }: { onClose: () => void; onCreated: () => void; prefill?: AttendedPrefill }) {
   const [query, setQuery] = useState("");
@@ -19,9 +19,10 @@ export function AddDailyRecordModal({ onClose, onCreated, prefill }: { onClose: 
   const [status, setStatus] = useState<ScholarshipStatus>((prefill?.status as ScholarshipStatus) || "Regular");
   const [visitType, setVisitType] = useState<VisitType>("Office");
   const [failedSubjects, setFailedSubjects] = useState(prefill?.failedSubjects ?? "");
-  const [daysGiven, setDaysGiven] = useState("");
+  const [incDeadline, setIncDeadline] = useState("");
   const [hardCopy, setHardCopy] = useState(false);
-  const needsDays = !!prefill && prefill.incItems.some(i => !i.deadline);
+  const needsDeadline = !!prefill && prefill.incItems.some(i => !i.deadline);
+  const dayAfterVisit = dateVisited ? new Date(new Date(`${dateVisited}T00:00:00Z`).getTime() + 86400000).toISOString().slice(0, 10) : "";
   const [findings, setFindings] = useState("");
   const [staffRecommendations, setStaffRecommendations] = useState("");
   const [busy, setBusy] = useState(false);
@@ -41,12 +42,11 @@ export function AddDailyRecordModal({ onClose, onCreated, prefill }: { onClose: 
     e.preventDefault();
     setError("");
     if (prefill) {
-      const days = Number(daysGiven);
-      if (needsDays && (!Number.isInteger(days) || days < 1)) { setError("Enter the days given to comply (a whole number, at least 1)."); return; }
+      if (needsDeadline && (!incDeadline || incDeadline < dayAfterVisit)) { setError("Choose the INC deadline: a date after the consultation date."); return; }
       setBusy(true);
       const r = await saveConsultationRecord({
         slotId: prefill.slotId, scholarIdNumber: prefill.scholarIdNumber, status, dateVisited, visitType, failedSubjects: failedSubjects.trim(), findings: findings.trim(),
-        staffRecommendations: staffRecommendations.trim(), daysGiven: needsDays ? days : null, hardCopy: prefill.isSummer ? hardCopy : null,
+        staffRecommendations: staffRecommendations.trim(), incDeadline: needsDeadline ? incDeadline : null, hardCopy: prefill.isSummer ? hardCopy : null,
       });
       setBusy(false);
       if (!r.ok) { setError(r.error); return; }
@@ -116,16 +116,16 @@ export function AddDailyRecordModal({ onClose, onCreated, prefill }: { onClose: 
               className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088cc]" />
           </div>
 
-          {needsDays && (
+          {needsDeadline && (
             <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
-              <label htmlFor="days-given" className="block text-[13px] font-bold text-amber-950 mb-1.5">Days given to comply (INC) — required</label>
-              <input id="days-given" type="number" min={1} step={1} value={daysGiven} onChange={e => setDaysGiven(e.target.value)} required
-                className="w-32 border border-[#062444]/25 rounded-lg px-3 py-2 text-sm outline-none bg-white" />
+              <label htmlFor="inc-deadline" className="block text-[13px] font-bold text-amber-950 mb-1.5">INC deadline — required</label>
+              <input id="inc-deadline" type="date" min={dayAfterVisit} value={incDeadline} onChange={e => setIncDeadline(e.target.value)} required
+                className="w-48 border border-[#062444]/25 rounded-lg px-3 py-2 text-sm outline-none bg-white" />
               <p className="text-[13px] text-amber-950 mt-1.5">
                 INC subject{prefill!.incItems.length > 1 ? "s" : ""}: {prefill!.incItems.map(i => i.subject).join(", ")}.
-                {Number.isInteger(Number(daysGiven)) && Number(daysGiven) >= 1 && dateVisited
-                  ? <> The deadline will be <strong>{formatDay(new Date(new Date(`${dateVisited}T00:00:00Z`).getTime() + Number(daysGiven) * 86400000).toISOString().slice(0, 10))}</strong> (the consultation date plus the days given).</>
-                  : " The deadline is the consultation date plus these days."}
+                {incDeadline && incDeadline >= dayAfterVisit
+                  ? <> The scholar will be told to complete the INC by <strong>{formatDay(incDeadline)}</strong> ({Math.round((Date.parse(`${incDeadline}T00:00:00Z`) - Date.parse(`${dateVisited}T00:00:00Z`)) / 86400000)} days after the consultation).</>
+                  : " Choose a date after the consultation date; it is the last day for the scholar to complete the INC."}
               </p>
             </div>
           )}

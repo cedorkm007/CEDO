@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { ArrowLeft, CheckCircle2, Loader2, Paperclip, ShieldCheck, XCircle } from "lucide-react";
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
-import { DIVISION_HEAD_DECISION_LABEL, DOC_LABEL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, sdpLackingText, sdpReconsiderationStatusText, termLabelOf, type DivisionHeadDecision } from "@/lib/renewal";
+import { DIVISION_HEAD_DECISION_LABEL, DOC_LABEL, DOC_NEEDS_APPROVAL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, sdpLackingText, sdpReconsiderationStatusText, termLabelOf, type DivisionHeadDecision } from "@/lib/renewal";
 import {
   confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, getStaffRenewalDocumentUrl, returnRenewal, reviewDocument, type DetailDocument, type RenewalDetail,
 } from "../renewalApi";
@@ -178,7 +178,7 @@ export function RenewalDetailView({ recordId, canAct, onBack, onChanged }: { rec
         {(ev.required_documents ?? []).length === 0 && detail.documents.length === 0 && <p>No documents are needed for this case.</p>}
         {(ev.required_documents ?? []).map(d => (
           <p key={d.kind}>{d.label}: {!d.satisfied ? <strong className="text-amber-900">still needed</strong>
-            : d.kind === "study_plan" || d.kind === "inc_letter" ? (d.approved ? <strong className="text-green-800">approved</strong> : <strong className="text-sky-900">uploaded — waiting for your approval (the scholar cannot book a consultation until you approve it)</strong>)
+            : DOC_NEEDS_APPROVAL.includes(d.kind) ? (d.approved ? <strong className="text-green-800">approved</strong> : <strong className="text-sky-900">uploaded — waiting for your approval (the scholar cannot book a consultation until you approve it)</strong>)
             : <strong className="text-green-800">uploaded</strong>}</p>
         ))}
         {detail.documents.length > 0 && (

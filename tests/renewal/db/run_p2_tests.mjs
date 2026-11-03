@@ -6,6 +6,7 @@
 // (so permissions and row-level security are tested too). Run:  node tests/renewal/db/run_p2_tests.mjs   (about a minute)
 import { buildDb } from "../../../localdemo/build.mjs";
 import { seedDb, seedId } from "../../../localdemo/seed.mjs";
+import { useEarlierInc } from "./earlier_inc.mjs";
 import crypto from "node:crypto";
 
 let passed = 0, failed = 0;
@@ -13,6 +14,7 @@ const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok 
 
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+await useEarlierInc(db);      // these tests cover the INC process before the INC documents update (see earlier_inc.mjs)
 // these checks are about how an application works; the later rule that grades must be in first (entered grades file E) has its own tests
 await db.exec((await import("node:fs")).readFileSync(new URL("../../../undo_entered_grades_e.sql", import.meta.url), "utf8"));
 

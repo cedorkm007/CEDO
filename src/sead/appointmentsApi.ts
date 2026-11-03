@@ -122,15 +122,21 @@ export async function markSlot(slotId: string, outcome: "attended" | "no_show"):
   };
 }
 
-/** The pre-filled Daily Record of an appointment. For INC the days given to comply are required (they set the deadline); for Summer the hard copy can be ticked. */
+/** The pre-filled Daily Record of an appointment. For INC the deadline (a date after the consultation date) is required; for Summer the hard copy can be ticked. */
 export async function saveConsultationRecord(input: {
   slotId: string; scholarIdNumber: string; status: string; dateVisited: string; failedSubjects: string; findings: string; staffRecommendations: string; visitType: string;
-  daysGiven: number | null; hardCopy: boolean | null;
+  incDeadline: string | null; hardCopy: boolean | null;
 }): Promise<Done> {
-  const { error } = await supabase.rpc("counseling_save_daily_record", {
+  const base = {
     p_slot_id: input.slotId, p_scholar_id_number: input.scholarIdNumber, p_status: input.status, p_date_visited: input.dateVisited, p_failed_subjects: input.failedSubjects,
-    p_findings: input.findings, p_staff_recommendations: input.staffRecommendations, p_visit_type: input.visitType, p_days_given: input.daysGiven, p_hard_copy: input.hardCopy,
-  });
+    p_findings: input.findings, p_staff_recommendations: input.staffRecommendations, p_visit_type: input.visitType, p_hard_copy: input.hardCopy,
+  };
+  let { error } = await supabase.rpc("counseling_save_daily_record", { ...base, p_days_given: null, p_inc_deadline: input.incDeadline });
+  if (error && /p_inc_deadline|Could not find the function/i.test(error.message) && input.incDeadline) {
+    // the database update with the deadline date is not installed yet: send the days between the consultation date and the deadline instead
+    const days = Math.round((Date.parse(`${input.incDeadline}T00:00:00Z`) - Date.parse(`${input.dateVisited}T00:00:00Z`)) / 86400000);
+    ({ error } = await supabase.rpc("counseling_save_daily_record", { ...base, p_days_given: days }));
+  }
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
