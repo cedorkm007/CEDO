@@ -54,7 +54,7 @@ export function ScholarsDrilldownPanel({ data, schoolName, onGoToGradingSystem, 
   const [standingFilter, setStandingFilter] = useState<StandingResult | "">("");
   const [submitting, setSubmitting] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
-  const [toolbarError, setToolbarError] = useState("");
+  const [toolbarError] = useState("");
 
   const searching = search.trim() !== "";
   const hasOpenPeriod = periods.some(p => canSchoolEdit(p.status));
@@ -193,7 +193,7 @@ export function ScholarsDrilldownPanel({ data, schoolName, onGoToGradingSystem, 
       ) : searching ? (
         <section aria-label="Search results">
           <p className="text-[14.5px] text-slate-800 mb-2" aria-live="polite">{searchRows.length} scholar{searchRows.length === 1 ? "" : "s"} found for “{search.trim()}”</p>
-          <ScholarsTable rows={searchRows} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar} onSetSchoolId={setSchoolId}
+          <ScholarsTable rows={searchRows} resetKey={`search:${search.trim()}`} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar} onSetSchoolId={setSchoolId}
             empty={<p>No scholars match “{search.trim()}”. Check the spelling, or try the Scholar ID.</p>} />
         </section>
       ) : view === "table" ? (
@@ -235,7 +235,7 @@ export function ScholarsDrilldownPanel({ data, schoolName, onGoToGradingSystem, 
             )}
             <p className="text-[14px] text-slate-800 pb-2 sm:ml-auto" aria-live="polite">Showing {tableRows.length} of {rows.length} scholars</p>
           </div>
-          <ScholarsTable rows={tableRows} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar} onSetSchoolId={setSchoolId}
+          <ScholarsTable rows={tableRows} resetKey={`table:${yearFilter}|${programFilter}|${statusFilter}|${standingFilter}`} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar} onSetSchoolId={setSchoolId}
             empty={<p>No scholars match these filters. Try clearing one of them.</p>} />
         </section>
       ) : (
@@ -293,7 +293,7 @@ export function ScholarsDrilldownPanel({ data, schoolName, onGoToGradingSystem, 
           )}
 
           {drill.level === "scholars" && (
-            <ScholarsTable rows={scholarsInScope} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar} onSetSchoolId={setSchoolId}
+            <ScholarsTable rows={scholarsInScope} resetKey={`drill:${drill.yearLevel}|${drill.program}`} editable={editable && !data.locked} gradingReady={gradingReady} showStanding={hasRequirement} onOpen={openScholar} onSetSchoolId={setSchoolId}
               empty={<p>No scholars in {drill.yearLevel} — {drill.program}.</p>} />
           )}
         </section>
