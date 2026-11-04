@@ -223,6 +223,37 @@ export function tryPercentage(pct: number, rules: GradingRules, program?: string
   return { band, grade: band.equivalentGrade.trim(), remarks: band.remarks.trim(), result: pct >= passing - 1e-9 ? "passed" : "failed" };
 }
 
+/** The number typed in "Try a grade": 87.5, 87,5 and 87.5% are all fine. NaN when it is not a number from 0 to 100. */
+export function parseTryPercentage(text: string): number {
+  const s = text.trim().replace(/%$/, "").trim().replace(",", ".");
+  if (!/^\d+(\.\d+)?$/.test(s)) return Number.NaN;
+  const n = Number(s);
+  return n > 100 ? Number.NaN : n;
+}
+
+export type TryAnswer =
+  | { kind: "empty" }
+  | { kind: "bad_number" }
+  | { kind: "no_rows" }
+  | { kind: "no_row"; percentage: number }
+  | { kind: "grade"; percentage: number; grade: string; remarks: string; result: Result | null; band: GradeBand };
+
+/**
+ * What "Try a grade" says for what was typed. It answers as soon as a row covers the percentage, even while the rest of the table is unfinished: the grade and remarks come from the row,
+ * and the result (Passed / Failed) from the passing mark (of the program, if it has its own) once there is one. It never refuses just because some other part of the table still has a problem.
+ */
+export function tryAGrade(text: string, rules: GradingRules, program?: string | null): TryAnswer {
+  if (text.trim() === "") return { kind: "empty" };
+  const pct = parseTryPercentage(text);
+  if (Number.isNaN(pct)) return { kind: "bad_number" };
+  if (rules.bands.length === 0) return { kind: "no_rows" };
+  const band = bandForPercentage(rules.bands, pct);
+  if (!band) return { kind: "no_row", percentage: pct };
+  const passing = passingFor(program, rules);
+  const result: Result | null = passing == null || Number.isNaN(passing) ? null : pct >= passing - 1e-9 ? "passed" : "failed";
+  return { kind: "grade", percentage: pct, grade: band.equivalentGrade.trim(), remarks: band.remarks.trim(), result, band };
+}
+
 /** The result of a grade typed without a percentage: judged by its row. null when the grade is not in the table (or the rows disagree). */
 export function resultForGrade(grade: string, rules: GradingRules, scale: RuleScale, program?: string | null): Result | null {
   const passing = passingFor(program, rules);
