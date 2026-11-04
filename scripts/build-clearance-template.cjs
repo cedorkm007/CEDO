@@ -4,7 +4,7 @@
 //   {name} {contact} {school} {gwa} {courseYear} {semester} {scholarId}
 // The form's own text and formatting (Calibri 8 pt, the three tick boxes, the CEDO-only block) are kept exactly as the office wrote them. The letterhead (CEDO banner) that sits in the
 // page header of the office's file is moved INTO the form, and so is the footer picture, so two forms can share one A4 page and each still has its letterhead.
-// The school's own logo that is in the office's file (the Capitol University seal) is NOT carried over: every school has its own and the system does not hold them.
+// The school's own logo that is in the office's file (the Capitol University seal) is NOT carried over: the form leaves a {logo} spot, and the School Portal puts the school's own uploaded logo there.
 // src/lib/clearanceForm.ts repeats the form once per scholar, two to a page.
 const fs = require("fs");
 const path = require("path");
@@ -45,7 +45,8 @@ const anchors = header.match(/<wp:anchor[\s\S]*?<\/wp:anchor>/g);
 const banner = anchors.find(a => a.includes('name="image3.png"'));
 if (!banner) throw new Error("CEDO banner (image3.png) not found in the header");
 const bannerXml = banner.replace('r:embed="rId1"', 'r:embed="rIdClBanner"');
-const letterhead = `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="1000" w:lineRule="exact"/></w:pPr><w:r><w:drawing>${bannerXml}</w:drawing></w:r></w:p>`;
+// {logo} marks where the SCHOOL's own logo goes (the right-hand picture of the office's letterhead): src/lib/clearanceForm.ts puts the school's picture there, or nothing when it has none
+const letterhead = `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="1000" w:lineRule="exact"/></w:pPr><w:r><w:drawing>${bannerXml}</w:drawing></w:r><w:r><w:t>{logo}</w:t></w:r></w:p>`;
 // ── the footer picture, inline, centred ──
 const inline = footer.match(/<wp:inline[\s\S]*?<\/wp:inline>/)[0].replace('r:embed="rId1"', 'r:embed="rIdClFooter"');
 const footerPara = `<w:p><w:pPr><w:spacing w:before="60" w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="center"/></w:pPr><w:r><w:drawing>${inline}</w:drawing></w:r></w:p>`;
