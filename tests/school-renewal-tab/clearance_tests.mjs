@@ -121,9 +121,13 @@ await test("long and odd values do not break it", async () => {
 
 console.log("\nThe button");
 const panel = src("src/school/components/RenewalMonitorPanel.tsx"), menu = src("src/school/components/ClearanceDownloadMenu.tsx"), dl = src("src/school/clearanceDownload.ts"), page = src("src/school/pages/SchoolPortalPage.tsx");
-await test("it shows only when somebody in the list has an INC or a failed grade, and follows the filters (the scholars of every page, not only the page on screen)", () => {
-  assert.ok(panel.includes("const clearanceRows = useMemo(() => shown.filter(needsClearance), [shown])") && panel.includes("clearanceRows.length > 0 && summary"));
+await test("it is there whenever the list has scholars (even when nobody has an INC or a failed grade), and follows the filters (the scholars of every page, not only the page on screen)", () => {
+  assert.ok(panel.includes("const clearanceRows = useMemo(() => shown.filter(needsClearance), [shown])") && panel.includes("shown.length > 0 && summary") && panel.includes("flaggedRows={clearanceRows} allRows={shown}"));
+  assert.equal(panel.includes("clearanceRows.length > 0 && summary"), false);
   assert.ok(page.includes("<RenewalMonitorPanel schoolId={profile.schoolId} schoolName={profile.schoolName} />"));
+});
+await test("the school chooses who it is for (everybody shown, or only INC / failed); with nobody flagged it is everybody and says so", () => {
+  assert.ok(menu.includes("Everybody shown") && menu.includes("Scholars with an INC or a failed grade") && menu.includes("flaggedRows.length === 0 ? \"all\" : scope") && menu.includes("Nobody shown has an INC or a failed grade"));
 });
 await test("the school chooses Word or PDF, is told how many clearances and pages, and sees why a download failed", () => {
   assert.ok(menu.includes("Word (.docx)") && menu.includes('"PDF"') && menu.includes("clearance{rows.length === 1") && menu.includes("Couldn't prepare the clearances"));

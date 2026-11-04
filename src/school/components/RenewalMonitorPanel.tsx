@@ -163,10 +163,10 @@ export function RenewalMonitorPanel({ schoolId, schoolName }: { schoolId: string
         {anyFilter && <button onClick={() => { setFilters(EMPTY_FILTERS); setPage(1); }} className={`text-left text-[14px] font-semibold text-[#0077b6] hover:underline ${focusRing} rounded px-1`}>Clear all filters</button>}
       </div>
 
-      {/* the pre-filled clearances: the scholars in the list with an INC or a failed grade */}
-      {clearanceRows.length > 0 && summary && (
+      {/* the pre-filled clearances: always available for the scholars in the list; the school chooses everybody shown or only those with an INC or a failed grade */}
+      {shown.length > 0 && summary && (
         <div className="mb-4">
-          <ClearanceDownloadMenu rows={clearanceRows} schoolId={schoolId} schoolName={schoolName} basisSchoolYear={summary.basisSchoolYear} basisTerm={summary.basisTerm} />
+          <ClearanceDownloadMenu flaggedRows={clearanceRows} allRows={shown} schoolId={schoolId} schoolName={schoolName} basisSchoolYear={summary.basisSchoolYear} basisTerm={summary.basisTerm} />
         </div>
       )}
 
