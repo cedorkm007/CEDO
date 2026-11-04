@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, Pencil, X } from "lucide-react";
-import { scholarName, programOf, yearLevelOf, type ScholarRowData } from "../portalLogic";
-import { StatusChip, StandingChip, linkButton } from "./portalParts";
+import { scholarName, programOf, yearLevelOf, pageWindow, SCHOLARS_PAGE_SIZE, type ScholarRowData } from "../portalLogic";
+import { StatusChip, StandingChip, fieldClass, focusRing, linkButton } from "./portalParts";
 import { OutcomeCountChips } from "@/app/components/OutcomeBadge";
 import type { SchoolScholarRow } from "../types";
 
@@ -59,7 +59,7 @@ function SchoolIdCell({ scholar, onSave }: { scholar: SchoolScholarRow; onSave?:
  * Used for the "Table view", for search results, and at the last level of the year-level / program drill-down,
  * so the same columns and chips appear everywhere. Scrolls sideways on a phone instead of squeezing.
  */
-export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, showStanding = false, onSetSchoolId }: {
+export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, showStanding = false, onSetSchoolId, resetKey = "" }: {
   rows: ScholarRowData[];
   /** The selected period is Open (grades may be entered). */
   editable: boolean;
@@ -72,12 +72,21 @@ export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, sho
   showStanding?: boolean;
   /** Saves the School ID of a scholar; returns a message when it could not be saved. Without it the column is read-only. */
   onSetSchoolId?: (scholarIdNumber: string, value: string) => Promise<string | null>;
+  /** The list is shown 50 to a page. When this changes (another search, filter or program) the list starts again at page 1; a re-read of the same list keeps the page. */
+  resetKey?: string;
 }) {
+  const [page, setPage] = useState(1);
+  const top = useRef<HTMLDivElement>(null);
+  useEffect(() => { setPage(1); }, [resetKey]);
   if (rows.length === 0) {
     return <div className="bg-white border border-dashed border-[#062444]/30 rounded-xl px-5 py-8 text-center text-[14.5px] text-slate-800">{empty}</div>;
   }
   const canEnter = editable && gradingReady;
+  const win = pageWindow(rows.length, page);
+  const shown = rows.slice(win.start, win.end);
+  const goTo = (p: number) => { setPage(p); top.current?.scrollIntoView({ block: "start" }); };
   return (
+    <div ref={top} className="scroll-mt-4">
     <div className="relative bg-white border border-[#e6ecf5] rounded-xl overflow-x-auto">
       <table className="w-full min-w-[1080px] text-[14.5px]">
         <caption className="sr-only">Scholars of your school with their subjects, grading progress, status and GWA for the selected period</caption>
@@ -97,7 +106,7 @@ export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, sho
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ scholar: s, summary, status, standing, outcomes }) => (
+          {shown.map(({ scholar: s, summary, status, standing, outcomes }) => (
             <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f7f9fc]">
               <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{s.scholarIdNumber}</td>
               <td className="px-4 py-3 text-slate-800 whitespace-nowrap"><SchoolIdCell scholar={s} onSave={onSetSchoolId} /></td>
@@ -128,6 +137,23 @@ export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, sho
           ))}
         </tbody>
       </table>
+    </div>
+    {rows.length > SCHOLARS_PAGE_SIZE && (
+      <nav aria-label="Pages of scholars" className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[14px] text-slate-800">
+        <span aria-live="polite">Showing {win.start + 1}–{win.end} of {rows.length} scholars</span>
+        <span className="flex flex-wrap items-center gap-2">
+          <button onClick={() => goTo(win.page - 1)} disabled={win.page <= 1} className={`rounded-lg border border-[#062444]/30 bg-white px-3 py-1.5 font-semibold text-[#062444] disabled:opacity-50 ${focusRing}`}>Previous</button>
+          {win.pages > 6 ? (
+            <label className="flex items-center gap-1.5">Page
+              <select value={win.page} onChange={e => goTo(Number(e.target.value))} aria-label="Go to page" className={`${fieldClass} py-1`}>
+                {Array.from({ length: win.pages }, (_, k) => <option key={k + 1} value={k + 1}>{k + 1}</option>)}
+              </select> of {win.pages}
+            </label>
+          ) : <span>Page {win.page} of {win.pages}</span>}
+          <button onClick={() => goTo(win.page + 1)} disabled={win.page >= win.pages} className={`rounded-lg border border-[#062444]/30 bg-white px-3 py-1.5 font-semibold text-[#062444] disabled:opacity-50 ${focusRing}`}>Next</button>
+        </span>
+      </nav>
+    )}
     </div>
   );
 }

@@ -200,3 +200,14 @@ export function validateNewPassword(current: string, next: string, confirm: stri
   if (next !== confirm) return "The new password and its confirmation do not match.";
   return null;
 }
+
+/** Scholars shown on one page of the School Portal's lists. */
+export const SCHOLARS_PAGE_SIZE = 50;
+
+/** Which part of a list a page shows: the page (kept inside 1..pages), how many pages there are, and the slice [start, end). */
+export function pageWindow(total: number, page: number, size: number = SCHOLARS_PAGE_SIZE): { page: number; pages: number; start: number; end: number } {
+  const pages = Math.max(1, Math.ceil(total / size));
+  const p = Math.min(Math.max(1, Math.floor(page) || 1), pages);
+  const start = (p - 1) * size;
+  return { page: p, pages, start, end: Math.min(start + size, total) };
+}
