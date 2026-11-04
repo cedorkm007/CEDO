@@ -94,14 +94,23 @@ export async function saveLetterGrades(letters: LetterGrade[]): Promise<{ ok: bo
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+/** All of the school's scholars, in pages: the database returns at most 1000 rows per request, and a large school has more scholars than that. */
 export async function fetchOwnScholars(schoolId: string): Promise<SchoolScholarRow[]> {
-  const { data, error } = await supabase
-    .from("scholars")
-    .select("scholar_id_number, first_name, last_name, middle_name, year_level, course, school_student_no")
-    .eq("school_id", schoolId)
-    .neq("status", "Removed") // removed scholars cannot be graded; they are not counted or listed
-    .order("last_name");
-  if (error || !data) return [];
+  const PAGE = 1000;
+  const data: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data: page, error } = await supabase
+      .from("scholars")
+      .select("scholar_id_number, first_name, last_name, middle_name, year_level, course, school_student_no")
+      .eq("school_id", schoolId)
+      .neq("status", "Removed") // removed scholars cannot be graded; they are not counted or listed
+      .order("last_name")
+      .order("scholar_id_number")      // a tie-break, so a page never repeats or skips a scholar
+      .range(from, from + PAGE - 1);
+    if (error || !page) return [];
+    data.push(...(page as Record<string, unknown>[]));
+    if (page.length < PAGE) break;
+  }
   return data.map(r => ({
     scholarIdNumber: String(r.scholar_id_number), firstName: String(r.first_name ?? ""),
     lastName: String(r.last_name ?? ""), middleName: String(r.middle_name ?? ""),
