@@ -25,14 +25,14 @@ export async function downloadGradeTemplate(scholars: SchoolScholarRow[], period
 }
 
 /** The Promotional Report / Enrollment List as an Excel file: pre-filled with the school's scholars and the subjects already declared, or blank. */
-export async function downloadPromoTemplate(opts: { schoolName: string; scholars: SchoolScholarRow[]; period: PeriodRef; blank: boolean }): Promise<Result> {
-  const { schoolName, scholars, period, blank } = opts;
+export async function downloadPromoTemplate(opts: { schoolName: string; scholars: SchoolScholarRow[]; period: PeriodRef; blank: boolean; percentageEntry?: boolean }): Promise<Result> {
+  const { schoolName, scholars, period, blank, percentageEntry } = opts;
   let existing: Awaited<ReturnType<typeof fetchGradesForScholars>> = { ok: true, rows: [] };
   if (!blank) {
     existing = await fetchGradesForScholars(scholars.map(s => s.scholarIdNumber), period);
     if (!existing.ok) return { ok: false, error: existing.error };
   }
-  const bytes = await buildXlsx(buildPromoTemplate({ schoolName, period, scholars, existing: existing.ok ? existing.rows : [], blank }));
+  const bytes = await buildXlsx(buildPromoTemplate({ schoolName, period, scholars, existing: existing.ok ? existing.rows : [], blank, percentageEntry }));
   const blob = new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

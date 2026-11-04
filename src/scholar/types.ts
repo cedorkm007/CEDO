@@ -55,6 +55,8 @@ export interface SubjectGrade {
   remarks: string;
   units: number | null;
   excludeFromGwa: boolean;
+  /** The percentage, when the school enters percentages. */
+  percentage: number | null;
 }
 
 export interface QuestScore {

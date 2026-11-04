@@ -12,11 +12,13 @@ import {
   type PeriodRef, type PeriodStatus,
 } from "@/lib/academicPeriods";
 import { classifyGrade, reservedMark } from "@/lib/subjectOutcome";
+import type { GradingRules } from "@/lib/gradingRules";
+import { describeRow, entryFor, hasTable, sameGrade } from "@/lib/rulesRuntime";
 import { looksLikePromoReport, readPromoReport, type PromoEntry } from "./promoReport";
 import type { GradingConfig, LetterGrade, SchoolScholarRow, SchoolSubjectGrade } from "./types";
 
-/** `remarks` is optional: a file without that column still uploads, and leaves every stored remark as it is. */
-export const TEMPLATE_HEADERS = ["school_year", "semester", "scholar_id", "scholar_name", "subject_code", "subject_name", "units", "grade", "remarks"] as const;
+/** `percentage` and `remarks` are optional: a file without those columns still uploads (a percentage is turned into the grade of the school's conversion table; a missing remarks column leaves every stored remark as it is). */
+export const TEMPLATE_HEADERS = ["school_year", "semester", "scholar_id", "scholar_name", "subject_code", "subject_name", "units", "percentage", "grade", "remarks"] as const;
 
 export const MAX_REMARKS_LENGTH = 200;
 
@@ -28,6 +30,7 @@ const HEADER_ALIASES = {
   subjectCode: ["subject_code", "subject code", "code"],
   subjectName: ["subject_name", "subject name", "subject"],
   units: ["units", "unit"],
+  percentage: ["percentage", "percent", "pct", "percentage (%)", "%"],
   grade: ["grade"],
   remarks: ["remarks", "remark", "tag", "tags"],
 } as const;
@@ -56,9 +59,9 @@ export function buildTemplate(scholars: SchoolScholarRow[], existing: SchoolSubj
     const subjects = byScholar.get(s.scholarIdNumber) ?? [];
     const name = scholarDisplayName(s);
     if (subjects.length === 0) {
-      rows.push([period.schoolYear, term, s.scholarIdNumber, name, "", "", "", "", ""]);
+      rows.push([period.schoolYear, term, s.scholarIdNumber, name, "", "", "", "", "", ""]);
     } else {
-      for (const g of subjects) rows.push([period.schoolYear, term, s.scholarIdNumber, name, g.subjectCode, g.subject, g.units ?? "", g.grade, g.remarks ?? ""]);
+      for (const g of subjects) rows.push([period.schoolYear, term, s.scholarIdNumber, name, g.subjectCode, g.subject, g.units ?? "", g.percentage ?? "", g.grade, g.remarks ?? ""]);
     }
   }
   return { headers: [...TEMPLATE_HEADERS], rows };
@@ -94,6 +97,8 @@ export interface PayloadRow {
   subjectCode: string;
   subject: string;
   grade: string;
+  /** The percentage, when the file gave one and the school has a conversion table (the grade above is then the table's grade for it). null = none. */
+  percentage: number | null;
   units: number | null;
   /** Only set when the file has a remarks column; null leaves the stored remark as it is. */
   remarks: string | null;
@@ -113,6 +118,12 @@ export interface PreviewRow {
   subject: string;
   units: string;
   grade: string;
+  /** The percentage as it was typed in the file ("" = none). */
+  percentage: string;
+  /** The grade the school's conversion table gives for the percentage (or the grade itself), when the file is checked against a table. */
+  gradeShown: string;
+  /** What the conversion table says about the row, in the school's words: "Very Good · Passed" ("" = nothing to say). */
+  reading: string;
   /** The cells exactly as they were in the file (for the error report). */
   raw: string[];
   /** What would be sent to the database; null for error rows. */
@@ -127,6 +138,8 @@ export interface UploadContext {
   existing: SchoolSubjectGrade[];
   config: GradingConfig | null;
   letters: LetterGrade[];
+  /** The school's grading rules for the period being uploaded (null = none: grades are checked against the scale as before). */
+  rules?: GradingRules | null;
 }
 
 /** A Student No. the system does not know yet, matched to a scholar of the school by name. Saved only after the school confirms it. */
@@ -170,6 +183,8 @@ interface InputRow {
   subject: string;
   unitsText: string;
   grade: string;
+  /** The percentage typed in the file ("" = none). */
+  pctText?: string;
   remarksText: string;
   raw: string[];
   /** Problems found before the grade checks (a Student No. that is nobody's) and notes (a Student No. that will be linked to a scholar). */
@@ -186,15 +201,22 @@ const REMARK_WORDS: Record<string, string[]> = {
 const REMARK_RESULT_TEXT: Record<string, string> = { passed: "a pass", failed: "a fail", drp: "dropped (DRP)", inc: "incomplete (INC)" };
 
 /** A warning when the REMARKS word (PASSED, FAILED, DROPPED, INCOMPLETE) says something other than the grade does. Other remarks (NSTP, Cross-enrolled …) are just information. */
-function remarkDisagreesWithGrade(remark: string, grade: string, config: GradingConfig, letters: LetterGrade[]): string | null {
+function remarkDisagreesWithGrade(remark: string, grade: string, config: GradingConfig, letters: LetterGrade[], rules?: GradingRules | null, program?: string | null, percentage?: number | null): string | null {
   const word = remark.trim().toUpperCase();
   if (!word || !grade.trim()) return null;
   const said = Object.keys(REMARK_WORDS).find(k => REMARK_WORDS[k].includes(word));
   if (!said) return null;
-  const outcome = classifyGrade(grade, config, letters);
+  const outcome = classifyGrade(grade, config, letters, rules, program, percentage);
   if (!(outcome in REMARK_WORDS)) return null;      // ungraded, needs review, no passing mark set: nothing to compare with
   if (outcome === said) return null;
-  return `The remark says ${remark.trim()}, but the grade ${grade.trim()} is ${REMARK_RESULT_TEXT[outcome]} on your grading scale. Check the grade or the remark.`;
+  return `The remark says ${remark.trim()}, but the grade ${grade.trim()} is ${REMARK_RESULT_TEXT[outcome]} on ${hasTable(rules) ? "your conversion table" : "your grading scale"}. Check the grade or the remark.`;
+}
+
+/** "Very Good · Passed" for a grade or percentage the conversion table covers. */
+function readingText(rules: GradingRules | null | undefined, grade: string, pct: number | null, program: string | null | undefined): string {
+  const r = describeRow({ grade, percentage: pct }, rules, program);
+  if (!r) return "";
+  return [r.remarks, r.result === "passed" ? "Passed" : r.result === "failed" ? "Failed" : ""].filter(Boolean).join(" · ");
 }
 
 function checkRows(inputs: InputRow[], ctx: UploadContext, headers: string[], ignoredBlank: number, remarkMode: RemarkMode, format: ParseResult["format"]): ParseResult {
@@ -227,6 +249,7 @@ function checkRows(inputs: InputRow[], ctx: UploadContext, headers: string[], ig
   const term = normalizeTerm(ctx.period.semester) ?? ctx.period.semester;
   const rows: PreviewRow[] = inputs.map(inp => {
     const { rowNumber, scholarId, scholarName, code, subject, unitsText, grade, remarksText, raw } = inp;
+    const pctText = (inp.pctText ?? "").trim();
     const errors: string[] = [...(inp.preErrors ?? [])];
     const warnings: string[] = [...(inp.preWarnings ?? [])];
 
@@ -243,11 +266,26 @@ function checkRows(inputs: InputRow[], ctx: UploadContext, headers: string[], ig
       else errors.push(`Units "${unitsText}" must be a positive number.`);
     }
 
-    const gradeError = validateGradeValue(grade, ctx.config!, ctx.letters);
+    // Is this subject already saved? (needed first: a grade that did not change is not checked against the conversion table again, like the database)
+    const existing = scholar && subject ? findExisting(scholarId, code, subject) : null;
+
+    // With a conversion table the grade and percentage are read through it (a percentage becomes the table's grade); without one, the grade is checked against the school's scale as before.
+    const table = hasTable(ctx.rules);
+    const specialMarks = ctx.letters.filter(l => l.outcome).map(l => l.letter);
+    const unchangedGrade = !!existing && pctText === "" && grade.trim() !== "" && grade.trim() === existing.grade.trim();
+    let useGrade = grade;
+    let usePct: number | null = null;
+    let gradeError: string | null = null;
+    if (pctText !== "" || (table && grade.trim() !== "" && !unchangedGrade)) {
+      const e = entryFor(ctx.rules, grade, pctText, specialMarks, scholar?.course);
+      if (e.error) gradeError = e.error; else { useGrade = e.grade; usePct = e.percentage; }
+    } else if (!table) {
+      gradeError = validateGradeValue(grade, ctx.config!, ctx.letters);
+    }
     if (gradeError) errors.push(gradeError);
     if (remarksText.length > MAX_REMARKS_LENGTH) errors.push(`Remarks are too long (${remarksText.length} characters; the limit is ${MAX_REMARKS_LENGTH}).`);
     if (remarkMode === "setIfFilled" && !gradeError) {
-      const disagree = remarkDisagreesWithGrade(remarksText, grade, ctx.config!, ctx.letters);
+      const disagree = remarkDisagreesWithGrade(remarksText, useGrade, ctx.config!, ctx.letters, ctx.rules, scholar?.course, usePct);
       if (disagree) warnings.push(disagree);
     }
 
@@ -260,32 +298,32 @@ function checkRows(inputs: InputRow[], ctx: UploadContext, headers: string[], ig
       warnings.push(`Name in the file (${scholarName}) does not look like the scholar with ${inp.studentNo !== undefined ? `Student No. ${inp.studentNo}` : `ID ${scholarId}`} (${scholarDisplayName(scholar)}). Rows are matched by ${inp.studentNo !== undefined ? "Student No." : "ID"} — check it is right.`);
     }
 
-    const existing = scholar && subject ? findExisting(scholarId, code, subject) : null;
     let action: RowAction = "add";
-    let effectiveGrade = grade;
+    let effectiveGrade = useGrade;
     if (existing) {
       action = "update";
-      if (!grade && existing.grade.trim()) {
+      if (!useGrade && existing.grade.trim()) {
         effectiveGrade = existing.grade;
         warnings.push(`Grade left blank — the existing grade (${existing.grade}) is kept.`);
-      } else if (grade && existing.grade.trim() && grade !== existing.grade.trim()) {
-        warnings.push(`Will overwrite the existing grade ${existing.grade} with ${grade}.`);
+      } else if (useGrade && existing.grade.trim() && !sameGrade(useGrade, existing.grade)) {
+        warnings.push(`Will overwrite the existing grade ${existing.grade} with ${useGrade}.`);
       }
       if (subject !== existing.subject) warnings.push(`Subject name will change from "${existing.subject}" to "${subject}".`);
       const sameCode = code === existing.subjectCode.trim() || (!code && !existing.subjectCode.trim());
       const sameUnits = units === null || units === existing.units;
+      const samePct = usePct === null || usePct === existing.percentage;
       const sameRemarks = remarkMode === "none" || (remarkMode === "setIfFilled" && remarksText === "") || remarksText === (existing.remarks ?? "").trim();
-      if (sameCode && subject === existing.subject && effectiveGrade.trim() === existing.grade.trim() && sameUnits && sameRemarks) action = "unchanged";
+      if (sameCode && subject === existing.subject && effectiveGrade.trim() === existing.grade.trim() && sameUnits && samePct && sameRemarks) action = "unchanged";
     }
 
     const status: RowStatus = errors.length > 0 ? "error" : warnings.length > 0 ? "warning" : "valid";
     const payload: PayloadRow | null = status === "error" ? null : {
       id: existing?.id ?? null, scholarIdNumber: scholarId, schoolYear: ctx.period.schoolYear.trim(), semester: term,
-      subjectCode: code, subject, grade: effectiveGrade.trim(), units, remarks: remarkMode === "none" ? null : remarkMode === "setIfFilled" ? (remarksText || null) : remarksText,
+      subjectCode: code, subject, grade: effectiveGrade.trim(), percentage: usePct, units, remarks: remarkMode === "none" ? null : remarkMode === "setIfFilled" ? (remarksText || null) : remarksText,
     };
     return {
       rowNumber, status, action, messages: errors.length > 0 ? errors : warnings,
-      scholarId, scholarName, studentNo: inp.studentNo, subjectCode: code, subject, units: unitsText, grade, raw, payload,
+      scholarId, scholarName, studentNo: inp.studentNo, subjectCode: code, subject, units: unitsText, grade, percentage: pctText, gradeShown: effectiveGrade.trim(), reading: errors.length > 0 ? "" : readingText(ctx.rules, effectiveGrade, usePct, scholar?.course), raw, payload,
     };
   });
 
@@ -324,6 +362,7 @@ export function parseGradeGrid(raw: string[][], ctx: UploadContext): ParseResult
     subjectCode: findColumn(headers, [...HEADER_ALIASES.subjectCode]),
     subjectName: findColumn(headers, [...HEADER_ALIASES.subjectName]),
     units: findColumn(headers, [...HEADER_ALIASES.units]),
+    percentage: findColumn(headers, [...HEADER_ALIASES.percentage]),
     grade: findColumn(headers, [...HEADER_ALIASES.grade]),
     remarks: findColumn(headers, [...HEADER_ALIASES.remarks]),
   };
@@ -350,13 +389,13 @@ export function parseGradeGrid(raw: string[][], ctx: UploadContext): ParseResult
 
   // Template placeholder rows (a scholar with no subjects yet, nothing typed) are skipped, not reported as errors.
   const entries = dataRows.map((r, i) => ({ r, rowNumber: i + 2 }));
-  const filled = entries.filter(({ r }) => cell(r, idx.subjectCode) || cell(r, idx.subjectName) || cell(r, idx.units) || cell(r, idx.grade) || (idx.remarks !== -1 && cell(r, idx.remarks)));
+  const filled = entries.filter(({ r }) => cell(r, idx.subjectCode) || cell(r, idx.subjectName) || cell(r, idx.units) || cell(r, idx.grade) || (idx.percentage !== -1 && cell(r, idx.percentage)) || (idx.remarks !== -1 && cell(r, idx.remarks)));
   const ignoredBlank = entries.length - filled.length;
   if (filled.length === 0) return fail("Nothing is filled in yet — type subjects and grades into the template (the rows for scholars with no subjects are placeholders), then upload it again.");
 
   const inputs: InputRow[] = filled.map(({ r, rowNumber }) => ({
     rowNumber, scholarId: cell(r, idx.scholarId), scholarName: cell(r, idx.scholarName), code: cell(r, idx.subjectCode), subject: cell(r, idx.subjectName),
-    unitsText: cell(r, idx.units), grade: cell(r, idx.grade), remarksText: idx.remarks === -1 ? "" : cell(r, idx.remarks), raw: r,
+    unitsText: cell(r, idx.units), grade: cell(r, idx.grade), pctText: idx.percentage === -1 ? "" : cell(r, idx.percentage), remarksText: idx.remarks === -1 ? "" : cell(r, idx.remarks), raw: r,
   }));
   return checkRows(inputs, ctx, headerCells, ignoredBlank, idx.remarks === -1 ? "none" : "set", "csv");
 }
@@ -442,8 +481,9 @@ export function parsePromoUpload(grid: string[][], ctx: UploadContext): ParseRes
 
   const inputs: InputRow[] = sheet.entries.map(e => {
     const who = whoIs(e);
+    const { grade, pctText } = promoGradeOrPercentage(e.grade, ctx);
     return {
-      rowNumber: e.rowNumber, scholarId: who.scholarId, studentNo: e.studentNo, code: e.code, subject: e.description, unitsText: e.units, grade: e.grade, remarksText: e.remarks, raw: e.cells,
+      rowNumber: e.rowNumber, scholarId: who.scholarId, studentNo: e.studentNo, code: e.code, subject: e.description, unitsText: e.units, grade, pctText, remarksText: e.remarks, raw: e.cells,
       scholarName: [`${e.last},`, e.first, e.middle, e.ext].map(x => x.trim()).filter(x => x && x !== ",").join(" "),
       preErrors: who.error ? [who.error] : undefined, preWarnings: who.warning ? [who.warning] : undefined,
     };
@@ -452,6 +492,20 @@ export function parsePromoUpload(grid: string[][], ctx: UploadContext): ParseRes
   // a link is only worth confirming when at least one of the student's rows can be saved
   result.links = links.filter(l => result.rows.some(r => r.payload?.scholarIdNumber === l.scholarIdNumber));
   return result;
+}
+
+/**
+ * The GRADES column of the promotional report holds the school's final grade. For a school that enters PERCENTAGES it is the percentage; the system turns it into the grade of the conversion table.
+ * A school that enters either: a value that is one of the table's grades (or a mark such as INC) is the grade, any other number is the percentage. A school that enters grades: always the grade.
+ */
+export function promoGradeOrPercentage(value: string, ctx: Pick<UploadContext, "rules" | "letters">): { grade: string; pctText: string } {
+  const v = value.trim();
+  const rules = ctx.rules;
+  if (!v || !hasTable(rules) || rules.entryMode === "grade") return { grade: v, pctText: "" };
+  const t = v.replace(",", ".");
+  if (!/^\d+(\.\d+)?$/.test(t)) return { grade: v, pctText: "" };                                   // INC, DRP, a letter, anything that is not a number
+  if (rules.entryMode === "percentage") return { grade: "", pctText: t };
+  return rules.bands.some(b => sameGrade(v, b.equivalentGrade)) ? { grade: v, pctText: "" } : { grade: "", pctText: t };
 }
 
 /** Whichever layout the file is in: the promotional report, or the earlier CSV. */

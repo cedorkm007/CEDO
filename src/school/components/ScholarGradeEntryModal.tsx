@@ -3,14 +3,16 @@ import { X, Plus, Trash2, Save, CheckCircle2, AlertTriangle, Lock } from "lucide
 import { fetchScholarGradesChecked, upsertGrade, deleteGradeRows } from "../schoolApi";
 import { validateEntryRows, findUnconfirmed, savedMessage, periodLabel, type SavedRow } from "../gradeSaveLogic";
 import { MarksGuide } from "@/app/components/MarksGuide";
-import { gwaDetail, formatGwa, needsUnits, type LetterGrade } from "@/lib/gwa";
+import { needsUnits, type LetterGrade } from "@/lib/gwa";
+import { passingFor, type GradingRules } from "@/lib/gradingRules";
+import { defaultExcluded, describeRow, entryFor, periodGwa } from "@/lib/rulesRuntime";
 import { validateGradeValue } from "../bulkGradeLogic";
 import { gradeInputHint } from "../portalLogic";
 import { canEditRow, NOT_LOCKED, type GradeLockInfo } from "../submissionLogic";
 import { formatWhen } from "@/lib/gradeEvidence";
 import { focusRing } from "./portalParts";
 import { OutcomeBadge, outcomeRowClass } from "@/app/components/OutcomeBadge";
-import { classifyGrade, countOutcomes, outcomeSummaryText, type SubjectOutcome } from "@/lib/subjectOutcome";
+import { classifyGrade, countOutcomes, isFailed, outcomeSummaryText, type SubjectOutcome } from "@/lib/subjectOutcome";
 import { CorrectionRequestDialog } from "./CorrectionRequestDialog";
 import { SchoolDocumentsSection, SchoolHistorySection } from "./SchoolEvidenceSections";
 import type { GradingConfig, SchoolScholarRow, SchoolSubjectGrade } from "../types";
@@ -21,7 +23,16 @@ interface EditableRow extends SchoolSubjectGrade {
   dirty?: boolean;
   /** What is typed in the Units box. */
   unitsText: string;
+  /** What is typed in the Percentage box (only shown when the school has a conversion table and enters percentages). */
+  percentageText: string;
+  /** The grade and percentage as last saved: a row whose grade did not change is not checked against the table again (the database does the same). */
+  savedGrade?: string;
+  savedPercentageText?: string;
+  /** True once the school ticked or unticked "Exclude" by hand, so typing a code no longer decides it. */
+  excludeTouched?: boolean;
 }
+
+const pctToText = (n: number | null) => (n == null ? "" : String(n));
 
 function displayName(row: SchoolScholarRow): string {
   const mi = row.middleName.trim() ? `${row.middleName.trim()[0]}.` : "";
@@ -29,7 +40,7 @@ function displayName(row: SchoolScholarRow): string {
 }
 
 function toEditable(rows: SchoolSubjectGrade[]): EditableRow[] {
-  return rows.map(r => ({ ...r, unitsText: r.units == null ? "" : String(r.units) }));
+  return rows.map(r => ({ ...r, unitsText: r.units == null ? "" : String(r.units), percentageText: pctToText(r.percentage), savedGrade: r.grade.trim(), savedPercentageText: pctToText(r.percentage) }));
 }
 
 /** The number in the Units box, or null when it is blank / not a positive number (validateEntryRows reports the latter before saving). */
@@ -59,8 +70,10 @@ const inputClass = `border border-[#062444]/30 rounded-lg px-2 py-1.5 text-[14px
  * The period is the one chosen in the Scholars tab. When it is not Open (`canEdit` false) the grades are shown read-only —
  * the database refuses a school's changes to a Closed or Archived period as well, this just says so up front.
  */
-export function ScholarGradeEntryModal({ scholar, period, canEdit, config, letterGrades, lock = NOT_LOCKED, schoolId, periodId, submittedAt, onClose, onSaved, onRequestsChanged }: {
+export function ScholarGradeEntryModal({ scholar, period, canEdit, config, letterGrades, rules = null, lock = NOT_LOCKED, schoolId, periodId, submittedAt, onClose, onSaved, onRequestsChanged }: {
   scholar: SchoolScholarRow; period: GradingPeriod; canEdit: boolean; config: GradingConfig | null; letterGrades: LetterGrade[];
+  /** The school's grading rules for this period (null = none: grades are typed and judged the old way). */
+  rules?: GradingRules | null;
   lock?: GradeLockInfo; schoolId: string; periodId: string | null; submittedAt?: string | null;
   onClose: () => void; onSaved?: () => void; onRequestsChanged?: () => void;
 }) {
@@ -83,6 +96,11 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
   }, [scholar.scholarIdNumber, period]);
 
   const locked = lock.locked;
+  // The school's conversion table for this period: a Percentage box appears when it enters percentages; the grade, remarks and result are read from the table.
+  const table = !!rules && rules.bands.length > 0;
+  const showPct = table && rules.entryMode !== "grade";
+  const pctOnly = table && rules.entryMode === "percentage";
+  const specialMarks = useMemo(() => letterGrades.filter(l => l.outcome).map(l => l.letter), [letterGrades]);
   const rowEditable = (r: EditableRow) => canEdit && canEditRow(r, lock);
   const anyEditable = canEdit && (!locked || rows.some(r => lock.approvedGradeIds.has(r.id)));
 
@@ -91,18 +109,39 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
     setRows(prev => [...prev, {
       id: `new-${Date.now()}`, scholarIdNumber: scholar.scholarIdNumber,
       schoolYear: period.schoolYear, semester: period.semester,
-      subjectCode: "", subject: "", grade: "", units: null, excludeFromGwa: false, remarks: "", unitsText: "", isNew: true, dirty: true,
+      subjectCode: "", subject: "", grade: "", units: null, excludeFromGwa: false, remarks: "", unitsText: "", percentage: null, percentageText: "", isNew: true, dirty: true,
     }]);
   }
 
   function updateRow(id: string, field: "subjectCode" | "subject" | "grade" | "unitsText" | "remarks", value: string) {
     setSavedNote("");
-    setRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value, dirty: true } : r));
+    setRows(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const next = { ...r, [field]: value, dirty: true };
+      // typing the grade by hand replaces a percentage; a new subject whose code is on the school's list of default excluded codes starts excluded (until the school decides)
+      if (field === "grade") next.percentageText = "";
+      if (field === "subjectCode" && r.isNew && !r.excludeTouched) next.excludeFromGwa = defaultExcluded(rules, value);
+      return next;
+    }));
+  }
+
+  /** Typing a percentage fills in the grade of the conversion table straight away. */
+  function updatePercentage(id: string, value: string) {
+    setSavedNote("");
+    setRows(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const next = { ...r, percentageText: value, dirty: true };
+      if (value.trim() !== "") {
+        const e = entryFor(rules, "", value, specialMarks, scholar.course);
+        if (!e.error) next.grade = e.grade;
+      } else if (pctOnly) next.grade = "";
+      return next;
+    }));
   }
 
   function toggleExclude(id: string, value: boolean) {
     setSavedNote("");
-    setRows(prev => prev.map(r => r.id === id ? { ...r, excludeFromGwa: value, dirty: true } : r));
+    setRows(prev => prev.map(r => r.id === id ? { ...r, excludeFromGwa: value, excludeTouched: true, dirty: true } : r));
   }
 
   /** A row that was already saved is only really deleted when Save is pressed; a brand-new row just disappears. */
@@ -113,22 +152,37 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
     setRows(prev => prev.filter(r => r.id !== id));
   }
 
-  /** What is wrong with the grade typed on this row (outside the school's scale / not one of its letters), or null. */
-  const gradeProblem = (grade: string): string | null => (config ? validateGradeValue(grade, config, letterGrades) : null);
-  const allowedHint = gradeInputHint(config, letterGrades);
+  /** What a row becomes (the grade and percentage that would be saved) and what is wrong with it. A row whose grade and percentage did not change is not checked again. */
+  const entryOf = (r: EditableRow) => entryFor(rules, r.grade, r.percentageText, specialMarks, scholar.course);
+  const unchanged = (r: EditableRow) => !r.isNew && r.grade.trim() === (r.savedGrade ?? "") && r.percentageText.trim() === (r.savedPercentageText ?? "");
+  /** What is wrong with the grade (and percentage) typed on this row, or null. With a conversion table the table decides; without one it is the scale and the letters as before. */
+  const gradeProblem = (r: EditableRow): string | null => {
+    if (table && !unchanged(r)) { const e = entryOf(r); if (e.error) return e.error; }
+    if (!table && r.percentageText.trim() !== "") return entryOf(r).error || null;
+    return config && r.grade.trim() && !table ? validateGradeValue(r.grade, config, letterGrades) : null;
+  };
+  const allowedHint = table
+    ? (rules.entryMode === "percentage" ? "Type the percentage and the grade of your conversion table is filled in. For INC or DRP, type it in the Grade box instead"
+      : rules.entryMode === "either" ? "Type the percentage (the grade of your conversion table is filled in) or type the grade yourself" : gradeInputHint(config, letterGrades))
+    : gradeInputHint(config, letterGrades);
+  const pctOf = (r: EditableRow): number | null => { const e = entryOf(r); return e.error ? null : e.percentage; };
 
   // Which subjects are failed / INC right now (the shared rule, src/lib/subjectOutcome.ts). Exclude-from-GWA subjects are included on purpose.
-  const outcomeOf = (grade: string): SubjectOutcome => classifyGrade(grade, config, letterGrades);
-  const outcomeCounts = useMemo(() => countOutcomes(rows.filter(r => r.subject.trim()), config, letterGrades), [rows, config, letterGrades]);
+  const outcomeOf = (r: EditableRow): SubjectOutcome => classifyGrade(r.grade, config, letterGrades, rules, scholar.course, pctOf(r));
+  const outcomeCounts = useMemo(() => countOutcomes(rows.filter(r => r.subject.trim()).map(r => ({ grade: r.grade, percentage: pctOf(r) })), config, letterGrades, rules, scholar.course),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, config, letterGrades, rules, scholar.course]);
 
   // Live preview from what is on screen right now (saved or not), using the shared calculation.
   const preview = useMemo(() => {
     const named = rows.filter(r => r.subject.trim());
+    const input = named.map(r => ({ grade: r.grade, percentage: pctOf(r), units: parseUnits(r.unitsText), excludeFromGwa: r.excludeFromGwa }));
     return {
-      detail: gwaDetail(named.map(r => ({ grade: r.grade, units: parseUnits(r.unitsText), excludeFromGwa: r.excludeFromGwa })), letterGrades),
+      detail: periodGwa(input, letterGrades, rules, r => isFailed(classifyGrade(r.grade, config, letterGrades, rules, scholar.course, r.percentage))),
       missingUnits: named.filter(r => needsUnits({ units: parseUnits(r.unitsText), excludeFromGwa: r.excludeFromGwa })).length,
     };
-  }, [rows, letterGrades]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, letterGrades, rules, config, scholar.course]);
 
   async function handleSave() {
     setError("");
@@ -141,8 +195,8 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
       setError("No grading period is selected — ask CEDO staff to set one from the monitoring tool first.");
       return;
     }
-    const badGradeIndex = rows.findIndex(r => r.subject.trim() && gradeProblem(r.grade));
-    if (badGradeIndex !== -1) { setError(`Row ${badGradeIndex + 1}: ${gradeProblem(rows[badGradeIndex].grade)}`); return; }
+    const badGradeIndex = rows.findIndex(r => r.subject.trim() && gradeProblem(r));
+    if (badGradeIndex !== -1) { setError(`Row ${badGradeIndex + 1}: ${gradeProblem(rows[badGradeIndex])}`); return; }
     const problem = validateEntryRows(rows.map(r => ({
       id: r.id, subjectCode: r.subjectCode, subject: r.subject, grade: r.grade, unitsText: r.unitsText, hadUnits: r.units != null,
     })));
@@ -159,13 +213,17 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
     let failure = "";
     for (const r of dirtyRows) {
       const units = parseUnits(r.unitsText);
+      // With a conversion table the grade saved is the one the table gives for the percentage; a row that did not change keeps what it had.
+      const e = table && !unchanged(r) ? entryOf(r) : null;
+      const grade = e ? e.grade : r.grade;
+      const percentage = e ? e.percentage : (r.percentageText.trim() === "" ? null : Number(r.percentageText));
       const result = await upsertGrade({
         id: r.isNew ? null : r.id, scholarIdNumber: r.scholarIdNumber, schoolYear: period.schoolYear,
-        semester: period.semester, subjectCode: r.subjectCode, subject: r.subject, grade: r.grade,
-        units, excludeFromGwa: r.excludeFromGwa, remarks: r.remarks,
+        semester: period.semester, subjectCode: r.subjectCode, subject: r.subject, grade,
+        units, excludeFromGwa: r.excludeFromGwa, remarks: r.remarks, percentage,
       });
       if (!result.ok || !result.id) { failure = result.error || "Failed to save."; break; }
-      saved.push({ id: result.id, subject: r.subject, grade: r.grade, units, excludeFromGwa: r.excludeFromGwa });
+      saved.push({ id: result.id, subject: r.subject, grade, units, excludeFromGwa: r.excludeFromGwa });
     }
     let removedCount = 0;
     if (!failure && removedIds.length > 0) {
@@ -196,7 +254,9 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
     setSavedNote(savedMessage(saved, removedCount, period));
   }
 
-  const cols = locked ? "sm:grid-cols-[6rem_1fr_4.5rem_5rem_6.5rem_12rem]" : "sm:grid-cols-[6rem_1fr_4.5rem_5rem_9.5rem_1.5rem]";
+  const cols = showPct
+    ? (locked ? "sm:grid-cols-[6rem_1fr_4.5rem_5.5rem_5rem_6.5rem_12rem]" : "sm:grid-cols-[6rem_1fr_4.5rem_5.5rem_5rem_9.5rem_1.5rem]")
+    : (locked ? "sm:grid-cols-[6rem_1fr_4.5rem_5rem_6.5rem_12rem]" : "sm:grid-cols-[6rem_1fr_4.5rem_5rem_9.5rem_1.5rem]");
 
   return (
     <>
@@ -235,15 +295,16 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
 
               {rows.length > 0 && (
                 <div className={`hidden sm:grid ${cols} gap-2 px-0.5 mb-1 text-[13px] font-bold text-slate-800`}>
-                  <span>Code</span><span>Subject name</span><span>Units</span><span>Grade</span><span>{locked ? "Exclude" : "Exclude from GWA"}</span><span>{locked ? "Correction" : ""}</span>
+                  <span>Code</span><span>Subject name</span><span>Units</span>{showPct && <span>Percentage</span>}<span>Grade</span><span>{locked ? "Exclude" : "Exclude from GWA"}</span><span>{locked ? "Correction" : ""}</span>
                 </div>
               )}
               <div className="space-y-2 mb-3">
                 {rows.map((r, i) => {
                   const noUnits = r.subject.trim() !== "" && needsUnits({ units: parseUnits(r.unitsText), excludeFromGwa: r.excludeFromGwa });
-                  const gradeErr = r.grade.trim() ? gradeProblem(r.grade) : null;
+                  const gradeErr = r.grade.trim() || r.percentageText.trim() ? gradeProblem(r) : null;
                   const editable = rowEditable(r);
-                  const outcome: SubjectOutcome = r.subject.trim() ? outcomeOf(r.grade) : "ungraded";
+                  const outcome: SubjectOutcome = r.subject.trim() ? outcomeOf(r) : "ungraded";
+                  const reading = table && !gradeErr ? describeRow({ grade: r.grade, percentage: pctOf(r) }, rules, scholar.course) : null;
                   const approved = lock.approvedGradeIds.has(r.id);
                   const pending = lock.pendingGradeIds.has(r.id);
                   return (
@@ -256,7 +317,11 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
                       <input value={r.unitsText} onChange={e => updateRow(r.id, "unitsText", e.target.value)} placeholder="Units" inputMode="decimal" aria-label={`Units, row ${i + 1}`} disabled={!editable}
                         title={noUnits ? "No units yet — counted as 1 unit until you enter them" : undefined}
                         className={`${inputClass} ${noUnits ? "border-amber-400 bg-amber-50" : ""}`} />
-                      <input value={r.grade} onChange={e => updateRow(r.id, "grade", e.target.value)} placeholder="Grade" aria-label={`Grade, row ${i + 1}`} disabled={!editable}
+                      {showPct && (
+                        <input value={r.percentageText} onChange={e => updatePercentage(r.id, e.target.value)} placeholder="%" inputMode="decimal" aria-label={`Percentage, row ${i + 1}`} disabled={!editable}
+                          aria-invalid={gradeErr ? true : undefined} className={`${inputClass} ${gradeErr ? "border-red-600 bg-red-50" : ""}`} />
+                      )}
+                      <input value={r.grade} onChange={e => updateRow(r.id, "grade", e.target.value)} placeholder={pctOnly ? "auto" : "Grade"} aria-label={`Grade, row ${i + 1}`} disabled={!editable || (pctOnly && r.percentageText.trim() !== "")}
                         aria-invalid={gradeErr ? true : undefined} aria-describedby={gradeErr ? `grade-err-${r.id}` : undefined}
                         className={`${inputClass} ${gradeErr ? "border-red-600 bg-red-50" : ""}`} />
                       <label className="flex items-center gap-1.5 text-[14px] text-slate-800">
@@ -287,6 +352,11 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
                       <label className="sr-only" htmlFor={`remarks-${r.id}`}>Remarks or tag, row {i + 1}</label>
                       <input id={`remarks-${r.id}`} value={r.remarks} onChange={e => updateRow(r.id, "remarks", e.target.value)} maxLength={200} disabled={!editable}
                         placeholder="Remarks / tag (optional) — e.g. NSTP, Repeated" className={`${inputClass} min-w-[11rem] flex-1 text-[14px]`} />
+                      {reading && (
+                        <span className="text-[14px] text-slate-800" data-testid="table-reading">
+                          {reading.percentage != null ? `${reading.percentage}% = ` : ""}<strong>{reading.grade}</strong>{reading.remarks ? ` · ${reading.remarks}` : ""}
+                        </span>
+                      )}
                       <OutcomeBadge outcome={outcome} />
                     </div>
                     </div>
@@ -304,8 +374,8 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
               {rows.some(r => r.subject.trim()) && (
                 <div className="mt-4 rounded-xl border border-[#e6ecf5] bg-[#f7f9fc] px-4 py-3" aria-live="polite">
                   <p className="text-[14px] text-[#062444]">
-                    <strong>GWA for these subjects: {formatGwa(preview.detail.gwa)}</strong>
-                    <span className="text-slate-700"> — weighted by units{preview.detail.subjectsCounted > 0 ? ` (${preview.detail.subjectsCounted} subject${preview.detail.subjectsCounted === 1 ? "" : "s"}, ${preview.detail.unitsCounted} unit${preview.detail.unitsCounted === 1 ? "" : "s"} counted)` : ""}</span>
+                    <strong>GWA for these subjects: {preview.detail.text}</strong>
+                    <span className="text-slate-700"> — {preview.detail.settings?.method === "simple" ? "simple average" : "weighted by units"}{preview.detail.subjectsCounted > 0 ? ` (${preview.detail.subjectsCounted} subject${preview.detail.subjectsCounted === 1 ? "" : "s"}, ${preview.detail.unitsCounted} unit${preview.detail.unitsCounted === 1 ? "" : "s"} counted)` : ""}</span>
                   </p>
                   {preview.detail.excluded > 0 && (
                     <p className="text-[14px] text-slate-700 mt-0.5">{preview.detail.excluded} subject{preview.detail.excluded === 1 ? " is" : "s are"} excluded from the GWA.</p>
@@ -327,7 +397,7 @@ export function ScholarGradeEntryModal({ scholar, period, canEdit, config, lette
                     </p>
                   ) : outcomeSummaryText(outcomeCounts) ? (
                     <p className="text-[14px] font-semibold text-red-900 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                      Needs attention: {outcomeSummaryText(outcomeCounts)}{config?.passingMark != null ? ` (passing mark ${config.passingMark})` : ""}.
+                      Needs attention: {outcomeSummaryText(outcomeCounts)}{table ? (passingFor(scholar.course, rules) != null ? ` (passing mark ${passingFor(scholar.course, rules)}%)` : "") : config?.passingMark != null ? ` (passing mark ${config.passingMark})` : ""}.
                       {outcomeCounts.drp > 0 ? " DRP counts as failed." : ""}
                     </p>
                   ) : null}

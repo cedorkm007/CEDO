@@ -7,9 +7,11 @@
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
 import { fetchGradesForScholars } from "@/school/schoolApi";
-import { gwaDetail, type GradeLike, type GradingConfig, type LetterGrade } from "@/lib/gwa";
-import { countOutcomes, type OutcomeCounts } from "@/lib/subjectOutcome";
-import { scholarStanding, type StandingResult } from "@/lib/standing";
+import type { GradingConfig, LetterGrade } from "@/lib/gwa";
+import { classifyGrade, countOutcomes, isFailed, type OutcomeCounts } from "@/lib/subjectOutcome";
+import type { StandingResult } from "@/lib/standing";
+import { periodGwa, rulesAt, standingFor, type GwaInputRow, type RuleVersion } from "@/lib/rulesRuntime";
+import { fetchRulesTimeline } from "@/lib/gradeRulesApi";
 import type { GradingPeriod } from "./scholarsGradesMonitoringApi";
 
 export interface StaffScholar {
@@ -82,14 +84,17 @@ export async function fetchSchoolSummaries(): Promise<SchoolSummary[]> {
 export interface SchoolSetup {
   config: GradingConfig | null;
   letters: LetterGrade[];
+  /** The grading rules the school saved, by the semester they start at (empty = none: everything works the old way). */
+  rules: RuleVersion[];
 }
 
 /** Every school's grading scale, letters and retention requirement, keyed by school id (staff can read them all). */
 export async function fetchSchoolSetups(): Promise<Map<string, SchoolSetup>> {
-  const [cfg, lets, marksRes] = await Promise.all([
+  const [cfg, lets, marksRes, timeline] = await Promise.all([
     supabase.from("school_grading_configs").select("school_id, scale_min, scale_max, direction, uses_letter_grades, retention_threshold, passing_mark"),
     supabase.from("school_letter_grades").select("school_id, letter, numeric_value"),
     supabase.from("school_marks").select("school_id, mark, meaning, outcome"),   // empty until the "other marks" database update has been run
+    fetchRulesTimeline(),                                                         // empty until the grading rules database update has been run
   ]);
   const marks = new Map<string, LetterGrade[]>();
   for (const r of marksRes.data ?? []) {
@@ -116,6 +121,7 @@ export async function fetchSchoolSetups(): Promise<Map<string, SchoolSetup>> {
         passingMark: r.passing_mark == null ? null : Number(r.passing_mark),
       },
       letters: [...(usesLetterGrades ? letters.get(id) ?? [] : []), ...(marks.get(id) ?? [])],
+      rules: timeline[id] ?? [],
     });
   }
   return out;
@@ -125,6 +131,8 @@ export interface ScholarStandingInfo {
   subjects: number;
   graded: number;
   gwa: number | null;
+  /** The GWA as it is shown (the school's own decimals and rounding when it has saved rules). */
+  gwaText: string;
   standing: StandingResult;
   /** Failed / DRP / INC / to-review subjects in this period. */
   outcomes: OutcomeCounts;
@@ -132,28 +140,31 @@ export interface ScholarStandingInfo {
 
 /** GWA and standing of each given scholar for one period (their subjects are read in pages of 1000). */
 export async function loadScholarStandings(
-  scholars: Pick<StaffScholar, "scholarIdNumber" | "schoolId">[], period: GradingPeriod, setups: Map<string, SchoolSetup>,
+  scholars: Pick<StaffScholar, "scholarIdNumber" | "schoolId" | "program">[], period: GradingPeriod, setups: Map<string, SchoolSetup>,
 ): Promise<{ ok: true; byScholar: Map<string, ScholarStandingInfo> } | Failure> {
   const byScholar = new Map<string, ScholarStandingInfo>();
   if (!period.schoolYear || !period.semester || scholars.length === 0) {
-    for (const s of scholars) byScholar.set(s.scholarIdNumber, { subjects: 0, graded: 0, gwa: null, standing: "no_gwa", outcomes: countOutcomes([], null, []) });
+    for (const s of scholars) byScholar.set(s.scholarIdNumber, { subjects: 0, graded: 0, gwa: null, gwaText: "—", standing: "no_gwa", outcomes: countOutcomes([], null, []) });
     return { ok: true, byScholar };
   }
   const result = await fetchGradesForScholars(scholars.map(s => s.scholarIdNumber), period);
   if (!result.ok) return result;
-  const grouped = new Map<string, GradeLike[]>();
+  const grouped = new Map<string, GwaInputRow[]>();
   for (const g of result.rows) {
     const list = grouped.get(g.scholarIdNumber) ?? [];
-    list.push({ grade: g.grade, units: g.units, excludeFromGwa: g.excludeFromGwa });
+    list.push({ grade: g.grade, units: g.units, excludeFromGwa: g.excludeFromGwa, percentage: g.percentage });
     grouped.set(g.scholarIdNumber, list);
   }
   for (const s of scholars) {
     const grades = grouped.get(s.scholarIdNumber) ?? [];
     const setup = s.schoolId ? setups.get(s.schoolId) : undefined;
-    const gwa = gwaDetail(grades, setup?.letters ?? []).gwa;
+    // the rules of this school for THIS semester: the GWA, the standing and Passed / Failed all follow them (a semester before the rules started keeps the old way)
+    const rules = rulesAt(setup?.rules, period.schoolYear, period.semester);
+    const letters = setup?.letters ?? [];
+    const g = periodGwa(grades, letters, rules, r => isFailed(classifyGrade(r.grade, setup?.config, letters, rules, s.program, (r as GwaInputRow).percentage)));
     byScholar.set(s.scholarIdNumber, {
-      subjects: grades.length, graded: grades.filter(g => g.grade.trim() !== "").length, gwa, standing: scholarStanding(gwa, setup?.config ?? null),
-      outcomes: countOutcomes(grades, setup?.config ?? null, setup?.letters ?? []),
+      subjects: grades.length, graded: grades.filter(x => x.grade.trim() !== "").length, gwa: g.gwa, gwaText: g.text, standing: standingFor(g.gwa, setup?.config ?? null, rules),
+      outcomes: countOutcomes(grades, setup?.config ?? null, letters, rules, s.program),
     });
   }
   return { ok: true, byScholar };

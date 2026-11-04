@@ -12,6 +12,8 @@ import {
 } from "../scholarsMonitoringData";
 import type { StaffGradeRow } from "../components/ScholarGradesTable";
 import { periodKey, periodTitle } from "@/lib/academicPeriods";
+import { fetchRulesTimeline } from "@/lib/gradeRulesApi";
+import type { RuleVersion, SchoolRulesMap } from "@/lib/rulesRuntime";
 import { STANDING_LABEL, type StandingResult } from "@/lib/standing";
 import { StandingChip } from "@/school/components/portalParts";
 import { OutcomeCountChips } from "@/app/components/OutcomeBadge";
@@ -221,7 +223,7 @@ export function ScholarsGradesMonitoringScholarsTab({ period, periodId }: { peri
                   <td className="px-4 py-2.5 text-slate-700">{r.schoolName || <span className="text-amber-800 font-semibold">No school set</span>}</td>
                   <td className="px-4 py-2.5 text-slate-700">{r.program}</td>
                   <td className="px-4 py-2.5 text-slate-700">{r.yearLevel}</td>
-                  <td className="px-4 py-2.5 font-semibold text-[#062444]">{i?.gwa == null ? "—" : i.gwa.toFixed(2)}{i?.gwa == null && <span className="sr-only">No GWA yet</span>}</td>
+                  <td className="px-4 py-2.5 font-semibold text-[#062444]">{i?.gwa == null ? "—" : i.gwaText}{i?.gwa == null && <span className="sr-only">No GWA yet</span>}</td>
                   <td className="px-4 py-2.5"><div className="flex flex-wrap items-center gap-1.5">{i?.outcomes ? <OutcomeCountChips counts={i.outcomes} /> : null}{!i?.outcomes || (i.outcomes.failed + i.outcomes.inc + i.outcomes.review === 0) ? <span className="text-slate-700">—</span> : null}</div></td>
                   <td className="px-4 py-2.5"><StandingChip standing={standing} /></td>
                   <td className="px-4 py-2.5">
@@ -250,7 +252,7 @@ export function ScholarsGradesMonitoringScholarsTab({ period, periodId }: { peri
 }
 
 /** Shows the period chosen at the top of the page by default; "Show all periods" lists every semester on record for the scholar. */
-function ScholarGradesModal({ scholar, period, periodId, onClose }: { scholar: MonitoringScholarRow; period: GradingPeriod; periodId: string | null; onClose: () => void }) {
+function ScholarGradesModal({ scholar, period, periodId, onClose }: { scholar: MonitoringScholarRow & { schoolId?: string | null }; period: GradingPeriod; periodId: string | null; onClose: () => void }) {
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(true);
   const [auditError, setAuditError] = useState("");
@@ -261,6 +263,7 @@ function ScholarGradesModal({ scholar, period, periodId, onClose }: { scholar: M
   const [showAll, setShowAll] = useState(false);
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
   const [config, setConfig] = useState<GradingConfig | null>(null);
+  const [ruleVersions, setRuleVersions] = useState<RuleVersion[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -269,13 +272,15 @@ function ScholarGradesModal({ scholar, period, periodId, onClose }: { scholar: M
       fetchScholarGradingConfigForStaff(scholar.scholarIdNumber),
       fetchScholarLetterGradesForStaff(scholar.scholarIdNumber),
       fetchScholarSchoolMarksForStaff(scholar.scholarIdNumber),
-    ]).then(([g, config, letters, marks]) => {
+      scholar.schoolId ? fetchRulesTimeline([scholar.schoolId]) : Promise.resolve({} as SchoolRulesMap),
+    ]).then(([g, config, letters, marks, timeline]) => {
+      setRuleVersions(scholar.schoolId ? timeline[scholar.schoolId] ?? [] : []);
       setGrades(g);
       setConfig(config);
       setLetterGrades([...(config?.usesLetterGrades ? letters : []), ...marks]);
       setLoading(false);
     });
-  }, [scholar.scholarIdNumber]);
+  }, [scholar.scholarIdNumber, scholar.schoolId]);
 
   // Change history (every period on record, or just the selected one) and the supporting documents of the selected period.
   useEffect(() => {
@@ -325,7 +330,7 @@ function ScholarGradesModal({ scholar, period, periodId, onClose }: { scholar: M
               Nothing is recorded for this scholar in {periodTitle(period)}, but other periods have grades — use "Show all periods".
             </p>
           )}
-          <ScholarGradesTable key={showAll ? "all" : wantedKey} grades={shown} letterGrades={letterGrades} config={config} />
+          <ScholarGradesTable key={showAll ? "all" : wantedKey} grades={shown} letterGrades={letterGrades} config={config} ruleVersions={ruleVersions} program={scholar.program} />
 
           <section aria-label="Supporting documents" className="mt-5">
             <h4 className="flex items-center gap-1.5 text-[14.5px] font-bold text-[#062444] mb-2"><Paperclip size={15} aria-hidden="true" /> Supporting documents — {periodTitle(period)}</h4>

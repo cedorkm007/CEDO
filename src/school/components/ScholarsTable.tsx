@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, Pencil, X } from "lucide-react";
-import { formatGwa } from "@/lib/gwa";
 import { scholarName, programOf, yearLevelOf, type ScholarRowData } from "../portalLogic";
 import { StatusChip, StandingChip, linkButton } from "./portalParts";
 import { OutcomeCountChips } from "@/app/components/OutcomeBadge";
@@ -117,7 +116,7 @@ export function ScholarsTable({ rows, editable, gradingReady, onOpen, empty, sho
               </td>
               <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{summary.subjects === 0 ? "—" : `${summary.graded} of ${summary.subjects}`}</td>
               <td className="px-4 py-3"><StatusChip status={status} /></td>
-              <td className="px-4 py-3 font-semibold text-[#062444]">{formatGwa(summary.gwa)}</td>
+              <td className="px-4 py-3 font-semibold text-[#062444]">{summary.gwaText}</td>
               {showStanding && <td className="px-4 py-3"><StandingChip standing={standing} /></td>}
               <td className="px-4 py-3 text-right whitespace-nowrap">
                 <button onClick={() => onOpen(s)} className={`${linkButton} text-[14.5px]`}

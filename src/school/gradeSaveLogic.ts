@@ -4,7 +4,10 @@
 // entry, kept separate so tests/school-grades/run.mjs can exercise them
 // without a browser or a database.
 // ─────────────────────────────────────────────────────────────
-import { computeGwa, needsUnits, type LetterGrade } from "@/lib/gwa";
+import { needsUnits, type GradingConfig, type LetterGrade } from "@/lib/gwa";
+import type { GradingRules } from "@/lib/gradingRules";
+import { periodGwa } from "@/lib/rulesRuntime";
+import { classifyGrade, isFailed } from "@/lib/subjectOutcome";
 import type { SchoolSubjectGrade } from "./types";
 
 export interface PeriodLike {
@@ -102,18 +105,25 @@ export interface ScholarGradeSummary {
   subjects: number;
   graded: number;
   gwa: number | null;
+  /** The GWA as it is shown (the school's own decimals and rounding when it has saved rules; "—" when there is none). */
+  gwaText: string;
   /** Subjects that count toward the GWA but have no units yet (counted as 1 unit) — the school should fill these in. */
   missingUnits: number;
 }
 
-type SummaryRow = Pick<SchoolSubjectGrade, "grade"> & Partial<Pick<SchoolSubjectGrade, "units" | "excludeFromGwa">>;
+type SummaryRow = Pick<SchoolSubjectGrade, "grade"> & Partial<Pick<SchoolSubjectGrade, "units" | "excludeFromGwa" | "percentage">>;
 
-/** Subjects declared, how many have a grade, the units-weighted GWA (src/lib/gwa.ts, the same calculation staff and scholars see), and how many subjects still need units, for one scholar's rows in one period. */
-export function summarizeScholarGrades(rows: SummaryRow[], letterGrades: LetterGrade[]): ScholarGradeSummary {
+/**
+ * Subjects declared, how many have a grade, the GWA, and how many subjects still need units, for one scholar's rows in one period. The GWA is the ONE shared calculation (periodGwa in src/lib/rulesRuntime.ts,
+ * the same one staff and scholars see): the school's own settings when it has saved rules for the period, the original calculation otherwise.
+ */
+export function summarizeScholarGrades(rows: SummaryRow[], letterGrades: LetterGrade[], rules?: GradingRules | null, config?: GradingConfig | null, program?: string | null): ScholarGradeSummary {
+  const g = periodGwa(rows, letterGrades, rules, r => isFailed(classifyGrade(r.grade, config, letterGrades, rules, program, r.percentage)));
   return {
     subjects: rows.length,
     graded: rows.filter(r => r.grade.trim() !== "").length,
-    gwa: computeGwa(rows, letterGrades),
+    gwa: g.gwa,
+    gwaText: g.text,
     missingUnits: rows.filter(r => needsUnits(r)).length,
   };
 }

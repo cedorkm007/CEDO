@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { X, Upload, AlertTriangle, CheckCircle2, UploadCloud, Download, XCircle, Info, MinusCircle, Link2 } from "lucide-react";
 import { downloadCsv, parseCsv } from "@/sead/csvUtils";
 import { readXlsx } from "@/lib/xlsxLite";
@@ -10,6 +10,8 @@ import {
   type ParseResult, type PreviewRow, type SaveOutcome,
 } from "../bulkGradeLogic";
 import { periodOptions, periodKey, periodRefOf, periodTitle, type AcademicPeriod } from "@/lib/academicPeriods";
+import { fetchRulesTimeline } from "@/lib/gradeRulesApi";
+import { hasTable, rulesAt, type RuleVersion } from "@/lib/rulesRuntime";
 import type { SchoolScholarRow } from "../types";
 
 type Filter = "all" | "valid" | "warning" | "error" | "unchanged";
@@ -40,6 +42,10 @@ export function BulkGradeUploadModal({
   const options = useMemo(() => periodOptions(openPeriods, null), [openPeriods]);
   const [selectedKey, setSelectedKey] = useState<string>(() => (options.some(o => o.key === initialKey) ? initialKey : options[0]?.key ?? ""));
   const period = openPeriods.find(p => periodKey(p.schoolYear, p.term) === selectedKey) ?? null;
+  // The school's grading rules for the chosen period: a percentage in the file becomes the grade of the conversion table, and the pre-filled Excel shows percentages for a school that enters them.
+  const [ruleVersions, setRuleVersions] = useState<RuleVersion[]>([]);
+  useEffect(() => { void fetchRulesTimeline().then(t => setRuleVersions(t[schoolId] ?? Object.values(t)[0] ?? [])); }, [schoolId]);
+  const periodRules = useMemo(() => (period ? rulesAt(ruleVersions, period.schoolYear, period.term) : null), [ruleVersions, period]);
 
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParseResult | null>(null);
@@ -91,11 +97,12 @@ export function BulkGradeUploadModal({
       if (/\.xls$/i.test(file.name)) { setProblem("That is an older Excel file (.xls). Please open it in Excel, choose Save As, pick Excel Workbook (.xlsx), and upload that."); setBusy(""); return; }
       const grid = /\.xlsx$/i.test(file.name) ? await readXlsx(await file.arrayBuffer()) : parseCsv((await file.text()).replace(/^\ufeff/, ""));
       // Fresh copies of what is already saved and of the school's scale, so warnings and range checks are current.
-      const [existing, config] = await Promise.all([fetchGradesForScholars(scholars.map(s => s.scholarIdNumber), periodRefOf(period)), fetchGradingConfig()]);
+      const [existing, config, timeline] = await Promise.all([fetchGradesForScholars(scholars.map(s => s.scholarIdNumber), periodRefOf(period)), fetchGradingConfig(), fetchRulesTimeline()]);
+      const rules = rulesAt(timeline[schoolId] ?? Object.values(timeline)[0] ?? [], period.schoolYear, period.term);
       if (!existing.ok) { setProblem(`Couldn't compare the file with your saved grades: ${existing.error}`); setBusy(""); return; }
       const letters = [...(config?.usesLetterGrades ? await fetchLetterGrades(schoolId) : []), ...(await fetchSchoolMarksAsLetters(schoolId))];
       const result = parseUploadedGrid(grid, {
-        period: periodRefOf(period), periodStatus: period.status, scholars, existing: existing.rows, config, letters,
+        period: periodRefOf(period), periodStatus: period.status, scholars, existing: existing.rows, config, letters, rules,
       });
       setParsed(result);
       setFilter("all");
@@ -212,8 +219,12 @@ export function BulkGradeUploadModal({
                   The template is your Promotional Report / Enrollment List (Excel). You choose whether it comes <strong>pre-filled</strong> with your scholars and the subjects
                   already saved, or <strong>blank</strong>. Each student is found by <strong>STUDENT NO.</strong> (the School ID); a blank grade means “not graded yet”.
                   The remark (PASSED, FAILED, DROPPED, INCOMPLETE) is saved with the grade.
+                  {hasTable(periodRules) && periodRules.entryMode !== "grade" && (
+                    <> Your school enters {periodRules.entryMode === "percentage" ? <strong>percentages</strong> : <>percentages or grades</>}: the <strong>GRADES</strong> column of the Excel sheet is read as the percentage
+                    {periodRules.entryMode === "either" ? " (a value that is one of your conversion table's grades is read as the grade)" : ""}, and the system fills in the equivalent grade. The CSV has a <strong>percentage</strong> column for the same.</>
+                  )}
                 </p>
-                {period && <TemplateDownloadMenu scholars={scholars} period={periodRefOf(period)} schoolName={schoolName} disabled={busy !== ""}
+                {period && <TemplateDownloadMenu scholars={scholars} period={periodRefOf(period)} schoolName={schoolName} disabled={busy !== ""} percentageEntry={hasTable(periodRules) && periodRules.entryMode === "percentage"}
                   buttonClassName="flex items-center gap-1.5 text-[14px] font-semibold text-[#0077b6] hover:opacity-80 disabled:opacity-50" />}
               </section>
 
@@ -289,7 +300,7 @@ export function BulkGradeUploadModal({
                             <td className="px-3 py-2 whitespace-nowrap">{statusChip(r)}</td>
                             <td className="px-3 py-2 text-slate-800">{r.studentNo !== undefined ? (r.studentNo || "—") : r.scholarId}{r.scholarName ? <span className="block text-slate-700">{r.scholarName}</span> : null}</td>
                             <td className="px-3 py-2 text-slate-800">{r.subject || "—"}{r.subjectCode ? <span className="block text-slate-700">{r.subjectCode}</span> : null}</td>
-                            <td className="px-3 py-2 font-semibold text-[#062444]">{r.grade || "—"}</td>
+                            <td className="px-3 py-2 font-semibold text-[#062444]">{r.percentage ? <span className="font-normal text-slate-700">{r.percentage}% → </span> : null}{(r.status === "error" ? r.grade : r.gradeShown || r.grade) || "—"}{r.reading ? <span className="block text-[13px] font-normal text-slate-700">{r.reading}</span> : null}</td>
                             <td className={`px-3 py-2 ${r.status === "error" ? "text-red-700" : r.status === "warning" ? "text-amber-900" : "text-slate-700"}`}>
                               {r.messages.length > 0 ? r.messages.join(" ") : r.action === "unchanged" ? "Same as what is already saved." : r.action === "add" ? "New subject." : "Updates a declared subject."}
                             </td>

@@ -52,8 +52,8 @@ export async function exportGradesToExcel(req: ExportRequest): Promise<{ ok: tru
   }));
   const ids = scholars.map(s => s.scholarIdNumber);
 
-  const reportPeriods: ReportPeriod[] = periods.map(p => ({ key: periodKey(p.schoolYear, p.term), label: `${p.schoolYear} · ${p.term}` }));
-  const gradesByPeriod = new Map<string, Map<string, GradeLike[]>>();
+  const reportPeriods: ReportPeriod[] = periods.map(p => ({ key: periodKey(p.schoolYear, p.term), label: `${p.schoolYear} · ${p.term}`, schoolYear: p.schoolYear, term: p.term }));
+  const gradesByPeriod = new Map<string, Map<string, (GradeLike & { percentage?: number | null })[]>>();
   const submissions = new Map<string, ReportSubmission>();
 
   for (let i = 0; i < periods.length; i++) {
@@ -62,10 +62,10 @@ export async function exportGradesToExcel(req: ExportRequest): Promise<{ ok: tru
     onProgress?.(`Reading grades for ${reportPeriods[i].label} (${i + 1} of ${periods.length})…`);
     const grades = await fetchGradesForScholars(ids, periodRefOf(p));
     if (!grades.ok) return grades;
-    const grouped = new Map<string, GradeLike[]>();
+    const grouped = new Map<string, (GradeLike & { percentage?: number | null })[]>();
     for (const g of grades.rows) {
       const list = grouped.get(g.scholarIdNumber) ?? [];
-      list.push({ grade: g.grade, units: g.units, excludeFromGwa: g.excludeFromGwa });
+      list.push({ grade: g.grade, units: g.units, excludeFromGwa: g.excludeFromGwa, percentage: g.percentage });
       grouped.set(g.scholarIdNumber, list);
     }
     gradesByPeriod.set(key, grouped);
@@ -83,7 +83,7 @@ export async function exportGradesToExcel(req: ExportRequest): Promise<{ ok: tru
   const rows = buildScholarRows(
     scholars, reportPeriods,
     (pKey, scholarId) => gradesByPeriod.get(pKey)?.get(scholarId) ?? [],
-    schoolId => ({ config: setups.get(schoolId)?.config ?? null, letters: setups.get(schoolId)?.letters ?? [] }),
+    schoolId => ({ config: setups.get(schoolId)?.config ?? null, letters: setups.get(schoolId)?.letters ?? [], rules: setups.get(schoolId)?.rules ?? [] }),
   );
   const submissionFor = (schoolId: string, pKey: string) => submissions.get(`${schoolId}|${pKey}`);
   const sheets = buildReportSheets(

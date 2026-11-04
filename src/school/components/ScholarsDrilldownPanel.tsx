@@ -162,7 +162,7 @@ export function ScholarsDrilldownPanel({ data, schoolName, onGoToGradingSystem, 
               className={`${fieldClass} w-full pl-9`} />
           </div>
         </div>
-        <TemplateDownloadMenu scholars={data.scholars} period={period} schoolName={schoolName} disabled={!period.schoolYear || rows.length === 0}
+        <TemplateDownloadMenu scholars={data.scholars} period={period} schoolName={schoolName} disabled={!period.schoolYear || rows.length === 0} percentageEntry={!!data.rules && data.rules.bands.length > 0 && data.rules.entryMode === "percentage"}
           buttonClassName={`flex items-center gap-2 border border-[#062444]/40 bg-white text-[#062444] text-[14px] font-semibold rounded-lg px-4 py-2 disabled:opacity-50 ${focusRing}`} />
         <button onClick={() => setShowBulkUpload(true)} disabled={!hasOpenPeriod || !gradingReady || rows.length === 0}
           title={!gradingReady ? "Set up your grading scale first" : !hasOpenPeriod ? "Needs an Open period" : undefined}

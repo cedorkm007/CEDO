@@ -6,8 +6,10 @@
 // Every figure uses the SAME shared rules as the screens: the units-weighted GWA (src/lib/gwa.ts), the strict "complete"
 // rule (every declared subject graded), and scholarship standing (src/lib/standing.ts).
 // ─────────────────────────────────────────────────────────────
-import { gwaDetail, type GradeLike, type LetterGrade } from "./gwa";
-import { scholarStanding, STANDING_LABEL, type StandingConfig, type StandingResult } from "./standing";
+import type { GradeLike, GradingConfig, LetterGrade } from "./gwa";
+import { STANDING_LABEL, type StandingConfig, type StandingResult } from "./standing";
+import { periodGwa, rulesAt, standingFor, type RuleVersion } from "./rulesRuntime";
+import { classifyGrade, isFailed } from "./subjectOutcome";
 
 export interface ReportScholar {
   scholarIdNumber: string;
@@ -18,11 +20,14 @@ export interface ReportScholar {
   yearLevel: string;
 }
 
-export interface ReportPeriod { key: string; label: string }
+/** `schoolYear` and `term` say which grading rules applied (a school's rules start at a semester); without them the report works the old way. */
+export interface ReportPeriod { key: string; label: string; schoolYear?: string; term?: string }
 
 export interface ReportSchoolSetup {
-  config: StandingConfig | null;
+  config: (StandingConfig & Partial<Pick<GradingConfig, "passingMark" | "usesLetterGrades">>) | null;
   letters: LetterGrade[];
+  /** The grading rules the school saved, by the semester they start at. */
+  rules?: RuleVersion[];
 }
 
 export interface ReportSubmission {
@@ -40,6 +45,8 @@ export interface ScholarReportRow {
   graded: number;
   completion: CompletionStatus;
   gwa: number | null;
+  /** True when the GWA was already rounded the way the school's rules say (so the sheet must not round it again to two decimals). */
+  gwaRounded?: boolean;
   standing: StandingResult;
 }
 
@@ -47,7 +54,7 @@ export interface ScholarReportRow {
 export function buildScholarRows(
   scholars: ReportScholar[],
   periods: ReportPeriod[],
-  gradesFor: (periodKey: string, scholarId: string) => GradeLike[],
+  gradesFor: (periodKey: string, scholarId: string) => (GradeLike & { percentage?: number | null })[],
   setupFor: (schoolId: string) => ReportSchoolSetup,
 ): ScholarReportRow[] {
   const rows: ScholarReportRow[] = [];
@@ -58,8 +65,11 @@ export function buildScholarRows(
       const subjects = grades.length;
       const graded = grades.filter(g => g.grade.trim() !== "").length;
       const completion: CompletionStatus = subjects === 0 ? "Not set up" : graded < subjects ? "Not graded" : "Complete";
-      const gwa = gwaDetail(grades, setup.letters).gwa;
-      rows.push({ scholar, period, subjects, graded, completion, gwa, standing: scholarStanding(gwa, setup.config) });
+      // the GWA and the standing follow the rules the school had for THIS period (none = the original calculation)
+      const rules = rulesAt(setup.rules, period.schoolYear ?? "", period.term ?? "");
+      const config = setup.config as GradingConfig | null;
+      const gwa = periodGwa(grades, setup.letters, rules, g => isFailed(classifyGrade(g.grade, config, setup.letters, rules, scholar.program, (g as { percentage?: number | null }).percentage))).gwa;
+      rows.push({ scholar, period, subjects, graded, completion, gwa, gwaRounded: !!rules, standing: standingFor(gwa, setup.config, rules) });
     }
   }
   return rows;
@@ -157,7 +167,7 @@ export function buildReportSheets(rows: ScholarReportRow[], bySchool: GroupRow[]
     {
       name: "Scholars",
       headers: ["School", "Program", "Year level", "Scholar ID", "Name", ...perHead, "Subjects", "Graded", "Status", "GWA", "Standing"],
-      rows: rows.map(r => [r.scholar.schoolName, r.scholar.program, r.scholar.yearLevel, r.scholar.scholarIdNumber, r.scholar.name, ...(includePeriodColumn ? [r.period.label] : []), r.subjects, r.graded, r.completion, gwaCell(r.gwa), STANDING_LABEL[r.standing]]),
+      rows: rows.map(r => [r.scholar.schoolName, r.scholar.program, r.scholar.yearLevel, r.scholar.scholarIdNumber, r.scholar.name, ...(includePeriodColumn ? [r.period.label] : []), r.subjects, r.graded, r.completion, r.gwaRounded ? r.gwa : gwaCell(r.gwa), STANDING_LABEL[r.standing]]),
     },
   ];
 }

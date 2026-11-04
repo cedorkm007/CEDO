@@ -242,7 +242,7 @@ function ScholarPortalPageInner({ onSignOut }: ScholarPortalPageProps) {
               </div>
 
               {panel === "profile" && <ProfilePanel profile={profile} onProfileUpdated={setProfile} />}
-              {panel === "subjects-grades" && <SubjectsGradesPanel grades={grades} />}
+              {panel === "subjects-grades" && <SubjectsGradesPanel grades={grades} program={profile?.course ?? ""} />}
               {panel === "services" && <FormsAndServicesPanel />}
               {panel === "quests" && (
                 <QuestsPanel

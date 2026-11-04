@@ -113,6 +113,7 @@ export async function fetchSubjectsAndGrades(scholarIdNumber: string): Promise<S
     remarks: String(r.remarks ?? ""),
     units: r.units == null ? null : Number(r.units),
     excludeFromGwa: !!r.exclude_from_gwa,
+    percentage: r.percentage == null ? null : Number(r.percentage),
   }));
 }
 

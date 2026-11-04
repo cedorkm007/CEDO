@@ -137,7 +137,7 @@ const LAST_COLUMN = "O";
  * The template as a sheet. `blank` leaves the student rows empty (the school types its students); otherwise there is one block per scholar with the
  * STUDENT NO. the school gave (empty until it is known), the year level and name, and one row per subject already declared, with its grade and remark.
  */
-export function buildPromoTemplate(opts: { schoolName: string; period: PeriodRef; scholars: SchoolScholarRow[]; existing: SchoolSubjectGrade[]; blank: boolean }): XlsxSheet {
+export function buildPromoTemplate(opts: { schoolName: string; period: PeriodRef; scholars: SchoolScholarRow[]; existing: SchoolSubjectGrade[]; blank: boolean; percentageEntry?: boolean }): XlsxSheet {
   const { schoolName, period, blank } = opts;
   const term = normalizeTerm(period.semester);
   const termText = (term ? termLabel(term) : period.semester).toUpperCase();
@@ -178,7 +178,7 @@ export function buildPromoTemplate(opts: { schoolName: string; period: PeriodRef
         const first = i === 0;
         const cells: (string | number | null)[] = [
           first ? s.course : null, null, first ? s.schoolStudentNo || null : null, first ? s.yearLevel : null, first ? s.lastName : null, first ? s.firstName : null, first ? s.middleName || null : null, null, null, null,
-          g?.subjectCode || null, g?.subject || null, g?.units ?? null, g?.grade || null, g?.remarks || null,
+          g?.subjectCode || null, g?.subject || null, g?.units ?? null, (opts.percentageEntry && g?.percentage != null ? g.percentage : g?.grade) || null, g?.remarks || null,
         ];
         cells.forEach((v, c) => put(r, c, box(v)));
         r++;

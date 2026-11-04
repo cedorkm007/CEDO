@@ -84,7 +84,7 @@ export function SchoolWorkspaceView({ profile, username, onSignOut, data, gradin
 
       {viewingScholar && (
         <ScholarGradeEntryModal scholar={viewingScholar} period={data.period} canEdit={data.editable && data.gradingReady} config={data.config}
-          letterGrades={data.letters} lock={data.lock} schoolId={data.schoolId} periodId={data.periodRecord?.id ?? null} submittedAt={data.submission?.submittedAt}
+          letterGrades={data.letters} rules={data.rules} lock={data.lock} schoolId={data.schoolId} periodId={data.periodRecord?.id ?? null} submittedAt={data.submission?.submittedAt}
           onClose={() => setViewingScholar(null)} onSaved={data.reloadGrades} onRequestsChanged={data.reloadSubmission} />
       )}
     </div>

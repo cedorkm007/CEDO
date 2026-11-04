@@ -16,7 +16,10 @@ import { countOutcomes } from "@/lib/subjectOutcome";
 import { portalCounts, scholarStatus, type PortalCounts, type ScholarRowData } from "./portalLogic";
 import { findPeriod, periodKey, periodOptions, periodRefOf, canSchoolEdit, type AcademicPeriod, type PeriodOption } from "@/lib/academicPeriods";
 import { needsUnits, type LetterGrade } from "@/lib/gwa";
-import { scholarStanding } from "@/lib/standing";
+import { standingFor } from "@/lib/rulesRuntime";
+import { rulesAt, type RuleVersion } from "@/lib/rulesRuntime";
+import { fetchRulesTimeline } from "@/lib/gradeRulesApi";
+import type { GradingRules } from "@/lib/gradingRules";
 import type { GradingConfig, SchoolScholarRow, SchoolSubjectGrade } from "./types";
 import type { GradingPeriod } from "@/sead/scholarsGradesMonitoringApi";
 
@@ -45,6 +48,8 @@ export interface SchoolData {
   /** The grading scale has been saved — required before any grade can be entered. */
   gradingReady: boolean;
   letters: LetterGrade[];
+  /** The school's grading rules for the selected period (null = it has none: everything works the old way). */
+  rules: GradingRules | null;
 
   rows: ScholarRowData[];
   counts: PortalCounts;
@@ -79,6 +84,7 @@ export function useSchoolData(schoolId: string): SchoolData {
   const [config, setConfig] = useState<GradingConfig | null>(null);
   const [configLoaded, setConfigLoaded] = useState(false);
   const [letters, setLetters] = useState<LetterGrade[]>([]);
+  const [ruleVersions, setRuleVersions] = useState<RuleVersion[]>([]);
   const [gradeRows, setGradeRows] = useState<SchoolSubjectGrade[]>([]);
   const [gradesError, setGradesError] = useState("");
   const [gradesLoading, setGradesLoading] = useState(false);
@@ -110,8 +116,9 @@ export function useSchoolData(schoolId: string): SchoolData {
     let cancelled = false;
     (async () => {
       const c = await fetchGradingConfig();
-      const [table, marks] = await Promise.all([c?.usesLetterGrades ? fetchLetterGrades(schoolId) : Promise.resolve([] as LetterGrade[]), fetchSchoolMarksAsLetters(schoolId)]);
+      const [table, marks, timeline] = await Promise.all([c?.usesLetterGrades ? fetchLetterGrades(schoolId) : Promise.resolve([] as LetterGrade[]), fetchSchoolMarksAsLetters(schoolId), fetchRulesTimeline()]);
       if (cancelled) return;
+      setRuleVersions(timeline[schoolId] ?? Object.values(timeline)[0] ?? []);
       setConfig(c);
       setLetters([...table, ...marks]);
       setConfigLoaded(true);
@@ -130,6 +137,7 @@ export function useSchoolData(schoolId: string): SchoolData {
     [selectedRecord?.schoolYear, selectedRecord?.term, currentPeriod.schoolYear, currentPeriod.semester],
   );
   const periodRecord = useMemo(() => findPeriod(periods, period), [periods, period]);
+  const rules = useMemo(() => rulesAt(ruleVersions, period.schoolYear, period.semester), [ruleVersions, period.schoolYear, period.semester]);
   const editable = canSchoolEdit(periodRecord?.status);
 
   useEffect(() => {
@@ -168,10 +176,10 @@ export function useSchoolData(schoolId: string): SchoolData {
     const byScholar = groupByScholar(gradeRows);
     return scholars.map(scholar => {
       const scholarRows = byScholar.get(scholar.scholarIdNumber) ?? [];
-      const summary = summarizeScholarGrades(scholarRows, letters);
-      return { scholar, summary, status: scholarStatus(summary, locked), standing: scholarStanding(summary.gwa, config), outcomes: countOutcomes(scholarRows, config, letters) };
+      const summary = summarizeScholarGrades(scholarRows, letters, rules, config, scholar.course);
+      return { scholar, summary, status: scholarStatus(summary, locked), standing: standingFor(summary.gwa, config, rules), outcomes: countOutcomes(scholarRows, config, letters, rules, scholar.course) };
     });
-  }, [scholars, gradeRows, letters, locked, config]);
+  }, [scholars, gradeRows, letters, locked, config, rules]);
   const counts = useMemo(() => portalCounts(rows), [rows]);
   const subjectsNeedingUnits = useMemo(() => gradeRows.filter(r => needsUnits(r)).length, [gradeRows]);
 
@@ -196,7 +204,7 @@ export function useSchoolData(schoolId: string): SchoolData {
   return {
     schoolId, scholars, loading,
     periods, periodsError, options, selectedKey: selectedKeyEffective, currentKey, selectPeriod, period, periodRecord, editable,
-    config, configLoaded, gradingReady: configLoaded && config !== null, letters,
+    config, configLoaded, gradingReady: configLoaded && config !== null, letters, rules,
     rows, counts, subjectsNeedingUnits, gradesError, gradesLoading,
     submission, submissionError, locked, corrections, correctionsError, lock,
     reloadScholars, reloadGrades, reloadConfig, reloadSubmission,

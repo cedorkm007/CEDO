@@ -62,8 +62,8 @@ test("saving is blocked while the scale above has changes that are not saved, an
 test("the history lists each version with who, when, what changed and the impact, and opens it read-only", () => {
   assert.ok(panel.includes("History of changes") && panel.includes("describeChanges(a.oldRules, a.newRules)") && panel.includes("View these rules") && panel.includes("<GradingRulesView rules={viewing.rules}"));
 });
-test("in Phase 1 the rules are only SAVED: a notice says grade entry, the GWA screens and renewal switch to them in the next update", () => {
-  assert.ok(panel.includes("const RULES_IN_USE = false") && panel.includes("Saved for later use."));
+test("Phase 2: the rules are IN USE (the 'saved for later use' notice is off)", () => {
+  assert.ok(panel.includes("const RULES_IN_USE = true"));
 });
 test("before the database update the tab says so and the rest of the Grading System tab still works", () => {
   assert.ok(panel.includes("need a database update from CEDO") && schoolApi.includes("PGRST202"));

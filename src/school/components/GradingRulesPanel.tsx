@@ -8,7 +8,7 @@ import { fetchRulesOverview, fetchRulesVersion, saveRules } from "../gradingRule
 import { computeImpact, impactText, NO_IMPACT, type Impact } from "@/lib/gradingImpact";
 import { MARK_OUTCOME_LABEL } from "../types";
 import {
-  ENTRY_MODE_LABEL, PRESETS, bandResult, describeChanges, periodRank, startFor, tryPercentage, validateRules,
+  ENTRY_MODE_LABEL, PRESETS, bandResult, describeChanges, periodRank, tryPercentage, validateRules,
   type EntryMode, type GradingProblem, type RulesPreset, type RuleScale,
 } from "@/lib/gradingRules";
 import {
@@ -19,8 +19,8 @@ import { formatDateTime } from "@/lib/renewal";
 import { periodTitle } from "@/lib/academicPeriods";
 import type { SchoolMark, SchoolScholarRow } from "../types";
 
-/** Rules are saved here but the rest of the website does not use them yet (Phase 2). The notice goes away when that switches on. */
-const RULES_IN_USE = false;
+/** Phase 2: the saved rules are used by grade entry, every GWA, the standing and the renewal check, so the "saved for later use" notice is off. */
+const RULES_IN_USE = true;
 
 const card = "bg-white border border-[#e6ecf5] rounded-xl p-5";
 const th = "text-left px-2.5 py-2.5 font-bold text-[13px] uppercase tracking-wide text-slate-800 whitespace-nowrap";
@@ -36,7 +36,7 @@ const YEAR_STARTS: Record<string, string> = {
  * The rules are saved as numbered versions that start at a period (the database decides which one); before a save that touches a period with grades, the school is shown how many grades and
  * GWAs would change and confirms. Every save goes in the audit trail. Phase 1 only saves the rules: grade entry, the GWA on every screen and renewal switch to them in Phase 2.
  */
-export function GradingRulesPanel({ schoolId, formScale, formMarks, scaleDirty, scaleSaved, onApplyPreset }: {
+export function GradingRulesPanel({ schoolId, formScale, formMarks, scaleDirty, scaleSaved, onApplyPreset, onRulesSaved }: {
   schoolId: string;
   /** The scale as typed in the form above (saved or not). */
   formScale: RuleScale;
@@ -46,6 +46,8 @@ export function GradingRulesPanel({ schoolId, formScale, formMarks, scaleDirty, 
   scaleSaved: boolean;
   /** Puts a template's scale (and letters, and the old passing mark) into the form above. */
   onApplyPreset: (p: RulesPreset) => void;
+  /** Rules were saved: the rest of the portal reads them again (the Scholars tab, the GWA, the standing). */
+  onRulesSaved?: () => void;
 }) {
   const [overview, setOverview] = useState<RulesOverview | null>(null);
   const [missing, setMissing] = useState(false);
@@ -109,7 +111,7 @@ export function GradingRulesPanel({ schoolId, formScale, formMarks, scaleDirty, 
   const tableReady = !!rules && rules.bands.length > 0 && liveProblems.filter(p => !p.code.startsWith("gwa") && !p.code.startsWith("special") && !p.code.startsWith("excluded") && !p.code.startsWith("retention")).length === 0;
 
   // ── Templates ──
-  function useTemplate(p: RulesPreset) {
+  function applyTemplate(p: RulesPreset) {
     const next = draftFromRules({ entryMode: p.rules.entryMode, passingMarkPct: p.rules.passingMarkPct, programPassing: [], bands: p.rules.bands.map(b => ({ ...b })), gwa: rulesFromDraft(draft!).gwa });
     setDraft({ ...next, programs: [], special: draft!.special });
     onApplyPreset(p);
@@ -152,6 +154,7 @@ export function GradingRulesPanel({ schoolId, formScale, formMarks, scaleDirty, 
     setPending(null);
     setSaved(`Saved as version ${res.versionNo}. It starts with ${when(res.startsYear, res.startsTerm)}.`);
     setTouched(false);
+    onRulesSaved?.();
     const o = await fetchRulesOverview();
     if (o.ok) { setOverview(o.overview); setDraft(draftFromRules(o.overview.latest?.rules ?? null)); }
   }
@@ -207,7 +210,7 @@ export function GradingRulesPanel({ schoolId, formScale, formMarks, scaleDirty, 
                     <p className="text-[14.5px] font-bold text-[#062444]">{presetPick.label}</p>
                     <p className="mt-1 text-[14px] text-slate-800">This fills in the table below{draft.bands.length > 0 ? " and replaces the rows you have now" : ""}, and sets the scale above to {presetPick.scale.scaleMin} to {presetPick.scale.scaleMax} ({presetPick.scale.direction === "lower_is_better" ? "lower" : "higher"} is better){presetPick.letters.length ? " with the letters A to F" : ""}. Nothing is saved until you press the Save buttons. You can edit everything afterwards.</p>
                     <div className="mt-3 flex gap-2">
-                      <button onClick={() => useTemplate(presetPick)} className={`rounded-lg bg-[#062444] px-3.5 py-2 text-[14px] font-semibold text-white ${focusRing}`}>Use this template</button>
+                      <button onClick={() => applyTemplate(presetPick)} className={`rounded-lg bg-[#062444] px-3.5 py-2 text-[14px] font-semibold text-white ${focusRing}`}>Use this template</button>
                       <button onClick={() => setPresetPick(null)} className={`rounded-lg border border-[#062444]/30 px-3.5 py-2 text-[14px] font-semibold text-[#062444] ${focusRing}`}>Back</button>
                     </div>
                   </div>
