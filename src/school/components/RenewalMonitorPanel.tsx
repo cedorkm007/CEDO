@@ -6,10 +6,11 @@ import {
   fetchSchoolRenewalRows, fetchSchoolRenewalSummary, fetchSchoolRenewalWindows, type SchoolRenewalWindow,
 } from "../renewalMonitorApi";
 import {
-  EMPTY_FILTERS, FILTER_BUTTONS, GROUP_HINT, GROUP_LABEL, PAGE_SIZE, countFor, filterRows, fullName, gradesText, needsClearance, pageCount, pageOf, programOptions, renewalProgress,
+  EMPTY_FILTERS, FILTER_BUTTONS, GROUP_HINT, PAGE_SIZE, countFor, filterRows, fullName, gradesText, needsClearance, pageCount, pageOf, programOptions, renewalProgress,
   yearLevelOptions, type RenewalFilterKey, type RenewalFilters, type RenewalGroup, type SchoolRenewalRow, type SchoolRenewalSummary,
 } from "../renewalMonitorLogic";
 import { fieldClass, focusRing } from "./portalParts";
+import { ClearanceDownloadMenu } from "./ClearanceDownloadMenu";
 
 const WINDOW_STATE_TEXT: Record<WindowState, string> = { upcoming: "not open yet", open: "open", late: "closed, late applications accepted", closed: "closed" };
 const TH = "text-left px-3 py-3 font-bold text-[13px] uppercase tracking-wide text-slate-700 whitespace-nowrap";
@@ -48,7 +49,7 @@ function GradesChip({ row }: { row: SchoolRenewalRow }) {
  * The School Portal's Renewal tab: where the school's scholars are in a renewal (applied, renewed, on probation, removed, not applied yet), a progress bar of how many are finished,
  * and filters by name, year level and program. Read-only: the school sees only its own scholars, only their renewal status and grade result (supabase_migration_school_renewal_tab.sql).
  */
-export function RenewalMonitorPanel() {
+export function RenewalMonitorPanel({ schoolId, schoolName }: { schoolId: string; schoolName: string }) {
   const [windows, setWindows] = useState<SchoolRenewalWindow[] | null>(null);
   const [windowKey, setWindowKey] = useState("");
   const [rows, setRows] = useState<SchoolRenewalRow[] | null>(null);
@@ -91,6 +92,7 @@ export function RenewalMonitorPanel() {
   const pageRows = useMemo(() => pageOf(shown, Math.min(page, totalPages)), [shown, page, totalPages]);
   const progress = summary ? renewalProgress(summary) : null;
   const change = (patch: Partial<RenewalFilters>) => { setFilters(f => ({ ...f, ...patch })); setPage(1); };
+  const clearanceRows = useMemo(() => shown.filter(needsClearance), [shown]);
   const anyFilter = filters.filter !== "all" || filters.query !== "" || filters.yearLevel !== "" || filters.program !== "";
   const wordsFor = (w: SchoolRenewalWindow) => `${termLabelOf(w.schoolYear, w.term)} (${WINDOW_STATE_TEXT[windowState(w.opensOn, w.closesOn, w.lateAllowed)]})`;
 
@@ -160,6 +162,13 @@ export function RenewalMonitorPanel() {
         </select>
         {anyFilter && <button onClick={() => { setFilters(EMPTY_FILTERS); setPage(1); }} className={`text-left text-[14px] font-semibold text-[#0077b6] hover:underline ${focusRing} rounded px-1`}>Clear all filters</button>}
       </div>
+
+      {/* the pre-filled clearances: the scholars in the list with an INC or a failed grade */}
+      {clearanceRows.length > 0 && summary && (
+        <div className="mb-4">
+          <ClearanceDownloadMenu rows={clearanceRows} schoolId={schoolId} schoolName={schoolName} basisSchoolYear={summary.basisSchoolYear} basisTerm={summary.basisTerm} />
+        </div>
+      )}
 
       {/* the list */}
       {!rows ? <p className="flex items-center gap-2 text-[14.5px] text-slate-800"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading…</p>
