@@ -8,6 +8,8 @@ import { CorrectionsPanel } from "../components/CorrectionsPanel";
 import { RenewalMonitorPanel } from "../components/RenewalMonitorPanel";
 import { openRequestCount } from "../submissionLogic";
 import { SchoolAccountMenu } from "../components/SchoolAccountMenu";
+import { SchoolLogoAvatar, SchoolLogoDialog } from "../components/SchoolLogo";
+import { useSchoolLogo } from "../useSchoolLogo";
 import { SchoolPeriodBar } from "../components/SchoolPeriodBar";
 import { focusRing } from "../components/portalParts";
 import { useSchoolData, type SchoolData } from "../useSchoolData";
@@ -37,6 +39,9 @@ export function SchoolWorkspaceView({ profile, username, onSignOut, data, gradin
   // The grade-entry window lives here so both the Scholars tab and the Corrections tab can open it.
   const [viewingScholar, setViewingScholar] = useState<SchoolScholarRow | null>(null);
   const openRequests = openRequestCount(data.corrections);
+  // The school's own logo: its profile picture here, and the logo printed on the clearances.
+  const logo = useSchoolLogo();
+  const [logoOpen, setLogoOpen] = useState(false);
 
   const TABS: { key: SchoolPanelKey; label: string; icon: React.ReactNode }[] = [
     { key: "scholars", label: "Scholars", icon: <Users size={16} aria-hidden="true" /> },
@@ -49,13 +54,18 @@ export function SchoolWorkspaceView({ profile, username, onSignOut, data, gradin
     <div className="min-h-screen bg-[#F5F7FA]">
       <header className="bg-white border-b border-[#e6ecf5] px-4 md:px-8 py-4">
         <div className="max-w-[1100px] mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[13px] text-slate-700 uppercase tracking-wide font-bold">School Portal</p>
-            <h1 className="text-[22px] leading-snug font-bold text-[#062444] break-words">{profile.schoolName}</h1>
+          <div className="flex min-w-0 items-center gap-3">
+            <SchoolLogoAvatar base64={logo.base64} size={56} onClick={() => setLogoOpen(true)} />
+            <div className="min-w-0">
+              <p className="text-[13px] text-slate-700 uppercase tracking-wide font-bold">School Portal</p>
+              <h1 className="text-[22px] leading-snug font-bold text-[#062444] break-words">{profile.schoolName}</h1>
+            </div>
           </div>
-          <SchoolAccountMenu username={username} onSignOut={onSignOut} />
+          <SchoolAccountMenu username={username} onSignOut={onSignOut} onOpenLogo={() => setLogoOpen(true)} />
         </div>
       </header>
+
+      {logoOpen && <SchoolLogoDialog logo={logo} onClose={() => setLogoOpen(false)} />}
 
       <div className="md:sticky md:top-0 z-30">
         <SchoolPeriodBar data={data} />

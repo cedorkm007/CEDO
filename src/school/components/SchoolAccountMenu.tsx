@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { UserCircle2, ChevronDown, KeyRound, LifeBuoy, LogOut, Mail, Phone, MapPin, Facebook, CheckCircle2 } from "lucide-react";
+import { UserCircle2, ChevronDown, KeyRound, LifeBuoy, LogOut, Mail, Phone, MapPin, Facebook, CheckCircle2, ImagePlus } from "lucide-react";
 import { SchoolDialog } from "./SchoolDialog";
 import { changeSchoolPassword } from "../schoolApi";
 import { validateNewPassword, MIN_PASSWORD_LENGTH } from "../portalLogic";
@@ -96,7 +96,7 @@ function HelpDialog({ onClose, returnFocusTo }: { onClose: () => void; returnFoc
  * The header's account menu: Change password, Help / Contact CEDO, Sign out. Opens with a click, closes with Escape
  * or a click outside, and every item is reachable with the keyboard.
  */
-export function SchoolAccountMenu({ username, onSignOut }: { username: string | null; onSignOut: () => void }) {
+export function SchoolAccountMenu({ username, onSignOut, onOpenLogo }: { username: string | null; onSignOut: () => void; onOpenLogo?: () => void }) {
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -122,6 +122,7 @@ export function SchoolAccountMenu({ username, onSignOut }: { username: string | 
       {open && (
         <div role="menu" aria-label="Account" className="absolute right-0 mt-1.5 w-64 bg-white border border-[#e6ecf5] rounded-xl shadow-lg z-40 overflow-hidden">
           {username && <p className="px-4 py-2.5 text-[14px] text-slate-700 border-b border-[#f0f3f8]">Signed in as <strong className="text-[#062444]">{username}</strong></p>}
+          {onOpenLogo && <button role="menuitem" className={item} onClick={() => { setOpen(false); onOpenLogo(); }}><ImagePlus size={16} aria-hidden="true" /> School logo</button>}
           <button role="menuitem" className={item} onClick={() => { setOpen(false); setDialog("password"); }}><KeyRound size={16} aria-hidden="true" /> Change password</button>
           <button role="menuitem" className={item} onClick={() => { setOpen(false); setDialog("help"); }}><LifeBuoy size={16} aria-hidden="true" /> Help / Contact CEDO</button>
           <button role="menuitem" className={`${item} border-t border-[#f0f3f8] text-red-800`} onClick={() => { setOpen(false); onSignOut(); }}><LogOut size={16} aria-hidden="true" /> Sign out</button>

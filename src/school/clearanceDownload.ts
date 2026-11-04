@@ -8,7 +8,9 @@ import { supabase } from "@/lib/supabase";
 import { termLabelOf } from "@/lib/renewal";
 import { rulesAt } from "@/lib/rulesRuntime";
 import { fetchRulesTimeline } from "@/lib/gradeRulesApi";
-import { buildClearanceDocx, buildClearancePdf, clearanceEntryFor, type ClearanceEntry } from "@/lib/clearanceForm";
+import { buildClearanceDocx, buildClearancePdf, clearanceEntryFor, type ClearanceEntry, type ClearanceLogo } from "@/lib/clearanceForm";
+import { base64ToBytes } from "@/lib/logoImage";
+import { fetchSchoolLogo } from "./logoApi";
 import templateUrl from "@/assets/ClearanceTemplate.docx?url";
 import { fetchGradingConfig, fetchGradesForScholars, fetchLetterGrades, fetchSchoolMarksAsLetters } from "./schoolApi";
 import { summarizeScholarGrades, groupByScholar } from "./gradeSaveLogic";
@@ -55,6 +57,12 @@ export async function loadClearanceEntries(
   return { ok: true, entries };
 }
 
+/** The school's own logo for the letterhead, or null when it has none (or the logo update has not been run): the clearances then print without it. */
+async function loadLogo(): Promise<ClearanceLogo | null> {
+  const r = await fetchSchoolLogo();
+  return r.ok && r.base64 ? { bytes: base64ToBytes(r.base64) } : null;
+}
+
 export const clearanceFileName = (format: ClearanceFormat, basisSchoolYear: string, basisTerm: string): string =>
   `Clearances_${[basisSchoolYear, basisTerm].filter(Boolean).join("_").replace(/\s+/g, "-")}.${format}`;
 
@@ -64,8 +72,8 @@ export async function downloadClearances(rows: SchoolRenewalRow[], format: Clear
   try {
     const loaded = await loadClearanceEntries(rows, opts);
     if (!loaded.ok) return loaded;
-    const template = await (await fetch(templateUrl)).arrayBuffer();
-    const bytes = format === "docx" ? buildClearanceDocx(template, loaded.entries) : await buildClearancePdf(template, loaded.entries);
+    const [template, logo] = await Promise.all([fetch(templateUrl).then(r => r.arrayBuffer()), loadLogo()]);
+    const bytes = format === "docx" ? buildClearanceDocx(template, loaded.entries, logo) : await buildClearancePdf(template, loaded.entries, logo);
     const type = format === "docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "application/pdf";
     saveAs(new Blob([bytes as BlobPart], { type }), clearanceFileName(format, opts.basisSchoolYear, opts.basisTerm));
     return { ok: true, count: loaded.entries.length };

@@ -8,8 +8,10 @@
 //
 // Word: the office's own form (src/assets/ClearanceTemplate.docx, built by scripts/build-clearance-template.cjs) is repeated once per scholar, so it keeps the office's wording and
 // formatting. PDF: the same form drawn at the same size (Helvetica instead of Calibri), with the same letterhead and footer pictures taken from the template.
+// The right-hand picture of the letterhead is the SCHOOL's own logo (uploaded in the School Portal); a school with no logo gets the form without it.
 // ─────────────────────────────────────────────────────────────
 import PizZip from "pizzip";
+import { fitInBox, pngSize } from "./logoImage";
 import { PDFDocument, StandardFonts, rgb, pushGraphicsState, popGraphicsState, rectangle, clip, endPath, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
 
 export interface ClearanceEntry {
@@ -25,6 +27,12 @@ export interface ClearanceEntry {
   semester: string;
   scholarId: string;
 }
+
+/** The school's logo: PNG bytes. */
+export interface ClearanceLogo { bytes: Uint8Array }
+
+/** The square the logo has to fit in, beside the CEDO banner, and where the box starts (from the form's left text edge): the office's own letterhead measurements. */
+const LOGO_BOX_EMU = 619125, LOGO_LEFT_EMU = 4943475, LOGO_TOP_EMU = 9526;
 
 /** Two forms to a page. */
 export const FORMS_PER_PAGE = 2;
@@ -48,8 +56,21 @@ const TAGS: (keyof ClearanceEntry)[] = ["name", "contact", "school", "gwa", "cou
 const PAGE_BREAK = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
 const CUT_LINE = '<w:p><w:pPr><w:pBdr><w:bottom w:val="dashed" w:sz="6" w:space="1" w:color="808080"/></w:pBdr><w:spacing w:before="60" w:after="160"/></w:pPr></w:p>';
 
-/** The Word file: the office's form once per scholar, two to a page. */
-export function buildClearanceDocx(template: ArrayBuffer | Uint8Array, entries: ClearanceEntry[]): Uint8Array {
+/** The picture's place in the letterhead, as a Word anchor (the logo is fitted in the box without being stretched, and centred in it). */
+function logoRunXml(size: { width: number; height: number }): string {
+  const fit = fitInBox(size.width, size.height, LOGO_BOX_EMU);
+  const cx = Math.round(fit.width), cy = Math.round(fit.height);
+  const x = LOGO_LEFT_EMU + Math.round((LOGO_BOX_EMU - cx) / 2), y = LOGO_TOP_EMU + Math.round((LOGO_BOX_EMU - cy) / 2);
+  return '<w:r><w:drawing><wp:anchor allowOverlap="1" behindDoc="1" distB="114300" distT="114300" distL="114300" distR="114300" hidden="0" layoutInCell="1" locked="0" relativeHeight="0" simplePos="0">'
+    + '<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>' + x + '</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>' + y + '</wp:posOffset></wp:positionV>'
+    + '<wp:extent cx="' + cx + '" cy="' + cy + '"/><wp:effectExtent b="0" l="0" r="0" t="0"/><wp:wrapNone/><wp:docPr id="1" name="school-logo.png"/>'
+    + '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="school-logo.png"/><pic:cNvPicPr preferRelativeResize="0"/></pic:nvPicPr>'
+    + '<pic:blipFill><a:blip r:embed="rIdClLogo"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm><a:prstGeom prst="rect"/><a:ln/></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>';
+}
+const LOGO_MARK = "<w:r><w:t>{logo}</w:t></w:r>";
+
+/** The Word file: the office's form once per scholar, two to a page. With a logo, the school's own picture is in the letterhead. */
+export function buildClearanceDocx(template: ArrayBuffer | Uint8Array, entries: ClearanceEntry[], logo?: ClearanceLogo | null): Uint8Array {
   const zip = new PizZip(template);
   const file = zip.file("word/document.xml");
   if (!file) throw new Error("The clearance template is damaged (no document.xml).");
@@ -57,7 +78,17 @@ export function buildClearanceDocx(template: ArrayBuffer | Uint8Array, entries: 
   const bodyStart = xml.indexOf("<w:body>") + "<w:body>".length;
   const sectAt = xml.indexOf("<w:sectPr");
   if (bodyStart < 8 || sectAt < 0) throw new Error("The clearance template is damaged (no body).");
-  const head = xml.slice(0, bodyStart), block = xml.slice(bodyStart, sectAt), tail = xml.slice(sectAt);
+  const head = xml.slice(0, bodyStart), tail = xml.slice(sectAt);
+  let block = xml.slice(bodyStart, sectAt);
+  const size = logo ? pngSize(logo.bytes) : null;
+  if (logo && !size) throw new Error("The school's logo is not a PNG picture.");
+  block = block.split(LOGO_MARK).join(logo && size ? logoRunXml(size) : "");
+  if (logo && size) {
+    zip.file("word/media/school-logo.png", logo.bytes);
+    const rels = zip.file("word/_rels/document.xml.rels")?.asText();
+    if (!rels) throw new Error("The clearance template is damaged (no relationships).");
+    zip.file("word/_rels/document.xml.rels", rels.replace("</Relationships>", '<Relationship Id="rIdClLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/school-logo.png"/></Relationships>'));
+  }
 
   let drawingId = 1000;
   const parts: string[] = [];
@@ -80,7 +111,7 @@ const MARGIN = 652 * PT_PER_TWIP;
 const INK = rgb(0, 0, 0), GREY = rgb(0.5, 0.5, 0.5);
 const SIZE = 8;
 
-interface Pictures { banner: PDFImage; footer: PDFImage }
+interface Pictures { banner: PDFImage; footer: PDFImage; logo: { image: PDFImage; width: number; height: number } | null }
 
 /** Draws one form into the half of the page whose top edge is `top` (points from the page bottom). */
 function drawForm(page: PDFPage, top: number, e: ClearanceEntry, font: PDFFont, bold: PDFFont, pics: Pictures): void {
@@ -105,6 +136,10 @@ function drawForm(page: PDFPage, top: number, e: ClearanceEntry, font: PDFFont, 
   page.pushOperators(pushGraphicsState(), rectangle(bx, by, bw, bh), clip(), endPath());
   page.drawImage(pics.banner, { x: bx, y: by + bh - fullH * (1 - 0.28477) + 0, width: bw, height: fullH });
   page.pushOperators(popGraphicsState());
+  if (pics.logo) {
+    const box = LOGO_BOX_EMU * PT_PER_EMU, fit = fitInBox(pics.logo.width, pics.logo.height, box);
+    page.drawImage(pics.logo.image, { x: MARGIN + LOGO_LEFT_EMU * PT_PER_EMU + (box - fit.width) / 2, y: top - 10 - box + (box - fit.height) / 2, width: fit.width, height: fit.height });
+  }
   y = top - 10 - bh - 8;
 
   const title = "RECOMMENDATION FOR SCHOLARSHIP RENEWAL";
@@ -160,13 +195,18 @@ function drawForm(page: PDFPage, top: number, e: ClearanceEntry, font: PDFFont, 
 }
 
 /** The PDF: the same form, two to an A4 page. */
-export async function buildClearancePdf(template: ArrayBuffer | Uint8Array, entries: ClearanceEntry[]): Promise<Uint8Array> {
+export async function buildClearancePdf(template: ArrayBuffer | Uint8Array, entries: ClearanceEntry[], logo?: ClearanceLogo | null): Promise<Uint8Array> {
   const zip = new PizZip(template);
   const bannerFile = zip.file("word/media/image3.png"), footerFile = zip.file("word/media/image1.png");
   if (!bannerFile || !footerFile) throw new Error("The clearance template is damaged (the letterhead pictures are missing).");
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const pics: Pictures = { banner: await pdf.embedPng(bannerFile.asUint8Array()), footer: await pdf.embedPng(footerFile.asUint8Array()) };
+  const logoSize = logo ? pngSize(logo.bytes) : null;
+  if (logo && !logoSize) throw new Error("The school's logo is not a PNG picture.");
+  const pics: Pictures = {
+    banner: await pdf.embedPng(bannerFile.asUint8Array()), footer: await pdf.embedPng(footerFile.asUint8Array()),
+    logo: logo && logoSize ? { image: await pdf.embedPng(logo.bytes), width: logoSize.width, height: logoSize.height } : null,
+  };
   entries.forEach((e, i) => {
     const slot = i % FORMS_PER_PAGE;
     const page = slot === 0 ? pdf.addPage([PAGE_W, PAGE_H]) : pdf.getPage(pdf.getPageCount() - 1);
