@@ -8,7 +8,7 @@ import { fetchRulesOverview, fetchRulesVersion, saveRules } from "../gradingRule
 import { computeImpact, impactText, NO_IMPACT, type Impact } from "@/lib/gradingImpact";
 import { MARK_OUTCOME_LABEL } from "../types";
 import {
-  ENTRY_MODE_LABEL, PRESETS, bandResult, describeChanges, periodRank, tryPercentage, validateRules,
+  ENTRY_MODE_LABEL, PRESETS, bandResult, describeChanges, periodRank, tryAGrade, validateRules,
   type EntryMode, type GradingProblem, type RulesPreset, type RuleScale,
 } from "@/lib/gradingRules";
 import {
@@ -102,13 +102,9 @@ export function GradingRulesPanel({ schoolId, formScale, formMarks, scaleDirty, 
   }
 
   // ── "Try a grade" ──
-  const tryResult = useMemo(() => {
-    const p = parseNum(tryText);
-    if (!rules || Number.isNaN(p) || p > 100) return null;
-    return tryPercentage(p, rules, tryProgram || null);
-  }, [tryText, tryProgram, rules]);
-  const tryProblem = tryText.trim() !== "" && (Number.isNaN(parseNum(tryText)) || parseNum(tryText) > 100) ? "Type a percentage from 0 to 100." : "";
-  const tableReady = !!rules && rules.bands.length > 0 && liveProblems.filter(p => !p.code.startsWith("gwa") && !p.code.startsWith("special") && !p.code.startsWith("excluded") && !p.code.startsWith("retention")).length === 0;
+  const tryAnswer = useMemo(() => (rules ? tryAGrade(tryText, rules, tryProgram || null) : null), [tryText, tryProgram, rules]);
+  // what is still wrong with the table itself (not the GWA settings): shown beside the answer, so the school knows why it cannot save yet, but it never stops the answer
+  const tableProblem = liveProblems.find(p => !p.code.startsWith("gwa") && !p.code.startsWith("special") && !p.code.startsWith("excluded") && !p.code.startsWith("retention")) ?? null;
 
   // ── Templates ──
   function applyTemplate(p: RulesPreset) {
@@ -305,12 +301,18 @@ export function GradingRulesPanel({ schoolId, formScale, formMarks, scaleDirty, 
             )}
           </div>
           <p className="mt-2 text-[14.5px] text-slate-900" role="status" aria-live="polite">
-            {tryProblem ? tryProblem
-              : tryText.trim() === "" ? "Type a percentage to see its grade, remarks and result."
-              : !tableReady ? "Finish the table (no gaps or overlaps, a passing mark) to try a grade."
-              : tryResult ? <><strong className="text-[#062444]">{tryResult.grade} · {tryResult.remarks} · {tryResult.result === "passed" ? "Passed" : "Failed"}</strong></>
-              : "No row covers this percentage."}
+            {!tryAnswer || tryAnswer.kind === "empty" ? "Type a percentage to see its grade, remarks and result."
+              : tryAnswer.kind === "bad_number" ? "Type a percentage from 0 to 100."
+              : tryAnswer.kind === "no_rows" ? "The table has no rows yet. Add rows, or start from a common template."
+              : tryAnswer.kind === "no_row" ? <>No row of the table covers {tryAnswer.percentage}%. Check that the rows run from 0 to 100 with no gaps.</>
+              : <>
+                <strong className="text-[#062444]">{tryAnswer.grade}{tryAnswer.remarks ? ` · ${tryAnswer.remarks}` : ""}{tryAnswer.result ? ` · ${tryAnswer.result === "passed" ? "Passed" : "Failed"}` : ""}</strong>
+                {!tryAnswer.result && <span> — type the Passing mark above to also see Passed or Failed.</span>}
+              </>}
           </p>
+          {tryAnswer && tryAnswer.kind !== "empty" && tableProblem && (
+            <p className="mt-1 text-[14px] text-amber-900">The table still has a problem to fix before you can save it: {tableProblem.message}</p>
+          )}
         </div>
 
         <div className="mt-4 rounded-lg border border-[#e6ecf5] px-3.5 py-3">

@@ -35,7 +35,7 @@ test("templates: a menu of presets, with a confirmation, that also sets the scal
   assert.ok(panel.includes("Start from a common template") && panel.includes("PRESETS.map") && panel.includes("Use this template") && panel.includes("Nothing is saved until you press the Save buttons"));
   assert.ok(config.includes("function applyPreset(p: RulesPreset)") && config.includes("setPassingText(String(p.scalePassingMark))"));
 });
-test("Try a grade shows the grade, the remarks and the result for a percentage", () => assert.ok(panel.includes("Try a grade") && panel.includes("tryPercentage(") && panel.includes("{tryResult.grade} · {tryResult.remarks} ·")));
+test("Try a grade shows the grade, the remarks and the result for a percentage", () => assert.ok(panel.includes("Try a grade") && panel.includes("tryAGrade(tryText, rules, tryProgram || null)") && panel.includes("{tryAnswer.grade}{tryAnswer.remarks ?")));
 test("special grades (INC, DRP, the school's other marks) are listed under the table, and stay where they are edited", () => assert.ok(panel.includes("Special grades with no percentage") && panel.includes("<strong>INC</strong> — Incomplete") && panel.includes("<strong>DRP</strong> — Dropped")));
 
 console.log("\nThe GWA computation");
