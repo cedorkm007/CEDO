@@ -22,11 +22,18 @@ export async function fetchSchoolRenewalWindows(): Promise<{ ok: true; windows: 
 }
 
 export async function fetchSchoolRenewalRows(schoolYear: string, term: string): Promise<{ ok: true; rows: SchoolRenewalRow[] } | Failed> {
-  const { data, error } = await supabase.rpc("school_renewal_list", { p_school_year: schoolYear, p_term: term });
-  if (error) return failed(error);
+  // in pages: the database returns at most 1000 rows per request, and a large school has more scholars than that
+  const PAGE = 1000;
+  const data: Row[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data: page, error } = await supabase.rpc("school_renewal_list", { p_school_year: schoolYear, p_term: term }).range(from, from + PAGE - 1);
+    if (error) return failed(error);
+    data.push(...((page ?? []) as Row[]));
+    if (!page || page.length < PAGE) break;
+  }
   return {
     ok: true,
-    rows: ((data ?? []) as Row[]).map(r => ({
+    rows: data.map(r => ({
       scholarIdNumber: str(r.scholar_id_number), schoolStudentNo: str(r.school_student_no), lastName: str(r.last_name), firstName: str(r.first_name), middleName: str(r.middle_name),
       yearLevel: str(r.year_level), program: str(r.program), scholarStatus: str(r.scholar_status), stage: r.stage == null ? null : str(r.stage), isLate: !!r.is_late,
       group: str(r.grp) as RenewalGroup, probation: !!r.probation, gradesState: r.grades_state == null ? null : str(r.grades_state), failed: num(r.failed), inc: num(r.inc), review: num(r.review),
