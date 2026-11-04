@@ -257,7 +257,7 @@ export function GradingConfigPanel({ schoolId, onSaved }: { schoolId: string; on
         {saved && <span role="status" className="text-[14.5px] font-semibold text-green-800">Saved.</span>}
       </div>
     </div>
-    <GradingRulesPanel schoolId={schoolId} formScale={formScale} formMarks={marks} scaleDirty={scaleDirty} scaleSaved={alreadySaved} onApplyPreset={applyPreset} />
+    <GradingRulesPanel schoolId={schoolId} formScale={formScale} formMarks={marks} scaleDirty={scaleDirty} scaleSaved={alreadySaved} onApplyPreset={applyPreset} onRulesSaved={onSaved} />
     </div>
   );
 }

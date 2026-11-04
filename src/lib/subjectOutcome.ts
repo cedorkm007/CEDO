@@ -12,12 +12,16 @@
 //   * INC (any case)                -> inc   (tracked separately; NOT failed by itself)
 //   * DRP (any case)                -> drp   (counts as FAILED)
 //   * a school's own mark (F, D/F...) -> what the school said it means: passed / failed / incomplete (= inc) / review
+//   * a school with a conversion table for the semester (Phase 2): a percentage or a grade the table covers is judged by the table and the school's passing mark in percent
+//                                     (the programme's own when it has one); a grade the table does not cover falls to the rules below
 //   * no passing mark set           -> no_passing_mark (nothing is guessed)
 //   * a grade or letter value worse than the passing mark -> failed; equal to it passes
 //   * a mark that cannot be read (e.g. "W") -> review (the evaluator looks at it)
 // "Exclude from GWA" is deliberately ignored: those subjects still count for pass/fail.
 // ─────────────────────────────────────────────────────────────
 import type { GradingConfig, LetterGrade } from "./gwa";
+import type { GradingRules } from "./gradingRules";
+import { tableResult } from "./rulesRuntime";
 
 export type SubjectOutcome = "ungraded" | "passed" | "failed" | "inc" | "drp" | "review" | "no_passing_mark";
 
@@ -39,14 +43,17 @@ export function reservedMark(grade: string): "INC" | "DRP" | null {
 
 const NUMBER = /^\d+(\.\d+)?$/;
 
-export function classifyGrade(grade: string, config: GradingConfig | null | undefined, letters: LetterGrade[]): SubjectOutcome {
+export function classifyGrade(grade: string, config: GradingConfig | null | undefined, letters: LetterGrade[], rules?: GradingRules | null, program?: string | null, percentage?: number | null): SubjectOutcome {
   const g = grade.trim();
-  if (!g) return "ungraded";
+  if (!g && (percentage == null || !rules)) return "ungraded";
   const reserved = reservedMark(g);
   if (reserved === "INC") return "inc";
   if (reserved === "DRP") return "drp";
   const own = letters.find(l => l.outcome && l.letter.trim().toLowerCase() === g.toLowerCase());
   if (own?.outcome) return own.outcome === "incomplete" ? "inc" : own.outcome;
+  const byTable = tableResult({ grade: g, percentage }, rules, program);
+  if (byTable) return byTable;
+  if (!g) return "ungraded";
   if (!config || config.passingMark == null) return "no_passing_mark";
 
   let value: number | null = null;
@@ -74,13 +81,13 @@ export interface OutcomeCounts {
   noPassingMark: number;
 }
 
-export interface OutcomeRow { grade: string }
+export interface OutcomeRow { grade: string; percentage?: number | null }
 
 /** Counts for one scholar's subjects in a period. Excluded-from-GWA subjects are included on purpose. */
-export function countOutcomes(rows: OutcomeRow[], config: GradingConfig | null | undefined, letters: LetterGrade[]): OutcomeCounts {
+export function countOutcomes(rows: OutcomeRow[], config: GradingConfig | null | undefined, letters: LetterGrade[], rules?: GradingRules | null, program?: string | null): OutcomeCounts {
   const c: OutcomeCounts = { failed: 0, drp: 0, inc: 0, review: 0, noPassingMark: 0 };
   for (const r of rows) {
-    const o = classifyGrade(r.grade, config, letters);
+    const o = classifyGrade(r.grade, config, letters, rules, program, r.percentage);
     if (isFailed(o)) c.failed++;
     if (o === "drp") c.drp++;
     else if (o === "inc") c.inc++;

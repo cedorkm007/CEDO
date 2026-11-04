@@ -12,8 +12,10 @@ import type { SchoolScholarRow } from "../types";
  *   the earlier CSV layout (matched by Scholar ID) is still available as a small link.
  * Used by the scholars toolbar and by the bulk upload window, so both ask the same question.
  */
-export function TemplateDownloadMenu({ scholars, period, schoolName, disabled, buttonClassName, label = "Download template" }: {
+export function TemplateDownloadMenu({ scholars, period, schoolName, disabled, buttonClassName, label = "Download template", percentageEntry }: {
   scholars: SchoolScholarRow[]; period: PeriodRef; schoolName: string; disabled?: boolean; buttonClassName: string; label?: string;
+  /** The school enters percentages: the GRADES column of the pre-filled sheet shows each subject's percentage. */
+  percentageEntry?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<"" | "prefilled" | "blank" | "csv">("");
@@ -30,7 +32,7 @@ export function TemplateDownloadMenu({ scholars, period, schoolName, disabled, b
 
   async function choose(kind: "prefilled" | "blank" | "csv") {
     setBusy(kind); setError("");
-    const r = kind === "csv" ? await downloadGradeTemplate(scholars, period) : await downloadPromoTemplate({ schoolName, scholars, period, blank: kind === "blank" });
+    const r = kind === "csv" ? await downloadGradeTemplate(scholars, period) : await downloadPromoTemplate({ schoolName, scholars, period, blank: kind === "blank", percentageEntry });
     setBusy("");
     if (!r.ok) { setError(`Couldn't prepare the template: ${r.error}`); return; }
     setOpen(false);

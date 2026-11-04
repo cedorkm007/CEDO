@@ -126,7 +126,7 @@ test("a saved grade is reflected in the per-scholar summary", () => {
   assert.equal(s.gwa, 2);
 });
 test("a scholar with no rows has 0 subjects and no GWA", () => {
-  assert.deepEqual(L.summarizeScholarGrades([], []), { subjects: 0, graded: 0, gwa: null, missingUnits: 0 });
+  assert.deepEqual(L.summarizeScholarGrades([], []), { subjects: 0, graded: 0, gwa: null, gwaText: "—", missingUnits: 0 });
 });
 test("rows are grouped per scholar so one scholar's grades never land on another", () => {
   const map = L.groupByScholar([row("a", "1", { scholarIdNumber: "007" }), row("b", "2", { scholarIdNumber: "008" }), row("c", "3", { scholarIdNumber: "007" })]);
@@ -196,15 +196,15 @@ const only = r => { assert.equal(r.fileError, undefined, r.fileError); return r.
 
 test("template: pre-filled with the period, every scholar, and their declared subjects", () => {
   const t = B.buildTemplate(SCHOLARS, EXISTING, PERIOD);
-  assert.deepEqual(t.headers, ["school_year", "semester", "scholar_id", "scholar_name", "subject_code", "subject_name", "units", "grade", "remarks"]);
+  assert.deepEqual(t.headers, ["school_year", "semester", "scholar_id", "scholar_name", "subject_code", "subject_name", "units", "percentage", "grade", "remarks"]);
   assert.equal(t.rows.length, 4); // Dela Cruz x2 subjects, Reyes x1 blank, Santos x1 blank
-  assert.deepEqual(t.rows[0], ["2026-2027", "1st Semester", "2409-00002", "Dela Cruz, Juan P.", "MATH101", "College Algebra", 3, "1.75", ""]);
-  assert.deepEqual(t.rows[2], ["2026-2027", "1st Semester", "2409-00003", "Reyes, Ana", "", "", "", "", ""]);
+  assert.deepEqual(t.rows[0], ["2026-2027", "1st Semester", "2409-00002", "Dela Cruz, Juan P.", "MATH101", "College Algebra", 3, "", "1.75", ""]);
+  assert.deepEqual(t.rows[2], ["2026-2027", "1st Semester", "2409-00003", "Reyes, Ana", "", "", "", "", "", ""]);
   assert.equal(t.rows[3][2], "2409-00001");
 });
 test("template round-trips: a freshly downloaded template with grades typed in validates cleanly", () => {
   const t = B.buildTemplate(SCHOLARS, [], PERIOD);
-  const filled = [HEAD, ...t.rows.map(r => { const c = [...r]; c[3] = q(c[3]); c[4] = "X1"; c[5] = "Subject"; c[7] = "1.5"; return c.join(","); })].join("\r\n");
+  const filled = [HEAD, ...t.rows.map(r => { const c = [...r]; c[3] = q(c[3]); c[4] = "X1"; c[5] = "Subject"; c[8] = "1.5"; return c.join(","); })].join("\r\n");
   const rows = only(parse(filled, { existing: [] }));
   assert.equal(rows.length, 3);
   assert.ok(rows.every(r => r.status === "valid" && r.action === "add"));
@@ -819,8 +819,8 @@ test("staff screens use the shared rules: no second GWA, standing or 'complete' 
     assert.equal(/reduce\(|toFixed\(|\/ *units/i.test(src), false, `${p} must not compute its own averages`);
   }
   const data = fs.readFileSync(path.join(root, "src/sead/scholarsMonitoringData.ts"), "utf8");
-  assert.match(data, /gwaDetail\(/);
-  assert.match(data, /scholarStanding\(/);
+  assert.match(data, /periodGwa\(/);        // the ONE shared GWA function (src/lib/rulesRuntime.ts), which follows the school's rules
+  assert.match(data, /standingFor\(/);
   const tab = fs.readFileSync(path.join(root, "src/sead/pages/ScholarsGradesMonitoringScholarsTab.tsx"), "utf8");
   assert.match(tab, /PAGE_SIZE = 50/);
   assert.equal(/fetchMonitoringScholars/.test(tab), false, "the Scholars tab must page, not use the 200-row list");

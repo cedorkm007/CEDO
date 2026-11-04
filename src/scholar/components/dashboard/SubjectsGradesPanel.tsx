@@ -5,8 +5,10 @@ import { SectionCard } from "./SectionCard";
 import { fetchMyGradingConfig, fetchMyLetterGrades, fetchMySchoolMarks, fetchCurrentGradingPeriod } from "../../scholarApi";
 import { PeriodSelect } from "@/app/components/PeriodSelect";
 import { ALL_PERIODS_KEY, normalizeTerm, periodKey, periodOptions, termLabel, type AcademicPeriod, type PeriodRef } from "@/lib/academicPeriods";
-import { computeGwa, formatGwa, type GradingConfig, type LetterGrade } from "@/lib/gwa";
-import { classifyGrade, countOutcomes, outcomeSummaryText } from "@/lib/subjectOutcome";
+import type { GradingConfig, LetterGrade } from "@/lib/gwa";
+import { classifyGrade, countOutcomes, isFailed, outcomeSummaryText } from "@/lib/subjectOutcome";
+import { describeRow, periodGwa, rulesAt, type RuleVersion } from "@/lib/rulesRuntime";
+import { fetchRulesTimeline } from "@/lib/gradeRulesApi";
 import { OutcomeBadge, outcomeRowClass } from "@/app/components/OutcomeBadge";
 import type { SubjectGrade } from "../../types";
 
@@ -16,8 +18,10 @@ import type { SubjectGrade } from "../../types";
  * scholar never lands on an empty screen. The options are the periods this scholar actually has grades in
  * (plus the current one), so nothing about other scholars or unused periods is revealed.
  */
-export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
+export function SubjectsGradesPanel({ grades, program = "" }: { grades: SubjectGrade[]; program?: string }) {
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
+  // The grading rules of the scholar's school, by the semester they start at: each semester is read with the rules that applied to it (read only).
+  const [ruleVersions, setRuleVersions] = useState<RuleVersion[]>([]);
   const [config, setConfig] = useState<GradingConfig | null>(null);
   const [current, setCurrent] = useState<PeriodRef>({ schoolYear: "", semester: "" });
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -28,6 +32,7 @@ export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
       Promise.all([c?.usesLetterGrades ? fetchMyLetterGrades() : Promise.resolve([]), fetchMySchoolMarks()]).then(([table, marks]) => setLetterGrades([...table, ...marks]));
     });
     fetchCurrentGradingPeriod().then(setCurrent);
+    void fetchRulesTimeline().then(t => setRuleVersions(Object.values(t)[0] ?? []));
   }, []);
 
   const currentKey = current.schoolYear ? periodKey(current.schoolYear, current.semester) : "";
@@ -88,8 +93,9 @@ export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
         )}
         {groups.map(([key, rows]) => {
           const open = shownOpenKey === key;
-          const gwa = computeGwa(rows, letterGrades);
-          const flagged = outcomeSummaryText(countOutcomes(rows, config, letterGrades));
+          const rules = rulesAt(ruleVersions, rows[0].schoolYear, rows[0].semester);
+          const gwa = periodGwa(rows, letterGrades, rules, r => isFailed(classifyGrade(r.grade, config, letterGrades, rules, program, (r as SubjectGrade).percentage)));
+          const flagged = outcomeSummaryText(countOutcomes(rows, config, letterGrades, rules, program));
           return (
             <div key={key} className="border border-[#e6ecf5] rounded-xl mb-3 overflow-hidden">
               <button
@@ -102,7 +108,7 @@ export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
                 </span>
                 <span className="text-[13px] font-semibold text-slate-600">
                   {flagged && <span className="mr-3 font-bold text-red-800">{flagged}</span>}
-                  GWA: <span className="text-[#062444]">{formatGwa(gwa)}</span><span className="font-normal"> (weighted by units)</span>
+                  GWA: <span className="text-[#062444]">{gwa.text}</span><span className="font-normal"> ({gwa.settings?.method === "simple" ? "simple average" : "weighted by units"})</span>
                 </span>
               </button>
               {open && (
@@ -119,7 +125,8 @@ export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
                     </thead>
                     <tbody>
                       {rows.map(r => {
-                        const outcome = classifyGrade(r.grade, config, letterGrades);
+                        const outcome = classifyGrade(r.grade, config, letterGrades, rules, program, r.percentage);
+                        const reading = describeRow({ grade: r.grade, percentage: r.percentage }, rules, program);
                         return (
                         <tr key={r.id} className={`hover:bg-[#f7f9fc] ${outcomeRowClass(outcome)}`}>
                           <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">{r.subjectCode || "—"}</td>
@@ -128,8 +135,8 @@ export function SubjectsGradesPanel({ grades }: { grades: SubjectGrade[] }) {
                             {r.excludeFromGwa && <span className="ml-2 text-[11px] font-semibold text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">not in GWA</span>}
                           </td>
                           <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">{r.units ?? "—"}</td>
-                          <td className="py-2.5 border-b border-[#f0f3f8] font-semibold text-[#062444]">{r.grade || "—"} <span className="ml-1.5"><OutcomeBadge outcome={outcome} /></span></td>
-                          <td className="py-2.5 border-b border-[#f0f3f8] text-slate-600">{r.remarks || "—"}</td>
+                          <td className="py-2.5 border-b border-[#f0f3f8] font-semibold text-[#062444]">{r.grade || "—"}{r.percentage != null && <span className="ml-1.5 font-normal text-slate-700">({r.percentage}%)</span>} <span className="ml-1.5"><OutcomeBadge outcome={outcome} /></span></td>
+                          <td className="py-2.5 border-b border-[#f0f3f8] text-slate-600">{[reading?.remarks, r.remarks].filter(Boolean).join(" · ") || "—"}</td>
                         </tr>
                         );
                       })}

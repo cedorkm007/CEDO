@@ -134,5 +134,6 @@ export async function fetchScholarGradesForStaff(scholarIdNumber: string) {
     subjectCode: String(r.subject_code ?? ""), subject: String(r.subject ?? ""),
     grade: r.grade == null ? "" : String(r.grade), remarks: String(r.remarks ?? ""),
     units: r.units == null ? null : Number(r.units), excludeFromGwa: !!r.exclude_from_gwa,
+    percentage: r.percentage == null ? null : Number(r.percentage),
   }));
 }

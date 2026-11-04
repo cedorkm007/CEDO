@@ -133,6 +133,7 @@ function toSubjectGrade(r: Record<string, unknown>): SchoolSubjectGrade {
     units: r.units == null ? null : Number(r.units),
     excludeFromGwa: !!r.exclude_from_gwa,
     remarks: String(r.remarks ?? ""),
+    percentage: r.percentage == null ? null : Number(r.percentage),
   };
 }
 
@@ -204,6 +205,8 @@ export interface UpsertGradeInput {
   excludeFromGwa?: boolean | null;
   /** Leave out (or null) to keep the stored remark; an empty string clears it. */
   remarks?: string | null;
+  /** The percentage typed for the subject (the database turns it into the equivalent grade). Leave out when none; it is only sent when there is one, so a database that has not had the update yet still saves grades. */
+  percentage?: number | null;
 }
 
 export async function upsertGrade(input: UpsertGradeInput): Promise<{ ok: boolean; error?: string; id?: string }> {
@@ -211,6 +214,7 @@ export async function upsertGrade(input: UpsertGradeInput): Promise<{ ok: boolea
     p_id: input.id || null, p_scholar_id_number: input.scholarIdNumber, p_school_year: input.schoolYear,
     p_semester: input.semester, p_subject_code: input.subjectCode, p_subject: input.subject, p_grade: input.grade,
     p_units: input.units ?? null, p_exclude_from_gwa: input.excludeFromGwa ?? null, p_remarks: input.remarks ?? null,
+    ...(input.percentage != null ? { p_percentage: input.percentage } : {}),
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, id: data as string };
@@ -225,7 +229,7 @@ export interface BulkGradeRowResult {
 
 export async function bulkUpsertGrades(rows: UpsertGradeInput[]): Promise<{ ok: boolean; error?: string; results?: BulkGradeRowResult[] }> {
   const { data, error } = await supabase.rpc("bulk_upsert_scholar_subject_grades", {
-    p_rows: rows.map(r => ({ id: r.id || null, scholarIdNumber: r.scholarIdNumber, schoolYear: r.schoolYear, semester: r.semester, subjectCode: r.subjectCode, subject: r.subject, grade: r.grade, units: r.units ?? null, excludeFromGwa: r.excludeFromGwa ?? null, ...(r.remarks != null ? { remarks: r.remarks } : {}) })),
+    p_rows: rows.map(r => ({ id: r.id || null, scholarIdNumber: r.scholarIdNumber, schoolYear: r.schoolYear, semester: r.semester, subjectCode: r.subjectCode, subject: r.subject, grade: r.grade, units: r.units ?? null, excludeFromGwa: r.excludeFromGwa ?? null, ...(r.remarks != null ? { remarks: r.remarks } : {}), ...(r.percentage != null ? { percentage: r.percentage } : {}) })),
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, results: (data as Record<string, unknown>[]).map(r => ({ rowIndex: Number(r.row_index), ok: !!r.ok, error: r.error == null ? null : String(r.error), id: r.id == null ? null : String(r.id) })) };

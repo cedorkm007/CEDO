@@ -1,8 +1,9 @@
 import { MarksGuide } from "@/app/components/MarksGuide";
 import { useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { computeGwa, formatGwa, type GradingConfig, type LetterGrade } from "@/lib/gwa";
-import { classifyGrade, countOutcomes, outcomeSummaryText } from "@/lib/subjectOutcome";
+import type { GradingConfig, LetterGrade } from "@/lib/gwa";
+import { classifyGrade, countOutcomes, isFailed, outcomeSummaryText } from "@/lib/subjectOutcome";
+import { describeRow, periodGwa, rulesAt, type RuleVersion } from "@/lib/rulesRuntime";
 import { OutcomeBadge, outcomeRowClass } from "@/app/components/OutcomeBadge";
 
 export interface StaffGradeRow {
@@ -15,10 +16,16 @@ export interface StaffGradeRow {
   units?: number | null;
   excludeFromGwa?: boolean;
   remarks?: string;
+  /** The percentage, when the school enters percentages. */
+  percentage?: number | null;
 }
 
-/** Grouped-by-School-Year+Semester grades matrix with a computed GWA per group — the staff-side counterpart to the scholar portal's SubjectsGradesPanel, sharing the same computeGwa() logic (src/lib/gwa.ts) so both sides always agree. */
-export function ScholarGradesTable({ grades, letterGrades, config = null }: { grades: StaffGradeRow[]; letterGrades: LetterGrade[]; config?: GradingConfig | null }) {
+/** Grouped-by-School-Year+Semester grades matrix with a computed GWA per group — the staff-side counterpart to the scholar portal's SubjectsGradesPanel, using the same periodGwa() (src/lib/rulesRuntime.ts) as the school and the scholar, so every side always agrees. */
+export function ScholarGradesTable({ grades, letterGrades, config = null, ruleVersions = [], program = "" }: {
+  grades: StaffGradeRow[]; letterGrades: LetterGrade[]; config?: GradingConfig | null;
+  /** The grading rules the scholar's school saved, by the semester they start at: each semester is read with the rules that applied to it. */
+  ruleVersions?: RuleVersion[]; program?: string;
+}) {
   const groups = useMemo(() => {
     const map = new Map<string, StaffGradeRow[]>();
     for (const g of grades) {
@@ -40,8 +47,9 @@ export function ScholarGradesTable({ grades, letterGrades, config = null }: { gr
       <MarksGuide marks={letterGrades} className="mb-3" />
       {groups.map(([key, rows]) => {
         const open = openKey === key;
-        const gwa = computeGwa(rows, letterGrades);
-        const flagged = outcomeSummaryText(countOutcomes(rows, config, letterGrades));
+        const rules = rulesAt(ruleVersions, rows[0].schoolYear, rows[0].semester);
+        const gwa = periodGwa(rows, letterGrades, rules, r => isFailed(classifyGrade(r.grade, config, letterGrades, rules, program, (r as StaffGradeRow).percentage)));
+        const flagged = outcomeSummaryText(countOutcomes(rows, config, letterGrades, rules, program));
         return (
           <div key={key} className="border border-[#e6ecf5] rounded-xl mb-3 overflow-hidden bg-white">
             <button
@@ -54,7 +62,7 @@ export function ScholarGradesTable({ grades, letterGrades, config = null }: { gr
               </span>
               <span className="text-[13px] font-semibold text-slate-600">
                 {flagged && <span className="mr-3 font-bold text-red-800">{flagged}</span>}
-                GWA: <span className="text-[#062444]">{formatGwa(gwa)}</span><span className="font-normal text-slate-600"> (weighted by units)</span>
+                GWA: <span className="text-[#062444]">{gwa.text}</span><span className="font-normal text-slate-600"> ({gwa.settings?.method === "simple" ? "simple average" : "weighted by units"})</span>
               </span>
             </button>
             {open && (
@@ -71,7 +79,8 @@ export function ScholarGradesTable({ grades, letterGrades, config = null }: { gr
                   </thead>
                   <tbody>
                     {rows.map(r => {
-                      const outcome = classifyGrade(r.grade, config, letterGrades);
+                      const outcome = classifyGrade(r.grade, config, letterGrades, rules, program, r.percentage);
+                      const reading = describeRow({ grade: r.grade, percentage: r.percentage }, rules, program);
                       return (
                       <tr key={r.id} className={`hover:bg-[#f7f9fc] ${outcomeRowClass(outcome)}`}>
                         <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">{r.subjectCode || "—"}</td>
@@ -81,9 +90,9 @@ export function ScholarGradesTable({ grades, letterGrades, config = null }: { gr
                         </td>
                         <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700" title={r.units == null ? "No units entered — counted as 1 unit in the GWA" : undefined}>{r.units ?? "—"}</td>
                         <td className="py-2.5 border-b border-[#f0f3f8] font-semibold text-[#062444]">
-                          {r.grade || "—"} <span className="ml-1.5"><OutcomeBadge outcome={outcome} /></span>
+                          {r.grade || "—"}{r.percentage != null && <span className="ml-1.5 font-normal text-slate-700">({r.percentage}%)</span>} <span className="ml-1.5"><OutcomeBadge outcome={outcome} /></span>
                         </td>
-                        <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">{r.remarks || "—"}</td>
+                        <td className="py-2.5 border-b border-[#f0f3f8] text-slate-700">{[reading?.remarks, r.remarks].filter(Boolean).join(" · ") || "—"}</td>
                       </tr>
                       );
                     })}

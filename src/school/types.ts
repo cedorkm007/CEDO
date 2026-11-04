@@ -62,4 +62,6 @@ export interface SchoolSubjectGrade {
   excludeFromGwa: boolean;
   /** A short remark or tag from the school (e.g. NSTP, Repeated, Cross-enrolled). Information only. */
   remarks: string;
+  /** The percentage of the subject, when the school enters percentages (the grade is then the equivalent grade of its conversion table). null = none. */
+  percentage: number | null;
 }
