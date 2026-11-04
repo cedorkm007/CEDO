@@ -94,7 +94,7 @@ console.log("\nThe screen");
 const panel = src("src/school/components/RenewalMonitorPanel.tsx"), page = src("src/school/pages/SchoolPortalPage.tsx"), api = src("src/school/renewalMonitorApi.ts");
 test("a Renewal tab sits between Scholars and Corrections", () => {
   const labels = [...page.matchAll(/\{ key: "([\w-]+)", label: ([^,]+),/g)].map(m => m[1]);
-  assert.deepEqual(labels.slice(0, 3), ["scholars", "renewal", "corrections"]); assert.ok(page.includes('{panel === "renewal" && <RenewalMonitorPanel />}'));
+  assert.deepEqual(labels.slice(0, 3), ["scholars", "renewal", "corrections"]); assert.ok(page.includes('{panel === "renewal" && <RenewalMonitorPanel schoolId={profile.schoolId} schoolName={profile.schoolName} />}'));
 });
 test("the list has the columns Scholar ID, School ID, Name, Year, Program, Scholarship, Renewal, Grades", () => {
   const cols = [...panel.matchAll(/<th scope="col" className=\{TH\}>([^<]+)<\/th>/g)].map(m => m[1]);
