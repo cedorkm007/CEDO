@@ -1227,12 +1227,15 @@ const EXPORT_FETCH_BATCH_SIZE = 1000;
  * Looping keeps this correct at any roster size.
  */
 export async function fetchAllScholarsInformationForExport(
-  filters: ScholarInformationFilters = {}
+  filters: ScholarInformationFilters = {}, period?: ProgramPeriod | null
 ): Promise<ScholarInformationRow[]> {
   const all: ScholarInformationRow[] = [];
   let from = 0;
   for (;;) {
-    let query = supabase.from("scholars").select(SCHOLAR_INFORMATION_SELECT);
+    // a saved semester has the same columns as the scholars table, so the same filters apply
+    let query = period
+      ? supabase.from("scholar_period_snapshots").select(SCHOLAR_INFORMATION_SELECT).eq("school_year", period.schoolYear).eq("term", period.term)
+      : supabase.from("scholars").select(SCHOLAR_INFORMATION_SELECT);
     query = applyScholarInformationFilters(query, filters);
     const { data, error } = await query
       .order("last_name").order("first_name")
@@ -1316,8 +1319,8 @@ export interface BarangayCount {
   count: number;
 }
 
-export async function fetchScholarsByBarangay(): Promise<{ ok: boolean; error?: string; counts?: BarangayCount[] }> {
-  const { data, error } = await supabase.rpc("scholars_by_barangay");
+export async function fetchScholarsByBarangay(period?: ProgramPeriod | null): Promise<{ ok: boolean; error?: string; counts?: BarangayCount[] }> {
+  const { data, error } = period ? await supabase.rpc("scholars_by_barangay_snapshot", periodArgs(period)) : await supabase.rpc("scholars_by_barangay");
   if (error) return { ok: false, error: error.message };
   const rows = (data ?? []) as { barangay: string | null; scholar_count: number }[];
   return {
@@ -1339,47 +1342,76 @@ function mapGroupCountRows(data: unknown, labelColumn: string): GroupCount[] {
     .map(r => ({ label: String(r[labelColumn]), count: Number(r.scholar_count) }));
 }
 
-export async function fetchScholarsBySchool(): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
-  const { data, error } = await supabase.rpc("scholars_by_school");
+export async function fetchScholarsBySchool(period?: ProgramPeriod | null): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = period ? await supabase.rpc("scholars_by_school_snapshot", periodArgs(period)) : await supabase.rpc("scholars_by_school");
   if (error) return { ok: false, error: error.message };
   return { ok: true, counts: mapGroupCountRows(data, "school") };
 }
 
-export async function fetchScholarsBySchoolYearLevel(school: string): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
-  const { data, error } = await supabase.rpc("scholars_by_school_year_level", { p_school: school });
+export async function fetchScholarsBySchoolYearLevel(school: string, period?: ProgramPeriod | null): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = period ? await supabase.rpc("scholars_by_school_year_level_snapshot", { ...periodArgs(period), p_school: school }) : await supabase.rpc("scholars_by_school_year_level", { p_school: school });
   if (error) return { ok: false, error: error.message };
   return { ok: true, counts: mapGroupCountRows(data, "year_level") };
 }
 
-export async function fetchScholarsBySchoolYearLevelCourse(school: string, yearLevel: string): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
-  const { data, error } = await supabase.rpc("scholars_by_school_year_level_course", { p_school: school, p_year_level: yearLevel });
+export async function fetchScholarsBySchoolYearLevelCourse(school: string, yearLevel: string, period?: ProgramPeriod | null): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = period ? await supabase.rpc("scholars_by_school_year_level_course_snapshot", { ...periodArgs(period), p_school: school, p_year_level: yearLevel }) : await supabase.rpc("scholars_by_school_year_level_course", { p_school: school, p_year_level: yearLevel });
   if (error) return { ok: false, error: error.message };
   return { ok: true, counts: mapGroupCountRows(data, "course") };
 }
 
 /** Breakdown of one Scholarship Status (e.g. "Probationary") by Year Level, School, or Barangay — backs the clickable status stat cards. */
-export async function fetchScholarsByYearLevelForStatus(status: ScholarshipStatus): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
-  const { data, error } = await supabase.rpc("scholars_by_year_level_for_status", { p_status: status });
+export async function fetchScholarsByYearLevelForStatus(status: ScholarshipStatus, period?: ProgramPeriod | null): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = period ? await supabase.rpc("scholars_by_year_level_for_status_snapshot", { ...periodArgs(period), p_status: status }) : await supabase.rpc("scholars_by_year_level_for_status", { p_status: status });
   if (error) return { ok: false, error: error.message };
   return { ok: true, counts: mapGroupCountRows(data, "year_level") };
 }
 
-export async function fetchScholarsBySchoolForStatus(status: ScholarshipStatus): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
-  const { data, error } = await supabase.rpc("scholars_by_school_for_status", { p_status: status });
+export async function fetchScholarsBySchoolForStatus(status: ScholarshipStatus, period?: ProgramPeriod | null): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = period ? await supabase.rpc("scholars_by_school_for_status_snapshot", { ...periodArgs(period), p_status: status }) : await supabase.rpc("scholars_by_school_for_status", { p_status: status });
   if (error) return { ok: false, error: error.message };
   return { ok: true, counts: mapGroupCountRows(data, "school") };
 }
 
-export async function fetchScholarsByBarangayForStatus(status: ScholarshipStatus): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
-  const { data, error } = await supabase.rpc("scholars_by_barangay_for_status", { p_status: status });
+export async function fetchScholarsByBarangayForStatus(status: ScholarshipStatus, period?: ProgramPeriod | null): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = period ? await supabase.rpc("scholars_by_barangay_for_status_snapshot", { ...periodArgs(period), p_status: status }) : await supabase.rpc("scholars_by_barangay_for_status", { p_status: status });
   if (error) return { ok: false, error: error.message };
   return { ok: true, counts: mapGroupCountRows(data, "barangay") };
 }
 
-export async function fetchScholarsByCourseForStatus(status: ScholarshipStatus): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
-  const { data, error } = await supabase.rpc("scholars_by_course_for_status", { p_status: status });
+export async function fetchScholarsByCourseForStatus(status: ScholarshipStatus, period?: ProgramPeriod | null): Promise<{ ok: boolean; error?: string; counts?: GroupCount[] }> {
+  const { data, error } = period ? await supabase.rpc("scholars_by_course_for_status_snapshot", { ...periodArgs(period), p_status: status }) : await supabase.rpc("scholars_by_course_for_status", { p_status: status });
   if (error) return { ok: false, error: error.message };
   return { ok: true, counts: mapGroupCountRows(data, "course") };
+}
+
+// ── Scholarship Program Information by semester and academic year (saved snapshots: supabase_migration_scholarship_program_snapshots.sql) ──
+/** A saved semester. null / undefined everywhere means "live": today's information. */
+export interface ProgramPeriod { schoolYear: string; term: string }
+const periodArgs = (p: ProgramPeriod) => ({ p_school_year: p.schoolYear, p_term: p.term });
+export interface SnapshotRun { schoolYear: string; term: string; takenAt: string; takenByName: string; scholarCount: number }
+
+/** The semesters that were saved, newest saved first. Empty before the database update is run. */
+export async function fetchSnapshotRuns(): Promise<SnapshotRun[]> {
+  const { data, error } = await supabase.from("scholar_snapshot_runs").select("school_year, term, taken_at, taken_by_name, scholar_count").order("taken_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map(r => ({ schoolYear: String(r.school_year), term: String(r.term), takenAt: String(r.taken_at), takenByName: String(r.taken_by_name ?? ""), scholarCount: Number(r.scholar_count ?? 0) }));
+}
+
+/** Saves the scholars' information as it is now as the snapshot of a semester. A semester already saved is refused unless `replace` is true. */
+export async function saveSnapshot(schoolYear: string, term: string, replace: boolean): Promise<{ ok: true; scholars: number } | { ok: false; error: string; alreadySaved?: boolean }> {
+  const { data, error } = await supabase.rpc("scholar_snapshot_take", { p_school_year: schoolYear.trim(), p_term: term, p_replace: replace });
+  if (error) {
+    if (error.code === "PGRST202" || /could not find the function/i.test(error.message)) return { ok: false, error: "Saving a semester is not set up yet: CEDO still has to run a database update." };
+    return { ok: false, error: error.message, alreadySaved: /was already saved/i.test(error.message) };
+  }
+  return { ok: true, scholars: Number(data ?? 0) };
+}
+
+/** Is a renewal window open now? (false before the database update is run) */
+export async function fetchRenewalOngoing(): Promise<boolean> {
+  const { data, error } = await supabase.rpc("renewal_ongoing");
+  return !error && data === true;
 }
 
 export interface ScholarQuestSubjectProgress {
@@ -1431,8 +1463,8 @@ export async function fetchScholarQuestProgress(scholarIdNumber: string): Promis
     .sort((a, b) => a.subjectName.localeCompare(b.subjectName));
 }
 
-export async function fetchScholarshipStatusCounts(): Promise<{ ok: boolean; error?: string; counts?: ScholarshipStatusCounts }> {
-  const { data, error } = await supabase.rpc("scholarship_status_counts");
+export async function fetchScholarshipStatusCounts(period?: ProgramPeriod | null): Promise<{ ok: boolean; error?: string; counts?: ScholarshipStatusCounts }> {
+  const { data, error } = period ? await supabase.rpc("scholarship_status_counts_snapshot", periodArgs(period)) : await supabase.rpc("scholarship_status_counts");
   if (error) return { ok: false, error: error.message };
   const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
   if (!row) return { ok: false, error: "No data returned." };

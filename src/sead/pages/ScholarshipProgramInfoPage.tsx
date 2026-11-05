@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { MapPin, School as SchoolIcon, BarChart3, ChevronLeft, AlertTriangle, GraduationCap, HandCoins } from "lucide-react";
+import { MapPin, School as SchoolIcon, BarChart3, ChevronLeft, AlertTriangle, GraduationCap, HandCoins, CalendarDays, Save, Info } from "lucide-react";
 import {
   fetchScholarshipStatusCounts, fetchScholarsByBarangay, fetchAllScholarsInformationForExport,
   fetchScholarsBySchool, fetchScholarsBySchoolYearLevel, fetchScholarsBySchoolYearLevelCourse,
   fetchScholarsByYearLevelForStatus, fetchScholarsBySchoolForStatus, fetchScholarsByBarangayForStatus, fetchScholarsByCourseForStatus,
-  type ScholarshipStatusCounts, type ScholarInformationRow,
+  fetchSnapshotRuns, saveSnapshot, fetchRenewalOngoing,
+  type ScholarshipStatusCounts, type ScholarInformationRow, type ProgramPeriod, type SnapshotRun,
 } from "../seadApi";
 import type { ScholarshipStatus } from "../types";
 import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
@@ -43,6 +44,8 @@ export function ScholarshipProgramInfoPage() {
   // anyone on this page (entry is already gated by the scholarship_program_info
   // tag alone), same as the Barangay/School sub-tabs one level down.
   const [topTab, setTopTab] = useState<TopTab>("mainstream");
+  const [renewalOngoing, setRenewalOngoing] = useState(false);
+  useEffect(() => { let on = true; fetchRenewalOngoing().then(v => { if (on) setRenewalOngoing(v); }); return () => { on = false; }; }, []);
 
   return (
     <div>
@@ -51,6 +54,13 @@ export function ScholarshipProgramInfoPage() {
         <h2 className="text-lg font-bold text-[#062444]">Scholarship Program Information</h2>
       </div>
       <p className="text-[12.5px] text-slate-500 mb-5">A birds-eye view of the scholarship program.</p>
+
+      {renewalOngoing && (
+        <p data-testid="renewal-ongoing-note" className="flex items-start gap-2 text-[12.5px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5 mb-5">
+          <Info size={15} className="shrink-0 mt-0.5" />
+          <span>A renewal is ongoing, so the data on this page is subject to change (scholars' status, school and year level are still being updated).</span>
+        </p>
+      )}
 
       <div className="flex items-center gap-2 mb-5 border-b border-[#e6ecf5]">
         <button onClick={() => setTopTab("mainstream")}
@@ -68,7 +78,91 @@ export function ScholarshipProgramInfoPage() {
   );
 }
 
+const TERMS = ["1st Semester", "2nd Semester", "Summer"] as const;
+const periodKey = (p: ProgramPeriod | null) => (p ? `${p.schoolYear}|${p.term}` : "live");
+const periodLabel = (p: ProgramPeriod) => `${p.term}, A.Y. ${p.schoolYear}`;
+function guessSchoolYear(): string {
+  const now = new Date(); const y = now.getFullYear();
+  return now.getMonth() >= 5 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+}
+const dateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+
+/** The view picker (Live = today's information, or a saved semester) above the numbers; saving a semester is done from here. */
 function MainstreamScholarsTab() {
+  const [runs, setRuns] = useState<SnapshotRun[]>([]);
+  const [period, setPeriod] = useState<ProgramPeriod | null>(null);
+  const [showSave, setShowSave] = useState(false);
+  async function loadRuns() { setRuns(await fetchSnapshotRuns()); }
+  useEffect(() => { loadRuns(); }, []);
+  const run = period ? runs.find(r => r.schoolYear === period.schoolYear && r.term === period.term) : undefined;
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2 mb-4 bg-white rounded-xl border border-[#e6ecf5] px-3.5 py-2.5">
+        <CalendarDays size={15} className="text-[#062444]" />
+        <label htmlFor="program-period" className="text-[12.5px] font-bold text-[#062444]">View by semester</label>
+        <select id="program-period" value={periodKey(period)}
+          onChange={e => { const r = runs.find(x => `${x.schoolYear}|${x.term}` === e.target.value); setPeriod(r ? { schoolYear: r.schoolYear, term: r.term } : null); }}
+          className="text-[12.5px] border border-[#d5deeb] rounded-lg px-2.5 py-1.5 bg-white text-[#062444]">
+          <option value="live">Live — as of today</option>
+          {runs.map(r => <option key={`${r.schoolYear}|${r.term}`} value={`${r.schoolYear}|${r.term}`}>{periodLabel(r)} (saved)</option>)}
+        </select>
+        <button onClick={() => setShowSave(true)} className="ml-auto flex items-center gap-1.5 text-[12.5px] font-bold text-[#0088cc] hover:underline">
+          <Save size={13} /> Save today's information as a semester
+        </button>
+      </div>
+      {period && run && (
+        <p data-testid="snapshot-note" className="text-[12.5px] text-slate-600 bg-[#f3f7fc] border border-[#e6ecf5] rounded-xl px-3.5 py-2.5 mb-4">
+          Showing <b>{periodLabel(period)}</b> — a copy saved on {dateLabel(run.takenAt)}{run.takenByName ? ` by ${run.takenByName}` : ""} ({run.scholarCount.toLocaleString()} scholars). It does not change when scholars change today.
+        </p>
+      )}
+      <MainstreamBody key={periodKey(period)} period={period} />
+      {showSave && <SaveSnapshotModal runs={runs} onClose={() => setShowSave(false)} onSaved={async (p) => { setShowSave(false); await loadRuns(); setPeriod(p); }} />}
+    </div>
+  );
+}
+
+function SaveSnapshotModal({ runs, onClose, onSaved }: { runs: SnapshotRun[]; onClose: () => void; onSaved: (p: ProgramPeriod) => void | Promise<void> }) {
+  const [schoolYear, setSchoolYear] = useState(guessSchoolYear());
+  const [term, setTerm] = useState<string>(TERMS[0]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const existing = runs.find(r => r.schoolYear === schoolYear.trim() && r.term === term);
+
+  async function save(replace: boolean) {
+    setBusy(true); setError("");
+    const r = await saveSnapshot(schoolYear, term, replace);
+    setBusy(false);
+    if (r.ok) await onSaved({ schoolYear: schoolYear.trim(), term });
+    else setError(r.error);
+  }
+
+  return (
+    <Modal title="Save today's information as a semester" onClose={onClose}>
+      <div className="space-y-3 text-[13px] text-slate-600">
+        <p>This keeps a copy of the scholars exactly as they are now (status, school, year level, program, barangay), under the semester you choose. You can open it later with “View by semester”.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="block"><span className="block text-[12px] font-bold text-[#062444] mb-1">Academic year</span>
+            <input value={schoolYear} onChange={e => setSchoolYear(e.target.value)} placeholder="2026-2027" className="w-full border border-[#d5deeb] rounded-lg px-2.5 py-1.5 text-[13px]" /></label>
+          <label className="block"><span className="block text-[12px] font-bold text-[#062444] mb-1">Semester</span>
+            <select value={term} onChange={e => setTerm(e.target.value)} className="w-full border border-[#d5deeb] rounded-lg px-2.5 py-1.5 text-[13px] bg-white">
+              {TERMS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select></label>
+        </div>
+        {existing && <p className="text-[12.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">This semester was already saved on {dateLabel(existing.takenAt)}. Saving again replaces that copy with today's information.</p>}
+        {error && <p className="flex items-center gap-1.5 text-[13px] font-semibold text-red-600 bg-red-50 rounded-lg px-3 py-2"><AlertTriangle size={13} /> {error}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} disabled={busy} className="px-3.5 py-2 rounded-lg text-[12.5px] font-bold border border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]">Cancel</button>
+          <button onClick={() => save(!!existing)} disabled={busy || !schoolYear.trim()} className="px-3.5 py-2 rounded-lg text-[12.5px] font-bold bg-[#062444] text-white disabled:opacity-50">
+            {busy ? "Saving…" : existing ? "Save again" : "Save semester"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function MainstreamBody({ period }: { period: ProgramPeriod | null }) {
   const [counts, setCounts] = useState<ScholarshipStatusCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -78,7 +172,7 @@ function MainstreamScholarsTab() {
   async function loadCounts() {
     setLoading(true);
     setError("");
-    const result = await fetchScholarshipStatusCounts();
+    const result = await fetchScholarshipStatusCounts(period);
     if (result.ok && result.counts) {
       setCounts(result.counts);
     } else {
@@ -101,7 +195,7 @@ function MainstreamScholarsTab() {
         <StatCard label="Removed" value={counts?.removed} loading={loading} colorClasses="bg-slate-200 text-slate-600" onClick={() => setActiveStatus("Removed")} />
       </div>
 
-      {activeStatus && <StatusDrilldown status={activeStatus} onClose={() => setActiveStatus(null)} />}
+      {activeStatus && <StatusDrilldown status={activeStatus} period={period} onClose={() => setActiveStatus(null)} />}
 
       <div className="flex items-center gap-2 mb-4">
         <button onClick={() => setSubtab("barangay")}
@@ -114,7 +208,7 @@ function MainstreamScholarsTab() {
         </button>
       </div>
 
-      {subtab === "barangay" ? <BarangaySubtab /> : <SchoolSubtab />}
+      {subtab === "barangay" ? <BarangaySubtab period={period} /> : <SchoolSubtab period={period} />}
     </div>
   );
 }
@@ -150,7 +244,7 @@ const STATUS_DIMENSIONS: { key: StatusDimension; label: string }[] = [
  * list export and the per-scholar comprehensive-profile download menu
  * both come for free.
  */
-function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClose: () => void }) {
+function StatusDrilldown({ status, period, onClose }: { status: ScholarshipStatus; period: ProgramPeriod | null; onClose: () => void }) {
   const [dimension, setDimension] = useState<StatusDimension | null>(null);
   const [rows, setRows] = useState<GroupCountRow[] | null>(null);
   const [loadingRows, setLoadingRows] = useState(false);
@@ -166,7 +260,7 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
     setError("");
     setLoadingRows(true);
     if (key === "yearLevel") {
-      const result = await fetchScholarsByYearLevelForStatus(status);
+      const result = await fetchScholarsByYearLevelForStatus(status, period);
       if (result.ok && result.counts) {
         const byLevel = new Map(result.counts.map(c => [c.label, c.count]));
         setRows(FORMATION_YEAR_LEVELS.map(l => ({ label: l, count: byLevel.get(l) ?? 0 })));
@@ -174,11 +268,11 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
         setError(result.error || "Failed to load the Year Level breakdown.");
       }
     } else if (key === "school") {
-      const result = await fetchScholarsBySchoolForStatus(status);
+      const result = await fetchScholarsBySchoolForStatus(status, period);
       if (result.ok && result.counts) setRows([...result.counts].sort((a, b) => b.count - a.count));
       else setError(result.error || "Failed to load the School breakdown.");
     } else if (key === "barangay") {
-      const result = await fetchScholarsByBarangayForStatus(status);
+      const result = await fetchScholarsByBarangayForStatus(status, period);
       if (result.ok && result.counts) {
         const byBarangay = new Map(result.counts.map(c => [c.label, c.count]));
         setRows(ALL_BARANGAYS.map(b => ({ label: b, count: byBarangay.get(b) ?? 0 })).sort((a, b) => b.count - a.count));
@@ -186,7 +280,7 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
         setError(result.error || "Failed to load the Barangay breakdown.");
       }
     } else {
-      const result = await fetchScholarsByCourseForStatus(status);
+      const result = await fetchScholarsByCourseForStatus(status, period);
       if (result.ok && result.counts) setRows([...result.counts].sort((a, b) => b.count - a.count));
       else setError(result.error || "Failed to load the Program breakdown.");
     }
@@ -202,7 +296,7 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
       dimension === "school" ? { status, schoolExact: value } :
       dimension === "course" ? { status, courseExact: value } :
       { status, barangay: value };
-    const rows = await fetchAllScholarsInformationForExport(filters);
+    const rows = await fetchAllScholarsInformationForExport(filters, period);
     setScholarRows(rows);
     setLoadingScholars(false);
   }
@@ -251,6 +345,7 @@ function StatusDrilldown({ status, onClose }: { status: ScholarshipStatus; onClo
               filenamePrefix={`scholars-${slugify(status)}-${slugify(dimensionLabel)}-${slugify(selectedValue)}`}
               defaultExpanded
               modalLevel={1}
+              profilesAvailable={!period}
             />
           )}
         </Modal>
@@ -279,7 +374,7 @@ function ErrorRetry({ message, onRetry }: { message: string; onRetry: () => void
  * from who actually has scholars), sorted by count so both the chart and
  * table read most-to-least at a glance.
  */
-function BarangaySubtab() {
+function BarangaySubtab({ period }: { period: ProgramPeriod | null }) {
   const [counts, setCounts] = useState<GroupCountRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -290,7 +385,7 @@ function BarangaySubtab() {
   async function loadCounts() {
     setLoading(true);
     setError("");
-    const result = await fetchScholarsByBarangay();
+    const result = await fetchScholarsByBarangay(period);
     if (result.ok && result.counts) {
       const byBarangay = new Map(result.counts.map(c => [c.barangay, c.count]));
       const merged = ALL_BARANGAYS.map(b => ({ label: b, count: byBarangay.get(b) ?? 0 }))
@@ -307,7 +402,7 @@ function BarangaySubtab() {
   async function handleSelect(barangay: string) {
     setSelected(barangay);
     setLoadingScholars(true);
-    const rows = await fetchAllScholarsInformationForExport({ barangay });
+    const rows = await fetchAllScholarsInformationForExport({ barangay }, period);
     setScholarRows(rows);
     setLoadingScholars(false);
   }
@@ -334,6 +429,7 @@ function BarangaySubtab() {
               filtersSummary={`Filters: Barangay = ${selected}`}
               filenamePrefix={`scholars-barangay-${slugify(selected)}`}
               defaultExpanded
+              profilesAvailable={!period}
             />
           )}
         </Modal>
@@ -349,7 +445,7 @@ function BarangaySubtab() {
  * program adds or drops partner schools, so nothing here assumes any
  * particular count or set of schools.
  */
-function SchoolSubtab() {
+function SchoolSubtab({ period }: { period: ProgramPeriod | null }) {
   const [schoolCounts, setSchoolCounts] = useState<GroupCountRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -371,7 +467,7 @@ function SchoolSubtab() {
   async function loadSchoolCounts() {
     setLoading(true);
     setError("");
-    const result = await fetchScholarsBySchool();
+    const result = await fetchScholarsBySchool(period);
     if (result.ok && result.counts) {
       setSchoolCounts([...result.counts].map(c => ({ label: c.label, count: c.count })).sort((a, b) => b.count - a.count));
     } else {
@@ -391,7 +487,7 @@ function SchoolSubtab() {
     setScholarRows(null);
     setYearLevelError("");
     setLoadingYearLevels(true);
-    const result = await fetchScholarsBySchoolYearLevel(school);
+    const result = await fetchScholarsBySchoolYearLevel(school, period);
     if (result.ok && result.counts) setYearLevelCounts([...result.counts].sort((a, b) => b.count - a.count));
     else setYearLevelError(result.error || "Failed to load year levels.");
     setLoadingYearLevels(false);
@@ -405,7 +501,7 @@ function SchoolSubtab() {
     setScholarRows(null);
     setCourseError("");
     setLoadingCourses(true);
-    const result = await fetchScholarsBySchoolYearLevelCourse(selectedSchool, yearLevel);
+    const result = await fetchScholarsBySchoolYearLevelCourse(selectedSchool, yearLevel, period);
     if (result.ok && result.counts) setCourseCounts([...result.counts].sort((a, b) => b.count - a.count));
     else setCourseError(result.error || "Failed to load programs.");
     setLoadingCourses(false);
@@ -415,7 +511,7 @@ function SchoolSubtab() {
     if (!selectedSchool || !selectedYearLevel) return;
     setSelectedCourse(course);
     setLoadingScholars(true);
-    const rows = await fetchAllScholarsInformationForExport({ schoolExact: selectedSchool, yearLevel: selectedYearLevel, courseExact: course });
+    const rows = await fetchAllScholarsInformationForExport({ schoolExact: selectedSchool, yearLevel: selectedYearLevel, courseExact: course }, period);
     setScholarRows(rows);
     setLoadingScholars(false);
   }
@@ -476,6 +572,7 @@ function SchoolSubtab() {
               filtersSummary={`Filters: School = ${selectedSchool}; Year Level = ${selectedYearLevel}; Program = ${selectedCourse}`}
               filenamePrefix={`scholars-${slugify(selectedSchool)}-${slugify(selectedYearLevel)}-${slugify(selectedCourse)}`}
               defaultExpanded
+              profilesAvailable={!period}
             />
           )}
         </Modal>
