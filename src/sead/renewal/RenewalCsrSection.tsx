@@ -34,6 +34,7 @@ export function RenewalCsrSection({ recordId, scholarName, canAct }: { recordId:
       <h3 className="border-b border-[#e6ecf5] px-4 py-2.5 text-[15px] font-bold text-[#062444]">Certificate of Scholarship Renewal (CSR)</h3>
       <div className="px-4 py-3 text-[14px] text-slate-800">
         {!info.enabled && <p>Certificates are switched off, so {scholarName} cannot download one yet. {canAct ? "Switch them on in the Certificate tab." : ""}</p>}
+        {info.testing && <p className="mb-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 font-semibold text-amber-950">Certificates are ON FOR TESTING only: this renewal is in a testers-only window, so {scholarName} can download a test certificate. It is not a real one.</p>}
         {info.enabled && !hasCopy && <p>No certificate has been made yet. It is made the first time {scholarName} (or you) asks for it.</p>}
         {hasCopy && (
           <ul className="space-y-1.5">

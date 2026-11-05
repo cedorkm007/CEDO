@@ -97,7 +97,8 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
             <label className="font-bold text-[#062444]" htmlFor="renewal-term">Renewal term</label>
             {windows && windows.length > 0 ? (
               <select id="renewal-term" value={current?.id ?? ""} onChange={e => setWindowId(e.target.value)} className="rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] bg-white outline-none focus:border-[#062444]">
-                {windows.map(w => <option key={w.id} value={w.id}>{termLabelOf(w.schoolYear, w.term)}</option>)}
+                {/* one entry per TERM: a term can have several windows (one per group of schools), and the lists below cover the whole term */}
+                {windows.filter((w, i) => windows.findIndex(x => x.schoolYear === w.schoolYear && x.term === w.term) === i).map(w => <option key={w.id} value={w.id}>{termLabelOf(w.schoolYear, w.term)}</option>)}
               </select>
             ) : <span className="text-slate-700">No renewal window yet — open one in the Windows tab.</span>}
             {current && <span className="text-slate-700">{formatDay(current.opensOn)} to {formatDay(current.closesOn)}</span>}
