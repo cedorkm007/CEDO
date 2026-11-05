@@ -11,7 +11,7 @@ const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const read = f => fs.readFileSync(f, "utf8");
-const FILES = ["supabase_migration_renewal_window_schools_a_column.sql", "supabase_migration_renewal_window_schools_b_functions.sql", "supabase_migration_renewal_multi_windows_a_constraint.sql", "supabase_migration_renewal_multi_windows_b_functions.sql", "supabase_migration_renewal_multi_windows_c_old_save.sql"];
+const FILES = ["supabase_migration_renewal_window_schools_a_column.sql", "supabase_migration_renewal_window_schools_b_functions.sql", "supabase_migration_renewal_multi_windows_a_constraint.sql", "supabase_migration_renewal_multi_windows_b_functions.sql", "supabase_migration_renewal_multi_windows_c_old_save.sql", "supabase_migration_renewal_multi_windows_d_test_window_beside.sql"];
 async function as(uid, fn, role = "authenticated") {
   return db.transaction(async tx => {
     await tx.exec(`set local role ${role}`);
@@ -37,6 +37,8 @@ const save = (o = {}) => attempt(EVALUATOR, "select public.renewal_window_save($
   [o.id ?? null, o.year ?? Y, o.term ?? T, o.opens ?? day(-1), o.closes ?? day(20), true, o.note ?? "", o.testers ?? null, o.schools ?? null]);
 const scholarsOf = async schoolId => (await q("select scholar_id_number s from scholars where school_id = $1 and status not in ('Removed', 'On leave') order by scholar_id_number", [schoolId])).map(r => r.s);
 const sees = async s => (await rows(uidOf(s), "select public.renewal_my_overview() o"))[0].o.windows.filter(w => w.window.school_year === Y && w.window.term === T).map(w => w.window.id);
+const has = async (wid, s) => (await q("select public._renewal_window_has_scholar($1, $2) v", [wid, s]))[0].v;
+const count0 = async (sql, p = []) => Number((await q(sql, p))[0].n);
 const notApplied = async () => Number((await rows(EVALUATOR, "select public.renewal_dashboard($1, $2) d", [Y, T]))[0].d.totals.not_applied);
 
 console.log("One term, several windows");
@@ -58,8 +60,25 @@ const wLetters = await save({ schools: [LETTERS], opens: day(3), closes: day(30)
 check("another school gets its own window with its own dates", wLetters.ok, wLetters.msg);
 const second = await save({ schools: null });
 check("a term has only one 'all schools' window", !second.ok && /one "all schools" window/.test(second.msg), second.msg);
-const testersToo = await save({ testers: [lowerScholars[0]], schools: [NOPASS] });
-check("a testers-only window cannot be added to a term that has other windows", !testersToo.ok && /testers-only window must be the only window/.test(testersToo.msg), testersToo.msg);
+// a TEST window beside the real windows (file D)
+const testerA = lowerScholars[0], testerB = lowerScholars[1], testerH = higherScholars.find(x => x !== earlyBird);
+const testWin = await save({ testers: [testerA, testerH], opens: day(0), closes: day(15), note: "TEST" });
+check("a testers-only window CAN be added to a term that already has real windows", testWin.ok, testWin.msg);
+const idTest = testWin.rows?.[0]?.id;
+const twoTesters = await save({ testers: [testerA], opens: day(0), closes: day(15) });
+check("two test windows of one term cannot list the same scholar (the message names them)", !twoTesters.ok && /already testers in another test window/.test(twoTesters.msg) && new RegExp(testerA).test(twoTesters.msg), twoTesters.msg);
+check("a tester belongs to the TEST window only: not to the general window, nor to their school's own window", await has(idTest, testerA) && !(await has(base.id, testerA)) && await has(idTest, testerH) && !(await has(wHigher.rows[0].id, testerH)));
+check("a scholar who is not a tester is unchanged: the general window for the Lower school, the school's own window for the Higher school, and the test window is not theirs", await has(base.id, testerB) && !(await has(idTest, testerB)));
+check("a tester sees ONLY the test window; others never see it", JSON.stringify(await sees(testerA)) === JSON.stringify([idTest]) && !(await sees(testerB)).includes(idTest) && JSON.stringify(await sees(testerB)) === JSON.stringify([base.id]));
+check("the database hides the test window row from everybody who is not a tester (not only the screen)", (await rows(uidOf(testerB), "select count(*)::int n from renewal_windows where id = $1", [idTest]))[0].n === 0 && (await rows(uidOf(testerA), "select count(*)::int n from renewal_windows where id = $1", [idTest]))[0].n === 1);
+const testerWrong = await attempt(uidOf(testerA), "select public.renewal_apply($1, 'School', 'Program', '2nd Year', '') r", [base.id]);
+check("a tester cannot apply in a real window (the test window is theirs)", !testerWrong.ok && /not open for your school/.test(testerWrong.msg), testerWrong.msg);
+const testerRight = await attempt(uidOf(testerA), "select public.renewal_apply($1, 'School', 'Program', '2nd Year', '') r", [idTest]);
+check("…and CAN apply in the test window; the application is saved there", testerRight.ok && (await q("select window_id from renewal_records where scholar_id_number = $1 and school_year = $2 and term = $3", [testerA, Y, T]))[0].window_id === idTest, testerRight.msg);
+const clearTest = await rows(EVALUATOR, "select public.renewal_window_clear_test_data($1) r", [idTest]);
+check("'Clear test data' removes the testers' applications of the test window and nothing else", Number(clearTest[0].r.records) === 1 && await count0("select count(*)::int n from renewal_records where scholar_id_number = $1 and school_year = $2 and term = $3", [testerA, Y, T]) === 0);
+await q("delete from renewal_windows where id = $1", [idTest]);
+check("with the test window gone, the testers are back in their real windows", await has(base.id, testerA) && await has(wHigher.rows[0].id, testerH));
 const idHigher = wHigher.rows[0].id, idLetters = wLetters.rows[0].id;
 check("a window cannot be edited to take a school that is in another window", !(await save({ id: idHigher, schools: [HIGHER, LETTERS], opens: day(0), closes: day(5) })).ok);
 check("…and cannot be changed to 'all schools' while another all-schools window exists", !(await save({ id: idHigher, schools: [], opens: day(0), closes: day(5) })).ok);
@@ -76,7 +95,6 @@ check("…and a first window for a new term still works through it (all schools)
 await q("delete from renewal_windows where school_year = '2031-2032'");
 
 console.log("\nWho belongs to which window");
-const has = async (wid, s) => (await q("select public._renewal_window_has_scholar($1, $2) v", [wid, s]))[0].v;
 check("a scholar of the Letter-Grade school is in the Letter-Grade window, not the general one nor the Higher one", await has(idLetters, lettersScholars[0]) && !(await has(base.id, lettersScholars[0])) && !(await has(idHigher, lettersScholars[0])));
 check("a scholar of the Lower school (no window of their own) is in the general window only", await has(base.id, lowerScholars[0]) && !(await has(idHigher, lowerScholars[0])) && !(await has(idLetters, lowerScholars[0])));
 check("every scholar of the term is still counted exactly once: the 'not applied' total did not change (except for the one who applied)", await notApplied() === before - 1, `${await notApplied()} vs ${before}`);
@@ -126,7 +144,8 @@ check("with the extra windows gone, the term has one window again and everybody 
 const tw = await save({ id: base.id, testers: [lowerScholars[0]], opens: ymd(base.opens_on), closes: ymd(base.closes_on) });
 check("the term's only window can become a testers-only window (as before)", tw.ok, tw.msg);
 const afterTest = await save({ schools: [HIGHER], opens: day(0), closes: day(5) });
-check("another window cannot be added while the term has a testers-only window (finish the test first)", !afterTest.ok && /testers-only window \(a test\)/.test(afterTest.msg), afterTest.msg);
+check("a real window for a school CAN be added while the term's only window is a test window", afterTest.ok, afterTest.msg);
+await q("delete from renewal_windows where school_year = $1 and term = $2 and id <> $3", [Y, T, base.id]);
 await save({ id: base.id, testers: [], opens: ymd(base.opens_on), closes: ymd(base.closes_on) });
 check("once it is opened to everyone, another window can be added again", (await save({ schools: [HIGHER], opens: day(0), closes: day(5) })).ok);
 
@@ -146,6 +165,20 @@ const dup = await attempt(null, "select 1").then(() => q("insert into renewal_wi
 check("after the undo of A a second window for the same term is refused by the table again", !dup.ok && /duplicate key|unique/i.test(dup.msg), dup.msg);
 await db.exec(read(FILES[2])); await db.exec(read(FILES[3]));
 check("the undo of C puts back the older short form, and C can be run again", await (async () => { await db.exec(read("undo_renewal_multi_windows_c.sql")); const old = (await q("select position('There is already a renewal window' in pg_get_functiondef(p.oid)) > 0 as o from pg_proc p where p.proname = 'renewal_window_save' and pronargs = 8"))[0].o; await db.exec(read(FILES[4])); const back = !(await q("select position('There is already a renewal window' in pg_get_functiondef(p.oid)) > 0 as o from pg_proc p where p.proname = 'renewal_window_save' and pronargs = 8"))[0].o; return old && back; })());
+// file D: undo and put back
+await q("delete from renewal_windows where school_year = $1 and term = $2 and id <> $3", [Y, T, base.id]);
+await db.exec(read(FILES[5]));
+const dTest = await save({ testers: [testerA], opens: day(0), closes: day(15) });
+const dReal = await save({ schools: [HIGHER], opens: day(0), closes: day(5) });
+const undoD = await db.exec(read("undo_renewal_multi_windows_d.sql")).then(() => ({ ok: true }), e => ({ ok: false, msg: String(e.message) }));
+check("the undo of D STOPS (changes nothing) while a term has a test window and another window", dTest.ok && dReal.ok && !undoD.ok && /STOPPED/.test(undoD.msg), undoD.msg);
+await q("delete from renewal_windows where school_year = $1 and term = $2 and id <> $3", [Y, T, base.id]);
+await db.exec(read("undo_renewal_multi_windows_d.sql"));
+await save({ schools: [HIGHER], opens: day(0), closes: day(5) });
+const backToOld = await save({ testers: [testerA], opens: day(0), closes: day(15) });
+check("after the undo of D a test window must be alone in its term again", !backToOld.ok && /must be the only window/.test(backToOld.msg), backToOld.msg);
+await q("delete from renewal_windows where school_year = $1 and term = $2 and id <> $3", [Y, T, base.id]);
+await db.exec(read(FILES[5]));
 check("they can be put back after the undo, twice is safe", (await db.exec(read(FILES[2])), await db.exec(read(FILES[3])), await db.exec(read(FILES[4])), true) && (await q("select 1 from pg_proc where proname = '_renewal_window_has_scholar'")).length === 1);
 
 console.log(`\n${passed} passed, ${failed} failed`);
