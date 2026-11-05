@@ -60,7 +60,7 @@ function Choices({ legend, options, picked, onChange }: { legend: string; option
  * "Dashboard" tab of Scholar Renewal: how the selected term is going, in numbers the evaluator and the Division Head can read at a glance, and the
  * Excel export of the whole term (summary, every application, who has not applied, by school, INC, consultations). The database makes every number.
  */
-export function RenewalDashboardTab({ schoolYear, term, refreshKey }: { schoolYear: string; term: string; refreshKey: number }) {
+export function RenewalDashboardTab({ schoolYear, term, refreshKey, canExport = true }: { schoolYear: string; term: string; refreshKey: number; /** The Excel file holds every scholar's details: only the evaluator, the Division Head and the heads of SEAD get it. The SDP Reconsideration Approver reads the numbers only. */ canExport?: boolean }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -104,12 +104,12 @@ export function RenewalDashboardTab({ schoolYear, term, refreshKey }: { schoolYe
             {data.window ? <>{formatDay(data.window.opensOn)} to {formatDay(data.window.closesOn)} · {data.window.isOpen ? `open, ${data.window.daysLeft} day${data.window.daysLeft === 1 ? "" : "s"} left` : "closed"}</> : "No renewal window for this term"}
           </p>
         </div>
-        <button type="button" onClick={() => void exportExcel()} disabled={busy}
+        {canExport && <button type="button" onClick={() => void exportExcel()} disabled={busy}
           className="inline-flex items-center gap-2 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-[14px] font-bold text-green-800 hover:bg-green-100 disabled:opacity-60">
           {busy ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <FileSpreadsheet size={15} aria-hidden="true" />} Download Excel{isFiltered(filter) ? " (filtered)" : ""}
-        </button>
+        </button>}
       </div>
-      <details className="rounded-xl border border-[#e6ecf5] bg-white">
+      {canExport && <details className="rounded-xl border border-[#e6ecf5] bg-white">
         <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-[14px] font-bold text-[#062444]"><ChevronDown size={15} aria-hidden="true" /> Choose what goes into the Excel file <span className="font-normal text-slate-700">— {describeFilter(filter)}</span></summary>
         <div className="space-y-3 border-t border-[#e6ecf5] px-4 py-3">
           <p className="text-[14px] text-slate-700">Tick what you want. Nothing ticked means everyone. Only the chosen scholars leave the database, and the export log records the filter.</p>
@@ -121,7 +121,7 @@ export function RenewalDashboardTab({ schoolYear, term, refreshKey }: { schoolYe
           </div>
           {isFiltered(filter) && <button type="button" onClick={() => setFilter(NO_FILTER)} className="text-[14px] font-semibold text-[#00709f] hover:underline">Clear the choices</button>}
         </div>
-      </details>
+      </details>}
       {message && <p role="status" className="text-[14px] font-semibold text-green-800">{message}</p>}
       {error && <p role="alert" className="text-[14px] text-red-700">{error}</p>}
 
