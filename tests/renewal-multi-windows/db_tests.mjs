@@ -11,7 +11,7 @@ const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const read = f => fs.readFileSync(f, "utf8");
-const FILES = ["supabase_migration_renewal_window_schools_a_column.sql", "supabase_migration_renewal_window_schools_b_functions.sql", "supabase_migration_renewal_multi_windows_a_constraint.sql", "supabase_migration_renewal_multi_windows_b_functions.sql"];
+const FILES = ["supabase_migration_renewal_window_schools_a_column.sql", "supabase_migration_renewal_window_schools_b_functions.sql", "supabase_migration_renewal_multi_windows_a_constraint.sql", "supabase_migration_renewal_multi_windows_b_functions.sql", "supabase_migration_renewal_multi_windows_c_old_save.sql"];
 async function as(uid, fn, role = "authenticated") {
   return db.transaction(async tx => {
     await tx.exec(`set local role ${role}`);
@@ -64,6 +64,16 @@ const idHigher = wHigher.rows[0].id, idLetters = wLetters.rows[0].id;
 check("a window cannot be edited to take a school that is in another window", !(await save({ id: idHigher, schools: [HIGHER, LETTERS], opens: day(0), closes: day(5) })).ok);
 check("…and cannot be changed to 'all schools' while another all-schools window exists", !(await save({ id: idHigher, schools: [], opens: day(0), closes: day(5) })).ok);
 check("its dates can be edited", (await save({ id: idHigher, opens: day(0), closes: day(6) })).ok && ymd((await q("select closes_on from renewal_windows where id = $1", [idHigher]))[0].closes_on) === day(6));
+// the Windows tab saves through the OLDER short form (no schools) when "All schools" is chosen or only dates are edited
+const short = (o = {}) => attempt(EVALUATOR, "select public.renewal_window_save($1, $2, $3, $4::date, $5::date, $6, $7) id", [o.id ?? null, o.year ?? Y, o.term ?? T, o.opens ?? day(-1), o.closes ?? day(20), true, o.note ?? ""]);
+const shortSecond = await short();
+check("the older short form (what the screen sends for 'All schools') also follows the new rules: a second 'all schools' window gets the clear message, not 'edit that one instead'", !shortSecond.ok && /one "all schools" window/.test(shortSecond.msg) && !/edit that one instead/.test(shortSecond.msg), shortSecond.msg);
+const shortEdit = await short({ id: base.id, opens: ymd(base.opens_on), closes: day(25) });
+check("…and editing the dates of the 'all schools' window through it works while other windows exist", shortEdit.ok && ymd((await q("select closes_on from renewal_windows where id = $1", [base.id]))[0].closes_on) === day(25), shortEdit.msg);
+await q("update renewal_windows set closes_on = $2 where id = $1", [base.id, ymd(base.closes_on)]);
+const shortNew = await short({ year: "2031-2032", opens: day(1), closes: day(9) });
+check("…and a first window for a new term still works through it (all schools)", shortNew.ok && (await q("select school_ids from renewal_windows where id = $1", [shortNew.rows[0].id]))[0].school_ids === null, shortNew.msg);
+await q("delete from renewal_windows where school_year = '2031-2032'");
 
 console.log("\nWho belongs to which window");
 const has = async (wid, s) => (await q("select public._renewal_window_has_scholar($1, $2) v", [wid, s]))[0].v;
@@ -135,7 +145,8 @@ await db.exec(read("undo_renewal_multi_windows_a.sql"));
 const dup = await attempt(null, "select 1").then(() => q("insert into renewal_windows (school_year, term, opens_on, closes_on) values ($1, $2, current_date, current_date + 3)", [Y, T])).then(() => ({ ok: true }), e => ({ ok: false, msg: String(e.message) }));
 check("after the undo of A a second window for the same term is refused by the table again", !dup.ok && /duplicate key|unique/i.test(dup.msg), dup.msg);
 await db.exec(read(FILES[2])); await db.exec(read(FILES[3]));
-check("they can be put back after the undo, twice is safe", (await db.exec(read(FILES[2])), await db.exec(read(FILES[3])), true) && (await q("select 1 from pg_proc where proname = '_renewal_window_has_scholar'")).length === 1);
+check("the undo of C puts back the older short form, and C can be run again", await (async () => { await db.exec(read("undo_renewal_multi_windows_c.sql")); const old = (await q("select position('There is already a renewal window' in pg_get_functiondef(p.oid)) > 0 as o from pg_proc p where p.proname = 'renewal_window_save' and pronargs = 8"))[0].o; await db.exec(read(FILES[4])); const back = !(await q("select position('There is already a renewal window' in pg_get_functiondef(p.oid)) > 0 as o from pg_proc p where p.proname = 'renewal_window_save' and pronargs = 8"))[0].o; return old && back; })());
+check("they can be put back after the undo, twice is safe", (await db.exec(read(FILES[2])), await db.exec(read(FILES[3])), await db.exec(read(FILES[4])), true) && (await q("select 1 from pg_proc where proname = '_renewal_window_has_scholar'")).length === 1);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
