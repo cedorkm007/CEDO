@@ -4,7 +4,7 @@ import { ArrowLeft, CheckCircle2, Loader2, Paperclip, ShieldCheck, XCircle } fro
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
 import { DIVISION_HEAD_DECISION_LABEL, DOC_LABEL, DOC_NEEDS_APPROVAL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, sdpLackingText, sdpReconsiderationStatusText, termLabelOf, type DivisionHeadDecision } from "@/lib/renewal";
 import {
-  confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, fetchRenewalSdpAfter, getStaffRenewalDocumentUrl, returnRenewal, reviewDocument, type DetailDocument, type RenewalDetail,
+  confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, fetchRenewalSdpAfter, getStaffRenewalDocumentUrl, returnRenewal, revertRenewalApplication, reviewDocument, type DetailDocument, type RenewalDetail,
 } from "../renewalApi";
 import { ReasonDialog } from "./ReasonDialog";
 import { RenewalCsrSection } from "./RenewalCsrSection";
@@ -24,7 +24,7 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
   const [detail, setDetail] = useState<RenewalDetail | null>(null);
   const [sdpAfter, setSdpAfter] = useState<Awaited<ReturnType<typeof fetchRenewalSdpAfter>>>(null);
   const [error, setError] = useState("");
-  const [dialog, setDialog] = useState<"confirm" | "confirmReconsidered" | "sendDivisionHead" | "endorse" | "return" | "accept" | "decline" | null>(null);
+  const [dialog, setDialog] = useState<"confirm" | "confirmReconsidered" | "sendDivisionHead" | "endorse" | "return" | "revert" | "accept" | "decline" | null>(null);
   const [dh, setDh] = useState<DivisionHeadStatus | null>(null);
   const [fileError, setFileError] = useState("");
   const [reviewing, setReviewing] = useState<{ doc: DetailDocument; approve: boolean } | null>(null);
@@ -84,6 +84,7 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
             {r.stage === "needs_consultation_division_head" && !withDivisionHead && !awaitingFinal && <button onClick={() => setDialog("sendDivisionHead")} className="inline-flex items-center gap-1.5 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e]"><ShieldCheck size={15} aria-hidden="true" /> {sentBack ? "Send to the Division Head again" : "Send to the Division Head"}</button>}
             {(r.stage === "reconsidered" || r.stage === "division_head_approved") && <button onClick={() => setDialog("confirmReconsidered")} className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-4 py-2 text-[14px] font-bold text-white hover:bg-green-900"><CheckCircle2 size={15} aria-hidden="true" /> Confirm renewal</button>}
             {(active || r.stage === "ready_for_confirmation") && <button onClick={() => setDialog("return")} className="rounded-lg border border-[#062444]/40 px-4 py-2 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]">Return with comments</button>}
+            {r.stage !== "removed" && <button onClick={() => setDialog("revert")} className="rounded-lg border border-red-700 px-4 py-2 text-[14px] font-bold text-red-800 hover:bg-red-50">Revert application</button>}
           </div>
         )}
       </div>
@@ -261,6 +262,15 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
       {dialog === "return" && (
         <ReasonDialog title="Return with comments" intro="The scholar will see your comment and can submit again." label="Comment for the scholar" confirmLabel="Return application" minLength={5} onCancel={() => setDialog(null)}
           onConfirm={async c => { const x = await returnRenewal(r.id, c); if (!x.ok) return x.error; setDialog(null); await after(); return null; }} />
+      )}
+      {dialog === "revert" && (
+        <ReasonDialog title="Revert this application to the start" danger label="Why is it reverted? (kept in the log)" confirmLabel="Revert application" minLength={5} onCancel={() => setDialog(null)}
+          intro={<>
+            <p><strong>{s.name}</strong>'s application for {termLabelOf(r.schoolYear, r.term)} (now: <strong>{r.stage.replace(/_/g, " ")}</strong>) will be <strong>removed</strong>, so the scholar sees "Apply for renewal" again and applies from the beginning. {s.name} is told to apply again.</p>
+            <p className="mt-2">Removed with it: its history, uploaded documents, grades the scholar entered, the SDP reconsideration request, certificate records and notices. A booked consultation time is freed. <strong>No backup copy is kept, so this cannot be undone.</strong></p>
+            <p className="mt-2">The scholar's SDP credits, the school's grades, the scholarship status and other terms are not touched. The database refuses (and tells you why) when the renewal already changed the scholar's status, the Division Head decided the case, or an SDP reconsideration was approved.</p>
+          </>}
+          onConfirm={async reason => { const x = await revertRenewalApplication(r.id, reason); if (!x.ok) return x.error; setDialog(null); onChanged(); onBack(); return null; }} />
       )}
       {(dialog === "accept" || dialog === "decline") && (
         <ReasonDialog title={dialog === "accept" ? "Accept the late application" : "Decline the late application"} intro="The scholar will be told your reason." label="Reason" confirmLabel={dialog === "accept" ? "Accept" : "Decline"} danger={dialog === "decline"} onCancel={() => setDialog(null)}

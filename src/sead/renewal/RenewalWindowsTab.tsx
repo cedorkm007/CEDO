@@ -42,7 +42,7 @@ export function RenewalWindowsTab({ windows, onChanged }: { windows: RenewalWind
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div>
           <h2 className="text-[15px] font-bold text-[#062444]">Renewal windows</h2>
-          <p className="text-[14px] text-slate-700">Scholars apply once per term. Each window has a start and an end date.</p>
+          <p className="text-[14px] text-slate-700">Scholars apply once per term. Each window has a start and an end date. A term can have <strong>several windows</strong>: to give some schools their own schedule, open another window for the same term and tick those schools. A school can be in only one window of a term.</p>
         </div>
         <button onClick={() => setEditing("new")} className="inline-flex items-center gap-1.5 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e]"><Plus size={15} aria-hidden="true" /> Open a renewal window</button>
       </div>
@@ -53,6 +53,9 @@ export function RenewalWindowsTab({ windows, onChanged }: { windows: RenewalWind
           {windows.map(w => {
             const state = windowState(w.opensOn, w.closesOn, w.lateAllowed);
             const basis = renewalBasis(w.schoolYear, w.term);
+            // the schools that have their own window in the same term (an "all schools" window skips them)
+            const ownSchoolIds = Array.from(new Set(windows.filter(x => x.id !== w.id && x.schoolYear === w.schoolYear && x.term === w.term && x.testers.length === 0).flatMap(x => x.schoolIds)));
+            const sameTerm = windows.filter(x => x.schoolYear === w.schoolYear && x.term === w.term).length;
             return (
               <li key={w.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e6ecf5] bg-white px-4 py-3">
                 <div>
@@ -60,7 +63,8 @@ export function RenewalWindowsTab({ windows, onChanged }: { windows: RenewalWind
                   <p className="text-[14px] text-slate-700">{formatDay(w.opensOn)} to {formatDay(w.closesOn)} · <strong>{STATE_TEXT[state]}</strong>{!w.lateAllowed && " · late applications refused"}</p>
                   {basis && <p className="text-[13.5px] text-slate-600">Checks {termLabelOf(basis.schoolYear, basis.term)}</p>}
                   {w.note && <p className="text-[13.5px] text-slate-700">Note: {w.note}</p>}
-                  <p className="text-[13.5px] text-slate-700">{w.schoolIds.length === 0 ? "For the scholars of all schools" : <>For the scholars of <strong>{w.schoolIds.length} school{w.schoolIds.length === 1 ? "" : "s"}</strong>: {w.schoolIds.map(id => schools?.find(s => s.schoolId === id)?.name ?? "a school").join(", ")}</>}</p>
+                  {sameTerm > 1 && <p className="text-[13.5px] font-semibold text-[#00709f]">One of {sameTerm} windows for this term (each school follows one)</p>}
+                  <p className="text-[13.5px] text-slate-700">{w.schoolIds.length === 0 ? (ownSchoolIds.length > 0 && w.testers.length === 0 ? <>For the scholars of all schools <strong>except</strong> the {ownSchoolIds.length} school{ownSchoolIds.length === 1 ? "" : "s"} with their own window: {ownSchoolIds.map(id => schools?.find(s => s.schoolId === id)?.name ?? "a school").join(", ")}</> : "For the scholars of all schools") : <>For the scholars of <strong>{w.schoolIds.length} school{w.schoolIds.length === 1 ? "" : "s"}</strong>: {w.schoolIds.map(id => schools?.find(s => s.schoolId === id)?.name ?? "a school").join(", ")}</>}</p>
                   {w.testers.length > 0 && <p className="mt-1 inline-flex flex-wrap items-center gap-1.5 rounded-md bg-amber-100 px-2 py-1 text-[13.5px] font-bold text-amber-950"><FlaskConical size={14} aria-hidden="true" /> TESTERS ONLY — only these {w.testers.length} scholar{w.testers.length === 1 ? "" : "s"} can see it: <span className="font-normal">{w.testers.join(", ")}</span></p>}
                 </div>
                 <div className="flex flex-wrap gap-3">
@@ -73,12 +77,12 @@ export function RenewalWindowsTab({ windows, onChanged }: { windows: RenewalWind
           })}
         </ul>
       )}
-      {editing && <WindowForm initial={editing === "new" ? null : editing} schools={schoolsLegacy ? undefined : schools ?? []} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await onChanged(); }} />}
+      {editing && <WindowForm initial={editing === "new" ? null : editing} windows={windows} schools={schoolsLegacy ? undefined : schools ?? []} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await onChanged(); }} />}
     </div>
   );
 }
 
-function WindowForm({ initial, schools, onClose, onSaved }: { initial: RenewalWindowRow | null; schools?: WindowSchool[]; onClose: () => void; onSaved: () => Promise<void> }) {
+function WindowForm({ initial, windows, schools, onClose, onSaved }: { initial: RenewalWindowRow | null; windows: RenewalWindowRow[]; schools?: WindowSchool[]; onClose: () => void; onSaved: () => Promise<void> }) {
   const [schoolYear, setSchoolYear] = useState(initial?.schoolYear ?? "");
   const [term, setTerm] = useState<string>(initial?.term ?? RENEWAL_TERMS[0]);
   const [opensOn, setOpensOn] = useState(initial?.opensOn ?? "");
@@ -90,6 +94,11 @@ function WindowForm({ initial, schools, onClose, onSaved }: { initial: RenewalWi
   const [onlySchools, setOnlySchools] = useState((initial?.schoolIds.length ?? 0) > 0);
   const [pickedSchools, setPickedSchools] = useState<Set<string>>(() => new Set(initial?.schoolIds ?? []));
   const realSchools = (schools ?? []).filter(s => s.schoolId !== null);
+  // the other windows of the same term: a school that is in one of them cannot be ticked here, and there is only one "all schools" window per term
+  const others = windows.filter(w => w.id !== initial?.id && w.schoolYear === schoolYear.trim() && w.term === term && w.testers.length === 0);
+  const takenBy = new Map<string, RenewalWindowRow>();
+  for (const w of others) for (const id of w.schoolIds) takenBy.set(id, w);
+  const allSchoolsTaken = others.some(w => w.schoolIds.length === 0);
   const noSchoolCount = (schools ?? []).find(s => s.schoolId === null)?.scholars ?? 0;
   const pickedCount = realSchools.filter(s => pickedSchools.has(s.schoolId!)).length;
   const pickedScholars = realSchools.filter(s => pickedSchools.has(s.schoolId!)).reduce((n, s) => n + s.scholars, 0);
@@ -114,6 +123,7 @@ function WindowForm({ initial, schools, onClose, onSaved }: { initial: RenewalWi
     const testers = chosen.map(c => c.scholarIdNumber);
     if (testersOnly && testers.length === 0) { setError("Choose at least one test scholar, or choose \"Everyone\"."); return; }
     if (schools && onlySchools && pickedCount === 0) { setError("Tick at least one school, or choose \"All schools\"."); return; }
+    if (schools && !onlySchools && allSchoolsTaken) { setError("This term already has an \"All schools\" window. Choose \"Only the schools I tick\" and tick the schools that should have their own schedule."); return; }
     if (initial && initial.testers.length > 0 && !testersOnly && !window.confirm("This window is now TESTERS ONLY. Opening it to everyone makes it visible to every scholar, and every scholar who has not applied gets the \"Renewal is now open\" alert at the next 8:00-18:00 check. Continue?")) return;
     setBusy(true);
     // Only send the list when it matters, so the call also works before the Phase 8b SQL file is installed.
@@ -144,8 +154,9 @@ function WindowForm({ initial, schools, onClose, onSaved }: { initial: RenewalWi
         {schools && (
           <fieldset className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3 py-3">
             <legend className="px-1 text-[14px] font-bold text-[#062444]">Which schools can renew in this window</legend>
-            <label className="flex items-start gap-2 text-[14px] text-slate-800"><input type="radio" name="window-schools" checked={!onlySchools} onChange={() => setOnlySchools(false)} className="mt-1" /> <span><strong>All schools</strong>: every scholar can renew in this window.</span></label>
+            <label className="flex items-start gap-2 text-[14px] text-slate-800"><input type="radio" name="window-schools" checked={!onlySchools} onChange={() => setOnlySchools(false)} className="mt-1" /> <span><strong>All schools</strong>: every scholar can renew in this window{others.length > 0 ? ", except the schools that have their own window for this term" : ""}.</span></label>
             <label className="mt-2 flex items-start gap-2 text-[14px] text-slate-800"><input type="radio" name="window-schools" checked={onlySchools} onChange={() => setOnlySchools(true)} className="mt-1" /> <span><strong>Only the schools I tick</strong>: only the scholars enrolled in those schools can see this window, be told about it, apply and be counted in its lists.</span></label>
+            {!onlySchools && allSchoolsTaken && <p className="mt-2 text-[13.5px] text-amber-950 rounded-md bg-amber-50 border border-amber-300 px-2.5 py-1.5">This term already has an "All schools" window. A term has only one: choose "Only the schools I tick" to give some schools their own schedule.</p>}
             {onlySchools && (
               <div className="mt-2">
                 <div className="flex flex-wrap items-center gap-3 text-[14px]">
@@ -157,8 +168,8 @@ function WindowForm({ initial, schools, onClose, onSaved }: { initial: RenewalWi
                   {realSchools.map(s => (
                     <li key={s.schoolId}>
                       <label className="flex items-center gap-2.5 px-3 py-2 text-[14px] text-slate-800 cursor-pointer hover:bg-[#f7f9fc]">
-                        <input type="checkbox" checked={pickedSchools.has(s.schoolId!)} onChange={e => setPickedSchools(prev => { const next = new Set(prev); if (e.target.checked) next.add(s.schoolId!); else next.delete(s.schoolId!); return next; })} />
-                        <span className="flex-1">{s.name}</span><span className="text-slate-600">{s.scholars} scholar{s.scholars === 1 ? "" : "s"}</span>
+                        <input type="checkbox" disabled={takenBy.has(s.schoolId!)} checked={pickedSchools.has(s.schoolId!) && !takenBy.has(s.schoolId!)} onChange={e => setPickedSchools(prev => { const next = new Set(prev); if (e.target.checked) next.add(s.schoolId!); else next.delete(s.schoolId!); return next; })} />
+                        <span className="flex-1">{s.name}{takenBy.has(s.schoolId!) && <span className="block text-[13px] text-amber-900">Already has its own window: {formatDay(takenBy.get(s.schoolId!)!.opensOn)} to {formatDay(takenBy.get(s.schoolId!)!.closesOn)}</span>}</span><span className="text-slate-600">{s.scholars} scholar{s.scholars === 1 ? "" : "s"}</span>
                       </label>
                     </li>
                   ))}

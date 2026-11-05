@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileCheck2, ImagePlus, Loader2, RotateCcw } from "lucide-react";
+import { FileCheck2, FlaskConical, ImagePlus, Loader2, RotateCcw } from "lucide-react";
 import { removeWhiteBackground } from "@/lib/imageBackgroundRemoval";
-import { csrPictureUrl, fetchCsrSettings, removeCsrPictures, saveCsrSettings, uploadCsrPicture, type CsrSettings, type SignaturePictureKey } from "@/lib/csrApi";
+import { csrPictureUrl, fetchCsrSettings, removeCsrPictures, saveCsrSettings, setCsrTesting, uploadCsrPicture, type CsrSettings, type SignaturePictureKey } from "@/lib/csrApi";
 import { formatDateTime } from "@/lib/renewal";
 
 type PictureState = { path: string | null | undefined; url: string | null };   // path: undefined = unchanged, null = removed (sample used), string = new upload
@@ -22,6 +22,7 @@ export function RenewalCertificateTab() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [enabled, setEnabled] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [officerName, setOfficerName] = useState(""), [officerTitle, setOfficerTitle] = useState("");
   const [mayorName, setMayorName] = useState(""), [mayorTitle, setMayorTitle] = useState("");
   const [place, setPlace] = useState("");
@@ -34,7 +35,7 @@ export function RenewalCertificateTab() {
     if (!r.ok) { setError(r.error); return; }
     const s = r.settings;
     setSaved(s); setError("");
-    setEnabled(s.enabled); setOfficerName(s.officerName); setOfficerTitle(s.officerTitle); setMayorName(s.mayorName); setMayorTitle(s.mayorTitle); setPlace(s.place);
+    setEnabled(s.enabled); setTesting(s.testingEnabled); setOfficerName(s.officerName); setOfficerTitle(s.officerTitle); setMayorName(s.mayorName); setMayorTitle(s.mayorTitle); setPlace(s.place);
     const url = async (p: string | null) => (p ? await csrPictureUrl(p) : null);
     setPics({
       officer: { path: undefined, url: await url(s.officerSignaturePath) }, mayor: { path: undefined, url: await url(s.mayorSignaturePath) }, mayorMark: { path: undefined, url: await url(s.mayorMarkPath) },
@@ -64,14 +65,18 @@ export function RenewalCertificateTab() {
       enabled, officerName, officerTitle, mayorName, mayorTitle, place,
       officerSignaturePath: pics.officer.path, mayorSignaturePath: pics.mayor.path, mayorMarkPath: pics.mayorMark.path,
     });
+    // the testing switch is separate: it is saved on its own, and only when it was changed
+    const t = r.ok && saved?.testingSupported && testing !== saved.testingEnabled ? await setCsrTesting(testing) : null;
     setBusy(false);
     if (!r.ok) { setError(r.error); return; }
+    if (t && !t.ok) { setError(t.error); return; }
     // Pictures that were replaced or removed are no longer needed.
     if (saved) {
       const old = [pics.officer.path !== undefined ? saved.officerSignaturePath : null, pics.mayor.path !== undefined ? saved.mayorSignaturePath : null, pics.mayorMark.path !== undefined ? saved.mayorMarkPath : null].filter((p): p is string => !!p);
       void removeCsrPictures(old);
     }
-    setMessage(enabled && !saved?.enabled ? "Saved. Certificates are now ON — scholars whose renewal is confirmed have been told they can download theirs." : "Saved.");
+    setMessage(enabled && !saved?.enabled ? "Saved. Certificates are now ON — scholars whose renewal is confirmed have been told they can download theirs."
+      : testing && saved?.testingSupported && !saved.testingEnabled && !enabled ? "Saved. Certificates are now ON FOR TESTING — only the test scholars can download theirs; nobody else notices anything." : "Saved.");
     await load();
   }
 
@@ -92,6 +97,14 @@ export function RenewalCertificateTab() {
         <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} className="mt-1 h-4 w-4" />
         <span><strong className="text-[#062444]">Certificates are {enabled ? "ON" : "OFF"}</strong><br /><span className="text-slate-700">{enabled ? "Scholars with a confirmed renewal can download their certificate." : "Nobody can download a certificate yet. Switching on tells every scholar with a confirmed renewal."}</span></span>
       </label>
+
+      {saved.testingSupported && (
+        <label className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[14px]">
+          <input type="checkbox" checked={testing} onChange={e => setTesting(e.target.checked)} className="mt-1 h-4 w-4" />
+          <span><strong className="inline-flex items-center gap-1.5 text-amber-950"><FlaskConical size={15} aria-hidden="true" /> Certificates are {testing ? "ON" : "OFF"} for TESTING</strong><br />
+            <span className="text-amber-950">A separate switch from the one above. While it is on, ONLY the scholars of a <strong>testers-only renewal window</strong> (the test accounts) can download a certificate, whether or not the switch above is on. Everybody else is not affected and is told nothing. Use it to try the certificate before switching it on for everyone.</span></span>
+        </label>
+      )}
 
       <fieldset className="grid gap-4 sm:grid-cols-2 rounded-xl border border-[#e6ecf5] bg-white px-4 py-4">
         <legend className="px-1 text-[15px] font-bold text-[#062444]">Signatories</legend>

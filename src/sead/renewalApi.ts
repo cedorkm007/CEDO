@@ -176,6 +176,12 @@ export async function returnRenewal(recordId: string, comment: string): Promise<
   const { error } = await supabase.rpc("renewal_return", { p_record_id: recordId, p_comment: comment });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+/** Takes an application back to the very start (it is removed, so the scholar applies again). Evaluator only, with a reason; the database refuses a renewal that changed the scholar's status or was decided by the Division Head (supabase_migration_renewal_revert_application.sql). */
+export async function revertRenewalApplication(recordId: string, reason: string): Promise<Done> {
+  const { error } = await supabase.rpc("renewal_revert_application", { p_record_id: recordId, p_reason: reason });
+  if (error) return { ok: false, error: error.code === "PGRST202" || /could not find the function/i.test(error.message) ? "Reverting is not set up yet: CEDO still has to run a database update." : error.message };
+  return { ok: true };
+}
 export async function decideLateApplication(recordId: string, accept: boolean, reason: string): Promise<Done> {
   const { error } = await supabase.rpc("renewal_late_decide", { p_record_id: recordId, p_accept: accept, p_reason: reason });
   return error ? { ok: false, error: error.message } : { ok: true };

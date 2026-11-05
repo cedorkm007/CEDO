@@ -14,6 +14,8 @@ export interface CsrCopy { csrNumber: string; version: number; issuedAt: string 
 export interface CsrInfo {
   /** Has the office switched certificates on? */
   enabled: boolean;
+  /** True when it is on only because of the TESTING switch (this renewal is in a testers-only window). */
+  testing: boolean;
   /** Is this renewal confirmed (stage Renewed) and the scholar not Removed? */
   eligible: boolean;
   copies: CsrCopy[];
@@ -25,7 +27,7 @@ export async function fetchCsrInfo(recordId: string): Promise<CsrInfo | null> {
   if (error || !data) return null;
   const d = data as Row;
   return {
-    enabled: !!d.enabled, eligible: !!d.eligible,
+    enabled: !!d.enabled, testing: !!d.testing, eligible: !!d.eligible,
     copies: ((d.copies ?? []) as Row[]).map(c => ({ csrNumber: str(c.csr_number), version: Number(c.version ?? 1), issuedAt: strOrNull(c.issued_at), replaced: !!c.replaced, reason: str(c.reason), by: str(c.by) })),
   };
 }
@@ -59,7 +61,10 @@ export function openCsrDownload(url: string, fileName: string): void {
 // ── Settings (evaluator and IT admin) ──
 export type SignaturePictureKey = "officer" | "mayor" | "mayorMark";
 export interface CsrSettings {
-  enabled: boolean; officerName: string; officerTitle: string; mayorName: string; mayorTitle: string; place: string;
+  enabled: boolean;
+  /** The separate switch for TESTING: certificates only for the test scholars (testers-only windows). `testingSupported` is false before the database update. */
+  testingEnabled: boolean; testingSupported: boolean;
+  officerName: string; officerTitle: string; mayorName: string; mayorTitle: string; place: string;
   officerSignaturePath: string | null; mayorSignaturePath: string | null; mayorMarkPath: string | null; updatedAt: string | null; updatedBy: string | null;
 }
 
@@ -70,7 +75,7 @@ export async function fetchCsrSettings(): Promise<{ ok: true; settings: CsrSetti
   return {
     ok: true,
     settings: {
-      enabled: !!d.enabled, officerName: str(d.officer_name), officerTitle: str(d.officer_title), mayorName: str(d.mayor_name), mayorTitle: str(d.mayor_title), place: str(d.place),
+      enabled: !!d.enabled, testingEnabled: !!d.testing_enabled, testingSupported: "testing_enabled" in d, officerName: str(d.officer_name), officerTitle: str(d.officer_title), mayorName: str(d.mayor_name), mayorTitle: str(d.mayor_title), place: str(d.place),
       officerSignaturePath: strOrNull(d.officer_signature_path), mayorSignaturePath: strOrNull(d.mayor_signature_path), mayorMarkPath: strOrNull(d.mayor_mark_path),
       updatedAt: strOrNull(d.updated_at), updatedBy: strOrNull(d.updated_by),
     },
@@ -90,6 +95,13 @@ export async function saveCsrSettings(input: CsrSettingsInput): Promise<{ ok: tr
     p_officer_signature_path: pictureArg(input.officerSignaturePath), p_mayor_signature_path: pictureArg(input.mayorSignaturePath), p_mayor_mark_path: pictureArg(input.mayorMarkPath),
   });
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/** The separate certificate switch for testing (supabase_migration_renewal_csr_testing_b_functions.sql). On: certificates work for the scholars of a testers-only renewal window, whatever the first switch says. */
+export async function setCsrTesting(enabled: boolean): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.rpc("csr_testing_switch", { p_enabled: enabled });
+  if (error) return { ok: false, error: error.code === "PGRST202" || /could not find the function/i.test(error.message) ? "The testing switch is not set up yet: CEDO still has to run a database update." : error.message };
+  return { ok: true };
 }
 
 const ASSETS_BUCKET = "csr-assets";

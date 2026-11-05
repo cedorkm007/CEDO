@@ -40,6 +40,7 @@ export function CsrDownload({ recordId }: { recordId: string }) {
             {busy ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Download size={15} aria-hidden="true" />} Download my certificate (PDF)
           </button>
           <p className="mt-2 text-[13.5px] text-green-950">The QR on the certificate lets your school check that it is real.</p>
+          {info.testing && <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[13.5px] font-semibold text-amber-950">TEST: certificates are switched on for testing only. This is not a real certificate.</p>}
         </>
       ) : (
         <p className="mt-1 text-[14px] text-green-950">Your renewal is confirmed. The CEDO office has not switched certificates on yet — we will tell you here as soon as yours is ready to download.</p>
