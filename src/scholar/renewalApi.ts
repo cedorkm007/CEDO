@@ -5,6 +5,7 @@
 // supabase_migration_renewal_p2_application.sql); these calls just ask.
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
+import { isNetworkErrorMessage, networkProblemText, retryOnNetworkError, shrinkImageForUpload } from "@/lib/uploadResilience";
 import {
   DOC_LABEL, RENAMED_DOC_LABEL, RENEWAL_DOCUMENT_BUCKET, renamedDocumentName, renewalDocumentPath, validateRenewalFile, validateSelfGradeImage, validateSelfGradeLines,
   type ConsultState, type DocKind, type RenewalEvaluation, type RenewalStage, type SelfGradeDifference, type SelfGradeLine, type SelfGradesStatus, type WindowState,
@@ -99,7 +100,13 @@ export async function applyForRenewal(args: {
   const g = args.grades;
   const incDocs = (args.incDocuments ?? []).filter(d => d.files.length > 0);
   if (!g && incDocs.length === 0) {
-    const { error } = args.requestSdpReconsideration ? await supabase.rpc("renewal_apply", { ...base, p_request_sdp_reconsideration: true }) : await supabase.rpc("renewal_apply", base);
+    const send = () => args.requestSdpReconsideration ? supabase.rpc("renewal_apply", { ...base, p_request_sdp_reconsideration: true }) : supabase.rpc("renewal_apply", base);
+    const { error } = await retryOnNetworkError(async () => {
+      const r = await send();
+      if (r.error && isNetworkErrorMessage(r.error.message) && (await applicationExists(args.windowId))) return { error: null };
+      return r;
+    });
+    if (error && isNetworkErrorMessage(error.message)) return (await applicationExists(args.windowId)) ? { ok: true } : { ok: false, error: networkProblemText("send your application") };
     return error ? { ok: false, error: error.message } : { ok: true };
   }
   if (g) {
@@ -113,11 +120,13 @@ export async function applyForRenewal(args: {
   const uploaded: { path: string; name: string; mime: string; size: number }[] = [];
   const uploadedDocs: { kind: DocKind; path: string; name: string; mime: string; size: number }[] = [];
   const undo = async () => { const paths = [...uploaded.map(u => u.path), ...uploadedDocs.map(u => u.path)]; if (paths.length) await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).remove(paths); };
-  for (const f of g?.newFiles ?? []) {
+  const gradeImages = g?.newFiles ?? [];
+  for (const [n, orig] of gradeImages.entries()) {
+    const f = await shrinkImageForUpload(orig);          // a big phone screenshot becomes a small JPG, so it uploads even on a weak connection
     const safe = f.name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80);
     const path = `${args.scholarIdNumber}/${args.windowId}/grade-entries/${crypto.randomUUID()}-${safe}`;
-    const up = await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).upload(path, f, { contentType: f.type, upsert: false });
-    if (up.error) { await undo(); return { ok: false, error: up.error.message }; }
+    const up = await retryOnNetworkError(() => supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).upload(path, f, { contentType: f.type, upsert: false }));
+    if (up.error) { await undo(); return { ok: false, error: isNetworkErrorMessage(up.error.message) ? networkProblemText(`send your grade screenshot (${n + 1} of ${gradeImages.length})`) : up.error.message }; }
     uploaded.push({ path, name: f.name, mime: f.type, size: f.size });
   }
   const who = incDocs.length > 0 ? await myNameForFiles() : { lastName: "", firstName: "" };
@@ -125,23 +134,39 @@ export async function applyForRenewal(args: {
     const f = renamedFile(orig, d.kind, who, args.scholarIdNumber ?? "", i + 1);
     const safe = f.name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80);
     const path = `${args.scholarIdNumber}/${args.windowId}/inc-docs/${d.kind}/${crypto.randomUUID()}-${safe}`;
-    const up = await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).upload(path, f, { contentType: f.type, upsert: false });
-    if (up.error) { await undo(); return { ok: false, error: up.error.message }; }
+    const up = await retryOnNetworkError(() => supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).upload(path, f, { contentType: f.type, upsert: false }));
+    if (up.error) { await undo(); return { ok: false, error: isNetworkErrorMessage(up.error.message) ? networkProblemText(`send your ${DOC_LABEL[d.kind]}`) : up.error.message }; }
     uploadedDocs.push({ kind: d.kind, path, name: f.name, mime: f.type, size: f.size });
   }
   const gradeArgs = {
     p_grade_ack: g?.acknowledged ?? false, p_grade_files: uploaded,
     p_grade_lines: (g?.lines ?? []).map(l => ({ code: l.code.trim(), subject: l.subject.trim(), units: Number(l.units.replace(",", ".")), grade: l.grade.trim() })),
   };
-  const { error } = incDocs.length > 0
-    ? await supabase.rpc("renewal_apply", { ...base, p_request_sdp_reconsideration: !!args.requestSdpReconsideration, ...gradeArgs, p_inc_documents: uploadedDocs })
-    : await supabase.rpc("renewal_apply", { ...base, p_request_sdp_reconsideration: !!args.requestSdpReconsideration, ...gradeArgs });
+  // The application itself. If the answer never arrived, the application may still have been saved: look before trying again or giving up.
+  const sendApplication = () => incDocs.length > 0
+    ? supabase.rpc("renewal_apply", { ...base, p_request_sdp_reconsideration: !!args.requestSdpReconsideration, ...gradeArgs, p_inc_documents: uploadedDocs })
+    : supabase.rpc("renewal_apply", { ...base, p_request_sdp_reconsideration: !!args.requestSdpReconsideration, ...gradeArgs });
+  let { error } = await retryOnNetworkError(async () => {
+    const r = await sendApplication();
+    if (r.error && isNetworkErrorMessage(r.error.message) && (await applicationExists(args.windowId))) return { error: null };
+    return r;
+  });
+  if (error && isNetworkErrorMessage(error.message) && (await applicationExists(args.windowId))) error = null;
   if (error) {
+    if (isNetworkErrorMessage(error.message)) { await undo(); return { ok: false, error: networkProblemText("send your application") }; }
     await undo();
     if (incDocs.length > 0 && functionMissing(error)) return { ok: false, error: "The application form cannot carry the INC documents yet. Please try again later." };
     return { ok: false, error: functionMissing(error) ? "The application form cannot carry your grades yet. Please apply without them and enter them afterwards." : error.message };
   }
   return { ok: true };
+}
+
+/** Is there already an application for this window? (used after a connection drop, to know whether the application got through) */
+async function applicationExists(windowId: string): Promise<boolean> {
+  try {
+    const r = await fetchMyRenewals();
+    return r.ok && r.overview.windows.some(w => w.window.id === windowId && !!w.record);
+  } catch { return false; }
 }
 
 /** The scholar's own name, for naming the INC documents (the scholar can read only their own row). Empty names when it can't be read: the file is then named with the ID only. */
