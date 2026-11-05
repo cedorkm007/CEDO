@@ -95,14 +95,14 @@ export function RenewalCertificateTab() {
 
       <label className="flex items-start gap-3 rounded-xl border border-[#e6ecf5] bg-white px-4 py-3 text-[14px]">
         <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} className="mt-1 h-4 w-4" />
-        <span><strong className="text-[#062444]">Certificates are {enabled ? "ON" : "OFF"}</strong><br /><span className="text-slate-700">{enabled ? "Scholars with a confirmed renewal can download their certificate." : "Nobody can download a certificate yet. Switching on tells every scholar with a confirmed renewal."}</span></span>
+        <span><strong className="text-[#062444]">Certificates are {enabled ? "ON" : "OFF"} for everyone else</strong><br /><span className="text-slate-700">{enabled ? "Scholars with a confirmed renewal can download their certificate." : "Nobody can download a certificate yet. Switching on tells every scholar with a confirmed renewal."}</span></span>
       </label>
 
       {saved.testingSupported && (
         <label className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[14px]">
           <input type="checkbox" checked={testing} onChange={e => setTesting(e.target.checked)} className="mt-1 h-4 w-4" />
           <span><strong className="inline-flex items-center gap-1.5 text-amber-950"><FlaskConical size={15} aria-hidden="true" /> Certificates are {testing ? "ON" : "OFF"} for TESTING</strong><br />
-            <span className="text-amber-950">A separate switch from the one above. While it is on, ONLY the scholars of a <strong>testers-only renewal window</strong> (the test accounts) can download a certificate, whether or not the switch above is on. Everybody else is not affected and is told nothing. Use it to try the certificate before switching it on for everyone.</span></span>
+            <span className="text-amber-950">Two SEPARATE switches. This one decides ONLY for the scholars of a <strong>testers-only renewal window</strong> (the test accounts): while it is off they cannot download a certificate, even if the switch above is on. The switch above decides for everybody else, and the testing switch makes no difference to them. Use it to try the certificate before switching it on for everyone.</span></span>
         </label>
       )}
 

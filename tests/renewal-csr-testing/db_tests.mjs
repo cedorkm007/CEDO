@@ -11,7 +11,7 @@ const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const read = f => fs.readFileSync(f, "utf8");
-const FILES = ["supabase_migration_renewal_csr_testing_a_column.sql", "supabase_migration_renewal_csr_testing_b_functions.sql"];
+const FILES = ["supabase_migration_renewal_csr_testing_a_column.sql", "supabase_migration_renewal_csr_testing_b_functions.sql", "supabase_migration_renewal_csr_testing_c_separate.sql"];
 async function as(uid, fn, role = "authenticated") {
   return db.transaction(async tx => {
     await tx.exec(`set local role ${role}`);
@@ -72,11 +72,36 @@ console.log("\nON FOR EVERYONE");
 await testersOnly(null);
 check("with the testing switch OFF and 'for everyone' ON every renewed scholar can get one (as before), and it is not marked as a test", (await save(EVAL, { enabled: true, testing: false })).ok
   && (await forRec(uidOf(46), rec46)).enabled === true && (await forRec(uidOf(46), rec46)).testing === false && (await prepare(uidOf(46), rec46)).ok);
-check("with both ON it is not marked as a test either (the real switch wins)", (await save(EVAL, { enabled: true, testing: true })).ok && (await forRec(uidOf(46), rec46)).testing === false);
+check("a normal-window scholar with both ON is not marked as a test", (await save(EVAL, { enabled: true, testing: true })).ok && (await forRec(uidOf(46), rec46)).testing === false);
 check("the existing save is unchanged (nine values) and does not touch the testing switch; the testing switch does not touch the first one", (await save(EVAL, { enabled: false })).ok && (await settings()).enabled === false && (await settings()).testing_enabled === true
   && (await save(EVAL, { testing: false })).ok && (await settings()).enabled === false);
 await save(EVAL, { testing: true });
 check("only one csr_settings_save exists (no second form to confuse the screen)", (await q("select count(*)::int n from pg_proc where proname = 'csr_settings_save'"))[0].n === 1);
+
+console.log("\nThe two switches are SEPARATE (file C)");
+await testersOnly([idOf(46)]);
+await save(EVAL, { enabled: true, testing: false });
+const sepA = await forRec(uidOf(46), rec46);
+check("'on for everyone' ON but 'on for testing' OFF: a scholar of the TEST window gets NO certificate (this is the case that was wrong)", sepA.enabled === false && !(await prepare(uidOf(46), rec46)).ok, JSON.stringify(sepA));
+await save(EVAL, { enabled: false, testing: true });
+const sepB = await forRec(uidOf(46), rec46);
+check("'on for everyone' OFF but 'on for testing' ON: the test scholar gets one, marked as a test", sepB.enabled === true && sepB.testing === true && (await prepare(uidOf(46), rec46)).ok);
+await save(EVAL, { enabled: true, testing: true });
+check("both ON: the test scholar gets one (marked as a test)", (await forRec(uidOf(46), rec46)).enabled === true && (await forRec(uidOf(46), rec46)).testing === true);
+await save(EVAL, { enabled: false, testing: false });
+check("both OFF: nobody", (await forRec(uidOf(46), rec46)).enabled === false);
+await testersOnly(null);
+await save(EVAL, { enabled: true, testing: false });
+check("a scholar of a NORMAL window follows 'on for everyone' only: ON with testing OFF gives a certificate, not marked as a test", (await forRec(uidOf(46), rec46)).enabled === true && (await forRec(uidOf(46), rec46)).testing === false);
+await save(EVAL, { enabled: false, testing: true });
+check("…and OFF with testing ON gives none (the testing switch does not open it)", (await forRec(uidOf(46), rec46)).enabled === false && !(await prepare(uidOf(46), rec46)).ok);
+await save(EVAL, { enabled: false, testing: false });
+await q("delete from scholar_notifications where kind = 'csr_ready'");
+await testersOnly([idOf(46)]);
+await save(EVAL, { enabled: true });
+check("switching 'on for everyone' ON does not tell a test scholar (their switch is the testing one)", (await q("select count(*)::int n from scholar_notifications where kind = 'csr_ready' and scholar_id_number = $1", [idOf(46)]))[0].n === 0);
+await save(EVAL, { enabled: false, testing: false });
+await testersOnly(null);
 
 console.log("\nNotices to scholars");
 await q("delete from scholar_notifications where kind = 'csr_ready'");
@@ -107,6 +132,13 @@ check("…and not told when only the testing switch is on and the window is a no
 
 console.log("\nThe files");
 check("file A adds one column with a lock limit and removes nothing; file B changes no table and deletes nothing", /lock_timeout = '5s'/.test(read(FILES[0])) && /add column if not exists testing_enabled/.test(read(FILES[0])) && !/\b(delete from|truncate|drop table)\b/i.test(read(FILES[0]) + read(FILES[1])) && !/alter table/i.test(read(FILES[1])));
+await testersOnly([idOf(46)]);
+await save(EVAL, { enabled: true, testing: false });
+await db.exec(read("undo_renewal_csr_testing_c.sql"));
+const oldWay = (await forRec(uidOf(46), rec46)).enabled === true;      // file B: the testing switch only adds, so a test scholar still gets it
+await db.exec(read(FILES[2]));
+check("the undo of C goes back to file B's behaviour (testing only adds), and C can be put back", oldWay && (await forRec(uidOf(46), rec46)).enabled === false);
+await testersOnly(null);
 await save(EVAL, { enabled: true, testing: true });
 await db.exec(read("undo_renewal_csr_testing_b.sql"));
 check("the undo of B puts back the single switch (the testing switch function and helper are gone; the save still works)", (await save(EVAL, { enabled: true })).ok
