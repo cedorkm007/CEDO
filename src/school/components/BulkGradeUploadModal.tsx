@@ -3,6 +3,7 @@ import { X, Upload, AlertTriangle, CheckCircle2, UploadCloud, Download, XCircle,
 import { downloadCsv, parseCsv } from "@/sead/csvUtils";
 import { readXlsx } from "@/lib/xlsxLite";
 import { TemplateDownloadMenu } from "./TemplateDownloadMenu";
+import { SchoolIdsUpload } from "./SchoolIdsUpload";
 import { PeriodSelect } from "@/app/components/PeriodSelect";
 import { fetchGradingConfig, fetchLetterGrades, fetchSchoolMarksAsLetters, fetchGradesForScholars, bulkUpsertGrades, linkStudentNos } from "../schoolApi";
 import {
@@ -47,6 +48,9 @@ export function BulkGradeUploadModal({
   useEffect(() => { void fetchRulesTimeline().then(t => setRuleVersions(t[schoolId] ?? Object.values(t)[0] ?? [])); }, [schoolId]);
   const periodRules = useMemo(() => (period ? rulesAt(ruleVersions, period.schoolYear, period.term) : null), [ruleVersions, period]);
 
+  /** grades = subjects and grades (School IDs on the sheet are linked too); ids = only the School ID (STUDENT NO.) of each scholar, no grade is read. */
+  const [mode, setMode] = useState<"grades" | "ids">("grades");
+  const [lastFile, setLastFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
@@ -77,6 +81,7 @@ export function BulkGradeUploadModal({
     setFilter("all");
     setLinksOk(false);
     setLinkedCount(0);
+    setLastFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -87,6 +92,7 @@ export function BulkGradeUploadModal({
 
   async function handleFile(file: File) {
     if (!period) return;
+    setLastFile(file);
     setFileName(file.name);
     setOutcomes(null);
     setProblem("");
@@ -165,7 +171,7 @@ export function BulkGradeUploadModal({
     <div className="fixed inset-0 z-[110] bg-black/40 flex items-center justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
       <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl my-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4 rounded-t-2xl">
-          <h3 className="flex items-center gap-2 text-white font-bold text-[15px]"><UploadCloud size={16} className="text-[#F3BC00]" /> Bulk Upload Grades</h3>
+          <h3 className="flex items-center gap-2 text-white font-bold text-[15px]"><UploadCloud size={16} className="text-[#F3BC00]" /> {mode === "ids" ? "Upload School IDs" : "Bulk Upload Grades"}</h3>
           <button onClick={onClose} aria-label="Close" className="text-white/70 hover:text-white"><X size={18} /></button>
         </div>
 
@@ -197,6 +203,26 @@ export function BulkGradeUploadModal({
             </div>
           ) : (
             <>
+              {/* What to upload */}
+              <section className="mb-5" aria-label="What do you want to upload?">
+                <h4 className="text-[13.5px] font-bold text-[#062444] mb-1.5">What do you want to upload?</h4>
+                <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="What do you want to upload?">
+                  {([
+                    ["grades", "Grades", "Subjects and grades from your Promotional Report / Enrollment List. The School ID (STUDENT NO.) of each scholar is saved too."],
+                    ["ids", "School IDs only", "Only each scholar's STUDENT NO. is saved. The grades can stay blank. Students who are not your scholars are left out."],
+                  ] as const).map(([key, title, text]) => (
+                    <label key={key} className={`flex cursor-pointer items-start gap-2 rounded-xl border px-3.5 py-3 ${mode === key ? "border-[#062444] bg-[#eef5fc]" : "border-[#062444]/20 bg-white"}`}>
+                      <input type="radio" name="upload-mode" checked={mode === key} onChange={() => { if (mode !== key) { setMode(key); resetUpload(); } }} className="mt-1" />
+                      <span><span className="block text-[14px] font-bold text-[#062444]">{title}</span><span className="block text-[13.5px] text-slate-700">{text}</span></span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+
+              {mode === "ids" ? (
+                <SchoolIdsUpload scholars={scholars} initialFile={lastFile} onDone={onDone} onClose={onClose} />
+              ) : (
+              <>
               {/* 1. Period */}
               <section className="mb-5">
                 <h4 className="text-[13.5px] font-bold text-[#062444] mb-1.5">1. Choose the period</h4>
@@ -260,6 +286,13 @@ export function BulkGradeUploadModal({
                 </div>
               )}
 
+              {parsed && parsed.noGradesInFile && (
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-[#eef5fc] border border-[#cfe0f5] rounded-lg px-3 py-2.5 mb-4" role="status">
+                  <p className="flex items-start gap-1.5 text-[14px] text-[#062444]"><Info size={14} className="shrink-0 mt-0.5" /><span>This file has <strong>no grades</strong>. Did you want to save only the School IDs?</span></p>
+                  <button onClick={() => { setMode("ids"); }} className="text-[14px] font-semibold text-[#0077b6] hover:underline">Use this file for School IDs only</button>
+                </div>
+              )}
+
               {/* 4. Preview */}
               {parsed && !parsed.fileError && counts && (
                 <section className="mb-4">
@@ -309,6 +342,16 @@ export function BulkGradeUploadModal({
                       </tbody>
                     </table>
                   </div>
+                  {parsed.leftOut.length > 0 && (
+                    <details className="mt-3 rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3.5 py-3">
+                      <summary className="cursor-pointer text-[14px] font-bold text-[#062444]">{parsed.leftOut.length} student{parsed.leftOut.length === 1 ? "" : "s"} left out — not on your scholars list</summary>
+                      <p className="mt-2 text-[14px] text-slate-700">The sheet lists every student of your school. These are not scholars, so their rows were not checked or saved. If one of them is a scholar (a spelling that differs from the Scholars list is the usual reason), type the School ID in the Scholars list, then upload again.</p>
+                      <ul className="mt-2 max-h-40 overflow-y-auto text-[14px] text-slate-800">
+                        {parsed.leftOut.slice(0, 200).map((l, i) => <li key={i}>{l.name || "(no name)"}{l.studentNo ? <span className="text-slate-700"> · {l.studentNo}</span> : null} <span className="text-slate-700">({l.rows} row{l.rows === 1 ? "" : "s"})</span></li>)}
+                        {parsed.leftOut.length > 200 && <li className="text-slate-700">…and {parsed.leftOut.length - 200} more.</li>}
+                      </ul>
+                    </details>
+                  )}
                   {links.length > 0 && (
                     <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3" aria-label="New School IDs to link">
                       <p className="flex items-center gap-1.5 text-[14px] font-bold text-amber-950"><Link2 size={14} aria-hidden="true" /> {links.length} new School ID{links.length === 1 ? "" : "s"} to link</p>
@@ -352,6 +395,8 @@ export function BulkGradeUploadModal({
                   </>
                 )}
               </div>
+              </>
+              )}
             </>
           )}
         </div>

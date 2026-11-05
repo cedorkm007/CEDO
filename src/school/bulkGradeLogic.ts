@@ -145,6 +145,9 @@ export interface UploadContext {
 /** A Student No. the system does not know yet, matched to a scholar of the school by name. Saved only after the school confirms it. */
 export interface ProposedLink { scholarIdNumber: string; studentNo: string; scholarName: string }
 
+/** A student on the school's sheet who is not one of the school's scholars (not known by Student No., and no scholar has that name). The student is left out, not reported as an error. */
+export interface LeftOutStudent { studentNo: string; name: string; /** How many subject rows of the sheet belonged to the student (0 when the sheet lists no subjects). */ rows: number }
+
 export interface ParseResult {
   /** Set when the WHOLE file is rejected (nothing to preview). */
   fileError?: string;
@@ -156,6 +159,10 @@ export interface ParseResult {
   links: ProposedLink[];
   /** csv = the earlier CSV layout; promo = the promotional report / enrollment list. */
   format: "csv" | "promo";
+  /** The promotional report only: students who are not scholars of the school. Their rows were left out of the preview (the sheet lists every student of the school, scholars or not). */
+  leftOut: LeftOutStudent[];
+  /** The promotional report only: the sheet has no grade at all (a School IDs only sheet?). */
+  noGradesInFile?: boolean;
 }
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
@@ -327,7 +334,7 @@ function checkRows(inputs: InputRow[], ctx: UploadContext, headers: string[], ig
     };
   });
 
-  return { headers, rows, ignoredBlank, links: [], format };
+  return { headers, rows, ignoredBlank, links: [], format, leftOut: [] };
 }
 
 /** The checks every upload starts with. */
@@ -341,7 +348,7 @@ function startChecks(ctx: UploadContext): string | null {
   if (!ctx.config) return "Set up your grading scale in the Grading System tab before uploading grades.";
   return null;
 }
-const failResult = (fileError: string): ParseResult => ({ fileError, headers: [], rows: [], ignoredBlank: 0, links: [], format: "csv" });
+const failResult = (fileError: string): ParseResult => ({ fileError, headers: [], rows: [], ignoredBlank: 0, links: [], format: "csv", leftOut: [] });
 
 /** A CSV in the earlier layout (school_year, semester, scholar_id, scholar_name, subject_code, subject_name, units, grade, remarks), already split into cells. */
 export function parseGradeGrid(raw: string[][], ctx: UploadContext): ParseResult {
@@ -437,61 +444,160 @@ export function parsePromoUpload(grid: string[][], ctx: UploadContext): ParseRes
   if (periodKey(sheet.schoolYear, sheet.semester) !== periodKey(ctx.period.schoolYear, ctx.period.semester)) {
     return fail(`This file does not match the period you chose (${title}). It says SY ${sheet.schoolYear} · ${sheet.semester}. Nothing was checked. Choose the right period, or download a fresh template.`);
   }
-  if (sheet.entries.length === 0) return fail("Nothing is filled in yet — type the students' subjects and grades into the template, then upload it again.");
+  if (sheet.entries.length === 0) {
+    // students but no subject or grade at all: most likely a list for the School IDs only upload
+    if (sheet.students.length > 0) return { ...fail("This file lists students but has no subjects or grades. If you only want to save the School IDs, choose \"School IDs only\" above. To upload grades, type the students' subjects and grades into the template and upload it again."), noGradesInFile: true };
+    return fail("Nothing is filled in yet — type the students' subjects and grades into the template, then upload it again.");
+  }
 
-  // who is each student?
+  // who is each student? Students who are not scholars of the school (the sheet lists everybody) are left out, not reported as errors.
+  const resolver = makeResolver(ctx.scholars);
+  const left = new Map<string, LeftOutStudent>();
+  const inputs: InputRow[] = [];
+  for (const e of sheet.entries) {
+    const who = resolver.whoIs(e);
+    if (who.kind === "left_out") { noteLeftOut(left, e); continue; }
+    const { grade, pctText } = promoGradeOrPercentage(e.grade, ctx);
+    inputs.push({
+      rowNumber: e.rowNumber, scholarId: who.scholarId, studentNo: e.studentNo, code: e.code, subject: e.description, unitsText: e.units, grade, pctText, remarksText: e.remarks, raw: e.cells,
+      scholarName: [`${e.last},`, e.first, e.middle, e.ext].map(x => x.trim()).filter(x => x && x !== ",").join(" "),
+      preErrors: who.error ? [who.error] : undefined, preWarnings: who.warning ? [who.warning] : undefined,
+    });
+  }
+  const leftOut = [...left.values()];
+  if (inputs.length === 0) {
+    const names = leftOut.slice(0, 4).map(l => l.name || l.studentNo).join("; ");
+    return fail(`None of the students in this file is one of your scholars, so there is nothing to check. The file lists ${leftOut.length} student${leftOut.length === 1 ? "" : "s"} (for example: ${names}). If one of them is a scholar, type the School ID in the Scholars list and upload again.`);
+  }
+  const result = checkRows(inputs, ctx, sheet.headers, sheet.ignoredBlank, "setIfFilled", "promo");
+  // a link is only worth confirming when at least one of the student's rows can be saved
+  result.links = resolver.links.filter(l => result.rows.some(r => r.payload?.scholarIdNumber === l.scholarIdNumber));
+  result.leftOut = leftOut;
+  result.noGradesInFile = !sheet.entries.some(e => e.grade.trim() !== "");
+  return result;
+}
+
+/** What a sheet's student turned out to be. known = already has this Student No.; link = a new Student No. matched to one scholar by name (to confirm); error = a scholar of the school, but something is wrong; left_out = not a scholar of the school. */
+interface Who { scholarId: string; error?: string; warning?: string; kind: "known" | "link" | "error" | "left_out" }
+interface SheetStudent { rowNumber: number; studentNo: string; last: string; first: string; middle: string }
+
+/** Works out who each student of a sheet is, once per student, and collects the new Student No. links. Used by the grades upload and by the School IDs only upload. */
+function makeResolver(scholars: SchoolScholarRow[]) {
   const byNo = new Map<string, SchoolScholarRow>();
-  for (const s of ctx.scholars) if (s.schoolStudentNo.trim()) byNo.set(studentNoKey(s.schoolStudentNo), s);
+  for (const s of scholars) if (s.schoolStudentNo.trim()) byNo.set(studentNoKey(s.schoolStudentNo), s);
   const claimed = new Set<string>();          // scholars already taken by a link proposed in this file
-  type Who = { scholarId: string; error?: string; warning?: string };
   const resolved = new Map<string, Who>();
   const links: ProposedLink[] = [];
-  const whoIs = (e: PromoEntry): Who => {
+  const whoIs = (e: SheetStudent): Who => {
     const display = [e.last, e.first, e.middle].map(x => x.trim()).filter(Boolean).join(", ").replace(/, ([^,]*), /, ", $1 ");
     const key = e.studentNo.trim() ? `no:${studentNoKey(e.studentNo)}` : `blank:${nameKey(`${e.last} ${e.first}`)}:${e.rowNumber}`;
     const known = resolved.get(key);
     if (known) return known;
     let who: Who;
     if (!e.studentNo.trim()) {
-      who = { scholarId: "", error: "STUDENT NO. is required — type the student's number from your school." };
+      who = scholars.some(s => sameName(e, s))
+        ? { scholarId: "", kind: "error", error: "STUDENT NO. is required — type the student's number from your school." }
+        : { scholarId: "", kind: "left_out" };
     } else {
       const hit = byNo.get(studentNoKey(e.studentNo));
-      if (hit) who = { scholarId: hit.scholarIdNumber };
+      if (hit) who = { scholarId: hit.scholarIdNumber, kind: "known" };
       else {
-        const sameNamed = ctx.scholars.filter(s => sameName(e, s));
+        const sameNamed = scholars.filter(s => sameName(e, s));
         const free = sameNamed.filter(s => !s.schoolStudentNo.trim() && !claimed.has(s.scholarIdNumber));
-        if (free.length === 1) {
+        if (sameNamed.length === 0) {
+          who = { scholarId: "", kind: "left_out" };
+        } else if (free.length === 1) {
           const s = free[0];
           claimed.add(s.scholarIdNumber);
           links.push({ scholarIdNumber: s.scholarIdNumber, studentNo: e.studentNo.trim(), scholarName: scholarDisplayName(s) });
-          who = { scholarId: s.scholarIdNumber, warning: `New: Student No. ${e.studentNo.trim()} will be linked to ${scholarDisplayName(s)} (${s.scholarIdNumber}). Please confirm the link below.` };
+          who = { scholarId: s.scholarIdNumber, kind: "link", warning: `New: Student No. ${e.studentNo.trim()} will be linked to ${scholarDisplayName(s)} (${s.scholarIdNumber}). Please confirm the link below.` };
         } else if (free.length > 1) {
-          who = { scholarId: "", error: `Student No. ${e.studentNo.trim()} is not linked to a scholar yet, and ${display || "this name"} fits more than one scholar of your school without a School ID. Type the School ID in the Scholars list, then upload again.` };
+          who = { scholarId: "", kind: "error", error: `Student No. ${e.studentNo.trim()} is not linked to a scholar yet, and ${display || "this name"} fits more than one scholar of your school without a School ID. Type the School ID in the Scholars list, then upload again.` };
         } else if (sameNamed.some(s => s.schoolStudentNo.trim())) {
           const other = sameNamed.find(s => s.schoolStudentNo.trim())!;
-          who = { scholarId: "", error: `${scholarDisplayName(other)} already has the School ID ${other.schoolStudentNo} in the system, not ${e.studentNo.trim()}. If ${e.studentNo.trim()} is right, change it in the Scholars list, then upload again.` };
+          who = { scholarId: "", kind: "error", error: `${scholarDisplayName(other)} already has the School ID ${other.schoolStudentNo} in the system, not ${e.studentNo.trim()}. If ${e.studentNo.trim()} is right, change it in the Scholars list, then upload again.` };
         } else {
-          who = { scholarId: "", error: `Student No. ${e.studentNo.trim()} is not linked to one of your scholars yet, and ${display || "the name"} does not match any scholar of your school without a School ID. Type the School ID in the Scholars list, then upload again.` };
+          who = { scholarId: "", kind: "error", error: `${display || "This scholar"} is already linked to another Student No. in this file. Check that the sheet does not list the same scholar twice with different numbers.` };
         }
       }
     }
     resolved.set(key, who);
     return who;
   };
+  return { whoIs, links };
+}
 
-  const inputs: InputRow[] = sheet.entries.map(e => {
-    const who = whoIs(e);
-    const { grade, pctText } = promoGradeOrPercentage(e.grade, ctx);
-    return {
-      rowNumber: e.rowNumber, scholarId: who.scholarId, studentNo: e.studentNo, code: e.code, subject: e.description, unitsText: e.units, grade, pctText, remarksText: e.remarks, raw: e.cells,
-      scholarName: [`${e.last},`, e.first, e.middle, e.ext].map(x => x.trim()).filter(x => x && x !== ",").join(" "),
-      preErrors: who.error ? [who.error] : undefined, preWarnings: who.warning ? [who.warning] : undefined,
-    };
-  });
-  const result = checkRows(inputs, ctx, sheet.headers, sheet.ignoredBlank, "setIfFilled", "promo");
-  // a link is only worth confirming when at least one of the student's rows can be saved
-  result.links = links.filter(l => result.rows.some(r => r.payload?.scholarIdNumber === l.scholarIdNumber));
-  return result;
+const personName = (e: { last: string; first: string; middle: string }) => [e.last.trim() ? `${e.last.trim()},` : "", e.first.trim(), e.middle.trim()].filter(Boolean).join(" ");
+function noteLeftOut(map: Map<string, LeftOutStudent>, e: SheetStudent) {
+  const key = e.studentNo.trim() ? `no:${studentNoKey(e.studentNo)}` : `name:${nameKey(`${e.last} ${e.first}`)}`;
+  const hit = map.get(key);
+  if (hit) hit.rows++; else map.set(key, { studentNo: e.studentNo.trim(), name: personName(e), rows: 1 });
+}
+
+// ── School IDs only (a sheet with no grades) ─────────────────
+/** One scholar of the sheet in a School IDs only upload. link = the Student No. will be saved after the school confirms; same = the scholar already has this School ID; error = a scholar of the school, but the sheet cannot be used for them. */
+export interface IdRow {
+  rowNumber: number;
+  status: "link" | "same" | "error";
+  studentNo: string;
+  /** The name as the sheet gives it. */
+  fileName: string;
+  scholarId: string;
+  scholarName: string;
+  message: string;
+}
+export interface IdsResult {
+  fileError?: string;
+  rows: IdRow[];
+  /** The new School IDs to link (the school confirms them first). */
+  links: ProposedLink[];
+  /** Students on the sheet who are not scholars of the school. They are left out. */
+  leftOut: LeftOutStudent[];
+  /** How many students the sheet lists in all (scholars or not). */
+  sheetStudents: number;
+  /** How many grades the sheet has: they are NOT read in this kind of upload. */
+  gradesNotRead: number;
+}
+
+/**
+ * A School IDs only upload: the school's promotional report / enrollment list is read only for the STUDENT NO. and the name of each student. No grade or subject is read or saved.
+ * The scholars of the school are found (by Student No., or by exact name for a Student No. the system does not know yet), the new Student Nos. are proposed as links to confirm,
+ * and every student who is not one of the school's scholars is left out. The sheet does not have to be for the chosen period, and nothing about grades is checked.
+ */
+export function parseSchoolIdsUpload(grid: string[][], scholars: SchoolScholarRow[]): IdsResult {
+  const empty = (fileError: string): IdsResult => ({ fileError, rows: [], links: [], leftOut: [], sheetStudents: 0, gradesNotRead: 0 });
+  if (grid.length === 0) return empty("The file is empty.");
+  const sheet = readPromoReport(grid);
+  if ("error" in sheet) return empty(sheet.error);
+  if (sheet.students.length === 0) return empty("No students were found in the file. Use your school's Promotional Report / Enrollment List.");
+  const resolver = makeResolver(scholars);
+  const byId = new Map(scholars.map(s => [s.scholarIdNumber, s]));
+  const rows: IdRow[] = [];
+  const left = new Map<string, LeftOutStudent>();
+  for (const st of sheet.students) {
+    const who = resolver.whoIs(st);
+    if (who.kind === "left_out") { noteLeftOut(left, st); continue; }
+    const scholar = who.scholarId ? byId.get(who.scholarId) : undefined;
+    const base = { rowNumber: st.rowNumber, studentNo: st.studentNo.trim(), fileName: personName(st), scholarId: who.scholarId, scholarName: scholar ? scholarDisplayName(scholar) : "" };
+    if (who.kind === "known") rows.push({ ...base, status: "same", message: "Already has this School ID. Nothing to change." });
+    else if (who.kind === "link") rows.push({ ...base, status: "link", message: "The School ID will be saved for this scholar." });
+    else rows.push({ ...base, status: "error", message: who.error ?? "This student cannot be used." });
+  }
+  return {
+    rows, links: resolver.links, leftOut: [...left.values()], sheetStudents: sheet.students.length,
+    gradesNotRead: sheet.entries.filter(e => e.grade.trim() !== "").length,
+  };
+}
+
+/** The School IDs only upload's list of what needs a look (errors) and who was left out, as a CSV. Null when there is nothing to list. */
+export function buildIdsReport(result: IdsResult): string | null {
+  const problems = result.rows.filter(r => r.status === "error");
+  if (problems.length === 0 && result.leftOut.length === 0) return null;
+  const rows: (string | number)[][] = [
+    ...problems.map(r => [r.rowNumber, "Needs attention", r.studentNo, r.fileName, r.scholarName, r.message]),
+    ...result.leftOut.map(l => ["", "Left out: not one of your scholars", l.studentNo, l.name, "", "If this student is a scholar, type the School ID in the Scholars list and upload again."]),
+  ];
+  return toCsv(["row_number", "result", "student_no", "name_in_file", "scholar", "note"], rows);
 }
 
 /**

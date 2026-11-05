@@ -50,6 +50,12 @@ export interface PromoEntry {
   cells: string[];
 }
 
+/** One student as the sheet lists them (the row that carries the student's details), whether or not the student has a subject on the sheet. */
+export interface PromoStudent {
+  rowNumber: number;
+  studentNo: string; last: string; first: string; middle: string; ext: string; program: string; yearLevel: string;
+}
+
 export interface PromoSheet {
   /** The heading cells as written in the file. */
   headers: string[];
@@ -59,6 +65,8 @@ export interface PromoSheet {
   semester: string | null;
   schoolName: string;
   entries: PromoEntry[];
+  /** Every student on the sheet, in order (used to link School IDs when the sheet has no grades). A student listed on several rows appears once. */
+  students: PromoStudent[];
   /** Students with no subject on the sheet (nothing to save) and empty rows that were skipped. */
   ignoredBlank: number;
 }
@@ -107,6 +115,8 @@ export function readPromoReport(grid: string[][]): PromoSheet | { error: string 
   }
 
   const entries: PromoEntry[] = [];
+  const students: PromoStudent[] = [];
+  const seenStudents = new Set<string>();
   let ignoredBlank = 0;
   let carry = { program: "", major: "", studentNo: "", yearLevel: "", last: "", first: "", middle: "", ext: "", sex: "", nationality: "" };
   for (let r = header.row + 1; r < grid.length; r++) {
@@ -120,13 +130,18 @@ export function readPromoReport(grid: string[][]): PromoSheet | { error: string 
         program: get("program"), major: get("major"), studentNo: get("studentNo"), yearLevel: get("yearLevel"),
         last: get("last"), first: get("first"), middle: get("middle"), ext: get("ext"), sex: get("sex"), nationality: get("nationality"),
       };
+      const who = `${plain(carry.studentNo)}|${plain(carry.last)}|${plain(carry.first)}|${plain(carry.middle)}`;
+      if (!seenStudents.has(who)) {
+        seenStudents.add(who);
+        students.push({ rowNumber: r + 1, studentNo: carry.studentNo, last: carry.last, first: carry.first, middle: carry.middle, ext: carry.ext, program: carry.program, yearLevel: carry.yearLevel });
+      }
     }
     const code = get("code"), description = get("description"), units = get("units"), grade = get("grade"), remarks = get("remarks");
     if (!code && !description && !units && !grade && !remarks) { ignoredBlank++; continue; }      // a student with no subject yet
     const cells = [carry.program, carry.major, carry.studentNo, carry.yearLevel, carry.last, carry.first, carry.middle, carry.ext, carry.sex, carry.nationality, code, description, units, grade, remarks];
     entries.push({ rowNumber: r + 1, ...carry, code, description, units, grade, remarks, cells });
   }
-  return { headers: PROMO_COLUMNS.map((h, i) => (grid[header.row]?.[at[FIELD_ORDER[i]]] ?? h).trim() || h), schoolYear, semester, schoolName, entries, ignoredBlank };
+  return { headers: PROMO_COLUMNS.map((h, i) => (grid[header.row]?.[at[FIELD_ORDER[i]]] ?? h).trim() || h), schoolYear, semester, schoolName, entries, students, ignoredBlank };
 }
 
 // ── Building the template ────────────────────────────────────

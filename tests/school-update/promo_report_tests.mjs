@@ -153,9 +153,10 @@ await test("two scholars with the same name and no School ID: not guessed, an er
   const r = B.parsePromoUpload(sheetGrid([R("2022-004", "LOPEZ", "PEDRO", "", "A", "Subj A", "2")]), ctx());
   assert.equal(r.rows[0].status, "error"); assert.match(r.rows[0].messages.join(" "), /more than one scholar/); assert.deepEqual(r.links, []);
 });
-await test("a name nobody has: an error that tells the school to type the School ID in the list", () => {
-  const r = B.parsePromoUpload(sheetGrid([R("2022-099", "NOBODY", "NAMED", "", "A", "Subj A", "2")]), ctx());
-  assert.equal(r.rows[0].status, "error"); assert.match(r.rows[0].messages.join(" "), /Type the School ID in the Scholars list/);
+await test("a name nobody has is not one of the school's scholars: the student is left out (no error), and listed so the school can check", () => {
+  const r = B.parsePromoUpload(sheetGrid([R("2022-001", "DE LA CRUZ", "JUAN", "", "A", "Subj A", "2"), R("2022-099", "NOBODY", "NAMED", "", "A", "Subj A", "2"), CONT("B", "Subj B", "1.5")]), ctx());
+  assert.equal(r.rows.length, 1); assert.equal(r.rows[0].status, "valid");
+  assert.deepEqual(r.leftOut, [{ studentNo: "2022-099", name: "NOBODY, NAMED", rows: 2 }]);
 });
 await test("the scholar already has another School ID: the error says which one and does not overwrite it", () => {
   const r = B.parsePromoUpload(sheetGrid([R("9999", "DE LA CRUZ", "JUAN", "", "A", "Subj A", "2")]), ctx());
@@ -185,8 +186,9 @@ await test("a Closed period and a missing grading scale are refused as before", 
   assert.match(B.parsePromoUpload(sheetGrid([R("2022-001", "x", "y", "", "A", "S", "2")]), ctx({ periodStatus: "closed" })).fileError, /Open period/);
   assert.match(B.parsePromoUpload(sheetGrid([R("2022-001", "x", "y", "", "A", "S", "2")]), ctx({ config: null })).fileError, /grading scale/);
 });
-await test("a sheet with only students and no subjects says nothing is filled in", () => {
-  assert.match(B.parsePromoUpload(sheetGrid([R("2022-001", "x", "y", "", "", "", "", "", "")]), ctx()).fileError, /Nothing is filled in/);
+await test("a sheet with only students and no subjects is rejected as grades, and points to 'School IDs only'; a sheet with no student at all says nothing is filled in", () => {
+  assert.match(B.parsePromoUpload(sheetGrid([R("2022-001", "x", "y", "", "", "", "", "", "")]), ctx()).fileError, /choose "School IDs only"/);
+  assert.match(B.parsePromoUpload(sheetGrid([]), ctx()).fileError, /Nothing is filled in/);
 });
 
 console.log("\nCSV saved from the sheet, and the earlier CSV");
