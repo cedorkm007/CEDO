@@ -42,7 +42,7 @@ export function RenewalWindowsTab({ windows, onChanged }: { windows: RenewalWind
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div>
           <h2 className="text-[15px] font-bold text-[#062444]">Renewal windows</h2>
-          <p className="text-[14px] text-slate-700">Scholars apply once per term. Each window has a start and an end date. A term can have <strong>several windows</strong>: to give some schools their own schedule, open another window for the same term and tick those schools. A school can be in only one window of a term.</p>
+          <p className="text-[14px] text-slate-700">Scholars apply once per term. Each window has a start and an end date. A term can have <strong>several windows</strong>: to give some schools their own schedule, open another window for the same term and tick those schools. A school can be in only one window of a term. A <strong>testers-only</strong> window (a test with test accounts) can be added beside the real windows: the test scholars use the test window, everybody else is not affected.</p>
         </div>
         <button onClick={() => setEditing("new")} className="inline-flex items-center gap-1.5 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e]"><Plus size={15} aria-hidden="true" /> Open a renewal window</button>
       </div>
@@ -183,7 +183,7 @@ function WindowForm({ initial, windows, schools, onClose, onSaved }: { initial: 
         <fieldset className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3 py-3">
           <legend className="px-1 text-[14px] font-bold text-[#062444]">Who can see this window</legend>
           <label className="flex items-start gap-2 text-[14px] text-slate-800"><input type="radio" name="window-audience" checked={!testersOnly} onChange={() => setTestersOnly(false)} className="mt-1" /> <span><strong>Everyone</strong> — every scholar sees it, gets the "Renewal is now open" alert and can apply.</span></label>
-          <label className="mt-2 flex items-start gap-2 text-[14px] text-slate-800"><input type="radio" name="window-audience" checked={testersOnly} onChange={() => setTestersOnly(true)} className="mt-1" /> <span><strong>Testers only</strong> — only the scholars you choose below see it, get alerts, can apply, and are counted in the lists, the dashboard and the Excel file. Nobody else notices anything. Use it to test with test accounts.</span></label>
+          <label className="mt-2 flex items-start gap-2 text-[14px] text-slate-800"><input type="radio" name="window-audience" checked={testersOnly} onChange={() => setTestersOnly(true)} className="mt-1" /> <span><strong>Testers only</strong> — only the scholars you choose below see it, get alerts, can apply, and are counted in the lists, the dashboard and the Excel file. Nobody else notices anything. It can sit beside the real windows of the same term: the testers use this window instead of the real one. Use it to test with test accounts.</span></label>
           {testersOnly && <TesterPicker chosen={chosen} onChange={setChosen} />}
         </fieldset>
         {error && <p role="alert" className="text-[14px] text-red-700">{error}</p>}
