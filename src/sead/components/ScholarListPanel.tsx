@@ -26,7 +26,7 @@ const EXPORT_COLUMNS: { label: string; value: (r: ScholarInformationRow) => stri
  * panel represents (e.g. one barangay's scholars).
  */
 export function ScholarListPanel({
-  title, rows, filtersSummary, filenamePrefix, defaultExpanded = false, modalLevel = 0,
+  title, rows, filtersSummary, filenamePrefix, defaultExpanded = false, modalLevel = 0, profilesAvailable = true,
 }: {
   title: string;
   rows: ScholarInformationRow[];
@@ -35,6 +35,8 @@ export function ScholarListPanel({
   defaultExpanded?: boolean;
   /** Nesting depth of whatever Modal (if any) this panel is already shown inside — the Preview popup below stacks one level above it. Defaults to 0 (a normal top-level modal); pass 1 when this panel is itself inside an `elevated` modal. */
   modalLevel?: number;
+  /** false for a saved semester: the per-scholar profile files are built from today's information, so they are not offered there (the list itself can still be downloaded). */
+  profilesAvailable?: boolean;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
@@ -145,7 +147,7 @@ export function ScholarListPanel({
                     <tr key={r.scholarIdNumber} className="border-t border-[#f0f3f8]">
                       <td className="px-4 py-2 font-medium text-[#062444] whitespace-nowrap">{r.scholarIdNumber}</td>
                       <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="relative inline-block">
+                        {!profilesAvailable ? <span className="text-[#062444]">{r.lastName}, {r.firstName} {r.middleName}</span> : <div className="relative inline-block">
                           <button onClick={() => setOpenProfileMenuFor(v => v === r.scholarIdNumber ? null : r.scholarIdNumber)}
                             disabled={!!profileDownloading}
                             title="Download this scholar's comprehensive profile"
@@ -168,7 +170,7 @@ export function ScholarListPanel({
                               </div>
                             </>
                           )}
-                        </div>
+                        </div>}
                       </td>
                       <td className="px-4 py-2 text-slate-500 max-w-[220px] truncate" title={r.school || undefined}>{r.school || "—"}</td>
                       <td className="px-4 py-2 text-slate-500 max-w-[160px] truncate" title={r.course || undefined}>{r.course || "—"}</td>
