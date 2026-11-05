@@ -77,6 +77,7 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
   // The SDP Reconsideration tab is for the evaluator (read-only) and for the people who decide (it.admin1 and the accounts he appoints).
   const TABS = ALL_TABS.filter(t => t.key === "certificate" ? (isEvaluator || isItAdmin)
     : (t.key === "applications" || t.key === "renewed" || t.key === "notApplied") ? seesList
+    : t.key === "dashboard" ? (seesRenewals || isSdpApprover)        // the SDP Reconsideration Approver reads the numbers (not the Excel file)
     : t.key === "sdpReconsideration" ? (isEvaluator || isSdpApprover)
     : t.key === "enteredGrades" ? (isEvaluator || isGradesApprover)
     : t.key === "documents" ? (isEvaluator || isDocumentsApprover)
@@ -119,7 +120,7 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
           {tab === "documents" && <RenewalDocumentsTab canApprove={isDocumentsApprover} refreshKey={refreshKey} onChanged={bump} />}
           {tab === "divisionHead" && <RenewalDivisionHeadTab canDecide={isDivisionHead} onOpenRecord={setDetailId} onChanged={bump} refreshKey={refreshKey} />}
           {tab === "calendar" && <AppointmentsTab readOnly onOpenRecord={setDetailId} />}
-          {tab === "dashboard" && current && <RenewalDashboardTab schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} />}
+          {tab === "dashboard" && current && <RenewalDashboardTab schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} canExport={seesRenewals} />}
           {tab === "windows" && <RenewalWindowsTab windows={windows ?? []} onChanged={async () => { await loadWindows(); bump(); }} />}
           {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && tab !== "certificate" && tab !== "sdpReconsideration" && tab !== "enteredGrades" && tab !== "documents" && !current && <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{isEvaluator ? "Open a renewal window first (Windows tab)." : "No renewal window has been opened yet."}</p>}
           {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && tab !== "certificate" && tab !== "dashboard" && tab !== "sdpReconsideration" && tab !== "enteredGrades" && tab !== "documents" && current && (
