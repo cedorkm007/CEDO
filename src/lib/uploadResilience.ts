@@ -1,0 +1,78 @@
+// ─────────────────────────────────────────────────────────────
+// src/lib/uploadResilience.ts
+// "Failed to fetch" is what a browser says when a request never got an answer (the phone's connection dropped, a slow upload gave up, the server was too busy to reply).
+// These helpers make the renewal application survive that: they recognise it, try again a couple of times, shrink big phone screenshots before sending them, and say in plain
+// words what went wrong and what to do. The pure parts are tested in tests/scholar-apply-network.
+// ─────────────────────────────────────────────────────────────
+
+/** Does this error message mean "the request did not get through" (as opposed to the server refusing it for a reason)? */
+export function isNetworkErrorMessage(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return /failed to fetch|networkerror|network request failed|load failed|fetch failed|network error|the network connection was lost|timed? ?out|connection (was )?(lost|reset|closed)/i.test(message);
+}
+
+export const NETWORK_RETRY_DELAYS_MS = [1500, 4000];
+
+/**
+ * Runs `attempt` and, while it fails only because the request did not get through, tries again (after the given delays). Any other error is returned at once.
+ * `attempt` returns the usual { error } shape of the Supabase calls.
+ */
+export async function retryOnNetworkError<T extends { error: { message: string } | null }>(
+  attempt: () => Promise<T>, delays: number[] = NETWORK_RETRY_DELAYS_MS, sleep: (ms: number) => Promise<void> = ms => new Promise(r => setTimeout(r, ms)),
+): Promise<T> {
+  let result: T;
+  try { result = await attempt(); }
+  catch (e) { result = { error: { message: String((e as Error)?.message ?? e) } } as T; }
+  for (const d of delays) {
+    if (!result.error || !isNetworkErrorMessage(result.error.message)) return result;
+    await sleep(d);
+    try { result = await attempt(); }
+    catch (e) { result = { error: { message: String((e as Error)?.message ?? e) } } as T; }
+  }
+  return result;
+}
+
+/** The plain-words message for a request that did not get through. `what` finishes "We could not …", for example "send your screenshot (2 of 3)". */
+export function networkProblemText(what: string): string {
+  return `We could not ${what} because your internet connection dropped or was too slow. Nothing was saved. Please check your connection (Wi-Fi or mobile data) and press Submit again.`;
+}
+
+/** The biggest side (in pixels) a grade screenshot keeps. Plenty to read every line, and small enough to upload quickly on mobile data. */
+export const SHRINK_MAX_SIDE = 2400;
+/** Pictures at or under this size are sent as they are. */
+export const SHRINK_ABOVE_BYTES = 1.5 * 1024 * 1024;
+
+/** The size a picture shrinks to (never bigger than it is). */
+export function shrunkSize(width: number, height: number, maxSide = SHRINK_MAX_SIDE): { width: number; height: number } {
+  if (width <= 0 || height <= 0) return { width, height };
+  const scale = Math.min(1, maxSide / Math.max(width, height));
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
+
+/** Should this picture be shrunk before it is sent? Only big JPG, PNG or WEBP pictures. */
+export function shouldShrink(file: { type: string; size: number }): boolean {
+  return ["image/jpeg", "image/png", "image/webp"].includes(file.type) && file.size > SHRINK_ABOVE_BYTES;
+}
+
+/**
+ * A big phone screenshot or photo becomes a JPG of at most SHRINK_MAX_SIDE pixels (usually a few hundred KB), which uploads quickly even on a weak connection.
+ * If anything goes wrong, or the result is not smaller, the original file is returned untouched. Browser only.
+ */
+export async function shrinkImageForUpload(file: File): Promise<File> {
+  if (!shouldShrink(file)) return file;
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const { width, height } = shrunkSize(bitmap.width, bitmap.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close?.();
+    const blob: Blob | null = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.88));
+    if (!blob || blob.size >= file.size) return file;
+    const name = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+    return new File([blob], name, { type: "image/jpeg", lastModified: file.lastModified });
+  } catch { return file; }
+}
