@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { SDP_CREDITS_REQUIRED } from "@/lib/renewal";
+import { isNetworkErrorMessage, networkProblemText, retryOnNetworkError } from "@/lib/uploadResilience";
 
 export type SDPCategory = "community_service" | "community_volunteerism" | "formation_program";
 export type SDPActivityType = "one_time" | "recurring";
@@ -249,3 +250,58 @@ export async function claimSDPReservedCredits(category: SDPCategory): Promise<{ 
   return { ok: true, amount: Number(data ?? 0) };
 }
 
+
+// ── Progress monitoring: attendance confirmed by a picture (supabase_migration_sdp_progress_a_tables_functions.sql) ──
+export type ProgressStatus = "pending" | "approved" | "rejected";
+export interface ProgressSubmission {
+  id: string; activityId: string; status: ProgressStatus; imagePath: string; placeText: string;
+  capturedAt: string; submittedAt: string; reviewedAt: string | null; rejectReason: string;
+}
+export const PROGRESS_BUCKET = "sdp-progress-photos";
+
+/** The activities that confirm attendance with a picture (an empty set before the database update is run). */
+export async function fetchProgressActivityIds(): Promise<Set<string>> {
+  const { data, error } = await supabase.from("sdp_progress_monitoring").select("activity_id");
+  if (error || !data) return new Set();
+  return new Set(data.map(r => String(r.activity_id)));
+}
+
+/** This scholar's own pictures, by activity. */
+export async function fetchMyProgressSubmissions(): Promise<Map<string, ProgressSubmission>> {
+  const out = new Map<string, ProgressSubmission>();
+  const { data, error } = await supabase.from("sdp_progress_submissions").select("id, activity_id, status, image_path, place_text, captured_at, submitted_at, reviewed_at, reject_reason");
+  if (error || !data) return out;
+  for (const r of data) out.set(String(r.activity_id), {
+    id: String(r.id), activityId: String(r.activity_id), status: r.status as ProgressStatus, imagePath: String(r.image_path), placeText: String(r.place_text ?? ""),
+    capturedAt: String(r.captured_at), submittedAt: String(r.submitted_at), reviewedAt: r.reviewed_at ? String(r.reviewed_at) : null, rejectReason: String(r.reject_reason ?? ""),
+  });
+  return out;
+}
+
+/**
+ * Sends the picture the scholar just took: it is uploaded to the scholar's private folder first, then recorded (the database checks the dates, the location and the scholar).
+ * A new picture replaces the one that was waiting (or rejected): the old file is removed. A dropped connection is tried again; if the picture cannot be recorded the uploaded file is removed again.
+ */
+export async function submitProgressPicture(args: {
+  activityId: string; scholarIdNumber: string; blob: Blob; capturedAt: Date; lat: number; lng: number; accuracy: number | null; place: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const path = `${args.scholarIdNumber}/${args.activityId}/${crypto.randomUUID()}.jpg`;
+  const up = await retryOnNetworkError(() => supabase.storage.from(PROGRESS_BUCKET).upload(path, args.blob, { contentType: "image/jpeg", upsert: false }));
+  if (up.error) return { ok: false, error: isNetworkErrorMessage(up.error.message) ? networkProblemText("send your picture") : up.error.message };
+  const res = await retryOnNetworkError(async () => supabase.rpc("sdp_progress_submit", {
+    p_activity_id: args.activityId, p_image_path: path, p_captured_at: args.capturedAt.toISOString(), p_lat: args.lat, p_lng: args.lng, p_accuracy: args.accuracy, p_place: args.place,
+  }));
+  if (res.error) {
+    await supabase.storage.from(PROGRESS_BUCKET).remove([path]);
+    return { ok: false, error: isNetworkErrorMessage(res.error.message) ? networkProblemText("send your picture") : res.error.message };
+  }
+  const oldPath = (res.data as { old_path?: string | null } | null)?.old_path;
+  if (oldPath) await supabase.storage.from(PROGRESS_BUCKET).remove([oldPath]);      // the old picture is deleted
+  return { ok: true };
+}
+
+/** A link (valid for 5 minutes) to show a picture. */
+export async function getProgressPictureUrl(path: string): Promise<string | null> {
+  const { data, error } = await supabase.storage.from(PROGRESS_BUCKET).createSignedUrl(path, 300);
+  return error || !data ? null : data.signedUrl;
+}

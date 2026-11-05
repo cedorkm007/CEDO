@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { motion, AnimatePresence } from "motion/react";
-import { X, ClipboardList, Lightbulb, CheckCircle2 } from "lucide-react";
+import { X, ClipboardList, Lightbulb, CheckCircle2, Camera, Clock3, AlertTriangle } from "lucide-react";
 import { SectionCard } from "./SectionCard";
 import {
-  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchScholarSDPOwed, fetchScholarSDPProgress, fetchScholarSDPRequirements, fetchScholarSDPView, type SDPOwedRow, SDP_CATEGORIES, subCategoryLabel, daySubName, manilaDay,
+  fetchApprovedSDPActivities, fetchAttendedSDPActivityIds, fetchProgressActivityIds, fetchMyProgressSubmissions, getProgressPictureUrl, type ProgressSubmission, fetchScholarSDPOwed, fetchScholarSDPProgress, fetchScholarSDPRequirements, fetchScholarSDPView, type SDPOwedRow, SDP_CATEGORIES, subCategoryLabel, daySubName, manilaDay, scheduleDays,
   type SDPActivity, type SDPCreditCounts,
 } from "../../sdpApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
 import { termLabelOf } from "@/lib/renewal";
 import { DefaultPubmat, AttendedBadge, EndedBadge, NextScheduleBadge, isPastDate, formatShortDate } from "./activityCardKit";
+import { ProgressCameraModal } from "./ProgressCameraModal";
 
 /**
  * For a recurring activity, status has to look at EVERY schedule (the base
@@ -29,7 +30,59 @@ function activityStatus(act: SDPActivity): { ended: boolean; nextDate: string | 
   return upcoming ? { ended: false, nextDate: upcoming } : { ended: true, nextDate: null };
 }
 
-function ActivityDetailModal({ activity, onClose }: { activity: SDPActivity; onClose: () => void }) {
+/** The picture the scholar sent (a link that lasts a few minutes), shown small. */
+function MyPicture({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => { let off = false; void getProgressPictureUrl(path).then(u => { if (!off) setUrl(u); }); return () => { off = true; }; }, [path]);
+  return url ? <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="The picture you sent" className="mt-2 max-h-56 w-full rounded-lg border border-gray-200 object-contain" /></a> : <p className="mt-2 text-[12px] text-gray-400">Loading your picture…</p>;
+}
+
+/** The "Capture a Picture" part of an activity that confirms attendance with a picture: what to do, and where the picture is (waiting, approved, rejected). */
+function ProgressSection({ ended, submission, onCapture }: { ended: boolean; submission: ProgressSubmission | undefined; onCapture: () => void }) {
+  const st = submission?.status;
+  return (
+    <div className="mt-4 rounded-xl border border-[#0088cc]/30 bg-[#eef6fc] p-3.5" aria-label="Picture confirmation">
+      <p className="flex items-center gap-1.5 text-[13px] font-bold text-[#062444]"><Camera className="h-4 w-4" /> This activity is confirmed with a picture</p>
+      {st === "approved" ? (
+        <>
+          <p className="mt-2 flex items-start gap-1.5 text-[13px] font-semibold text-green-800"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> Approved. You are credited for this activity.</p>
+          {submission && <MyPicture path={submission.imagePath} />}
+        </>
+      ) : st === "pending" ? (
+        <>
+          <p className="mt-2 flex items-start gap-1.5 text-[13px] font-semibold text-amber-800"><Clock3 className="mt-0.5 h-4 w-4 shrink-0" /> Your picture is waiting for approval. You will see the result here.</p>
+          {submission && <MyPicture path={submission.imagePath} />}
+          {!ended && <button onClick={onCapture} className="mt-3 w-full rounded-lg border border-[#062444]/25 bg-white py-2.5 text-[13px] font-bold text-[#062444]">Take another picture (it replaces this one)</button>}
+        </>
+      ) : st === "rejected" ? (
+        <>
+          <p className="mt-2 flex items-start gap-1.5 text-[13px] font-semibold text-red-700"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> Your picture was not approved. Please take a picture again.</p>
+          {submission?.rejectReason && <p className="mt-1 text-[13px] text-red-700">Reason: {submission.rejectReason}</p>}
+          {!ended && <button onClick={onCapture} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-[#062444] py-3 text-[14px] font-bold text-white"><Camera className="h-4 w-4" /> Capture a Picture</button>}
+        </>
+      ) : (
+        <>
+          <p className="mt-2 text-[13px] text-slate-700">To be credited for this activity, take a picture at the activity. Your camera and your location are used: the place, the date and the time are printed on the picture. An evaluator then approves it.</p>
+          {ended
+            ? <p className="mt-2 text-[13px] font-semibold text-slate-600">This activity has ended, so a picture can no longer be sent.</p>
+            : <button onClick={onCapture} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-[#062444] py-3 text-[14px] font-bold text-white"><Camera className="h-4 w-4" /> Capture a Picture</button>}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Has the time for the picture passed? The same rule as the database: a picture is accepted any day UNTIL THE LAST DATE of the activity (the whole of that day, Philippine time).
+ * (Not the same as the "Ended" mark on the card, which turns on as soon as the activity has started.)
+ */
+function pictureTimeOver(act: SDPActivity): boolean {
+  const last = scheduleDays(act).map(d => d.day).filter(Boolean).sort().pop();
+  return !!last && manilaDay(new Date().toISOString()) > last;
+}
+
+function ActivityDetailModal({ activity, onClose, progress, scholarIdNumber, onSent }: { activity: SDPActivity; onClose: () => void; progress?: { enabled: boolean; submission: ProgressSubmission | undefined }; scholarIdNumber: string; onSent: () => void }) {
+  const [capturing, setCapturing] = useState(false);
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
@@ -56,16 +109,18 @@ function ActivityDetailModal({ activity, onClose }: { activity: SDPActivity; onC
             </div>
           ))}
         </div>
+        {progress?.enabled && <div className="px-6 pb-3"><ProgressSection ended={pictureTimeOver(activity)} submission={progress.submission} onCapture={() => setCapturing(true)} /></div>}
         <div className="px-6 pb-5">
           <button onClick={onClose} className="w-full bg-gray-100 text-gray-700 py-2.5 rounded-xl font-bold text-sm">Close</button>
         </div>
       </motion.div>
+      {capturing && <div onClick={e => e.stopPropagation()}><ProgressCameraModal activity={activity} scholarIdNumber={scholarIdNumber} onClose={() => setCapturing(false)} onSent={onSent} /></div>}
     </motion.div>
   );
 }
 
 /** Same compact card structure as CalendarAndActivitiesPanel's Activities list and SubmissionActivitiesList's collapsed rows — consistent sizing across every activity list in the scholar portal. */
-function ActivityCard({ act, attended, onClick }: { act: SDPActivity; attended: boolean; onClick: () => void }) {
+function ActivityCard({ act, attended, onClick, progress }: { act: SDPActivity; attended: boolean; onClick: () => void; progress?: { enabled: boolean; submission: ProgressSubmission | undefined } }) {
   const pubmat = pubmatUrl(act.pubmatPath);
   const categoryLabel = act.category ? (SDP_CATEGORIES.find(c => c.key === act.category)?.label ?? act.category) : "General";
   const status = activityStatus(act);
@@ -77,7 +132,12 @@ function ActivityCard({ act, attended, onClick }: { act: SDPActivity; attended: 
       {/* Pubmat (or a default seal when none was uploaded) with the Attended/Ended/Next-schedule mark directly beneath it. */}
       <div className="flex w-16 shrink-0 flex-col items-center gap-1.5">
         <img src={pubmat ?? DefaultPubmat} alt="" className="h-16 w-16 rounded-lg object-cover" />
-        {attended ? <AttendedBadge /> : status.ended ? <EndedBadge /> : status.nextDate ? <NextScheduleBadge /> : null}
+        {attended ? <AttendedBadge />
+          : progress?.enabled && progress.submission?.status === "pending" ? <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800"><Clock3 size={11} /> Waiting</span>
+          : progress?.enabled && progress.submission?.status === "rejected" ? <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700"><AlertTriangle size={11} /> Retake</span>
+          : progress?.enabled && !pictureTimeOver(act) ? <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#0088cc]/10 px-2 py-0.5 text-[10px] font-bold text-[#0077b6]"><Camera size={11} /> Picture</span>
+          : status.ended ? <EndedBadge />
+          : status.nextDate ? <NextScheduleBadge /> : null}
       </div>
 
       <div className="min-w-0 flex-1 self-center">
@@ -183,6 +243,9 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   const [attendedIds, setAttendedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<SDPActivity | null>(null);
+  // activities that confirm attendance with a picture, and this scholar's own pictures
+  const [progressIds, setProgressIds] = useState<Set<string>>(new Set());
+  const [submissions, setSubmissions] = useState<Map<string, ProgressSubmission>>(new Map());
   const [credits, setCredits] = useState<SDPCreditCounts>({ community_service: 0, community_volunteerism: 0, formation_program: 0 });
   const [required, setRequired] = useState<SDPCreditCounts>({ community_service: CREDITS_REQUIRED, community_volunteerism: CREDITS_REQUIRED, formation_program: CREDITS_REQUIRED });
   // credits added to the requirement of the semesters AFTER the current one (an approved SDP reconsideration), shown as soon as it is approved
@@ -192,9 +255,11 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
 
   async function loadAll(quiet = false) {
     if (!quiet) setLoading(true);
-    const [a, progress, attended, req, owed, view] = await Promise.all([
+    const [a, progress, attended, req, owed, view, pIds, pSubs] = await Promise.all([
       fetchApprovedSDPActivities(), fetchScholarSDPProgress(), fetchAttendedSDPActivityIds(scholarIdNumber), fetchScholarSDPRequirements(), fetchScholarSDPOwed(), fetchScholarSDPView(),
+      fetchProgressActivityIds(), fetchMyProgressSubmissions(),
     ]);
+    setProgressIds(pIds); setSubmissions(pSubs);
     setNextSemester(view?.shifted ? { schoolYear: view.schoolYear, semester: view.semester } : null);
     setComing(owed.filter(o => !o.isCurrent));
     setActivities(a);
@@ -205,6 +270,13 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   }
   useEffect(() => { loadAll(); }, [scholarIdNumber]);
   useLiveReload(() => loadAll(true));      // new credits, a changed requirement: show them without refreshing
+  // while a picture waits for approval, look again every 20 seconds so the answer (approved / rejected) shows without refreshing
+  const anyWaiting = Array.from(submissions.values()).some(x => x.status === "pending");
+  useEffect(() => {
+    if (!anyWaiting) return;
+    const t = setInterval(() => { void loadAll(true); }, 20_000);
+    return () => clearInterval(t);
+  }, [anyWaiting]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <SectionCard icon={<Lightbulb size={14} />} title="Scholars' Development Program (SDP)">
@@ -234,12 +306,13 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
             <p className="text-sm">No SDP activities yet.</p>
           </div>
         ) : (
-          activities.map(act => <ActivityCard key={act.id} act={act} attended={attendedIds.has(act.id)} onClick={() => setSelectedActivity(act)} />)
+          activities.map(act => <ActivityCard key={act.id} act={act} attended={attendedIds.has(act.id)} onClick={() => setSelectedActivity(act)} progress={{ enabled: progressIds.has(act.id), submission: submissions.get(act.id) }} />)
         )}
       </div>
 
       <AnimatePresence>
-        {selectedActivity && <ActivityDetailModal activity={selectedActivity} onClose={() => setSelectedActivity(null)} />}
+        {selectedActivity && <ActivityDetailModal activity={selectedActivity} onClose={() => setSelectedActivity(null)} scholarIdNumber={scholarIdNumber} onSent={() => void loadAll(true)}
+          progress={{ enabled: progressIds.has(selectedActivity.id), submission: submissions.get(selectedActivity.id) }} />}
       </AnimatePresence>
     </SectionCard>
   );

@@ -117,6 +117,26 @@ const SCHOLARS = [
 export const SCHOLAR_LAST = Object.fromEntries(SCHOLARS.map(s => [s.n, s.last]));
 const SUBJECTS = ["Mathematics", "English", "Science", "History"];
 const REMARKS = { 23: ["Was INC, now graded", null, null], 3: ["Failed the major subject", null, null], 6: ["Dropped in week 3", null, null], 7: ["Missing final project", null, null] };
+/** A small PNG made from scratch (no image library): a coloured gradient with a dark band at the bottom, so the demo has something to show where a real picture would be. */
+function demoPicture(seed) {
+  const W = 480, H = 300;
+  const raw = Buffer.alloc((W * 3 + 1) * H);
+  for (let y = 0; y < H; y++) {
+    raw[y * (W * 3 + 1)] = 0;
+    for (let x = 0; x < W; x++) {
+      const band = y > H - 70;
+      const o = y * (W * 3 + 1) + 1 + x * 3;
+      raw[o] = band ? 20 : (60 + seed * 30 + (x * 120) / W) % 256;
+      raw[o + 1] = band ? 20 : 110 + ((y * 90) / H);
+      raw[o + 2] = band ? 20 : 160 - ((x * 60) / W);
+    }
+  }
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = buf => { let c = 0xffffffff; for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
 const sidNum = n => `TEST-${String(n).padStart(4, "0")}`;
 
 export const ACCOUNTS = {
@@ -242,6 +262,26 @@ export async function seedDb(db) {
     for (const n of [2, 3]) await db.query("insert into attendance_records (session_id, scholar_id_number, hours_earned, status, voucher_redemption_count) values ($1, $2, 1, 'present', 1) on conflict do nothing", [sessionId, sidNum(n)]);
     const cur = (await db.query("select current_school_year sy, current_semester sem from grading_period_settings where id = true")).rows[0];
     if (cur) await db.query("insert into sdp_attendance (activity_id, scholar_id_number, attended_date, school_year, semester, occurrence_number) values ($1, $2, current_date, $3, $4, 1) on conflict do nothing", [testqr, sidNum(4), cur.sy, cur.sem]);
+  }
+
+  // SDP Progress Monitoring (attendance confirmed with a picture): one activity that has it, with four scholars' pictures in the four states.
+  {
+    const pid = id("act:progress");
+    await db.query(`insert into sdp_activities (id, name, category, sub_category, activity_type, date_time, end_time, credits, all_year_levels, organization, venue, nature, source_of_fund, objectives, target_partners, specific_role, work_plan, program_flow, budget_items, recurring_dates, target_year_levels, target_barangays, target_clusters)
+      values ($1, 'TEST – Tree Planting (Picture Confirmation)', 'community_volunteerism', 'community_based', 'one_time', now() - interval '1 hour', now() + interval '4 hours', 1, true, 'TEST Org', 'Bonbon Riverside', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', '{}') on conflict (id) do nothing`, [pid]);
+    await db.query("insert into sdp_progress_monitoring (activity_id, enabled_by) values ($1, $2) on conflict do nothing", [pid, id("staff:demo.sead")]);
+    const cur2 = (await db.query("select current_school_year sy, current_semester sem from grading_period_settings where id = true")).rows[0];
+    await db.query("insert into storage.buckets (id, name, public) values ('sdp-progress-photos','sdp-progress-photos', false) on conflict (id) do nothing");
+    const mk = [[1, "pending", null], [2, "pending", null], [3, "approved", null], [4, "rejected", "Too dark: please take it again outside."]];
+    for (const [n, status, reason] of mk) {
+      const path = `${sidNum(n)}/${pid}/demo.png`;
+      const png = demoPicture(n);
+      await db.query("insert into storage.objects (bucket_id, name, metadata) values ('sdp-progress-photos', $1, $2::jsonb)", [path, JSON.stringify({ mimetype: "image/png", size: png.length, base64: png.toString("base64") })]);
+      await db.query(`insert into sdp_progress_submissions (activity_id, scholar_id_number, status, image_path, captured_at, taken_lat, taken_lng, accuracy_m, place_text, reject_reason, reviewed_by, reviewed_at)
+        values ($1, $2, $3, $4, now() - interval '20 minutes', 8.4542 + $5::numeric / 10000, 124.6319, 9, 'Carmen, Cagayan De Oro City, Misamis Oriental', $6, $7, $8)`,
+        [pid, sidNum(n), status, path, n, reason, status === "pending" ? null : id("staff:demo.sead"), status === "pending" ? null : new Date().toISOString()]);
+    }
+    if (cur2) await db.query("insert into sdp_attendance (activity_id, scholar_id_number, attended_date, school_year, semester, occurrence_number, created_by) values ($1, $2, current_date, $3, $4, 1, $5) on conflict do nothing", [pid, sidNum(3), cur2.sy, cur2.sem, id("staff:demo.sead")]);
   }
 
   // ── Phase 2: renewal windows, an earlier semester for the late-application scholar, and a few applications made through the real functions ──

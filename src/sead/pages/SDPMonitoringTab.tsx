@@ -27,6 +27,9 @@ import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
 import { MonitorsSection } from "../components/MonitorsSection";
 import { BarangayClusterPicker } from "../components/BarangayClusterPicker";
 import { SubCategorySelect } from "../components/SubCategorySelect";
+import { ProgressMonitoringSection } from "../components/ProgressMonitoringSection";
+import { ProgressAttachSection } from "../components/ProgressAttachSection";
+import { fetchProgressEnabled } from "../progressMonitorApi";
 
 function sameSet(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every(x => b.includes(x));
@@ -80,6 +83,7 @@ const HISTORY_SOURCE_LABELS: Record<string, string> = {
   monitor_scan: "a monitor scanned the scholar's ID card",
   manual: "added by hand",
   credit_attended: "“Credit these scholars”",
+  progress_picture: "a picture was approved (Progress Monitoring)",
   removed: "removed by staff",
   category_edit: "category edited",
   semester_move: "semester changed",
@@ -587,6 +591,8 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [showPdfMenu, setShowPdfMenu] = useState(false);
   const [credits, setCredits] = useState<AttendanceEntry[]>([]);
+  const [progressOn, setProgressOn] = useState(false);       // progress monitoring (attendance by picture) is attached: QR attendance cannot be
+  useEffect(() => { void fetchProgressEnabled(activity.id).then(v => setProgressOn(!!v)); }, [activity.id]);
   // Recurring activities: codes are made for ONE day, so each printed code says which day it is for.
   const dayOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -728,7 +734,9 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
     return (
       <div>
         <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2 flex items-center gap-1.5"><QrCode size={13} /> QR / Code Attendance</p>
-        {!enabling ? (
+        {progressOn ? (
+          <p className="rounded-lg border border-[#062444]/15 bg-[#f7f9fc] px-3 py-2 text-[13px] text-slate-800">Progress Monitoring (attendance confirmed with a picture) is attached to this activity, so QR attendance cannot be enabled too. An activity uses one way of confirming attendance. To use QR codes instead, turn progress monitoring off in the Progress Monitoring tab.</p>
+        ) : !enabling ? (
           <button onClick={() => setEnabling(true)} className="text-[12.5px] font-semibold text-[#0088cc] hover:underline">
             + Enable attendance monitoring for this activity
           </button>
@@ -855,7 +863,7 @@ interface OccurrenceRow { date: string; startTime: string; endTime: string; venu
 
 function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; onClose: () => void; onChanged: () => void }) {
   const isRecurring = activity.activityType === "recurring";
-  const [tab, setTab] = useState<"details" | "credited" | "qr">("details");
+  const [tab, setTab] = useState<"details" | "credited" | "qr" | "progress">("details");
   const [name, setName] = useState(activity.name);
   const [organization, setOrganization] = useState(activity.organization);
   // One-time activities only — recurring activities use `occurrences` below instead.
@@ -1026,6 +1034,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
             <button type="button" onClick={() => setTab("details")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "details" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Activity Details</button>
             <button type="button" onClick={() => setTab("credited")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "credited" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Credited Scholars</button>
             <button type="button" onClick={() => setTab("qr")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "qr" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>QR Attendance</button>
+            <button type="button" onClick={() => setTab("progress")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "progress" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Progress Monitoring</button>
           </div>
         </div>
 
@@ -1185,6 +1194,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
           </>}
           {tab === "credited" && <AttendanceSection activity={activity} />}
           {tab === "qr" && <QRAttendanceSection activity={activity} />}
+          {tab === "progress" && <ProgressAttachSection activity={activity} />}
         </div>
 
         <div className="flex items-center justify-between gap-3 px-6 pb-5">
@@ -1641,7 +1651,7 @@ function ChecklistSection() {
  * where that gets tracked.
  */
 export function SDPMonitoringTab() {
-  const [section, setSection] = useUrlState<"activities" | "checklist">("sdpView", "activities", ["activities", "checklist"]);
+  const [section, setSection] = useUrlState<"activities" | "checklist" | "progress">("sdpView", "activities", ["activities", "checklist", "progress"]);
 
   return (
     <div>
@@ -1651,6 +1661,7 @@ export function SDPMonitoringTab() {
         {([
           { key: "activities" as const, label: "SDP Activities" },
           { key: "checklist" as const, label: "SDP Checklist" },
+          { key: "progress" as const, label: "Progress Monitoring" },
         ]).map(t => (
           <button key={t.key} onClick={() => setSection(t.key)}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
@@ -1663,6 +1674,7 @@ export function SDPMonitoringTab() {
 
       {section === "activities" && <ActivitiesSection />}
       {section === "checklist" && <ChecklistSection />}
+      {section === "progress" && <ProgressMonitoringSection />}
     </div>
   );
 }

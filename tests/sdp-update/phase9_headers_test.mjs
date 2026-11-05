@@ -13,7 +13,7 @@ const h = key => all.find(x => x.key.toLowerCase() === key.toLowerCase())?.value
 
 check("the page routing is unchanged (survey links, then everything else to the app)", cfg.rewrites.length === 2 && cfg.rewrites[0].source === "/s/:slug" && cfg.rewrites[0].destination === "/survey.html" && cfg.rewrites[1].source === "/(.*)" && cfg.rewrites[1].destination === "/index.html");
 check("the safe headers are on: no content-type guessing, a modest referrer, HTTPS only", h("X-Content-Type-Options") === "nosniff" && h("Referrer-Policy") === "strict-origin-when-cross-origin" && /max-age=\d{7,}/.test(h("Strict-Transport-Security") ?? ""));
-check("camera and microphone stay allowed for the site itself (QR scanning, speech tool); location, payment and USB are off", /camera=\(self\)/.test(h("Permissions-Policy")) && /microphone=\(self\)/.test(h("Permissions-Policy")) && /geolocation=\(\)/.test(h("Permissions-Policy")));
+check("camera, microphone and (for the picture confirmation of SDP Progress Monitoring) location are allowed for the site itself only; payment and USB are off", /camera=\(self\)/.test(h("Permissions-Policy")) && /microphone=\(self\)/.test(h("Permissions-Policy")) && /geolocation=\(self\)/.test(h("Permissions-Policy")) && /payment=\(\)/.test(h("Permissions-Policy")) && /usb=\(\)/.test(h("Permissions-Policy")));
 const csp = h("Content-Security-Policy-Report-Only") ?? "";
 check("the page-content policy is report-only (nothing can be blocked yet)", csp.length > 100 && h("Content-Security-Policy") === undefined);
 const dir = name => (csp.split(";").map(s => s.trim()).find(s => s.startsWith(name + " ")) ?? "");
