@@ -10,6 +10,16 @@ export type Quarter = 0 | 1 | 2 | 3;
 export const nextQuarter = (q: Quarter, direction: 1 | -1): Quarter => ((((q + direction) % 4) + 4) % 4) as Quarter;
 export const degreesOf = (q: Quarter): number => q * 90;
 
+/** The sizes a picture can be zoomed to (1 = fits the box). Zooming only changes how big it is SHOWN; the box scrolls when it is bigger than the space. */
+export const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 3, 4] as const;
+/** One step in (+1) or out (-1) from the current zoom, stopping at the smallest and the largest. */
+export function nextZoom(current: number, direction: 1 | -1): number {
+  const exact = ZOOM_STEPS.findIndex(z => Math.abs(z - current) < 1e-9);
+  if (exact >= 0) return ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, Math.max(0, exact + direction))];
+  const bigger = ZOOM_STEPS.find(z => z > current), smaller = [...ZOOM_STEPS].reverse().find(z => z < current);
+  return (direction === 1 ? bigger : smaller) ?? (direction === 1 ? ZOOM_STEPS[ZOOM_STEPS.length - 1] : ZOOM_STEPS[0]);
+}
+
 export interface TurnedLayout { boxHeight: number; imageWidth: number; imageHeight: number; left: number; top: number; degrees: number }
 
 /**
