@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { loadDraft, savedAtText, useDraftAutosave } from "@/lib/formDraft";
+import { sanitizeSelfGradesDraft, selfGradesDraftHasContent, selfGradesDraftKey, type SelfGradesDraft } from "../../renewalDraft";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { formatDateTime, selfGradeDifferenceText, selfGradesStatusText, termLabelOf, type RenewalEvaluation } from "@/lib/renewal";
 import { SelfGradesForm, emptyGradeRow, type GradeFormRow } from "./SelfGradesForm";
@@ -42,12 +44,42 @@ export function SelfGradesSection({ record, ev, scholarIdNumber, onChanged }: { 
     return () => { live = false; };
   }, [data?.files]);
 
+  // Auto-save: what the scholar types and picks while entering grades is kept on this device, so it is not lost when they leave the page, reload it or cancel.
+  const draftKey = selfGradesDraftKey(scholarIdNumber, record.id);
+  const [touched, setTouched] = useState(false);
+  const [restoredAt, setRestoredAt] = useState<number | null>(null);
+  const checkedDraft = useRef(false);
+  const snapshot = useMemo<SelfGradesDraft | null>(() => (editing && touched ? { rows, keep, newFiles, ack } : null), [editing, touched, rows, keep, newFiles, ack]);
+  const draft = useDraftAutosave<SelfGradesDraft>(draftKey, snapshot);
+  const canEnterNow = !!data && !(data.submission == null && data.cannotEnterReason) && data.submission?.status !== "approved" && !ev.grades?.school_submitted;
+
+  function applyDraft(d: SelfGradesDraft, savedAt: number) {
+    const sent = new Set((data?.files ?? []).map(f => f.path));
+    setRows(d.rows); setKeep(d.keep.filter(k => sent.has(k.path))); setNewFiles(d.newFiles); setAck(d.ack);
+    setError(""); setTouched(true); setRestoredAt(savedAt); setEditing(true);
+  }
+  // when the section opens: bring back an unsent draft (or drop it when grades can no longer be entered)
+  useEffect(() => {
+    if (!data || checkedDraft.current) return;
+    checkedDraft.current = true;
+    void loadDraft<unknown>(draftKey).then(async r => {
+      const d = r ? sanitizeSelfGradesDraft(r.value) : null;
+      if (!r || !d || !selfGradesDraftHasContent(d)) return;
+      if (!canEnterNow) { await draft.discard(); return; }
+      applyDraft(d, r.savedAt);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
   if (hidden || !data) return null;
   const sub = data.submission;
   if (!sub && data.cannotEnterReason) return null;      // for example the school already uploaded: nothing to enter
 
-  function startEditing() {
-    setError(""); setAck(false); setNewFiles([]);
+  async function startEditing() {
+    setError(""); setAck(false); setNewFiles([]); setTouched(false); setRestoredAt(null);
+    const found = await loadDraft<unknown>(draftKey);      // a draft the scholar left (Cancel keeps it) comes back
+    const d = found ? sanitizeSelfGradesDraft(found.value) : null;
+    if (found && d && selfGradesDraftHasContent(d)) { applyDraft(d, found.savedAt); return; }
     if (data && data.lines.length > 0) { setRows(data.lines.map(l => ({ code: l.code, subject: l.subject, units: String(l.units), grade: l.grade }))); setKeep(data.files); }
     else { setRows([emptyGradeRow()]); setKeep([]); }
     setEditing(true);
@@ -57,8 +89,18 @@ export function SelfGradesSection({ record, ev, scholarIdNumber, onChanged }: { 
     const r = await submitSelfGrades({ recordId: record.id, scholarIdNumber, lines: rows, newFiles, keepFiles: keep, acknowledged: ack });
     setBusy(false);
     if (!r.ok) { setError(r.error); return; }
-    setEditing(false); await load(); await onChanged();
+    await draft.discard();      // sent: the saved draft is no longer needed
+    setEditing(false); setTouched(false); await load(); await onChanged();
   }
+  async function cancelEditing() { await draft.saveNow(); setEditing(false); }      // Cancel closes the form but keeps what was typed
+  async function startOver() {
+    if (!window.confirm("Start over? What you typed and the pictures you picked will be removed.")) return;
+    await draft.discard(); setEditing(false); setTouched(false); setRestoredAt(null);
+  }
+  const rowsChanged = (r: GradeFormRow[]) => { setRows(r); setTouched(true); };
+  const keepChanged = (k: { name: string; path: string }[]) => { setKeep(k); setTouched(true); };
+  const filesChanged = (f: File[]) => { setNewFiles(f); setTouched(true); };
+  const ackChanged = (a: boolean) => { setAck(a); setTouched(true); };
 
   const st = sub ? selfGradesStatusText(sub.status) : null;
   const diffs = sub?.differences ?? null;
@@ -103,13 +145,18 @@ export function SelfGradesSection({ record, ev, scholarIdNumber, onChanged }: { 
 
       {editing && (
         <div className="mt-2 space-y-3">
-          <SelfGradesForm basis={basis} rows={rows} setRows={setRows} keep={keep} setKeep={setKeep} newFiles={newFiles} setNewFiles={setNewFiles} ack={ack} setAck={setAck} onError={setError} />
+          {restoredAt && <p role="status" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sky-900">We brought back what you had already typed (saved {new Date(restoredAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}).</p>}
+          <p data-testid="draft-status" className="flex flex-wrap items-center gap-x-3 text-[13px] text-slate-600" aria-live="polite">
+            <span>Your progress is saved on this device as you go.{touched && draft.savedAt ? ` ${savedAtText(draft.savedAt)}.` : ""}</span>
+            {touched && <button type="button" onClick={() => void startOver()} disabled={busy} className="font-semibold text-red-800 underline">Start over</button>}
+          </p>
+          <SelfGradesForm basis={basis} rows={rows} setRows={rowsChanged} keep={keep} setKeep={keepChanged} newFiles={newFiles} setNewFiles={filesChanged} ack={ack} setAck={ackChanged} onError={setError} />
           {error && <p role="alert" className="text-red-700">{error}</p>}
           <div className="flex gap-2">
             <button onClick={() => void send()} disabled={busy || !ack} className="inline-flex items-center gap-2 rounded-lg bg-[#062444] px-4 py-2 font-bold text-white disabled:opacity-50">
               {busy && <Loader2 size={15} className="animate-spin" aria-hidden="true" />} Send my grades for approval
             </button>
-            <button onClick={() => setEditing(false)} disabled={busy} className="rounded-lg border border-[#062444]/25 px-4 py-2 font-semibold text-[#062444]">Cancel</button>
+            <button onClick={() => void cancelEditing()} disabled={busy} className="rounded-lg border border-[#062444]/25 px-4 py-2 font-semibold text-[#062444]">Cancel</button>
           </div>
         </div>
       )}
