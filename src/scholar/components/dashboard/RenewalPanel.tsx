@@ -10,6 +10,8 @@ import { SelfGradesSection } from "./SelfGradesSection";
 import { RemovalFormCard } from "./RemovalFormCard";
 import { SelfGradesForm, emptyGradeRow, gradeFormProblem, type GradeFormRow } from "./SelfGradesForm";
 import { useLiveReload } from "@/lib/liveUpdates";
+import { loadDraft, savedAtText, useDraftAutosave } from "@/lib/formDraft";
+import { applyDraftHasContent, applyDraftKey, sanitizeApplyDraft, type ApplyDraft } from "../../renewalDraft";
 import { StudyPlanFormLink } from "./StudyPlanFormLink";
 import { reservedMark } from "@/lib/subjectOutcome";
 import { buildNextSteps } from "../../renewalSummary";
@@ -74,6 +76,18 @@ function WindowCard({ data, overview, onChanged }: { data: MyRenewalWindow; over
   const { window: w, record } = data;
   const [applying, setApplying] = useState(false);
   const basis = renewalBasis(w.schoolYear, w.term);
+  // A scholar who left in the middle of an application (went to another tile, reloaded, the phone closed the browser) finds the form open again with what they typed.
+  const canResume = !record && data.state !== "upcoming" && data.state !== "closed";
+  useEffect(() => {
+    if (!canResume) return;
+    let off = false;
+    void loadDraft<unknown>(applyDraftKey(overview.scholar.scholarIdNumber, w.id)).then(r => {
+      const d = r ? sanitizeApplyDraft(r.value, INC_FORM_DOCS.map(x => x.kind)) : null;
+      if (!off && d && applyDraftHasContent(d, { school: overview.scholar.school, program: overview.scholar.program, yearLevel: overview.scholar.yearLevel })) setApplying(true);
+    });
+    return () => { off = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [w.id, canResume]);
 
   return (
     <section className="rounded-xl border border-[#e6ecf5] bg-white shadow-[0_2px_10px_rgba(6,36,68,0.05)]" aria-label={`Renewal for ${termLabelOf(w.schoolYear, w.term)}`}>
@@ -109,25 +123,57 @@ function WindowCard({ data, overview, onChanged }: { data: MyRenewalWindow; over
 }
 
 // ── Applying: three short steps ──────────────────────────────
-function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow; overview: MyRenewalOverview; onCancel: () => void; onDone: () => Promise<void> }) {
+type ApplyFlowProps = { data: MyRenewalWindow; overview: MyRenewalOverview; onCancel: () => void; onDone: () => Promise<void> };
+
+/**
+ * The application is saved on this device as the scholar types and picks (the grades, the screenshots, the INC documents, the note), so nothing is lost when they go to
+ * another tile, reload the page, cancel, or the phone closes the browser. This part only fetches the saved draft; the form itself is ApplyFlowForm.
+ */
+function ApplyFlow(props: ApplyFlowProps) {
+  const key = applyDraftKey(props.overview.scholar.scholarIdNumber, props.data.window.id);
+  const [loaded, setLoaded] = useState<{ draft: ApplyDraft | null; savedAt: number | null } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const defaults = { school: props.overview.scholar.school, program: props.overview.scholar.program, yearLevel: props.overview.scholar.yearLevel };
+  useEffect(() => {
+    let off = false;
+    void loadDraft<unknown>(key).then(r => {
+      if (off) return;
+      const d = r ? sanitizeApplyDraft(r.value, INC_FORM_DOCS.map(x => x.kind)) : null;
+      setLoaded(d && applyDraftHasContent(d, defaults) ? { draft: d, savedAt: r!.savedAt } : { draft: null, savedAt: null });
+    });
+    return () => { off = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  if (!loaded) return <p className="text-[14px] text-slate-600 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Opening your application…</p>;
+  return <ApplyFlowForm key={attempt} {...props} draftKey={key} initial={loaded.draft} restoredAt={loaded.savedAt} onStartOver={() => { setLoaded({ draft: null, savedAt: null }); setAttempt(a => a + 1); }} />;
+}
+
+function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, restoredAt, onStartOver }: ApplyFlowProps & { draftKey: string; initial: ApplyDraft | null; restoredAt: number | null; onStartOver: () => void }) {
   const { window: w } = data;
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [school, setSchool] = useState(overview.scholar.school);
-  const [program, setProgram] = useState(overview.scholar.program);
-  const [yearLevel, setYearLevel] = useState(overview.scholar.yearLevel);
-  const [note, setNote] = useState("");
-  const [askReconsideration, setAskReconsideration] = useState(false);
-  const [gRows, setGRows] = useState<GradeFormRow[]>([emptyGradeRow()]);
-  const [gFiles, setGFiles] = useState<File[]>([]);
-  const [gAck, setGAck] = useState(false);
+  const [step, setStep] = useState<1 | 2 | 3>(initial?.step ?? 1);
+  const [school, setSchool] = useState(initial?.school ?? overview.scholar.school);
+  const [program, setProgram] = useState(initial?.program ?? overview.scholar.program);
+  const [yearLevel, setYearLevel] = useState(initial?.yearLevel ?? overview.scholar.yearLevel);
+  const [note, setNote] = useState(initial?.note ?? "");
+  const [askReconsideration, setAskReconsideration] = useState(initial?.askReconsideration ?? false);
+  const [gRows, setGRows] = useState<GradeFormRow[]>(initial?.gRows ?? [emptyGradeRow()]);
+  const [gFiles, setGFiles] = useState<File[]>(initial?.gFiles ?? []);
+  const [gAck, setGAck] = useState(initial?.gAck ?? false);
   const [gError, setGError] = useState("");
-  const [incFiles, setIncFiles] = useState<Record<string, File[]>>({ inc_letter: [], study_plan: [], clearance: [] });
+  const [incFiles, setIncFiles] = useState<Record<string, File[]>>(initial?.incFiles ?? { inc_letter: [], study_plan: [], clearance: [] });
   const [serverNeedsInc, setServerNeedsInc] = useState(false);
   const [incNote, setIncNote] = useState("");
   const [preview, setPreview] = useState<RenewalEvaluation | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // Auto-save: every change is kept on this device a moment later (and at once when the page is hidden or closed).
+  const snapshot = useMemo<ApplyDraft>(() => ({ step, school, program, yearLevel, note, askReconsideration, gRows, gFiles, gAck, incFiles }),
+    [step, school, program, yearLevel, note, askReconsideration, gRows, gFiles, gAck, incFiles]);
+  const hasContent = applyDraftHasContent(snapshot, { school: overview.scholar.school, program: overview.scholar.program, yearLevel: overview.scholar.yearLevel });
+  const draft = useDraftAutosave<ApplyDraft>(draftKey, snapshot);
+  const [wasRestored, setWasRestored] = useState(initial !== null);
 
   useEffect(() => {
     if (step !== 2 || preview) return;
@@ -149,7 +195,13 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
       if (/You have an INC/.test(r.error)) { setServerNeedsInc(true); setIncNote(r.error); setStep(2); return; }
       setError(r.error); return;
     }
+    await draft.discard();      // sent: the saved draft is no longer needed
     await onDone();
+  }
+  async function startOver() {
+    if (!window.confirm("Start over? What you typed and the pictures you picked will be removed.")) return;
+    await draft.discard();
+    onStartOver();
   }
 
   // A scholar who lacks SDP credits is told what is lacking and may ask for an SDP reconsideration together with the application.
@@ -179,6 +231,16 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
           </li>
         ))}
       </ol>
+      {wasRestored && (
+        <p role="status" className="mb-3 flex flex-wrap items-center gap-x-2 rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-[14px] text-sky-900">
+          <span>We brought back what you had already typed{restoredAt ? ` (saved ${new Date(restoredAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })})` : ""}.</span>
+          <button type="button" onClick={() => setWasRestored(false)} className="font-semibold underline">OK</button>
+        </p>
+      )}
+      <p data-testid="draft-status" className="mb-3 flex flex-wrap items-center gap-x-3 text-[13px] text-slate-600" aria-live="polite">
+        <span>Your progress is saved on this device as you go.{hasContent && draft.savedAt ? ` ${savedAtText(draft.savedAt)}.` : ""}</span>
+        {hasContent && <button type="button" onClick={() => void startOver()} disabled={busy} className="font-semibold text-red-800 underline">Start over</button>}
+      </p>
 
       {step === 1 && (
         <div className="space-y-3">
@@ -189,7 +251,7 @@ function ApplyFlow({ data, overview, onCancel, onDone }: { data: MyRenewalWindow
           <p className="text-[14px] text-slate-700">Term you are renewing for: <strong>{termLabelOf(w.schoolYear, w.term)}</strong></p>
           <div className="flex gap-2 pt-1">
             <button onClick={() => setStep(2)} disabled={!school.trim() || !program.trim() || !yearLevel.trim()} className="rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white disabled:opacity-50">Next</button>
-            <button onClick={onCancel} className="rounded-lg border border-[#062444]/25 px-4 py-2 text-[14px] font-semibold text-[#062444]">Cancel</button>
+            <button onClick={onCancel} className="rounded-lg border border-[#062444]/25 px-4 py-2 text-[14px] font-semibold text-[#062444]">{hasContent ? "Close for now (your draft is kept)" : "Cancel"}</button>
           </div>
         </div>
       )}
