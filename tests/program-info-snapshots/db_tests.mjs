@@ -24,7 +24,7 @@ const attempt = async (uid, sql, params = []) => { try { return { ok: true, rows
 await db.exec(read(FILE)); await db.exec(read(FILE));      // twice is safe
 const INFO = seedId("staff:demo.plain"), OTHER = seedId("staff:demo.counselor"), SCHOLAR = seedId("scholar:1"), EVAL = seedId("staff:demo.evaluator");
 await q("insert into staff_account_tags (staff_id, tag_key) values ($1, 'scholarship_program_info') on conflict do nothing", [INFO]);
-const Y = "2026-2027", T = "1st Semester";
+const Y = "2030-2031", T = "1st Semester";   // a semester with no renewal window and no earlier copy
 const total = Number((await q("select count(*) n from scholars"))[0].n);
 const take = (uid, y = Y, t = T, replace = false) => attempt(uid, "select public.scholar_snapshot_take($1, $2, $3) n", [y, t, replace]);
 
@@ -36,7 +36,7 @@ check("a wrong academic year or semester is refused", /must look like 2026-2027/
 console.log("\nSaving a semester");
 const first = await take(INFO);
 check("saving copies every scholar, and says how many", first.ok && Number(first.rows[0].n) === total && (await q("select count(*)::int n from scholar_period_snapshots where school_year = $1 and term = $2", [Y, T]))[0].n === total, first.msg);
-const run = (await rows(INFO, "select * from scholar_snapshot_runs"))[0];
+const run = (await rows(INFO, "select * from scholar_snapshot_runs where school_year = $1 and term = $2", [Y, T]))[0];
 check("the run says which semester, when, by whom and how many", run.school_year === Y && run.term === T && Number(run.scholar_count) === total && run.taken_at && run.taken_by === INFO, JSON.stringify(run));
 const again = await take(INFO);
 check("saving the same semester again is REFUSED, with the date it was saved, unless the person chooses to save again", !again.ok && /was already saved on/.test(again.msg) && /Save again/.test(again.msg), again.msg);
@@ -69,9 +69,9 @@ check("…but the saved semester does not", JSON.stringify((await rows(INFO, "se
 check("the saved copy of that scholar still says what it said", (await q("select status, school from scholar_period_snapshots where scholar_id_number = $1 and school_year = $2 and term = $3", [target.s, Y, T]))[0].status === target.status);
 const rep = await take(INFO, Y, T, true);
 check("'Save again' replaces the saved semester with the information as it is now (one row per scholar, the date and number updated)", rep.ok && Number(rep.rows[0].n) === total && (await q("select count(*)::int n from scholar_period_snapshots where school_year = $1 and term = $2", [Y, T]))[0].n === total
-  && (await q("select status from scholar_period_snapshots where scholar_id_number = $1 and school_year = $2 and term = $3", [target.s, Y, T]))[0].status === "Probationary" && (await q("select count(*)::int n from scholar_snapshot_runs"))[0].n === 1);
-const other = await take(INFO, "2026-2027", "2nd Semester");
-check("another semester is saved on its own and does not touch the first", other.ok && (await rows(INFO, "select count(*)::int n from scholar_snapshot_runs"))[0].n === 2);
+  && (await q("select status from scholar_period_snapshots where scholar_id_number = $1 and school_year = $2 and term = $3", [target.s, Y, T]))[0].status === "Probationary" && (await q("select count(*)::int n from scholar_snapshot_runs where school_year = '2030-2031'"))[0].n === 1);
+const other = await take(INFO, "2030-2031", "2nd Semester");
+check("another semester is saved on its own and does not touch the first", other.ok && (await rows(INFO, "select count(*)::int n from scholar_snapshot_runs where school_year = '2030-2031'"))[0].n === 2);
 check("the saved list can be read by tagged staff with the same filters the page uses (column names match the page's list)", (await rows(INFO, "select id, scholar_id_number, first_name, last_name, middle_name, year_level, school, status, status_before_removal, barangay, course, birthday, civil_status, contact_no, contact_email, father_first_name, father_middle_initial, father_last_name, mother_first_name, mother_middle_initial, mother_last_name from scholar_period_snapshots where school_year = $1 and term = $2 and status <> 'Removed'", [Y, T])).length > 0);
 
 console.log("\nIs a renewal ongoing?");

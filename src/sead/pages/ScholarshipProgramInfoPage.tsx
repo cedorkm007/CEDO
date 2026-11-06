@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { MapPin, School as SchoolIcon, BarChart3, ChevronLeft, AlertTriangle, GraduationCap, HandCoins, CalendarDays, Save, Info } from "lucide-react";
+import { MapPin, School as SchoolIcon, BarChart3, ChevronLeft, AlertTriangle, GraduationCap, HandCoins, CalendarDays, Info } from "lucide-react";
 import {
   fetchScholarshipStatusCounts, fetchScholarsByBarangay, fetchAllScholarsInformationForExport,
   fetchScholarsBySchool, fetchScholarsBySchoolYearLevel, fetchScholarsBySchoolYearLevelCourse,
   fetchScholarsByYearLevelForStatus, fetchScholarsBySchoolForStatus, fetchScholarsByBarangayForStatus, fetchScholarsByCourseForStatus,
-  fetchSnapshotRuns, saveSnapshot, fetchRenewalOngoing,
-  type ScholarshipStatusCounts, type ScholarInformationRow, type ProgramPeriod, type SnapshotRun,
+  fetchProgramPeriods, fetchRenewalOngoing,
+  type ScholarshipStatusCounts, type ScholarInformationRow, type ProgramPeriod, type ProgramPeriodInfo,
 } from "../seadApi";
 import type { ScholarshipStatus } from "../types";
 import { ALL_BARANGAYS } from "@/lib/cdoBarangays";
@@ -78,23 +78,21 @@ export function ScholarshipProgramInfoPage() {
   );
 }
 
-const TERMS = ["1st Semester", "2nd Semester", "Summer"] as const;
+const TERM_ORDER: Record<string, number> = { "1st Semester": 1, "2nd Semester": 2, "Summer": 3 };
 const periodKey = (p: ProgramPeriod | null) => (p ? `${p.schoolYear}|${p.term}` : "live");
 const periodLabel = (p: ProgramPeriod) => `${p.term}, A.Y. ${p.schoolYear}`;
-function guessSchoolYear(): string {
-  const now = new Date(); const y = now.getFullYear();
-  return now.getMonth() >= 5 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
-}
 const dateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
 
-/** The view picker (Live = today's information, or a saved semester) above the numbers; saving a semester is done from here. */
+/**
+ * The view picker above the numbers: Live (today's information) or a semester. A "saved" semester is the copy of the scholars from before the
+ * renewal; a "renewal" semester is filled in by the renewal itself, scholar by scholar, as renewals are confirmed.
+ */
 function MainstreamScholarsTab() {
-  const [runs, setRuns] = useState<SnapshotRun[]>([]);
+  const [periods, setPeriods] = useState<ProgramPeriodInfo[]>([]);
   const [period, setPeriod] = useState<ProgramPeriod | null>(null);
-  const [showSave, setShowSave] = useState(false);
-  async function loadRuns() { setRuns(await fetchSnapshotRuns()); }
-  useEffect(() => { loadRuns(); }, []);
-  const run = period ? runs.find(r => r.schoolYear === period.schoolYear && r.term === period.term) : undefined;
+  useEffect(() => { let on = true; fetchProgramPeriods().then(list => { if (on) setPeriods(list); }); return () => { on = false; }; }, []);
+  const sorted = [...periods].sort((a, b) => b.schoolYear.localeCompare(a.schoolYear) || (TERM_ORDER[b.term] ?? 0) - (TERM_ORDER[a.term] ?? 0));
+  const info = period ? periods.find(r => r.schoolYear === period.schoolYear && r.term === period.term) : undefined;
 
   return (
     <div>
@@ -102,63 +100,29 @@ function MainstreamScholarsTab() {
         <CalendarDays size={15} className="text-[#062444]" />
         <label htmlFor="program-period" className="text-[12.5px] font-bold text-[#062444]">View by semester</label>
         <select id="program-period" value={periodKey(period)}
-          onChange={e => { const r = runs.find(x => `${x.schoolYear}|${x.term}` === e.target.value); setPeriod(r ? { schoolYear: r.schoolYear, term: r.term } : null); }}
+          onChange={e => { const r = periods.find(x => `${x.schoolYear}|${x.term}` === e.target.value); setPeriod(r ? { schoolYear: r.schoolYear, term: r.term } : null); }}
           className="text-[12.5px] border border-[#d5deeb] rounded-lg px-2.5 py-1.5 bg-white text-[#062444]">
           <option value="live">Live — as of today</option>
-          {runs.map(r => <option key={`${r.schoolYear}|${r.term}`} value={`${r.schoolYear}|${r.term}`}>{periodLabel(r)} (saved)</option>)}
+          {sorted.map(r => (
+            <option key={`${r.schoolYear}|${r.term}`} value={`${r.schoolYear}|${r.term}`}>
+              {periodLabel(r)} — {r.kind === "saved" ? "before the renewal" : "renewed scholars"}
+            </option>
+          ))}
         </select>
-        <button onClick={() => setShowSave(true)} className="ml-auto flex items-center gap-1.5 text-[12.5px] font-bold text-[#0088cc] hover:underline">
-          <Save size={13} /> Save today's information as a semester
-        </button>
       </div>
-      {period && run && (
+      {period && info && info.kind === "saved" && (
         <p data-testid="snapshot-note" className="text-[12.5px] text-slate-600 bg-[#f3f7fc] border border-[#e6ecf5] rounded-xl px-3.5 py-2.5 mb-4">
-          Showing <b>{periodLabel(period)}</b> — a copy saved on {dateLabel(run.takenAt)}{run.takenByName ? ` by ${run.takenByName}` : ""} ({run.scholarCount.toLocaleString()} scholars). It does not change when scholars change today.
+          Showing <b>{periodLabel(period)}</b> — the scholars as they were <b>before the renewal</b>{info.updatedAt ? ` (a copy saved on ${dateLabel(info.updatedAt)}` : " (a saved copy"}, {info.scholars.toLocaleString()} scholars). It does not change when scholars change today.
+        </p>
+      )}
+      {period && info && info.kind === "renewal" && (
+        <p data-testid="renewal-semester-note" className="text-[12.5px] text-slate-600 bg-[#f3f7fc] border border-[#e6ecf5] rounded-xl px-3.5 py-2.5 mb-4">
+          Showing <b>{periodLabel(period)}</b> — only the scholars renewed (or reconsidered, or removed) for this semester so far: <b>{info.scholars.toLocaleString()}</b>, with the school, program and year level they confirmed in the renewal.
+          It fills in as renewals are confirmed, so the numbers are subject to change{info.updatedAt ? ` (last updated ${dateLabel(info.updatedAt)})` : ""}.
         </p>
       )}
       <MainstreamBody key={periodKey(period)} period={period} />
-      {showSave && <SaveSnapshotModal runs={runs} onClose={() => setShowSave(false)} onSaved={async (p) => { setShowSave(false); await loadRuns(); setPeriod(p); }} />}
     </div>
-  );
-}
-
-function SaveSnapshotModal({ runs, onClose, onSaved }: { runs: SnapshotRun[]; onClose: () => void; onSaved: (p: ProgramPeriod) => void | Promise<void> }) {
-  const [schoolYear, setSchoolYear] = useState(guessSchoolYear());
-  const [term, setTerm] = useState<string>(TERMS[0]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const existing = runs.find(r => r.schoolYear === schoolYear.trim() && r.term === term);
-
-  async function save(replace: boolean) {
-    setBusy(true); setError("");
-    const r = await saveSnapshot(schoolYear, term, replace);
-    setBusy(false);
-    if (r.ok) await onSaved({ schoolYear: schoolYear.trim(), term });
-    else setError(r.error);
-  }
-
-  return (
-    <Modal title="Save today's information as a semester" onClose={onClose}>
-      <div className="space-y-3 text-[13px] text-slate-600">
-        <p>This keeps a copy of the scholars exactly as they are now (status, school, year level, program, barangay), under the semester you choose. You can open it later with “View by semester”.</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="block"><span className="block text-[12px] font-bold text-[#062444] mb-1">Academic year</span>
-            <input value={schoolYear} onChange={e => setSchoolYear(e.target.value)} placeholder="2026-2027" className="w-full border border-[#d5deeb] rounded-lg px-2.5 py-1.5 text-[13px]" /></label>
-          <label className="block"><span className="block text-[12px] font-bold text-[#062444] mb-1">Semester</span>
-            <select value={term} onChange={e => setTerm(e.target.value)} className="w-full border border-[#d5deeb] rounded-lg px-2.5 py-1.5 text-[13px] bg-white">
-              {TERMS.map(t => <option key={t} value={t}>{t}</option>)}
-            </select></label>
-        </div>
-        {existing && <p className="text-[12.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">This semester was already saved on {dateLabel(existing.takenAt)}. Saving again replaces that copy with today's information.</p>}
-        {error && <p className="flex items-center gap-1.5 text-[13px] font-semibold text-red-600 bg-red-50 rounded-lg px-3 py-2"><AlertTriangle size={13} /> {error}</p>}
-        <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} disabled={busy} className="px-3.5 py-2 rounded-lg text-[12.5px] font-bold border border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]">Cancel</button>
-          <button onClick={() => save(!!existing)} disabled={busy || !schoolYear.trim()} className="px-3.5 py-2 rounded-lg text-[12.5px] font-bold bg-[#062444] text-white disabled:opacity-50">
-            {busy ? "Saving…" : existing ? "Save again" : "Save semester"}
-          </button>
-        </div>
-      </div>
-    </Modal>
   );
 }
 
