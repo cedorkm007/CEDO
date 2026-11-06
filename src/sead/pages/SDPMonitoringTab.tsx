@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon } from "lucide-react";
+import { X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon, Camera } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
@@ -29,7 +29,7 @@ import { BarangayClusterPicker } from "../components/BarangayClusterPicker";
 import { SubCategorySelect } from "../components/SubCategorySelect";
 import { ProgressMonitoringSection } from "../components/ProgressMonitoringSection";
 import { ProgressAttachSection } from "../components/ProgressAttachSection";
-import { fetchProgressEnabled } from "../progressMonitorApi";
+import { fetchProgressEnabled, enableProgress } from "../progressMonitorApi";
 
 function sameSet(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every(x => b.includes(x));
@@ -195,6 +195,8 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   }
 
   const [attendanceEnabled, setAttendanceEnabled] = useState(false);
+  // Progress Monitoring: scholars confirm their attendance with a picture taken with the phone's camera. An activity uses ONE way of confirming attendance, so this and the QR attendance exclude each other.
+  const [progressEnabled, setProgressEnabled] = useState(false);
   const [attendanceType, setAttendanceType] = useState<AttendanceType>("time_in_time_out");
   const [attendanceCount, setAttendanceCount] = useState("");
   const [voucherHours, setVoucherHours] = useState(1);
@@ -230,6 +232,15 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
     if (attendanceEnabled) {
       const attResult = await enableAttendanceForActivity(result.id, attendanceType, count, voucherHours);
       if (!attResult.ok) { setBusy(false); setError(`Activity created, but attendance setup failed: ${attResult.error}`); return; }
+    }
+    if (progressEnabled) {
+      const pr = await enableProgress(result.id);
+      if (!pr.ok) {
+        // The activity exists now: show it in the list, and do not let a second press of Create make a duplicate.
+        setBusy(false); setCreatedWithoutPubmat(true); onCreated();
+        setError(`The activity was created, but progress monitoring could not be attached: ${pr.error} You can attach it later: open the activity and use its Progress Monitoring tab.`);
+        return;
+      }
     }
     if (pubmatFile) {
       const pubmatResult = await uploadPubmat("sdp", result.id, pubmatFile, null);
@@ -329,10 +340,21 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
           <div className="border-t border-[#f0f3f8] pt-3">
             <label className="flex items-center gap-2 text-[12.5px] font-semibold text-[#062444] cursor-pointer">
-              <input type="checkbox" checked={attendanceEnabled} onChange={e => setAttendanceEnabled(e.target.checked)}
+              <input type="checkbox" checked={attendanceEnabled} onChange={e => { setAttendanceEnabled(e.target.checked); if (e.target.checked) setProgressEnabled(false); }}
                 className="w-4 h-4 accent-[#062444]" />
-              <QrCode size={14} /> Include attendance monitoring
+              <QrCode size={14} /> Include attendance monitoring (QR / code)
             </label>
+            <label className="mt-2 flex items-center gap-2 text-[12.5px] font-semibold text-[#062444] cursor-pointer">
+              <input type="checkbox" checked={progressEnabled} onChange={e => { setProgressEnabled(e.target.checked); if (e.target.checked) setAttendanceEnabled(false); }}
+                className="w-4 h-4 accent-[#062444]" />
+              <Camera size={14} /> Include Progress Monitoring (attendance by picture)
+            </label>
+            {progressEnabled && (
+              <p className="mt-2 pl-1 text-[11px] text-slate-500">
+                Scholars open the activity in the Scholar Portal and press <strong>Capture a Picture</strong>: the camera opens with the place, the date and the time printed on the picture. You approve or reject each picture in
+                SDP Monitoring &gt; Progress Monitoring, and an approved picture gives the attendance and the SDP credit. An activity uses one way of confirming attendance, so this replaces the QR attendance.
+              </p>
+            )}
 
             {attendanceEnabled && (
               <div className="mt-3 space-y-2.5 pl-1">
