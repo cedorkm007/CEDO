@@ -35,4 +35,9 @@ console.log("\nThe scholar's side");
 test("a scholar sees 'Capture a Picture' when the activity has progress monitoring attached", () => {
   assert.ok(scholar.includes("progress?.enabled &&") && scholar.includes("Capture a Picture") && scholar.includes("progressIds.has("));
 });
+test("on a small phone the activity window scrolls between the title and Close, so Capture a Picture can always be reached", () => {
+  assert.ok(scholar.includes("max-h-[calc(100dvh-2rem)]") && scholar.includes('data-testid="activity-detail-scroll"'));
+  const scrollStart = scholar.indexOf("activity-detail-scroll"), capture = scholar.indexOf("<ProgressSection ended={pictureTimeOver(activity)}"), closeBtn = scholar.indexOf(">Close</button>", capture);
+  assert.ok(scrollStart > 0 && capture > scrollStart && closeBtn > capture, "the picture part sits inside the scrolling area, above the Close button");
+});
 console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);

@@ -87,15 +87,17 @@ function ActivityDetailModal({ activity, onClose, progress, scholarIdNumber, onS
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
       <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9 }}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="bg-[#062444] px-6 py-5 flex items-start justify-between">
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex max-h-[calc(100dvh-2rem)] flex-col" onClick={e => e.stopPropagation()}>
+        <div className="bg-[#062444] px-6 py-5 flex shrink-0 items-start justify-between">
           <div>
             <p className="text-[#F3BC00] text-xs font-bold uppercase tracking-wide mb-1">SDP Activity</p>
             <h3 className="font-bold text-white text-xl leading-tight">{activity.name}</h3>
           </div>
           <button onClick={onClose} className="p-1 text-white/60 hover:text-white shrink-0 ml-4"><X className="w-5 h-5" /></button>
         </div>
-        <div className="p-6 space-y-3 max-h-96 overflow-y-auto">
+        {/* Everything between the title and the Close button scrolls, so on a small phone "Capture a Picture" can always be reached. */}
+        <div className="min-h-0 flex-1 overflow-y-auto" data-testid="activity-detail-scroll">
+        <div className="p-6 space-y-3">
           {[
             { label: "Name of Activity", value: activity.name },
             { label: "Organization", value: activity.organization },
@@ -110,7 +112,8 @@ function ActivityDetailModal({ activity, onClose, progress, scholarIdNumber, onS
           ))}
         </div>
         {progress?.enabled && <div className="px-6 pb-3"><ProgressSection ended={pictureTimeOver(activity)} submission={progress.submission} onCapture={() => setCapturing(true)} /></div>}
-        <div className="px-6 pb-5">
+        </div>
+        <div className="shrink-0 px-6 pb-5 pt-2">
           <button onClick={onClose} className="w-full bg-gray-100 text-gray-700 py-2.5 rounded-xl font-bold text-sm">Close</button>
         </div>
       </motion.div>
