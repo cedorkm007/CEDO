@@ -1385,27 +1385,24 @@ export async function fetchScholarsByCourseForStatus(status: ScholarshipStatus, 
   return { ok: true, counts: mapGroupCountRows(data, "course") };
 }
 
-// ── Scholarship Program Information by semester and academic year (saved snapshots: supabase_migration_scholarship_program_snapshots.sql) ──
+// ── Scholarship Program Information by semester and academic year (supabase_migration_scholarship_program_snapshots.sql, _b_semesters.sql, _c_renewal_sync.sql) ──
 /** A saved semester. null / undefined everywhere means "live": today's information. */
 export interface ProgramPeriod { schoolYear: string; term: string }
 const periodArgs = (p: ProgramPeriod) => ({ p_school_year: p.schoolYear, p_term: p.term });
-export interface SnapshotRun { schoolYear: string; term: string; takenAt: string; takenByName: string; scholarCount: number }
+/**
+ * A semester the page can show. kind "saved" = a copy of the scholars saved once (1st Semester 2026-2027, "before the renewal");
+ * kind "renewal" = fills in by itself as scholars are renewed (supabase_migration_scholarship_program_snapshots_b/c).
+ */
+export interface ProgramPeriodInfo { schoolYear: string; term: string; kind: "saved" | "renewal"; updatedAt: string | null; scholars: number }
 
-/** The semesters that were saved, newest saved first. Empty before the database update is run. */
-export async function fetchSnapshotRuns(): Promise<SnapshotRun[]> {
-  const { data, error } = await supabase.from("scholar_snapshot_runs").select("school_year, term, taken_at, taken_by_name, scholar_count").order("taken_at", { ascending: false });
+/** The semesters on offer. Empty before the database update is run. */
+export async function fetchProgramPeriods(): Promise<ProgramPeriodInfo[]> {
+  const { data, error } = await supabase.rpc("program_info_periods");
   if (error || !data) return [];
-  return data.map(r => ({ schoolYear: String(r.school_year), term: String(r.term), takenAt: String(r.taken_at), takenByName: String(r.taken_by_name ?? ""), scholarCount: Number(r.scholar_count ?? 0) }));
-}
-
-/** Saves the scholars' information as it is now as the snapshot of a semester. A semester already saved is refused unless `replace` is true. */
-export async function saveSnapshot(schoolYear: string, term: string, replace: boolean): Promise<{ ok: true; scholars: number } | { ok: false; error: string; alreadySaved?: boolean }> {
-  const { data, error } = await supabase.rpc("scholar_snapshot_take", { p_school_year: schoolYear.trim(), p_term: term, p_replace: replace });
-  if (error) {
-    if (error.code === "PGRST202" || /could not find the function/i.test(error.message)) return { ok: false, error: "Saving a semester is not set up yet: CEDO still has to run a database update." };
-    return { ok: false, error: error.message, alreadySaved: /was already saved/i.test(error.message) };
-  }
-  return { ok: true, scholars: Number(data ?? 0) };
+  return (data as Record<string, unknown>[]).map(r => ({
+    schoolYear: String(r.period_school_year), term: String(r.period_term), kind: r.kind === "saved" ? "saved" as const : "renewal" as const,
+    updatedAt: r.updated_at ? String(r.updated_at) : null, scholars: Number(r.scholars ?? 0),
+  }));
 }
 
 /** Is a renewal window open now? (false before the database update is run) */
