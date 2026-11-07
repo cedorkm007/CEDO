@@ -756,6 +756,19 @@ export async function fetchSdpAdvanced(schoolYear: string, semester: string): Pr
   return out;
 }
 
+/**
+ * The semester that is being renewed (the one right after the current grading period, while a renewal window exists for it), how many scholars are renewed for it so far, and
+ * whether the renewal window is open now. Null when there is none (or before supabase_migration_sdp_checklist_by_semester.sql is run). The Checklist offers it as its own view:
+ * only the renewed scholars, with their SDP after the renewal.
+ */
+export interface SdpRenewalPeriod { schoolYear: string; semester: string; renewed: number; ongoing: boolean }
+export async function fetchSdpChecklistRenewalPeriod(): Promise<SdpRenewalPeriod | null> {
+  const { data, error } = await supabase.rpc("sdp_checklist_renewal_period");
+  const r = (Array.isArray(data) ? data[0] : null) as { school_year: string; semester: string; renewed: number | string; ongoing: boolean } | null;
+  if (error || !r) return null;
+  return { schoolYear: String(r.school_year), semester: String(r.semester), renewed: Number(r.renewed) || 0, ongoing: !!r.ongoing };
+}
+
 /** Scholars who owe EXTRA credits for a semester (an approved SDP reconsideration of the semester before): only those who do. Empty before the SDP reconsideration database update. */
 export async function fetchSdpOwed(schoolYear: string, semester: string): Promise<Map<string, { communityService: number; communityVolunteerism: number; formationProgram: number }>> {
   const out = new Map<string, { communityService: number; communityVolunteerism: number; formationProgram: number }>();
