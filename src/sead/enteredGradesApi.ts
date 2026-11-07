@@ -60,6 +60,19 @@ export async function decideEnteredGrades(id: string, approve: boolean, note: st
 }
 
 /** A short-lived link to an image (the Grades Approver and renewal staff may open the scholars' images). */
+/** The grades the scholar entered for ONE renewal that the Grades Approver approved (subjects, screenshots, who approved and when); null when there are none (or the database update is not run yet). */
+export interface RecordEnteredGrades { id: string; version: number; submittedAt: string; decidedAt: string | null; decidedByLabel: string | null; lines: SelfGradeLine[]; files: { name: string; path: string; mime: string }[] }
+export async function fetchRecordEnteredGrades(recordId: string): Promise<RecordEnteredGrades | null> {
+  const { data, error } = await supabase.rpc("renewal_record_entered_grades", { p_record_id: recordId });
+  if (error || !data) return null;
+  const r = data as Row;
+  return {
+    id: str(r.id), version: num(r.version), submittedAt: str(r.submitted_at), decidedAt: strOrNull(r.decided_at), decidedByLabel: strOrNull(r.decided_by_label),
+    lines: ((r.lines ?? []) as Row[]).map(l => ({ code: str(l.code), subject: str(l.subject), units: num(l.units), grade: str(l.grade) })),
+    files: ((r.files ?? []) as Row[]).map(f => ({ name: str(f.name), path: str(f.path), mime: str(f.mime) })),
+  };
+}
+
 export async function getEnteredGradeImageUrl(path: string): Promise<string | null> {
   const { data, error } = await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).createSignedUrl(path, 300);
   return error || !data ? null : data.signedUrl;
