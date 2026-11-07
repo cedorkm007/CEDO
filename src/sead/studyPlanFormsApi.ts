@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────────────────────
 // src/sead/studyPlanFormsApi.ts
-// Forms Management: each school has its own STUDY PLAN template. The office uploads it on that school's row; the system keeps it in its own private
-// folder and names the scholar's download ("Study Plan Form - <school>.pdf"). See supabase_migration_renewal_p4_tracker.sql.
+// Forms Management: ONE generic STUDY PLAN template for every scholar (the "default" template, schoolId null); the system keeps it in its own private
+// folder and names the scholar's download "Study Plan Form". The database can still hold a template per school (an older design); the screen uses only the default
+// and removes the others when a new form is uploaded. See supabase_migration_renewal_p4_tracker.sql.
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
 import { studyPlanFileType, validateStudyPlanTemplate } from "@/lib/renewal";

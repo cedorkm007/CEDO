@@ -49,12 +49,13 @@ export function RenewalPanel() {
   useEffect(() => { void load(); }, [load]);
   useLiveReload(load);      // the evaluator, the school or the office changed something: show it without refreshing
 
-  if (error) return <p role="alert" className="text-[14px] text-red-700">Couldn't load your renewal: {error}</p>;
-  if (!overview) return <p className="text-[14px] text-slate-600 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading your renewal…</p>;
+  if (error) return <div className="space-y-4"><StudyPlanCard /><p role="alert" className="text-[14px] text-red-700">Couldn't load your renewal: {error}</p></div>;
+  if (!overview) return <div className="space-y-4"><StudyPlanCard /><p className="text-[14px] text-slate-600 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading your renewal…</p></div>;
   if (overview.windows.length === 0) {
     return (
       <div className="space-y-4">
         <RemovalFormCard />
+        <StudyPlanCard />
         <div className="rounded-xl border border-[#e6ecf5] bg-[#f7f9fc] px-4 py-5 text-[14px] text-slate-700">
           <p className="font-bold text-[#062444] mb-1">No renewal is open right now</p>
           <p>When the CEDO office opens renewal for a term, it will appear here and you will get a notification.</p>
@@ -65,10 +66,22 @@ export function RenewalPanel() {
   return (
     <div className="space-y-4">
       <RemovalFormCard />
+      <StudyPlanCard />
       <p className="text-[14px] text-slate-700">Renew your scholarship for each term, online. We check your SDP credits and grades for you.</p>
       <PushSettings variant="banner" />
       {overview.windows.map(w => <WindowCard key={w.window.id} data={w} overview={overview} onChanged={load} />)}
     </div>
+  );
+}
+
+/** The blank study plan form (one generic form for every scholar): always on the Renewal tile, so it can be downloaded at any time, even before applying. */
+function StudyPlanCard() {
+  return (
+    <section className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-3.5" aria-label="Study plan form">
+      <p className="text-[15px] font-bold text-[#062444]">Study plan form</p>
+      <p className="mt-0.5 text-[14px] text-slate-700">The blank study plan form is the same for every scholar. You can download it at any time, even before you apply for renewal.</p>
+      <StudyPlanFormLink />
+    </section>
   );
 }
 
