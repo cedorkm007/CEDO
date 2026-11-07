@@ -371,7 +371,7 @@ export function FormsManagementTab() {
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
             section === "study-plans" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
           }`}>
-          <GraduationCap size={14} /> Renewal study plans
+          <GraduationCap size={14} /> Renewal study plan
         </button>
         <button onClick={() => setSection("submission-activities")}
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${

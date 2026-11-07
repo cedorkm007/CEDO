@@ -2,49 +2,48 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Eye, FileText, Loader2, Trash2, Upload } from "lucide-react";
 import {
   fetchStudyPlanFormSetup, fetchStudyPlanTemplateUrl, removeStudyPlanTemplate, uploadStudyPlanTemplate,
-  type StudyPlanSchool, type StudyPlanTemplate,
+  type StudyPlanTemplate,
 } from "../studyPlanFormsApi";
 
 /**
- * "Renewal study plans": every school has its own blank study plan template. Staff upload it right here, on that school's row ("Upload study
- * plan template here"), and the system names the scholar's download ("Study Plan Form - <school>.pdf"). A row for the DEFAULT covers every school
- * that has none of its own. Scholars get theirs from the Renewal tile ("Download the study plan form").
+ * "Renewal study plan": ONE generic blank study plan form for every scholar (there is no study plan per school). Staff upload it here with one button
+ * (PDF or Word, up to 10 MB) and every scholar can download it from the Renewal tile at any time, even before applying, always named "Study Plan Form".
+ * It is kept as the "default" template. A template that was uploaded earlier for one single school is removed when the new form is uploaded, so that no
+ * scholar gets an older, school-specific one instead.
  */
 export function RenewalStudyPlanFormsSection() {
-  const [schools, setSchools] = useState<StudyPlanSchool[]>([]);
   const [templates, setTemplates] = useState<StudyPlanTemplate[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [savedKey, setSavedKey] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   const load = useCallback(async () => {
     const setup = await fetchStudyPlanFormSetup();
     if (!setup.ok) { setError(setup.error); setLoading(false); return; }
-    setSchools(setup.schools); setTemplates(setup.templates); setError(""); setLoading(false);
+    setTemplates(setup.templates); setError(""); setLoading(false);
   }, []);
   useEffect(() => { void load(); }, [load]);
 
-  const templateOf = (schoolId: string | null) => templates.find(t => t.schoolId === schoolId) ?? null;
-  const hasDefault = templateOf(null) !== null;
+  const template = templates.find(t => t.schoolId === null) ?? null;
+  const leftovers = templates.filter(t => t.schoolId !== null);      // uploaded per school before: no longer used
 
-  async function upload(schoolId: string | null, file: File | undefined) {
+  async function upload(_schoolId: string | null, file: File | undefined) {
     if (!file) return;
-    const key = schoolId ?? "default";
-    setBusyKey(key); setSavedKey(null); setError(""); setConfirmRemove(null);
-    const r = await uploadStudyPlanTemplate(schoolId, file);
-    if (!r.ok) { setBusyKey(null); setError(r.error); return; }
+    setBusy(true); setSaved(false); setError(""); setConfirming(false);
+    const r = await uploadStudyPlanTemplate(null, file);
+    if (!r.ok) { setBusy(false); setError(r.error); return; }
+    for (const old of leftovers) await removeStudyPlanTemplate(old.schoolId);      // one generic form: no school keeps an older one of its own
     await load();
-    setBusyKey(null); setSavedKey(key);
+    setBusy(false); setSaved(true);
   }
-  async function remove(schoolId: string | null) {
-    const key = schoolId ?? "default";
-    setBusyKey(key); setSavedKey(null); setError(""); setConfirmRemove(null);
-    const r = await removeStudyPlanTemplate(schoolId);
-    if (!r.ok) { setBusyKey(null); setError(r.error); return; }
+  async function remove() {
+    setBusy(true); setSaved(false); setError(""); setConfirming(false);
+    const r = await removeStudyPlanTemplate(null);
+    if (!r.ok) { setBusy(false); setError(r.error); return; }
     await load();
-    setBusyKey(null);
+    setBusy(false);
   }
   async function view(t: StudyPlanTemplate) {
     setError("");
@@ -56,24 +55,18 @@ export function RenewalStudyPlanFormsSection() {
   return (
     <div>
       <div className="mb-4">
-        <h2 className="text-[15px] font-extrabold text-[#062444]">Renewal study plan templates</h2>
+        <h2 className="text-[15px] font-extrabold text-[#062444]">Renewal study plan form</h2>
         <p className="mt-1 text-[14px] text-slate-700">
-          Each school has its own blank study plan form. Upload it on that school's row below (PDF or Word, up to 10 MB). The scholars of that school get it
-          from their Renewal tile, always named <strong>Study Plan Form - &lt;school&gt;</strong>. A school with no template of its own uses the <strong>Default</strong> one.
+          There is one study plan form for all scholars. Upload it with the button below (PDF or Word, up to 10 MB). Every scholar can download it from their Renewal tile at any time,
+          even before applying, always named <strong>Study Plan Form</strong>. Uploading a new file replaces the old one.
         </p>
       </div>
       {error && <p role="alert" className="mb-3 text-[14px] text-red-700">{error}</p>}
       {loading ? <p className="text-[14px] text-slate-700">Loading…</p> : (
         <ul className="space-y-2.5">
-          <TemplateRow rowKey="default" schoolId={null} label="Default (all other schools)" note="Used for any school that has no template of its own below."
-            template={templateOf(null)} busy={busyKey === "default"} saved={savedKey === "default"} confirming={confirmRemove === "default"}
-            onUpload={upload} onRemove={remove} onView={view} onAskRemove={setConfirmRemove} />
-          {schools.map(s => (
-            <TemplateRow key={s.id} rowKey={s.id} schoolId={s.id} label={s.name}
-              note={`${s.scholars} scholar${s.scholars === 1 ? "" : "s"}${templateOf(s.id) ? "" : hasDefault ? " · uses the default" : " · no template yet"}`}
-              template={templateOf(s.id)} busy={busyKey === s.id} saved={savedKey === s.id} confirming={confirmRemove === s.id}
-              onUpload={upload} onRemove={remove} onView={view} onAskRemove={setConfirmRemove} />
-          ))}
+          <TemplateRow rowKey="default" schoolId={null} label="Study plan form (all scholars)" note={template ? "Scholars download this file." : "No study plan form yet: scholars see a message that it is not ready."}
+            template={template} busy={busy} saved={saved} confirming={confirming}
+            onUpload={upload} onRemove={() => void remove()} onView={view} onAskRemove={k => setConfirming(k !== null)} />
         </ul>
       )}
     </div>
@@ -140,7 +133,7 @@ function TemplateRow({ rowKey, schoolId, label, note, template, busy, saved, con
           onDrop={e => { e.preventDefault(); setDragging(false); onUpload(schoolId, e.dataTransfer.files?.[0]); }}
           className={`mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-3 text-[14px] font-semibold text-[#062444] transition-colors disabled:opacity-60 ${dragging ? "border-[#062444] bg-[#eef3fb]" : "border-[#062444]/30 hover:bg-[#f7f9fc]"}`}>
           {busy ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Upload size={16} aria-hidden="true" />}
-          {busy ? "Uploading…" : "Upload study plan template here"}<span className="sr-only"> for {label}</span>
+          {busy ? "Uploading…" : "Upload the study plan form"}<span className="sr-only"> for {label}</span>
         </button>
       )}
     </li>

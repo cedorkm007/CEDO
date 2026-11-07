@@ -9,9 +9,9 @@ interface PlanForm { id: string; title: string; kind: "pdf" | "flipbook"; url: s
 type Found = { template: MyStudyPlanForm } | { material: PlanForm } | null;
 
 /**
- * "Download the study plan form": every school has its own template, uploaded by the CEDO office in Forms Management (Renewal study plans). This
- * shows the one for THIS scholar's school (or the default). If the office has not uploaded one yet it falls back to a form the scholar can open
- * with "study plan" in its title, and otherwise points the scholar to the Forms tab.
+ * "Download the study plan form": ONE generic template for every scholar, uploaded by the CEDO office in Forms Management (Renewal study plan; stored as the
+ * "default" template). If the office has not uploaded one yet it falls back to a form the scholar can open with "study plan" in its title, and otherwise
+ * points the scholar to the Forms tab.
  */
 export function StudyPlanFormLink() {
   const [found, setFound] = useState<Found | undefined>(undefined);
