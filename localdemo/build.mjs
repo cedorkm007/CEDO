@@ -167,8 +167,9 @@ export async function buildDb({ onProgress = () => {}, dataDir = DATA_DIR, write
   // The Phase 9 function closing looks at the table rules that exist when it runs, so it is first undone (back to the default) and then run again, now that every rule exists.
   const p9undo = path.join(ROOT, "undo_sdp_update_p9_a.sql");
   if (fs.existsSync(p9undo)) for (const stmt of splitSql(fs.readFileSync(p9undo, "utf8"))) { try { await db.exec(stmt); } catch { /* nothing to undo yet */ } }
+  // The SDP Checklist by semester file replaces functions of the SDP after-renewal file, whose statements may be retried above: it is run last so its definitions win, as they do on the real project.
   // The consultation file that replaces booking functions with a new form is also run once more at the very end: a statement of an older consultation file that failed the first time is retried above and would otherwise put the OLD form of a function back beside the new one.
-  for (const file of files.filter(f => /^supabase_migration_(sdp_update_p[789]_|consultation_open_and_choose_staff|renewal_csr_testing_|renewal_multi_windows_|renewal_dashboard_for_sdp_approver)/.test(f))) {
+  for (const file of files.filter(f => /^supabase_migration_(sdp_update_p[789]_|consultation_open_and_choose_staff|renewal_csr_testing_|renewal_multi_windows_|renewal_dashboard_for_sdp_approver|sdp_checklist_by_semester)/.test(f))) {
     for (const stmt of splitSql(fs.readFileSync(path.join(ROOT, file), "utf8"))) {
       try { await execTolerant(db, stmt); } catch (e) { failed.push({ file, stmt, error: e.message }); }
     }

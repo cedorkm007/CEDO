@@ -5,7 +5,7 @@ import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
   fetchAttendanceForActivity, fetchCreditHistory, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, creditScholarForDay, removeAttendance, moveCreditSemester, type CreditPeriod, type AttendedWithoutCredit, type CreditHistoryEntry,
-  fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpAdvanced, fetchSdpChecklistSummary, fetchSdpOwed,
+  fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpAdvanced, fetchSdpChecklistRenewalPeriod, fetchSdpChecklistSummary, fetchSdpOwed, type SdpRenewalPeriod,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
   isSubCategorySupported, isDayLabelsSupported, type ChecklistSummary, type ChecklistSortKey, type SDPActivity, type SDPCategory, type SDPSubCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
@@ -1445,12 +1445,14 @@ function ChecklistSection() {
   const [current, setCurrent] = useState<GradingPeriod>({ schoolYear: "", semester: "" });
   const [viewKey, setViewKey] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [renewal, setRenewal] = useState<SdpRenewalPeriod | null>(null);      // the semester being renewed, offered as its own view
   const requestId = useRef(0);
 
   useEffect(() => {
-    void Promise.all([fetchAcademicPeriods(), fetchCurrentGradingPeriod()]).then(([p, cur]) => {
+    void Promise.all([fetchAcademicPeriods(), fetchCurrentGradingPeriod(), fetchSdpChecklistRenewalPeriod()]).then(([p, cur, ren]) => {
       if (p.ok) setPeriods(p.periods);
       setCurrent(cur);
+      setRenewal(ren);
     });
   }, []);
 
@@ -1467,9 +1469,15 @@ function ChecklistSection() {
     if (current.schoolYear && term && !list.some(x => periodKey(x.schoolYear, x.term) === periodKey(current.schoolYear, term))) {
       list.push({ id: periodKey(current.schoolYear, term), schoolYear: current.schoolYear, term, status: "open", deadline: null });
     }
+    // the semester being renewed is a view of its own, even before CEDO adds it as an academic period
+    const renewalTerm = renewal ? normalizeTerm(renewal.semester) : null;
+    if (renewal && renewalTerm && !list.some(x => periodKey(x.schoolYear, x.term) === periodKey(renewal.schoolYear, renewalTerm))) {
+      list.push({ id: periodKey(renewal.schoolYear, renewalTerm), schoolYear: renewal.schoolYear, term: renewalTerm, status: "open", deadline: null });
+    }
     return list;
-  }, [periods, current]);
-  const options = useMemo(() => periodOptions(allPeriods, current), [allPeriods, current]);
+  }, [periods, current, renewal]);
+  const renewalKey = renewal ? periodKey(renewal.schoolYear, renewal.semester) : "";
+  const options = useMemo(() => periodOptions(allPeriods, current).map(o => (o.key === renewalKey ? { ...o, label: `${o.label} — renewed scholars` } : o)), [allPeriods, current, renewalKey]);
   const currentKey = current.schoolYear ? periodKey(current.schoolYear, current.semester) : "";
   const effectiveKey = viewKey && options.some(o => o.key === viewKey) ? viewKey : currentKey;
   const chosen = allPeriods.find(x => periodKey(x.schoolYear, x.term) === effectiveKey) ?? null;
@@ -1575,7 +1583,25 @@ function ChecklistSection() {
         </div>
       </div>
 
-      {chosen && currentKey && effectiveKey !== currentKey && (
+      {renewal?.ongoing && (
+        <p role="status" data-testid="sdp-renewal-ongoing-note" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13.5px] text-amber-950">
+          <strong>A renewal is ongoing.</strong> The SDP numbers of the renewed scholars are subject to change until the renewal closes.
+        </p>
+      )}
+      {renewal && effectiveKey === renewalKey && (
+        <p role="status" data-testid="sdp-renewal-semester-note" className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[13.5px] text-sky-900">
+          This is <strong>{termLabel(renewal.semester)} {renewal.schoolYear}</strong>, the semester being renewed. It lists only the scholars renewed so far ({(summary?.total ?? renewal.renewed).toLocaleString()}), with their SDP after the renewal:
+          3 credits per category were used for the semester before, credits above that carry on, and credits that were lacking (an approved SDP reconsideration) are added to the requirement.
+          It fills in as renewals are confirmed, so the numbers are subject to change.
+        </p>
+      )}
+      {renewal && effectiveKey === currentKey && (
+        <p role="status" data-testid="sdp-before-renewal-note" className="mb-4 rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3 py-2 text-[13.5px] text-slate-800">
+          This is everyone's SDP in <strong>{termLabel(current.semester)} {current.schoolYear}</strong> as it stands before the renewal. The scholars renewed for <strong>{termLabel(renewal.semester)} {renewal.schoolYear}</strong> are in
+          that semester's view (see the Semester choice above).
+        </p>
+      )}
+      {chosen && currentKey && effectiveKey !== currentKey && effectiveKey !== renewalKey && (
         <p role="status" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13.5px] text-amber-950">
           You are viewing <strong>{termLabel(chosen.term)} {chosen.schoolYear}</strong>. The current period is <strong>{termLabel(current.semester)} {current.schoolYear}</strong>.{" "}
           <button type="button" onClick={() => setViewKey(currentKey)} className="font-bold underline underline-offset-2">Show the current period</button>
