@@ -1945,12 +1945,13 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
 // Shows only approved/returned deliverable notifications for the
 // currently signed-in staff member, with delete option.
 // ─────────────────────────────────────────────────────────────
-function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead, onDelete, onOpenPage, canOpen }: {
+function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead, onDelete, onClearAll, onOpenPage, canOpen }: {
   userId: string;
   notifications: AppNotification[];
   submissions: Submission[];
   onMarkRead: (id: string) => void;
   onDelete: (id: string) => void;
+  onClearAll: (ids: string[]) => Promise<void>;
   onOpenPage: (p: Page) => void;
   canOpen: (p: Page) => boolean;
 }) {
@@ -1960,6 +1961,9 @@ function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead
     .filter(n => (n.type === "submission" || n.type === "renewal" || n.type === "referral_approval" || n.type === "storage") && n.userId === userId)
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   const [referralFor, setReferralFor] = useState<AppNotification | null>(null);
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  async function clearAllNow() { setClearing(true); await onClearAll(myNotifs.map(n => n.id)); setClearing(false); setConfirmingClear(false); }
 
   function getStatus(n: AppNotification): string {
     const sub = submissions.find(s => s.id === n.referenceId);
@@ -1969,10 +1973,28 @@ function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead
   return (
     <div className="space-y-6">
       <PushSettings audience="staff"/>
-      <div>
-        <h1 className="text-xl font-bold text-foreground">My Notifications</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{myNotifs.filter(n=>!n.read).length} unread</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-foreground">My Notifications</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{myNotifs.filter(n=>!n.read).length} unread</p>
+        </div>
+        {myNotifs.length > 0 && (
+          <button type="button" onClick={() => setConfirmingClear(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-sm font-semibold text-foreground hover:bg-red-50 hover:text-red-600 transition-colors">
+            <Trash2 size={14}/> Clear all
+          </button>
+        )}
       </div>
+      {confirmingClear && (
+        <Modal title="Clear all notifications" onClose={() => { if (!clearing) setConfirmingClear(false); }}>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-700">Clear all {myNotifs.length} notification{myNotifs.length === 1 ? "" : "s"}? This cannot be undone. The tasks, renewals and referrals they mention are not affected.</p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setConfirmingClear(false)} disabled={clearing} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-all">Cancel</button>
+              <button type="button" onClick={() => void clearAllNow()} disabled={clearing} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-all disabled:opacity-60">{clearing ? "Clearing…" : "Clear all"}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {myNotifs.length === 0 && (
         <div className="bg-card border border-dashed border-border rounded-2xl py-16 text-center text-muted-foreground">
@@ -3478,6 +3500,20 @@ export default function App() {
     } catch(err){ console.error("Delete notification sync failed:", err); }
   }
 
+  // Clears the notifications the page lists (the ids it passes), for the signed-in person only: removed from the screen first, then from the database in small groups.
+  async function handleClearNotifications(ids: string[]) {
+    if (ids.length === 0) return;
+    const gone = new Set(ids);
+    setNotifications(p => p.filter(n => !gone.has(n.id)));
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      for (let i = 0; i < ids.length; i += 100) {
+        const { error } = await supabase.from(TABLES.NOTIFICATIONS).delete().in("id", ids.slice(i, i + 100));
+        if (error) console.error("Clear notifications failed:", error.message);
+      }
+    } catch(err){ console.error("Clear notifications sync failed:", err); }
+  }
+
   // ── Render ────────────────────────────────────────────────
 
   if (loadingData) {
@@ -3595,6 +3631,7 @@ export default function App() {
               submissions={submissions}
               onMarkRead={handleMarkRead}
               onDelete={handleDeleteNotification}
+              onClearAll={handleClearNotifications}
               onOpenPage={setPage} canOpen={p=>isPageAuthorizedFor(p, currentUser)}
             />
           )}
