@@ -1754,7 +1754,7 @@ function ReportModal({ currentUser, approvedDaily, month, year, daysInMonth, onC
 // ─────────────────────────────────────────────────────────────
 // ADMIN NOTIFICATIONS PAGE
 // ─────────────────────────────────────────────────────────────
-function AdminNotificationsPage({ notifications, submissions, leaveRequests, allTasks, allUsers, onApproveSubmission, onReturnSubmission, onApproveLeave, onReturnLeave, onMarkRead, onDelete, onOpenPage, canOpen }: {
+function AdminNotificationsPage({ notifications, submissions, leaveRequests, allTasks, allUsers, onApproveSubmission, onReturnSubmission, onApproveLeave, onReturnLeave, onMarkRead, onDelete, onClearAll, onOpenPage, canOpen }: {
   notifications: AppNotification[]; submissions: Submission[]; leaveRequests: LeaveRequest[];
   allTasks: TasksData; allUsers: UserProfile[];
   onApproveSubmission: (subId: string, dailyId: string, userId: string) => void;
@@ -1763,9 +1763,12 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
   onReturnLeave: (reqId: string, note: string) => void;
   onMarkRead: (notifId: string) => void;
   onDelete: (notifId: string) => void;
+  onClearAll: (ids: string[]) => Promise<void>;
   onOpenPage: (p: Page) => void;
   canOpen: (p: Page) => boolean;
 }) {
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [selected, setSelected] = useState<AppNotification|null>(null);
   const [returnNote, setReturnNote] = useState("");
   const [showReturnInput, setShowReturnInput] = useState(false);
@@ -1810,9 +1813,34 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
     return n.type==="leave_request" ? leaveDisplayStatus(status) : status;
   }
 
+  // Clear all keeps the notifications that still wait for the admin's decision (a submission or a leave request to approve or return): those are work, not news.
+  const waiting = (n: AppNotification) => (n.type==="submission" || n.type==="leave_request") && getStatusForNotif(n)==="pending";
+  const clearable = notifications.filter(n => !waiting(n));
+  const waitingForDecision = notifications.length - clearable.length;
+  async function clearAllNow() { setClearing(true); await onClearAll(clearable.map(n => n.id)); setClearing(false); setConfirmingClear(false); }
+
   return (
     <div className="space-y-6">
       <PushSettings audience="staff"/>
+      {clearable.length > 0 && (
+        <div className="flex justify-end">
+          <button type="button" onClick={() => setConfirmingClear(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-sm font-semibold text-foreground hover:bg-red-50 hover:text-red-600 transition-colors">
+            <Trash2 size={14}/> Clear all
+          </button>
+        </div>
+      )}
+      {confirmingClear && (
+        <Modal title="Clear all notifications" onClose={() => { if (!clearing) setConfirmingClear(false); }}>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-700">Clear {clearable.length} notification{clearable.length === 1 ? "" : "s"}? This cannot be undone.</p>
+            {waitingForDecision > 0 && <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900"><strong>{waitingForDecision}</strong> still wait{waitingForDecision === 1 ? "s" : ""} for your decision (approve or return), so {waitingForDecision === 1 ? "it stays" : "they stay"} in the list.</p>}
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setConfirmingClear(false)} disabled={clearing} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-all">Cancel</button>
+              <button type="button" onClick={() => void clearAllNow()} disabled={clearing} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-all disabled:opacity-60">{clearing ? "Clearing…" : "Clear all"}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
       <div><h1 className="text-xl font-bold text-foreground">Notifications</h1><p className="text-sm text-muted-foreground mt-0.5">{notifications.filter(n=>!n.read).length} unread notification{notifications.filter(n=>!n.read).length!==1?"s":""}</p></div>
 
       {notifications.length===0&&<div className="bg-card border border-dashed border-border rounded-2xl py-16 text-center text-muted-foreground"><Bell size={32} className="mx-auto mb-2 opacity-30"/><p className="text-sm">No notifications yet</p></div>}
@@ -3620,7 +3648,7 @@ export default function App() {
               allTasks={scopedAllTasks} allUsers={scopedUsers}
               onApproveSubmission={handleApproveSubmission} onReturnSubmission={handleReturnSubmission}
               onApproveLeave={handleApproveLeave} onReturnLeave={handleReturnLeave}
-              onMarkRead={handleMarkRead} onDelete={handleDeleteNotification}
+              onMarkRead={handleMarkRead} onDelete={handleDeleteNotification} onClearAll={handleClearNotifications}
               onOpenPage={setPage} canOpen={p=>isPageAuthorizedFor(p, currentUser)}
             />
           )}
