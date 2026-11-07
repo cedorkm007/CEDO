@@ -41,6 +41,7 @@ test("Applications and Not applied show the status now", () => { assert.equal(T.
 
 console.log("\nThe screen");
 const list = src("src/sead/renewal/RenewalListTab.tsx"), page = src("src/sead/ScholarRenewalPage.tsx"), api = src("src/sead/renewalTabsApi.ts");
+const tbl = src("src/sead/renewal/RenewalListTable.tsx");
 test("the tab list is Applications, Renewed, Not applied first; Scholar List, Late and INC are gone; the work tabs stay", () => {
   const labels = [...page.matchAll(/\{ key: "(\w+)", label: "([^"]+)"/g)].map(m => m[2]);
   assert.deepEqual(labels.slice(0, 3), ["Applications", "Renewed", "Not applied"]);
@@ -52,10 +53,10 @@ test("the three tabs open the one list component, for the people who act on the 
   assert.ok(page.includes('(t.key === "applications" || t.key === "renewed" || t.key === "notApplied") ? seesList'));
   assert.ok(page.includes('useState<Tab>(isEvaluator ? "applications"'));
 });
-test("the columns: Scholar ID, Name, Year level, School, Program, Scholarship status, SDP, Grades and (Applications, Not applied) Actions", () => {
-  assert.ok(list.includes('["Scholar ID"') && list.includes('["Name"') && list.includes('["Year level"') && list.includes('["School"') && list.includes('["Program"') && list.includes('["Scholarship status"') && list.includes('["SDP"') && list.includes('["Grades"'));
-  assert.ok(list.includes('...(hasActions ? [["Actions"') && list.includes('const hasActions = tab !== "renewed"'));
-  assert.ok(list.indexOf('["Scholar ID"') < list.indexOf('["Name"') && list.indexOf('["Name"') < list.indexOf('["Year level"') && list.indexOf('["School"') < list.indexOf('["Program"') && list.indexOf('["Scholarship status"') < list.indexOf('["SDP"'));
+test("the columns: Scholar ID, Name, Year, School, Program, Status, SDP, Grades and (Applications, Not applied) Actions (the redesigned table; School and Program show from a wide width, and below it in the row's detail)", () => {
+  const heads = [">Scholar ID<", ">Name<", ">Year<", ">School<", ">Program<", ">Status<", ">SDP<", ">Grades<", ">Actions<"].map(h => tbl.indexOf(h));
+  assert.ok(heads.every(i => i > 0) && heads.every((x, i) => i === 0 || x > heads[i - 1]));
+  assert.ok(tbl.includes("t.hasActions &&") && list.includes('const hasActions = tab !== "renewed"'));
 });
 test("the filters: year level, school, program, scholarship status, SDP and grades (and a search)", () => {
   for (const l of ['label="Year level"', 'label="School"', 'label="Program"', 'label="Scholarship status"', 'aria-label="SDP"', 'aria-label="Grades"', 'aria-label="Search scholars"']) assert.ok(list.includes(l), l);
@@ -65,12 +66,12 @@ test("the numbers on the sub-tabs follow the filters, and a sub-tab choice goes 
   assert.ok(list.includes("fetchRenewalListCounts(schoolYear, term, tab, filters)") && list.includes("setSub(s.key); setPage(1)"));
 });
 test("the scholar's name opens the application (when there is one); the stage and a late mark show under it on Applications", () => {
-  assert.ok(list.includes("onOpenRecord(r.recordId as string)") && list.includes("RenewalStageBadge") && list.includes('tab === "applications"'));
+  assert.ok(tbl.includes("onOpenRecord(r.recordId as string)") && tbl.includes("function StageLine") && tbl.includes('tab !== "applications"'));
 });
 test("a list opens on its first sub-tab that has scholars, unless the person chose one; an empty sub-tab points to the others", () => {
   assert.ok(list.includes("picked.current || !counts || (counts[sub] ?? 0) > 0") && list.includes("picked.current = true; setSub(s.key)") && list.includes("on the other sub-tabs above"));
 });
-test("the status column of Renewed is from-to", () => assert.ok(list.includes("statusColumnText(tab, r.status, r.fromStatus, r.toStatus)")));
+test("the status column of Renewed is from-to", () => assert.ok(tbl.includes("statusColumnText(tab, r.status, r.fromStatus, r.toStatus)")));
 
 console.log("\nThe actions");
 test("Late applications and INC decisions are done from the Actions column: 'Decide the late application' opens the application, 'Decide on the INC' opens the INC decision for that scholar", () => {
@@ -89,7 +90,7 @@ test("the other actions open the same screens as before: entered grades, SDP rec
   for (const s of ["RenewalEnteredGradesTab", "RenewalSdpReconsiderationTab", "ReferralFormPanel", "ReferralFormModal"]) assert.ok(list.includes(`<${s}`), s);
 });
 test("only the staff assigned to an action can press it (the same cell as the Scholar List used)", () => {
-  assert.ok(list.includes("<ActionCell") && src("src/sead/renewal/RenewalScholarListTab.tsx").includes("canDoAction(a, viewer)"));
+  assert.ok(tbl.includes("canDoAction(a, p.viewer)") && tbl.includes("waitingForText(a)") && src("src/sead/renewal/RenewalScholarListTab.tsx").includes("canDoAction(a, viewer)"));
 });
 
 console.log("\nThe database file");
