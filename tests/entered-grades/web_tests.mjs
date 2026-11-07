@@ -142,10 +142,10 @@ test("the application cannot go on until the grades form is complete (or the sch
   assert.match(p, /Still needed before you can go on/);
   assert.match(p, /disabled={!preview || !gate\.open}/);      // the gate (renewalNextGate) includes the unfinished-grades check
 });
-test("an SDP reconsideration is not offered until the grades are entered or the school's are in; the Next button waits for a complete grades form", () => {
+test("the SDP reconsideration is offered at once, but the application (and the request with it) is only sent once the grades are in: the Next button waits for a complete grades form", () => {
   const p = src("src/scholar/components/dashboard/RenewalPanel.tsx");
   assert.match(p, /gradesReady = !gradesInForm \|\| schoolGrades/);
-  assert.match(p, /canAskReconsideration && !gradesReady/);
+  assert.ok(p.includes("{!gradesReady && <p") && p.includes("Your application, with this request, is sent only after your grades are entered"));
   assert.match(p, /disabled=\{!preview \|\| !gate\.open\}/);      // the gate (renewalNextGate) includes the unfinished-grades check
 });
 test("the application sends the grades with the images uploaded first and removed again if the application is refused", () => {
