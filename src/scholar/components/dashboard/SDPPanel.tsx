@@ -130,11 +130,12 @@ function ActivityCard({ act, attended, onClick, progress }: { act: SDPActivity; 
   // A recurring activity shows the sub-name of the day it is going to happen next ("Day 2 – Bonbon Shoreline"), if that day has one.
   const nextDaySub = status.nextDate ? daySubName(act, manilaDay(status.nextDate)) : "";
   return (
-    <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={onClick}
-      className="w-full bg-white rounded-xl shadow-sm p-3 flex items-start gap-3 text-left hover:shadow-md transition-all border border-gray-100 min-h-[104px]">
+    <button type="button" onClick={onClick} data-testid="sdp-activity-card"
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 104px" }}      /* a card far off the screen is not drawn until the scholar scrolls near it */
+      className="w-full bg-white rounded-xl shadow-sm p-3 flex items-start gap-3 text-left hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all border border-gray-100 min-h-[104px]">
       {/* Pubmat (or a default seal when none was uploaded) with the Attended/Ended/Next-schedule mark directly beneath it. */}
       <div className="flex w-16 shrink-0 flex-col items-center gap-1.5">
-        <img src={pubmat ?? DefaultPubmat} alt="" className="h-16 w-16 rounded-lg object-cover" />
+        <img src={pubmat ?? DefaultPubmat} alt="" loading="lazy" decoding="async" width={64} height={64} className="h-16 w-16 rounded-lg object-cover" />
         {attended ? <AttendedBadge />
           : progress?.enabled && progress.submission?.status === "pending" ? <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800"><Clock3 size={11} /> Waiting</span>
           : progress?.enabled && progress.submission?.status === "rejected" ? <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700"><AlertTriangle size={11} /> Retake</span>
@@ -157,7 +158,7 @@ function ActivityCard({ act, attended, onClick, progress }: { act: SDPActivity; 
         <span className="text-[8px] font-bold leading-[1.15]">{categoryLabel}</span>
         <span className="text-[7px] font-semibold text-[#0088cc]/70">{act.credits} credit{act.credits === 1 ? "" : "s"}</span>
       </div>
-    </motion.button>
+    </button>
   );
 }
 
@@ -241,10 +242,15 @@ interface SDPPanelProps {
  * can no longer submit their own proposals (that flow, and its
  * pending/approval review step, was removed).
  */
+/** The last list this scholar saw in this visit: shown at once when the tab is opened again, then refreshed quietly (so coming back to the tab is instant). */
+let sdpListMemory: { scholar: string; activities: SDPActivity[]; attended: Set<string> } | null = null;
+
 export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
-  const [activities, setActivities] = useState<SDPActivity[]>([]);
-  const [attendedIds, setAttendedIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
+  const remembered = sdpListMemory && sdpListMemory.scholar === scholarIdNumber ? sdpListMemory : null;
+  const [activities, setActivities] = useState<SDPActivity[]>(remembered?.activities ?? []);
+  const [attendedIds, setAttendedIds] = useState<Set<string>>(remembered?.attended ?? new Set());
+  const [loading, setLoading] = useState(!remembered);
+  const [creditsLoading, setCreditsLoading] = useState(true);      // the credit boxes can arrive after the list
   const [selectedActivity, setSelectedActivity] = useState<SDPActivity | null>(null);
   // activities that confirm attendance with a picture, and this scholar's own pictures
   const [progressIds, setProgressIds] = useState<Set<string>>(new Set());
@@ -256,20 +262,22 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
   // set once the scholar is renewed: the boxes then show the NEXT semester (3 credits per category used, the rest carried on)
   const [nextSemester, setNextSemester] = useState<{ schoolYear: string; semester: string } | null>(null);
 
+  // Everything is asked at the same moment, but each part is shown as soon as it arrives: the list of activities does not wait for the credit boxes (which take the longest to work out).
   async function loadAll(quiet = false) {
-    if (!quiet) setLoading(true);
-    const [a, progress, attended, req, owed, view, pIds, pSubs] = await Promise.all([
-      fetchApprovedSDPActivities(), fetchScholarSDPProgress(), fetchAttendedSDPActivityIds(scholarIdNumber), fetchScholarSDPRequirements(), fetchScholarSDPOwed(), fetchScholarSDPView(),
-      fetchProgressActivityIds(), fetchMyProgressSubmissions(),
-    ]);
-    setProgressIds(pIds); setSubmissions(pSubs);
-    setNextSemester(view?.shifted ? { schoolYear: view.schoolYear, semester: view.semester } : null);
-    setComing(owed.filter(o => !o.isCurrent));
-    setActivities(a);
-    setCredits(progress.credits);
-    setRequired(req);
-    setAttendedIds(attended);
-    setLoading(false);
+    if (!quiet && !sdpListMemory) setLoading(true);
+    const listPart = Promise.all([fetchApprovedSDPActivities(), fetchAttendedSDPActivityIds(scholarIdNumber), fetchProgressActivityIds(), fetchMyProgressSubmissions()]).then(([a, attended, pIds, pSubs]) => {
+      setActivities(a); setAttendedIds(attended); setProgressIds(pIds); setSubmissions(pSubs);
+      sdpListMemory = { scholar: scholarIdNumber, activities: a, attended };
+      setLoading(false);
+    });
+    const creditsPart = Promise.all([fetchScholarSDPProgress(), fetchScholarSDPRequirements(), fetchScholarSDPOwed(), fetchScholarSDPView()]).then(([progress, req, owed, view]) => {
+      setNextSemester(view?.shifted ? { schoolYear: view.schoolYear, semester: view.semester } : null);
+      setComing(owed.filter(o => !o.isCurrent));
+      setCredits(progress.credits);
+      setRequired(req);
+      setCreditsLoading(false);
+    });
+    await Promise.all([listPart, creditsPart]);
   }
   useEffect(() => { loadAll(); }, [scholarIdNumber]);
   useLiveReload(() => loadAll(true));      // new credits, a changed requirement: show them without refreshing
@@ -283,17 +291,17 @@ export function SDPPanel({ scholarIdNumber }: SDPPanelProps) {
 
   return (
     <SectionCard icon={<Lightbulb size={14} />} title="Scholars' Development Program (SDP)">
-      {!loading && nextSemester && (
+      {!creditsLoading && nextSemester && (
         <p className="mb-3 rounded-lg border border-[#0077b6]/40 bg-[#eef6fc] px-3 py-2 text-[13px] text-[#062444]" role="status">
           <strong>You are renewed.</strong> The boxes below show your SDP for {termLabelOf(nextSemester.schoolYear, nextSemester.semester)}: 3 credits per category were used for the semester that was renewed, credits above that carry on, and any credits you lacked are added to the requirement.
         </p>
       )}
-      {!loading && <CreditProgress credits={credits} required={required} />}
-      {!loading && SDP_CATEGORIES.some(c => (required[c.key] ?? CREDITS_REQUIRED) > CREDITS_REQUIRED) && (
+      {creditsLoading ? <div className="mb-5 grid grid-cols-3 gap-2" aria-hidden="true">{[0, 1, 2].map(i => <div key={i} className="h-12 animate-pulse rounded-lg bg-slate-100" />)}</div> : <CreditProgress credits={credits} required={required} />}
+      {!creditsLoading && SDP_CATEGORIES.some(c => (required[c.key] ?? CREDITS_REQUIRED) > CREDITS_REQUIRED) && (
         <p className="-mt-3 mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-950">Part of this semester's requirement is credit that was lacking last semester and was added after your SDP reconsideration was approved.</p>
       )}
 
-      {!loading && coming.length > 0 && <ComingRequirement rows={coming} />}
+      {!creditsLoading && coming.length > 0 && <ComingRequirement rows={coming} />}
 
       <div className="flex items-center gap-2 mb-3">
         <h4 className="text-[#062444] font-bold text-sm flex-1">SDP Activities</h4>

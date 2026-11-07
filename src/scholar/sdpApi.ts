@@ -142,14 +142,19 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
   };
 }
 
+/**
+ * The columns the scholar screens use. The planning fields of an activity (nature, source of fund, objectives, partners, role, work plan, program flow, budget) are large and only the
+ * staff use them: with them the list of a few hundred activities was several MEGABYTES to download, without them it is a few hundred kilobytes (they come back empty here).
+ */
+const SDP_LIST_COLUMNS = "id, name, submitted_by_scholar_id, category, sub_category, sub_name, organization, date_time, end_time, venue, project_head, head_cluster, budgetary_requirement, source_of_fund_other, rationale, link_with_org, target_partners_other, pubmat_path, activity_type, recurring_dates, credits, target_year_levels, all_year_levels, target_barangays, target_clusters, created_at";
+
 /** Staff-created activities, open to every scholar immediately. */
 export async function fetchApprovedSDPActivities(): Promise<SDPActivity[]> {
-  const { data, error } = await supabase.from("sdp_activities")
-    .select("*")
-    .is("submitted_by_scholar_id", null)
-    .order("date_time", { ascending: true });
+  const ask = (columns: string) => supabase.from("sdp_activities").select(columns).is("submitted_by_scholar_id", null).order("date_time", { ascending: true });
+  let { data, error } = await ask(SDP_LIST_COLUMNS);
+  if (error) ({ data, error } = await ask("*"));      // a column is missing (a database update was not run yet): the earlier way, everything
   if (error || !data) return [];
-  return data.map(rowToActivity);
+  return (data as unknown as Record<string, unknown>[]).map(rowToActivity);
 }
 
 export type SDPCategoryStatus = Record<SDPCategory, boolean>;
