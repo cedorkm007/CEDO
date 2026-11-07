@@ -274,6 +274,12 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
           {previewError && <p role="alert" className="text-[14px] text-red-700">{previewError}</p>}
           {!preview && !previewError && <p className="text-[14px] text-slate-600 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading what we have for you…</p>}
           {preview && <EvaluationSummary ev={preview} />}
+          {preview && preview.sdp?.applicable && (preview.sdp.reconsideration?.status === "approved" || preview.sdp.by_reconsideration) && (
+            <p role="status" data-testid="sdp-already-approved" className="rounded-lg border border-green-300 bg-green-50 px-3.5 py-2.5 text-[14px] text-green-950">
+              <strong>Your SDP is settled.</strong> Your SDP reconsideration was already approved, so you are treated as complied and there is nothing to tick or ask for.
+              {gate.blocker === "grades" ? " Only your grades are still needed before you can go on." : ""}
+            </p>
+          )}
           {preview && offerGrades && (
             <div className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3.5 py-3 text-[14px] text-slate-900">
               <p className="font-bold text-[#062444]">Your grades</p>
@@ -418,14 +424,16 @@ function IncDocPicker({ kind, label, hint, files, setFiles }: { kind: DocKind; l
 function EvaluationSummary({ ev }: { ev: RenewalEvaluation }) {
   const sdp = ev.sdp, g = ev.grades;
   const basis = ev.basis_school_year && ev.basis_term ? termLabelOf(ev.basis_school_year, ev.basis_term) : "the previous semester";
+  // An approved SDP reconsideration means "complied" for the semester: once it is approved nothing says the SDP is lacking any more (even when the credit check on its own would not say complied)
+  const rcApproved = !!sdp?.applicable && (sdp.reconsideration?.status === "approved" || !!sdp.by_reconsideration);
   return (
     <div className="space-y-3">
       <div className="rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3.5 py-3">
         <p className="text-[14px] font-bold text-[#062444] mb-1">SDP for {basis}</p>
         {sdp && !sdp.applicable && <p className="text-[14px] text-slate-700">Summer renewal has no SDP requirement.</p>}
-        {sdp?.applicable && sdp.complied && !sdp.by_reconsideration && <p className="text-[14px] text-green-800 flex items-center gap-1.5"><CheckCircle2 size={15} aria-hidden="true" /> Complied — you have the credits needed in each category.</p>}
-        {sdp?.applicable && sdp.by_reconsideration && <p className="text-[14px] text-green-800 flex items-center gap-1.5"><CheckCircle2 size={15} aria-hidden="true" /> Complied through your approved SDP reconsideration.</p>}
-        {sdp?.applicable && !sdp.complied && <p className="text-[14px] text-amber-900 flex items-center gap-1.5"><XCircle size={15} aria-hidden="true" /> Not complied yet — {sdp.missing ?? "some credits are missing"}.</p>}
+        {sdp?.applicable && sdp.complied && !rcApproved && <p className="text-[14px] text-green-800 flex items-center gap-1.5"><CheckCircle2 size={15} aria-hidden="true" /> Complied — you have the credits needed in each category.</p>}
+        {rcApproved && <p className="text-[14px] text-green-800 flex items-center gap-1.5"><CheckCircle2 size={15} aria-hidden="true" /> Complied through your approved SDP reconsideration.</p>}
+        {sdp?.applicable && !sdp.complied && !rcApproved && <p className="text-[14px] text-amber-900 flex items-center gap-1.5"><XCircle size={15} aria-hidden="true" /> Not complied yet — {sdp.missing ?? "some credits are missing"}.</p>}
         {sdp?.applicable && (
           <p className="text-[13.5px] text-slate-600 mt-1">Institutional Volunteerism {sdp.community_service ?? 0}/{sdp.required?.community_service ?? 3} · Community Volunteerism {sdp.community_volunteerism ?? 0}/{sdp.required?.community_volunteerism ?? 3} · Formation Program {sdp.formation_program ?? 0}/{sdp.required?.formation_program ?? 3}</p>
         )}
