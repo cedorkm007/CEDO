@@ -7,6 +7,8 @@ import {
   confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, fetchRenewalSdpAfter, getStaffRenewalDocumentUrl, returnRenewal, revertRenewalApplication, reviewDocument, type DetailDocument, type RenewalDetail,
 } from "../renewalApi";
 import { ReasonDialog } from "./ReasonDialog";
+import { Thumb } from "./RenewalEnteredGradesTab";
+import { fetchRecordEnteredGrades, type RecordEnteredGrades } from "../enteredGradesApi";
 import { RenewalCsrSection } from "./RenewalCsrSection";
 import { confirmDivisionHeadDecision, fetchDivisionHeadStatus, sendToDivisionHead, type DivisionHeadStatus } from "../divisionHeadApi";
 
@@ -23,6 +25,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false, onBack, onChanged }: { recordId: string; canAct: boolean; /** The Renewal Documents Approver: only the approver approves or returns the study plan, INC letter and clearance. */ canReviewDocuments?: boolean; onBack: () => void; onChanged: () => void }) {
   const [detail, setDetail] = useState<RenewalDetail | null>(null);
   const [sdpAfter, setSdpAfter] = useState<Awaited<ReturnType<typeof fetchRenewalSdpAfter>>>(null);
+  const [entered, setEntered] = useState<RecordEnteredGrades | null>(null);      // the approved grades the scholar entered, with their screenshots (only while those are the grades that count)
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<"confirm" | "confirmReconsidered" | "sendDivisionHead" | "endorse" | "return" | "revert" | "accept" | "decline" | null>(null);
   const [dh, setDh] = useState<DivisionHeadStatus | null>(null);
@@ -34,6 +37,7 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
     setSdpAfter(r.ok && r.detail.record.stage === "renewed" ? await fetchRenewalSdpAfter(recordId) : null);
     if (r.ok) {
       setDetail(r.detail); setError("");
+      setEntered(r.detail.evaluation?.grades?.self_reported ? await fetchRecordEnteredGrades(recordId) : null);
       setDh(["endorsed_division_head", "needs_consultation_division_head", "ready_to_endorse", "reconsidered", "removed", "renewed"].includes(r.detail.record.stage) ? await fetchDivisionHeadStatus(recordId) : null);
     } else setError(r.error);
   }, [recordId]);
@@ -157,6 +161,22 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
 
       <Section title={`Grades — ${basis}`}>
         {g?.self_reported && <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-amber-950"><strong>These are the grades the scholar entered</strong> (approved by the Grades Approver) because the school has not uploaded its grades yet. They are replaced when the school uploads, and any differences are shown in the Entered grades tab.</p>}
+        {g?.self_reported && entered && (
+          <div className="mt-2 rounded-lg border border-[#e6ecf5] bg-[#f7f9fc] px-3 py-2.5" aria-label="Grades the scholar entered">
+            <p className="font-bold text-[#062444]">Grades entered by the scholar ({entered.lines.length} subject{entered.lines.length === 1 ? "" : "s"})</p>
+            <p className="text-[13.5px] text-slate-700">Approved{entered.decidedAt ? ` on ${formatDateTime(entered.decidedAt)}` : ""}{entered.decidedByLabel ? ` by ${entered.decidedByLabel}` : ""}. Sent {formatDateTime(entered.submittedAt)}.</p>
+            <div className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <table className="w-full self-start text-left">
+                <thead className="text-[#062444]"><tr><th scope="col" className="py-1 pr-2 font-bold">Code</th><th scope="col" className="py-1 pr-2 font-bold">Subject</th><th scope="col" className="py-1 pr-2 text-right font-bold">Units</th><th scope="col" className="py-1 text-right font-bold">Grade</th></tr></thead>
+                <tbody>{entered.lines.map(l => <tr key={l.code} className="border-t border-[#eef3fb]"><td className="py-1 pr-2">{l.code}</td><td className="py-1 pr-2 break-words">{l.subject}</td><td className="py-1 pr-2 text-right">{l.units}</td><td className="py-1 text-right font-semibold">{l.grade}</td></tr>)}</tbody>
+              </table>
+              <section aria-label="Screenshots the scholar uploaded" className="min-w-0">
+                <p className="mb-1 font-semibold text-[#062444]">Screenshots ({entered.files.length})</p>
+                <div className="space-y-2">{entered.files.map(f => <Thumb key={f.path} path={f.path} name={f.name} />)}</div>
+              </section>
+            </div>
+          </div>
+        )}
         {g && !g.self_reported && g.self_status === "approved" && g.school_submitted && <p className="rounded-md border border-[#e6ecf5] bg-[#f7f9fc] px-2.5 py-2">The scholar had entered grades that were approved; the school's own grades replaced them. See the Entered grades tab for any differences.</p>}
         {g && g.state !== "ready" && <p>{g.reason}</p>}
         {g && g.state === "ready" && (

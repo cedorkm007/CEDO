@@ -20,7 +20,7 @@ const FILTERS: { key: EnteredGradesFilter; label: string }[] = [{ key: "pending"
  * to the left or to the right (a sideways screenshot) with the two buttons on the picture, and zoom in or out to read small print (the picture scrolls when it is bigger than the
  * space): this only changes how it is shown here, the stored file is never changed.
  */
-function Thumb({ path, name }: { path: string; name: string }) {
+export function Thumb({ path, name }: { path: string; name: string }) {
   const [url, setUrl] = useState<string | null | undefined>(undefined);
   const [quarter, setQuarter] = useState<Quarter>(0);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
