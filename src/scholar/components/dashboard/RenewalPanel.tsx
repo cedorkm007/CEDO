@@ -226,7 +226,7 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
   const enterGrades = offerGrades;      // the grades are a must: the application is not taken without them (uploaded by the school, or entered here)
   const gradeProblem = enterGrades ? gradeFormProblem(gRows, gFiles.length, gAck) : null;
   const gradesReady = !gradesInForm || schoolGrades || preview?.grades?.self_status === "approved" || (enterGrades && !gradeProblem);
-  const wantsReconsideration = canAskReconsideration && gradesReady && askReconsideration;
+  const wantsReconsideration = canAskReconsideration && askReconsideration;      // the choice is offered at once; the application itself is only sent once the grades are in (the Next button waits for them)
   // A scholar with an INC (in the school's grades, or among the grades entered here) sends the INC letter, the study plan and the clearance with the application; each has its own upload button.
   const enteredInc = enterGrades && gRows.some(r => reservedMark(r.grade) === "INC");
   const incDocsNeeded = !!preview && ((preview.grades?.counts?.inc ?? 0) > 0 || enteredInc || serverNeedsInc);
@@ -294,18 +294,12 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
           {preview && gradesInForm && schoolGrades && (
             <p className="rounded-lg border border-green-300 bg-green-50 px-3.5 py-2.5 text-[14px] text-green-950">Your school has already uploaded your grades, so you do not need to enter them.</p>
           )}
-          {preview && canAskReconsideration && !gradesReady && (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3 text-[14px] text-amber-950">
-              <p className="font-bold mb-1">Your SDP is not complete</p>
-              <p>Lacking: <strong>{sdpLackingText(preview.sdp!.lacking)}</strong>. Until the credits are recorded, your renewal waits on hold.</p>
-              <p className="mt-1.5">You can ask for an <strong>SDP reconsideration</strong>, but only after your grades are entered (or your school has uploaded them). Enter your grades above first, and the choice appears here.</p>
-            </div>
-          )}
-          {preview && canAskReconsideration && gradesReady && (
+          {preview && canAskReconsideration && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3 text-[14px] text-amber-950">
               <p className="font-bold mb-1">Your SDP is not complete</p>
               <p>Lacking: <strong>{sdpLackingText(preview.sdp!.lacking)}</strong>. Until the credits are recorded, your renewal waits on hold.</p>
               <p className="mt-1.5">You can ask for an <strong>SDP reconsideration</strong> together with this application. It is decided by the SDP reconsideration approver.</p>
+              {!gradesReady && <p className="mt-1.5 font-semibold" data-testid="sdp-tick-grades-note">You can tick it now. Your application, with this request, is sent only after your grades are entered above (or your school has uploaded them).</p>}
               <p className="mt-1.5">{sdpReconsiderationImplication(preview)}</p>
               <label className="mt-2.5 flex cursor-pointer items-start gap-2 font-semibold">
                 <input type="checkbox" checked={askReconsideration} onChange={e => setAskReconsideration(e.target.checked)} className="mt-1 h-4 w-4 shrink-0" />
@@ -339,7 +333,7 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
           </label>
           {preview && !gate.open && gate.blocker === "sdp" && (
             <p role="status" className="rounded-lg border border-red-300 bg-red-50 px-3.5 py-2.5 text-[14px] text-red-900">
-              You cannot go on yet: your SDP is not complete. {canAskReconsideration && gradesReady ? "Tick the box above to ask for an SDP reconsideration, and you can go on." : canAskReconsideration ? "Enter your grades first; then you can ask for an SDP reconsideration and go on." : "Complete your SDP credits before you apply."}
+              You cannot go on yet: your SDP is not complete. {canAskReconsideration ? "Tick the box above to ask for an SDP reconsideration, and you can go on." : "Complete your SDP credits before you apply."}
             </p>
           )}
           {preview && !gate.open && gate.blocker === "documents" && (
