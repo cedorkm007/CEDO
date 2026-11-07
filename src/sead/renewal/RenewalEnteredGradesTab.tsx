@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { AlertTriangle, CheckCircle2, CornerUpLeft, Loader2, RotateCcw, RotateCw, Search, ZoomIn, ZoomOut } from "lucide-react";
 import {
-  decideEnteredGrades, ENTERED_GRADES_PAGE_SIZE, fetchEnteredGrades, fetchEnteredGradesCounts, getEnteredGradeImageUrl,
+  decideEnteredGrades, ENTERED_GRADES_PAGE_SIZE, fetchEnteredGrades, fetchEnteredGradesCounts, getEnteredGradeImageUrl, revertEnteredGradesApproval,
   type EnteredGradesCounts, type EnteredGradesFilter, type EnteredGradesRow,
 } from "../enteredGradesApi";
 import { formatDateTime, selfGradeDifferenceText, selfGradesStatusText, termLabelOf } from "@/lib/renewal";
@@ -85,6 +85,7 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
   const [missing, setMissing] = useState(false);
   const [notice, setNotice] = useState("");
   const [deciding, setDeciding] = useState<{ row: EnteredGradesRow; approve: boolean } | null>(null);
+  const [reverting, setReverting] = useState<EnteredGradesRow | null>(null);      // an approved try whose approval the Grades Approver wants to take back
 
   useEffect(() => { const t = setTimeout(() => { setQuery(typed); setPage(1); }, 350); return () => clearTimeout(t); }, [typed]);
   const load = useCallback(async () => {
@@ -163,6 +164,12 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
                   {r.status !== "pending" && r.decidedAt && <p className="mt-2 text-slate-800">Decided {formatDateTime(r.decidedAt)}{r.decidedByLabel ? ` by ${r.decidedByLabel}` : ""}.{r.decisionNote ? ` Note: ${r.decisionNote}` : ""}</p>}
                   {r.previousCount > 0 && <p className="mt-1 text-[13.5px] text-slate-700">This scholar has {r.previousCount} other entered-grades record{r.previousCount === 1 ? "" : "s"}.</p>}
 
+                  {counts?.canDecide && r.status === "approved" && !r.schoolSubmitted && (
+                    <div className="mt-3">
+                      <button onClick={() => { setNotice(""); setReverting(r); }} className="inline-flex items-center gap-1.5 rounded-lg border border-red-700 bg-white px-3 py-1.5 font-bold text-red-800 hover:bg-red-50"><RotateCcw size={15} aria-hidden="true" /> Revert approval</button>
+                      <p className="mt-1 text-[13.5px] text-slate-700">Approved by mistake? Revert it: the grades wait for approval again and the renewal waits with them.</p>
+                    </div>
+                  )}
                   {r.canDecide && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button onClick={() => { setNotice(""); setDeciding({ row: r, approve: true }); }} className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-3 py-1.5 font-bold text-white hover:bg-green-900"><CheckCircle2 size={15} aria-hidden="true" /> Approve</button>
@@ -183,6 +190,19 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
         </>
       )}
 
+      {reverting && (
+        <ReasonDialog
+          title="Revert the approval"
+          intro={<>The approval of the grades of <strong>{reverting.name}</strong> is taken back. The grades go back to <strong>waiting for approval</strong>, the renewal waits for you again, and the scholar and the evaluators are told.</>}
+          label="Reason (the scholar will see this)" confirmLabel="Revert approval" required danger minLength={3} onCancel={() => setReverting(null)}
+          onConfirm={async reason => {
+            const r = await revertEnteredGradesApproval(reverting.id, reason);
+            if (!r.ok) return r.error;
+            setNotice(`Approval reverted. The grades of ${reverting.name} are waiting for approval again, and the scholar was told.`);
+            setReverting(null); onChanged(); await load(); only?.onDone(); return null;
+          }}
+        />
+      )}
       {deciding && (
         <ReasonDialog
           title={deciding.approve ? "Approve the entered grades" : "Return the entered grades"}
