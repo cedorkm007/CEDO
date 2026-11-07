@@ -59,6 +59,12 @@ export async function decideEnteredGrades(id: string, approve: boolean, note: st
   return error ? { ok: false, error: error.message } : { ok: true, result: str(data) };
 }
 
+/** Takes back the approval of grades that were approved by mistake: they wait for approval again, the renewal waits, the scholar and the evaluators are told. A reason is needed. (supabase_migration_entered_grades_g_revert.sql) */
+export async function revertEnteredGradesApproval(id: string, note: string): Promise<{ ok: true } | { ok: false; error: string; missing: boolean }> {
+  const { error } = await supabase.rpc("renewal_self_grades_revert", { p_submission_id: id, p_note: note });
+  return error ? { ok: false, error: isMissing(error) ? "The database update for reverting an approval has not been run yet." : error.message, missing: isMissing(error) } : { ok: true };
+}
+
 /** A short-lived link to an image (the Grades Approver and renewal staff may open the scholars' images). */
 /** The grades the scholar entered for ONE renewal that the Grades Approver approved (subjects, screenshots, who approved and when); null when there are none (or the database update is not run yet). */
 export interface RecordEnteredGrades { id: string; version: number; submittedAt: string; decidedAt: string | null; decidedByLabel: string | null; lines: SelfGradeLine[]; files: { name: string; path: string; mime: string }[] }
