@@ -63,7 +63,7 @@ test("a single document reads 'Review 1 document'", () => assert.ok(Actions.need
 console.log("\nThe screens");
 const page = src("src/sead/ScholarRenewalPage.tsx"), tab = src("src/sead/renewal/RenewalDocumentsTab.tsx"), detail = src("src/sead/renewal/RenewalDetailView.tsx"), list = src("src/sead/renewal/RenewalListTab.tsx"), api = src("src/sead/renewalDocumentsApi.ts");
 test("a Documents tab is shown to the evaluator (to read) and to the approver, and opens first for an account that only has the tag", () => {
-  assert.ok(page.includes('t.key === "documents" ? (isEvaluator || isDocumentsApprover)') && page.includes('{ key: "documents", label: "Documents"') && page.includes('isDocumentsApprover ? "documents" : "certificate"'));
+  assert.ok(page.includes('t.key === "documents" ? (isEvaluator || isDocumentsApprover)') && page.includes('{ key: "documents", label: "Documents"') && page.includes('isDocumentsApprover ? "documents" : isTagger ? "tagging" : "certificate"'));
   assert.ok(page.includes('<RenewalDocumentsTab canApprove={isDocumentsApprover}'));
 });
 test("the approver also sees the lists, and 'Review documents' takes them to the Documents tab", () => {

@@ -64,6 +64,11 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
     description: "Approve or return the grades that scholars enter themselves during renewal (with their screenshots) while their school has not uploaded the grades yet. The renewal evaluator can only read them.",
   },
   {
+    key: "renewal_scholar_tagger",
+    label: "Renewal Scholar Tagging",
+    description: "Tag scholars (one by Scholar ID, or many at once) for automatic renewal, in Scholar Renewal > Scholar tagging: a tagged scholar who applies is renewed automatically once their grades and SDP are approved. This account sees only that tab.",
+  },
+  {
     key: "scholarship_program_info",
     label: "Scholarship Program Information",
     description: "Birds-eye statistics on the scholarship program — counts by status, barangay, school, year level, and program, with per-scholar profile exports.",

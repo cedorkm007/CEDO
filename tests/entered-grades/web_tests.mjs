@@ -31,7 +31,8 @@ test("at least one subject, at most 25; every subject needs a code, a name, a gr
   assert.match(R.validateSelfGradeLines([row("", "Algebra", "3", "1.5")]), /Subject 1/);
   assert.match(R.validateSelfGradeLines([row("M1", "Algebra", "0", "1.5")]), /units/);
   assert.match(R.validateSelfGradeLines([row("M1", "Algebra", "abc", "1.5")]), /units/);
-  assert.match(R.validateSelfGradeLines([row("M1", "Algebra", "13", "1.5")]), /units/);
+  assert.equal(R.validateSelfGradeLines([row("M1", "Algebra", "20", "1.5")]), null, "20 units is the most (it was 12 before)");
+  assert.match(R.validateSelfGradeLines([row("M1", "Algebra", "21", "1.5")]), /0\.5 to 20/);
   assert.equal(R.validateSelfGradeLines([row("M1", "Algebra", "1,5", "1.5")]), null, "a comma as the decimal sign is accepted");
   assert.match(R.validateSelfGradeLines([row("m1", "A", "3", "1"), row("M1", "B", "3", "2")]), /listed twice/);
 });
@@ -72,7 +73,7 @@ test("only an account with the Grades Approver tag can approve; it.admin1 appoin
 test("an approver with no other renewal tag can open Scholar Renewal, and lands on the Entered grades tab", () => {
   assert.equal(A.canSeeScholarRenewal({ tags: ["scholar_grades_approver"], role: "staff", division: "OTHER", username: "x" }), true);
   const page = src("src/sead/ScholarRenewalPage.tsx");
-  assert.match(page, /isGradesApprover \? "enteredGrades" : isDocumentsApprover \? "documents" : "certificate"/);
+  assert.match(page, /isGradesApprover \? "enteredGrades" : isDocumentsApprover \? "documents" : isTagger \? "tagging" : "certificate"/);
   assert.match(page, /key: "enteredGrades", label: "Entered grades"/);
   assert.match(page, /t\.key === "enteredGrades" \? \(isEvaluator \|\| isGradesApprover\)/);
   assert.match(page, /<RenewalEnteredGradesTab refreshKey=\{refreshKey\} onChanged=\{bump\} \/>/);

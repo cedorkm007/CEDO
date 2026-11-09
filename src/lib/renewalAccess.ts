@@ -6,6 +6,7 @@
 //   - an account with the tag sdp_reconsideration_approver (appointed by it.admin1): only the SDP Reconsideration tab
 //   - an account with the tag scholar_grades_approver (appointed by it.admin1): only the Entered grades tab (the evaluator can read that tab too)
 //   - an account with the tag renewal_documents_approver (appointed by it.admin1): the Documents tab (the evaluator can read that tab too) and the lists
+//   - an account with the tag renewal_scholar_tagger (appointed by it.admin1), and it.admin1 himself: the Scholar tagging tab (tag scholars for automatic renewal); the evaluator can read that tab too
 // Mirrors can_view_renewal_reports() in supabase_migration_renewal_p7_reports.sql.
 export interface RenewalAccessUser { tags: string[]; role: string; division: string; username?: string }
 
@@ -23,6 +24,9 @@ export const canApproveScholarGrades = (u: RenewalAccessUser): boolean => u.tags
 /** Who may APPROVE or RETURN a scholar's study plan, INC letter and clearance: the accounts it.admin1 gives the Renewal Documents Approver tag (the database checks it in can_approve_renewal_documents()). The evaluator can only read them. */
 export const canApproveRenewalDocuments = (u: RenewalAccessUser): boolean => u.tags.includes("renewal_documents_approver");
 
+/** Who may TAG scholars for automatic renewal (and remove the tag): it.admin1 and the accounts it.admin1 gives the Renewal Scholar Tagging tag (the database checks it in can_tag_renewed_scholars()). Such an account sees only the Scholar tagging tab. */
+export const canTagRenewedScholars = (u: RenewalAccessUser): boolean => u.tags.includes("renewal_scholar_tagger") || isItAdmin(u);
+
 export function canSeeScholarRenewal(u: RenewalAccessUser): boolean {
-  return u.tags.includes("scholar_renewal_evaluator") || u.tags.includes("sead_division_head") || isSeadHead(u) || isItAdmin(u) || canDecideSdpReconsideration(u) || canApproveScholarGrades(u) || canApproveRenewalDocuments(u);
+  return u.tags.includes("scholar_renewal_evaluator") || u.tags.includes("sead_division_head") || isSeadHead(u) || isItAdmin(u) || canDecideSdpReconsideration(u) || canApproveScholarGrades(u) || canApproveRenewalDocuments(u) || canTagRenewedScholars(u);
 }
