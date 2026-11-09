@@ -1,5 +1,6 @@
 import { ImagePlus, Plus, Trash2 } from "lucide-react";
 import { SELF_GRADES_MAX_IMAGES, SELF_GRADES_MAX_SUBJECTS, SELF_GRADES_WARNING, validateSelfGradeImage, validateSelfGradeLines } from "@/lib/renewal";
+import { makeReadable, unreadablePictureText } from "@/lib/uploadResilience";
 
 export interface GradeFormRow { code: string; subject: string; units: string; grade: string }
 export const emptyGradeRow = (): GradeFormRow => ({ code: "", subject: "", units: "", grade: "" });
@@ -26,10 +27,16 @@ export function SelfGradesForm({ basis, rows, setRows, keep, setKeep, newFiles, 
   newFiles: File[]; setNewFiles: (f: File[]) => void; ack: boolean; setAck: (a: boolean) => void; onError: (message: string) => void;
 }) {
   const setRow = (i: number, patch: Partial<GradeFormRow>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  function addFiles(list: FileList | null) {
+  async function addFiles(list: FileList | null) {
     if (!list) return;
+    const chosen = [...list];                 // copy the list first: the input is cleared right after the choice
     let count = keep.length + newFiles.length; const accepted: File[] = [];
-    for (const f of [...list]) { const p = validateSelfGradeImage(f, count); if (p) { onError(p); continue; } accepted.push(f); count++; }
+    for (const f of chosen) {
+      const p = validateSelfGradeImage(f, count); if (p) { onError(p); continue; }
+      const inMemory = await makeReadable(f);      // the picture is read into memory NOW, so the phone cannot lose it before Submit
+      if (!inMemory) { onError(unreadablePictureText(f.name)); continue; }
+      accepted.push(inMemory); count++;
+    }
     if (accepted.length) { onError(""); setNewFiles([...newFiles, ...accepted]); }
   }
   return (

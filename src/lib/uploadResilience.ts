@@ -37,6 +37,32 @@ export function networkProblemText(what: string): string {
   return `We could not ${what} because your internet connection dropped or was too slow. Nothing was saved. Please check your connection (Wi-Fi or mobile data) and press Submit again.`;
 }
 
+/**
+ * "No content provided" is what the storage server answers when the file it was sent had NO bytes in it. That happens when a picture was chosen on a phone and the phone later lost it
+ * (it was moved or deleted, it lives only in the cloud, or the browser's saved copy of it came back empty). The text names the picture and says what to do.
+ */
+export function isEmptyUploadMessage(message: string | null | undefined): boolean {
+  return !!message && /no content provided|empty (file|body)|zero[- ]length/i.test(message);
+}
+export function unreadablePictureText(name: string): string {
+  return `The picture "${name}" could not be read: it arrived empty (it may have been moved, deleted or lost from your phone's memory, or it is stored only in the cloud). Nothing was saved. Please remove it, choose the picture again from your phone's gallery or Files, and press Submit again.`;
+}
+/** The message to show for a failed upload: the plain-words text for an empty picture, the server's own words for anything else. */
+export function uploadProblemText(message: string, fileName: string): string {
+  return isEmptyUploadMessage(message) ? unreadablePictureText(fileName) : message;
+}
+/**
+ * Reads the whole file into memory right now and returns a copy that lives in memory, so what is sent is exactly what was read. Returns null when the file cannot be read or has no bytes
+ * (the case behind "No content provided"). Browser only.
+ */
+export async function makeReadable(file: File): Promise<File | null> {
+  try {
+    const buf = await file.arrayBuffer();
+    if (buf.byteLength === 0) return null;
+    return new File([buf], file.name, { type: file.type, lastModified: file.lastModified });
+  } catch { return null; }
+}
+
 /** The biggest side (in pixels) a grade screenshot keeps. Plenty to read every line, and small enough to upload quickly on mobile data. */
 export const SHRINK_MAX_SIDE = 2400;
 /** Pictures at or under this size are sent as they are. */
