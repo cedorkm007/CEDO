@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveReload } from "@/lib/liveUpdates";
-import { Loader2, RefreshCw, Search } from "lucide-react";
-import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
+import { RefreshCw, Search } from "lucide-react";
 import { ListPagination } from "@/app/components/PaginatedList";
-import { formatDateTime, termLabelOf, type RenewalStage } from "@/lib/renewal";
+import { formatDateTime, termLabelOf } from "@/lib/renewal";
 import { NO_ROLES, type NeededAction, neededActions, type ScholarActionFacts, type ViewerRoles } from "@/lib/renewalActions";
-import { FIRST_SUBTAB, GRADES_FILTER_OPTIONS, LIST_TAB_LABEL, SDP_FILTER_OPTIONS, statusColumnText, SUBTABS, type RenewalListTab, type RenewalSubTab } from "@/lib/renewalTabs";
+import { FIRST_SUBTAB, GRADES_FILTER_OPTIONS, LIST_TAB_LABEL, SDP_FILTER_OPTIONS, SUBTABS, type RenewalListTab, type RenewalSubTab } from "@/lib/renewalTabs";
 import { fetchScholarActions, refreshScholarListStep, type ScholarListRow } from "../renewalScholarListApi";
 import {
   EMPTY_RENEWAL_LIST_FILTERS, fetchRenewalList, fetchRenewalListCounts, fetchRenewalListOptions, RENEWAL_LIST_PAGE_SIZE,
@@ -16,7 +15,8 @@ import { ModalShell } from "../components/SeadUiShell";
 import { ReferralFormModal } from "../components/ReferralFormModal";
 import { ReferralFormPanel } from "../components/ReferralFormPanel";
 import { fetchScholarInformationByIdNumber, type ScholarInformationRow } from "../seadApi";
-import { ActionCell, GradesCell, MultiSelect, SdpCell, SdpCreditsModal } from "./RenewalScholarListTab";
+import { MultiSelect, SdpCreditsModal } from "./RenewalScholarListTab";
+import { RenewalListTable } from "./RenewalListTable";
 import { RenewalEnteredGradesTab } from "./RenewalEnteredGradesTab";
 import { RenewalSdpReconsiderationTab } from "./RenewalSdpReconsiderationTab";
 import { RenewalIncTab } from "./RenewalIncTab";
@@ -158,9 +158,6 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
   if (missing) return <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[14px] text-amber-950">These lists need the latest database update (supabase_migration_renewal_tabs.sql). Until it is run, this tab cannot show the list.</p>;
   if (error) return <p role="alert" className="text-[14px] text-red-700">{error}</p>;
 
-  const actionsCell = (r: RenewalListRow) => <ActionCell r={r} facts={facts?.[r.scholarIdNumber] ?? null} ready={ready} viewer={viewer} busy={referBusy} onAct={(a, row, f) => void act(a, row as RenewalListRow, f)} actionsFor={actionsOf} />;
-  const stageCell = (r: RenewalListRow) => (r.stage && tab === "applications" ? <div className="mt-0.5"><RenewalStageBadge stage={r.stage as RenewalStage} />{r.isLate && r.stage !== "late_pending" ? <span className="ml-1 text-[13px] text-amber-900">late</span> : null}</div> : null);
-
   return (
     <div>
       <p className="text-[14px] text-slate-700 mb-3">{LIST_TAB_LABEL[tab]} for {termLabelOf(schoolYear, term)}. {INTRO[tab]}</p>
@@ -212,62 +209,15 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
       </div>
       <p className="mb-3 text-[13.5px] text-slate-700">{subtabs.find(s => s.key === sub)?.hint}</p>
 
-      {!rows ? <p className="text-[14px] text-slate-700 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading…</p>
-      : rows.length === 0 ? <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{emptyText}</p>
-      : (
-        <>
-          <div className="hidden xl:block rounded-xl border border-[#e6ecf5] bg-white" aria-label={`${LIST_TAB_LABEL[tab]} list`}>
-            <table className="w-full table-fixed text-left text-[14px]">
-              <thead className="bg-[#f7f9fc] text-[#062444]">
-                <tr>
-                  {[["Scholar ID", "w-[9%]"], ["Name", hasActions ? "w-[13%]" : "w-[16%]"], ["Year level", "w-[7%]"], ["School", hasActions ? "w-[13%]" : "w-[16%]"], ["Program", hasActions ? "w-[13%]" : "w-[16%]"],
-                    ["Scholarship status", "w-[10%]"], ["SDP", "w-[10%]"], ["Grades", hasActions ? "w-[11%]" : "w-[16%]"], ...(hasActions ? [["Actions", "w-[14%]"]] : [])]
-                    .map(([h, w]) => <th key={h} scope="col" className={`px-2 py-2.5 font-bold align-bottom ${w}`}>{h}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(r => (
-                  <tr key={r.scholarIdNumber} className="border-t border-[#eef3fb] align-top">
-                    <td className="px-2 py-2.5 break-words text-slate-800">{r.scholarIdNumber}</td>
-                    <td className="px-2 py-2.5 break-words">
-                      {r.recordId ? <button onClick={() => onOpenRecord(r.recordId as string)} className="font-bold text-[#00709f] hover:underline text-left">{r.name}</button> : <span className="font-bold text-[#062444]">{r.name}</span>}
-                      {stageCell(r)}
-                    </td>
-                    <td className="px-2 py-2.5 break-words text-slate-800">{r.yearLevel || "—"}</td>
-                    <td className="px-2 py-2.5 break-words text-slate-800">{r.school || "—"}</td>
-                    <td className="px-2 py-2.5 break-words text-slate-800">{r.program || "—"}</td>
-                    <td className="px-2 py-2.5 break-words text-slate-900">{statusColumnText(tab, r.status, r.fromStatus, r.toStatus)}</td>
-                    <td className="px-2 py-2.5 break-words"><SdpCell r={r} onView={x => setViewing(x as RenewalListRow)} /></td>
-                    <td className="px-2 py-2.5 break-words"><GradesCell r={r} /></td>
-                    {hasActions && <td className="px-2 py-2.5 break-words">{actionsCell(r)}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <ul className="xl:hidden space-y-2.5">
-            {rows.map(r => (
-              <li key={r.scholarIdNumber} className="rounded-xl border border-[#e6ecf5] bg-white px-3.5 py-3 text-[14px]">
-                <p className="font-bold text-[#062444]">
-                  {r.recordId ? <button onClick={() => onOpenRecord(r.recordId as string)} className="text-[#00709f] hover:underline text-left">{r.name}</button> : r.name} <span className="font-normal text-slate-600">· {r.scholarIdNumber}</span>
-                </p>
-                {stageCell(r)}
-                <dl className="mt-1.5 grid grid-cols-[7.5rem_1fr] gap-x-2 gap-y-1.5">
-                  <dt className="text-slate-600">Year level</dt><dd>{r.yearLevel || "—"}</dd>
-                  <dt className="text-slate-600">School</dt><dd>{r.school || "—"}</dd>
-                  <dt className="text-slate-600">Program</dt><dd>{r.program || "—"}</dd>
-                  <dt className="text-slate-600">Scholarship status</dt><dd>{statusColumnText(tab, r.status, r.fromStatus, r.toStatus)}</dd>
-                  <dt className="text-slate-600">SDP</dt><dd><SdpCell r={r} onView={x => setViewing(x as RenewalListRow)} /></dd>
-                  <dt className="text-slate-600">Grades</dt><dd><GradesCell r={r} /></dd>
-                  {hasActions && <><dt className="text-slate-600">Actions</dt><dd>{actionsCell(r)}</dd></>}
-                </dl>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-3">
-            <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} filteredCount={total} pageSize={RENEWAL_LIST_PAGE_SIZE} itemLabel="scholars" />
-          </div>
-        </>
+      <RenewalListTable
+        tab={tab} rows={rows} facts={facts} ready={ready} hasActions={hasActions} viewer={viewer} busy={referBusy}
+        hideSchool={filters.schoolIds.length === 1} emptyText={emptyText}
+        onOpenRecord={onOpenRecord} onViewSdp={x => setViewing(x)} onAct={(a, row, f) => void act(a, row as RenewalListRow, f)} actionsFor={actionsOf as never}
+      />
+      {rows && rows.length > 0 && (
+        <div className="mt-3">
+          <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} filteredCount={total} pageSize={RENEWAL_LIST_PAGE_SIZE} itemLabel="scholars" />
+        </div>
       )}
 
       {viewing && <SdpCreditsModal scholar={viewing} schoolYear={schoolYear} term={term} onClose={() => setViewing(null)} />}
