@@ -129,7 +129,8 @@ export function entryFor(rules: GradingRules | null | undefined, grade: string, 
   }
   if (g === "" || special) return { grade: g, percentage: null, error: "", reading: null };
   if (rules.entryMode === "percentage") return fail("Enter the percentage for this subject: your school enters percentages.");
-  if (!rules.bands.some(b => sameGrade(g, b.equivalentGrade))) {
+  // a plain number is accepted whatever its steps (1.1, 1.2, 1.15 ...): the table lists the grades a percentage turns into, it does not limit the numbers that may be typed (the scale limits still apply)
+  if (!NUM.test(g) && !rules.bands.some(b => sameGrade(g, b.equivalentGrade))) {
     const list = [...new Set(rules.bands.map(b => b.equivalentGrade.trim()))].sort().join(", ");
     return fail(`Grade "${g}" is not in your conversion table. Use one of: ${list}.`);
   }
