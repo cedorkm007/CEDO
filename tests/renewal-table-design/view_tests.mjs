@@ -96,11 +96,14 @@ await test("header: sticky, one line, small medium-weight muted; Scholar ID and 
 });
 await test("School and Program columns hide when narrow and show in a detail row; a phone gets cards, the primary action full width, 'N more' for the rest", () => {
   assert.ok(table.includes("hidden @min-[1350px]:table-cell") && table.includes("hidden @min-[1180px]:table-cell") && table.includes("aria-expanded={expanded}"));
-  assert.ok(table.includes("@min-[760px]:hidden") && table.includes("others.length} more"));
+  assert.ok(table.includes("@min-[880px]:hidden") && table.includes("others.length} more"));
 });
 await test("loading shows skeleton rows; an empty list shows the same message as before", () => assert.ok(table.includes("animate-pulse") && table.includes("t.emptyText")));
 await test("the ⋮ menu is keyboard-reachable: a real button, Escape closes it, it has a label that lists the actions", () => assert.ok(table.includes('aria-haspopup="menu"') && table.includes('e.key === "Escape"') && table.includes("More actions for")));
-await test("density (Comfortable / Compact) is remembered in the browser, and the page still works when the browser will not store it", () => assert.ok(tab.includes("localStorage.getItem(\"cedo.renewalTable.density\")") && tab.includes("catch { return \"comfortable\"; }")));
+await test("there is no Comfortable / Compact switch; the table never scrolls sideways: when the room is narrow its text and spacing shrink to fit", () => {
+  assert.equal(/density|Comfortable|Compact/i.test(tab + table), false);
+  assert.ok(table.includes("zoom: scale") && table.includes("NATURAL_WIDTH") && table.includes("overflow-x-hidden") && !/overflow-auto|overflow-x-auto|overflow-x-scroll/.test(table));
+});
 await test("School is hidden only when exactly one school is filtered", () => assert.ok(tab.includes("hideSchool={filters.schoolIds.length === 1}")));
 await test("the Scholar List tab (which shares ActionCell / SdpCell / GradesCell) is untouched", () => assert.ok(src("src/sead/renewal/RenewalScholarListTab.tsx").includes("View SDP credits</button>")));
 

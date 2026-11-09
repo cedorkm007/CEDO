@@ -12,7 +12,6 @@ import type { RenewalListRow } from "../renewalTabsApi";
  * A visual layer only: it draws the rows it is given. Which scholars are listed, the values, who may press which action and what an action does all come from RenewalListTab, unchanged.
  * Words never break in the middle; short values stay on one line; each status is a chip WITH a text label (never colour alone).
  */
-export type TableDensity = "comfortable" | "compact";
 
 const CHIP: Record<ChipTone, string> = {
   green: "border-green-300 bg-green-50 text-green-900",
@@ -42,13 +41,13 @@ function StatusCell({ r, tab }: { r: RenewalListRow; tab: RenewalListTab }) {
   return (
     <div className="min-w-0">
       <Chip tone={statusTone(now)}>{now}</Chip>
-      {arrow.length > 1 && <span className="block truncate text-[13px] leading-5 text-slate-700" title={text}>was {arrow[0]}</span>}
+      {arrow.length > 1 && <span className="line-clamp-2 text-[13px] leading-5 text-slate-700" title={text}>was {arrow[0]}</span>}
       <StageLine r={r} tab={tab} />
     </div>
   );
 }
 
-function SdpCell({ r, onView, compact }: { r: RenewalListRow; onView: (r: RenewalListRow) => void; compact?: boolean }) {
+function SdpCell({ r, onView }: { r: RenewalListRow; onView: (r: RenewalListRow) => void }) {
   const v = sdpView(r, r.stage);
   return (
     <div className="min-w-0">
@@ -59,7 +58,7 @@ function SdpCell({ r, onView, compact }: { r: RenewalListRow; onView: (r: Renewa
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#00709f] hover:bg-[#eaf3f9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00709f]"><ListChecks size={16} aria-hidden="true" /></button>
         )}
       </div>
-      {v.detail && !compact && <span className="block truncate text-[13px] leading-5 text-slate-700" title={v.detail}>{v.detail}</span>}
+      {v.detail && <span className="line-clamp-2 text-[13px] leading-5 text-slate-700" title={v.detail}>{v.detail}</span>}
     </div>
   );
 }
@@ -69,7 +68,7 @@ function GradesCell({ r, enteredStatus }: { r: RenewalListRow; enteredStatus: st
   return (
     <div className="min-w-0">
       <div className="flex flex-wrap items-center gap-1">{v.chips.map(c => <Chip key={c.text} tone={c.tone}>{c.text}</Chip>)}</div>
-      {v.detail && <span className="block truncate text-[13px] leading-5 text-slate-700" title={v.detail}>{v.detail}</span>}
+      {v.detail && <span className="line-clamp-2 text-[13px] leading-5 text-slate-700" title={v.detail}>{v.detail}</span>}
     </div>
   );
 }
@@ -174,7 +173,7 @@ function CardActions(p: ActionProps) {
 // ── the table ────────────────────────────────────────────────
 interface TableProps {
   tab: RenewalListTab; rows: RenewalListRow[] | null; facts: Record<string, ScholarActionFacts> | null; ready: boolean; hasActions: boolean; viewer: ViewerRoles; busy: string | null;
-  density: TableDensity; hideSchool: boolean; emptyText: string;
+  hideSchool: boolean; emptyText: string;
   onOpenRecord: (recordId: string) => void; onViewSdp: (r: RenewalListRow) => void;
   onAct: ActionProps["onAct"]; actionsFor: ActionProps["actionsFor"];
 }
@@ -193,18 +192,25 @@ function NameCell({ r, onOpenRecord }: { r: RenewalListRow; onOpenRecord: (id: s
 }
 
 const TH = "sticky top-0 z-20 whitespace-nowrap bg-white px-2.5 py-2.5 text-left text-[13px] font-medium text-slate-600 border-b border-[#e6ecf5]";
+/** The width the columns need at full size (px); a narrower room shrinks the table's text and spacing in proportion. */
+const NATURAL_WIDTH = 980;
 const MONO = { fontFamily: "'DM Mono', ui-monospace, monospace" } as const;
 
 export function RenewalListTable(t: TableProps) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const outer = useRef<HTMLDivElement>(null);
   const [wide, setWide] = useState<number | null>(null);
+  const [scale, setScale] = useState(1);
   // On a wide screen the page column (about 1090px) is narrower than the room that is free to its right: the table takes that room so School and Program fit as columns.
   useLayoutEffect(() => {
     const measure = () => {
       const p = outer.current?.parentElement; if (!p) return;
       const r = p.getBoundingClientRect(), free = window.innerWidth - r.left - 24;
-      setWide(free >= 1300 && free > r.width + 120 ? Math.round(Math.min(1480, free)) : null);
+      // wide screen: take the free room; a screen narrower than the page column: stop at the screen's edge (never run off it)
+      const w = free >= 1300 && free > r.width + 120 ? Math.round(Math.min(1480, free)) : free < r.width ? Math.max(280, Math.floor(free)) : null;
+      setWide(w);
+      // Never overflow: when the room is narrower than the table needs (NATURAL_WIDTH), everything in the table (text too) shrinks to fit instead of scrolling sideways.
+      setScale(Math.min(1, Math.floor(((w ?? r.width) - 2) / NATURAL_WIDTH * 1000) / 1000));
     };
     measure();
     window.addEventListener("resize", measure);
@@ -212,7 +218,7 @@ export function RenewalListTable(t: TableProps) {
     if (ro && outer.current?.parentElement) ro.observe(outer.current.parentElement);
     return () => { window.removeEventListener("resize", measure); ro?.disconnect(); };
   }, []);
-  const pad = t.density === "compact" ? "py-2" : "py-3";
+  const pad = "py-3";
   const toggle = (id: string) => setOpen(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const cols = 6 + (t.hideSchool ? 0 : 1) + (t.hasActions ? 1 : 0) + 1;
   const ap = (r: RenewalListRow): ActionProps => ({ r, facts: t.facts?.[r.scholarIdNumber] ?? null, ready: t.ready, viewer: t.viewer, busy: t.busy, onAct: t.onAct, actionsFor: t.actionsFor });
@@ -221,9 +227,9 @@ export function RenewalListTable(t: TableProps) {
   return (
     <div ref={outer} className="@container" style={wide ? { width: wide } : undefined}>
       {/* the table: from a medium width up (the container's width, not the screen's) */}
-      <div className="hidden @min-[760px]:block rounded-xl border border-[#e6ecf5] bg-white">
-        <div className="max-h-[calc(100vh-13rem)] min-h-[12rem] overflow-auto rounded-xl">
-          <table className="w-full table-fixed border-separate border-spacing-0 text-left text-[14px] text-slate-900" style={{ minWidth: 980 }}>
+      <div className="hidden @min-[880px]:block rounded-xl border border-[#e6ecf5] bg-white">
+        <div className="max-h-[calc(100vh-13rem)] min-h-[12rem] overflow-x-hidden overflow-y-auto rounded-xl">
+          <table className="w-full table-fixed border-separate border-spacing-0 text-left text-[14px] text-slate-900" style={{ zoom: scale, width: `${100 / scale}%` }}>
             <caption className="sr-only">Scholars of this list</caption>
             <colgroup>
               <col style={{ width: 106 }} />
@@ -293,7 +299,7 @@ export function RenewalListTable(t: TableProps) {
       </div>
 
       {/* a narrow screen: one card per scholar */}
-      <ul className="@min-[760px]:hidden space-y-2.5">
+      <ul className="@min-[880px]:hidden space-y-2.5">
         {skeleton && Array.from({ length: 3 }, (_, i) => <li key={i} aria-hidden="true" className="h-32 animate-pulse rounded-xl border border-[#e6ecf5] bg-white" />)}
         {t.rows && t.rows.length === 0 && <li className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{t.emptyText}</li>}
         {t.rows?.map(r => {

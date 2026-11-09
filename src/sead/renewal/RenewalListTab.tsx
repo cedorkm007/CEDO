@@ -16,7 +16,7 @@ import { ReferralFormModal } from "../components/ReferralFormModal";
 import { ReferralFormPanel } from "../components/ReferralFormPanel";
 import { fetchScholarInformationByIdNumber, type ScholarInformationRow } from "../seadApi";
 import { MultiSelect, SdpCreditsModal } from "./RenewalScholarListTab";
-import { RenewalListTable, type TableDensity } from "./RenewalListTable";
+import { RenewalListTable } from "./RenewalListTable";
 import { RenewalEnteredGradesTab } from "./RenewalEnteredGradesTab";
 import { RenewalSdpReconsiderationTab } from "./RenewalSdpReconsiderationTab";
 import { RenewalIncTab } from "./RenewalIncTab";
@@ -61,8 +61,6 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
   const [referBusy, setReferBusy] = useState<string | null>(null);
   const [marking, setMarking] = useState<RenewalListRow | null>(null);
   const [actionError, setActionError] = useState("");
-  const [density, setDensity] = useState<TableDensity>(() => { try { return localStorage.getItem("cedo.renewalTable.density") === "compact" ? "compact" : "comfortable"; } catch { return "comfortable"; } });
-  const pickDensity = (d: TableDensity) => { setDensity(d); try { localStorage.setItem("cedo.renewalTable.density", d); } catch { /* private window: the choice just is not remembered */ } };
   const autoTried = useRef("");
   const picked = useRef(false);        // the person chose a sub-tab: the list stops moving to a sub-tab by itself
   const hasActions = tab !== "renewed";
@@ -211,17 +209,8 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
       </div>
       <p className="mb-3 text-[13.5px] text-slate-700">{subtabs.find(s => s.key === sub)?.hint}</p>
 
-      <div className="mb-2 flex items-center justify-end gap-2 text-[13px] text-slate-700">
-        <span id="density-label">Row spacing</span>
-        <div role="group" aria-labelledby="density-label" className="inline-flex overflow-hidden rounded-lg border border-[#062444]/25">
-          {(["comfortable", "compact"] as const).map(d => (
-            <button key={d} type="button" aria-pressed={density === d} onClick={() => pickDensity(d)}
-              className={`px-2.5 py-1 text-[13px] font-semibold capitalize ${density === d ? "bg-[#062444] text-white" : "bg-white text-[#062444] hover:bg-[#f7f9fc]"}`}>{d}</button>
-          ))}
-        </div>
-      </div>
       <RenewalListTable
-        tab={tab} rows={rows} facts={facts} ready={ready} hasActions={hasActions} viewer={viewer} busy={referBusy} density={density}
+        tab={tab} rows={rows} facts={facts} ready={ready} hasActions={hasActions} viewer={viewer} busy={referBusy}
         hideSchool={filters.schoolIds.length === 1} emptyText={emptyText}
         onOpenRecord={onOpenRecord} onViewSdp={x => setViewing(x)} onAct={(a, row, f) => void act(a, row as RenewalListRow, f)} actionsFor={actionsOf as never}
       />
