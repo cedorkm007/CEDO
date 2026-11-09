@@ -634,6 +634,8 @@ export type SelfGradesStatus = "pending" | "approved" | "returned";
 export interface SelfGradeLine { code: string; subject: string; units: number; grade: string }
 export interface SelfGradeDifference { code: string; subject: string; entered: string | null; school: string | null; kind: "different" | "missing_in_school" | "missing_in_entered" }
 export const SELF_GRADES_MAX_SUBJECTS = 25;
+/** The most units ONE subject can have in the scholar's manual entry of grades (the database makes the same check). */
+export const MAX_SUBJECT_UNITS = 20;
 export const SELF_GRADES_MAX_IMAGES = 5;
 export const SELF_GRADES_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const SELF_GRADES_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -649,7 +651,7 @@ export function validateSelfGradeLines(lines: { code: string; subject: string; u
     const n = i + 1;
     if (!l.code.trim() || !l.subject.trim() || !l.grade.trim()) return `Subject ${n}: the subject code, the subject name and the grade are all needed.`;
     const u = Number(l.units.replace(",", "."));
-    if (!l.units.trim() || !Number.isFinite(u) || u <= 0 || u > 12) return `Subject ${n}: the units must be a number from 0.5 to 12.`;
+    if (!l.units.trim() || !Number.isFinite(u) || u <= 0 || u > MAX_SUBJECT_UNITS) return `Subject ${n}: the units must be a number from 0.5 to ${MAX_SUBJECT_UNITS}.`;
     const key = l.code.trim().toUpperCase();
     if (seen.has(key)) return `The subject code ${l.code.trim()} is listed twice.`;
     seen.add(key);
