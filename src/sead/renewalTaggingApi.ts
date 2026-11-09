@@ -11,7 +11,7 @@ const failed = (e: { code?: string; message?: string }): Failed => ({ ok: false,
 export interface TagTerm { schoolYear: string; term: string }
 export interface TaggedRow {
   scholarIdNumber: string; name: string; school: string; program: string; yearLevel: string; scholarStatus: string; taggedAt: string; taggedByLabel: string;
-  recordId: string | null; stage: string | null; renewed: boolean;
+  recordId: string | null; stage: string | null; renewed: boolean; autoApprove: boolean;
 }
 export const TAGGED_PAGE_SIZE = 25;
 
@@ -34,16 +34,16 @@ export async function fetchTaggedList(schoolYear: string, term: string, query: s
     ok: true, total: list.length ? Number(list[0].total_rows) || 0 : 0,
     rows: list.map(r => ({
       scholarIdNumber: str(r.scholar_id_number), name: str(r.name), school: str(r.school), program: str(r.program), yearLevel: str(r.year_level), scholarStatus: str(r.scholar_status),
-      taggedAt: str(r.tagged_at), taggedByLabel: str(r.tagged_by_label), recordId: r.record_id == null ? null : str(r.record_id), stage: r.stage == null ? null : str(r.stage), renewed: r.renewed === true,
+      taggedAt: str(r.tagged_at), taggedByLabel: str(r.tagged_by_label), recordId: r.record_id == null ? null : str(r.record_id), stage: r.stage == null ? null : str(r.stage), renewed: r.renewed === true, autoApprove: r.auto_approve === true,
     })),
   };
 }
 
-export async function tagScholars(schoolYear: string, term: string, ids: string[]): Promise<{ ok: true; result: TagResult } | Failed> {
-  const { data, error } = await supabase.rpc("renewal_tag_scholars", { p_school_year: schoolYear, p_term: term, p_ids: ids });
+export async function tagScholars(schoolYear: string, term: string, ids: string[], autoApprove = false): Promise<{ ok: true; result: TagResult } | Failed> {
+  const { data, error } = await supabase.rpc("renewal_tag_scholars", { p_school_year: schoolYear, p_term: term, p_ids: ids, p_auto_approve: autoApprove });
   if (error) return failed(error);
   const r = (data ?? {}) as Row;
-  return { ok: true, result: { tagged: Number(r.tagged) || 0, already: Number(r.already) || 0, notFound: ((r.not_found ?? []) as unknown[]).map(str), skipped: ((r.skipped ?? []) as unknown[]).map(str) } };
+  return { ok: true, result: { tagged: Number(r.tagged) || 0, updated: Number(r.updated) || 0, already: Number(r.already) || 0, notFound: ((r.not_found ?? []) as unknown[]).map(str), skipped: ((r.skipped ?? []) as unknown[]).map(str) } };
 }
 
 export async function untagScholars(schoolYear: string, term: string, ids: string[]): Promise<{ ok: true; removed: number } | Failed> {

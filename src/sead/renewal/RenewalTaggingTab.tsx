@@ -13,6 +13,7 @@ export function RenewalTaggingTab({ canManage, refreshKey, onChanged }: { canMan
   const [terms, setTerms] = useState<TagTerm[] | null>(null);
   const [termKey, setTermKey] = useState("");
   const [typedIds, setTypedIds] = useState("");
+  const [autoApprove, setAutoApprove] = useState(false);
   const [busy, setBusy] = useState<"tag" | "untag" | null>(null);
   const [result, setResult] = useState<{ text: string; detail: string[] } | null>(null);
   const [error, setError] = useState("");
@@ -52,7 +53,7 @@ export function RenewalTaggingTab({ canManage, refreshKey, onChanged }: { canMan
     if (!term || ids.length === 0) return;
     setBusy(kind); setError(""); setResult(null);
     if (kind === "tag") {
-      const r = await tagScholars(term.schoolYear, term.term, ids);
+      const r = await tagScholars(term.schoolYear, term.term, ids, autoApprove);
       if (!r.ok) setError(r.error);
       else {
         const res: TagResult = r.result;
@@ -90,6 +91,7 @@ export function RenewalTaggingTab({ canManage, refreshKey, onChanged }: { canMan
         <ul className="mt-1 list-disc space-y-0.5 pl-5 text-slate-800">
           <li>A tagged scholar applies as usual. All they have to do is enter their grades (if the school has not uploaded them yet) and, if they did not comply with the SDP, ask for an SDP reconsideration.</li>
           <li>When the grades and the SDP are approved, the renewal is confirmed automatically and the scholarship status stays the same.</li>
+          <li>With <strong>auto-approve</strong>, the grades the scholar enters and the SDP reconsideration request are approved by the system too: no Grades Approver or SDP approver has to act.</li>
           <li>A tagged scholar with a failed, DRP or INC subject goes through the usual process (consultation, documents, Division Head). Summer renewals are never automatic.</li>
           <li>A tag counts for the chosen renewal term only.</li>
         </ul>
@@ -109,9 +111,11 @@ export function RenewalTaggingTab({ canManage, refreshKey, onChanged }: { canMan
           <label htmlFor="tag-ids" className="font-bold text-[#062444]">Scholar IDs for {termLabelOf(term.schoolYear, term.term)}</label>
           <p className="text-[13px] text-slate-700">One ID or many: type or paste them one per line (a column copied from Excel works), or separated by commas or spaces. You can also choose a text or CSV file.</p>
           <textarea id="tag-ids" value={typedIds} onChange={e => setTypedIds(e.target.value)} rows={4} placeholder={"2506-00177\n2306-00092"} className="mt-2 w-full rounded-lg border border-[#062444]/25 bg-white px-3 py-2 font-mono text-[13px] outline-none focus:border-[#062444]" />
+          <label className="mt-2 flex items-start gap-2 text-slate-900"><input type="checkbox" checked={autoApprove} onChange={e => setAutoApprove(e.target.checked)} className="mt-1 h-4 w-4 shrink-0" />
+            <span><strong>Also auto-approve</strong> the grades these scholars enter and their SDP reconsideration request (what already waits for approval is approved now). Tagging a scholar again with the other choice changes it.</span></label>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => void run("tag")} disabled={!!busy || ids.length === 0} className="rounded-lg bg-[#062444] px-3.5 py-2 font-bold text-white hover:bg-[#0a3a6e] disabled:opacity-50">
-              {busy === "tag" ? "Tagging…" : ids.length > 0 ? `Tag ${ids.length} scholar${ids.length === 1 ? "" : "s"}` : "Tag scholars"}
+              {busy === "tag" ? "Tagging…" : ids.length > 0 ? `Tag ${ids.length} scholar${ids.length === 1 ? "" : "s"}${autoApprove ? " with auto-approve" : ""}` : "Tag scholars"}
             </button>
             <button type="button" onClick={() => void run("untag")} disabled={!!busy || ids.length === 0} className="rounded-lg border border-[#062444]/25 bg-white px-3.5 py-2 font-semibold text-[#062444] hover:bg-[#f7f9fc] disabled:opacity-50">
               {busy === "untag" ? "Removing…" : "Remove the tag from these"}
@@ -146,7 +150,7 @@ export function RenewalTaggingTab({ canManage, refreshKey, onChanged }: { canMan
                     <div className="min-w-0">
                       <p className="font-bold text-[#062444]">{r.name} <span className="font-mono text-[13px] font-normal text-slate-700">· {r.scholarIdNumber}</span></p>
                       <p className="text-slate-800">{r.school || "No school"} · {r.program || "No program"} · {r.yearLevel || "No year level"} · {r.scholarStatus}</p>
-                      <p className="text-[13px] text-slate-700">Tagged {formatDateTime(r.taggedAt)}{r.taggedByLabel ? ` by ${r.taggedByLabel}` : ""}</p>
+                      <p className="text-[13px] text-slate-700">{r.autoApprove && <span className="mr-1.5 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[13px] font-semibold text-amber-900">Auto-approve</span>}Tagged {formatDateTime(r.taggedAt)}{r.taggedByLabel ? ` by ${r.taggedByLabel}` : ""}</p>
                     </div>
                     <div className="flex flex-col items-end gap-1.5">
                       <span className={`rounded-full border px-2.5 py-0.5 text-[13px] font-semibold ${r.renewed ? "border-green-300 bg-green-50 text-green-900" : r.stage ? "border-sky-300 bg-sky-50 text-sky-900" : "border-slate-200 bg-slate-100 text-slate-800"}`}>

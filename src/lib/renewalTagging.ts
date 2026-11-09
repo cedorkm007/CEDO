@@ -19,11 +19,12 @@ export function parseScholarIds(text: string): string[] {
   return out;
 }
 
-export interface TagResult { tagged: number; already: number; notFound: string[]; skipped: string[] }
+export interface TagResult { tagged: number; updated: number; already: number; notFound: string[]; skipped: string[] }
 
 /** One plain sentence about what tagging did. */
 export function tagResultText(r: TagResult): string {
   const parts = [`${r.tagged} scholar${r.tagged === 1 ? "" : "s"} tagged`];
+  if (r.updated > 0) parts.push(`${r.updated} updated (auto-approve choice changed)`);
   if (r.already > 0) parts.push(`${r.already} already tagged`);
   if (r.notFound.length > 0) parts.push(`${r.notFound.length} ID${r.notFound.length === 1 ? "" : "s"} not found`);
   if (r.skipped.length > 0) parts.push(`${r.skipped.length} skipped (Removed or On leave)`);

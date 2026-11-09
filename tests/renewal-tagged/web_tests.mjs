@@ -21,8 +21,8 @@ await test("1 the ID box: one or many IDs, any separator, a column pasted from E
   assert.deepEqual(T.parseScholarIds("  \n ,; "), []);
 });
 await test("2 the sentence after tagging says what happened in plain words", () => {
-  assert.equal(T.tagResultText({ tagged: 3, already: 1, notFound: ["X"], skipped: ["A (Removed)", "B (On leave)"] }), "3 scholars tagged · 1 already tagged · 1 ID not found · 2 skipped (Removed or On leave).");
-  assert.equal(T.tagResultText({ tagged: 1, already: 0, notFound: [], skipped: [] }), "1 scholar tagged.");
+  assert.equal(T.tagResultText({ tagged: 3, updated: 2, already: 1, notFound: ["X"], skipped: ["A (Removed)", "B (On leave)"] }), "3 scholars tagged · 2 updated (auto-approve choice changed) · 1 already tagged · 1 ID not found · 2 skipped (Removed or On leave).");
+  assert.equal(T.tagResultText({ tagged: 1, updated: 0, already: 0, notFound: [], skipped: [] }), "1 scholar tagged.");
 });
 await test("3 who tags: it.admin1 and an account with the tag renewal_scholar_tagger; nobody else (not even the evaluator); a tagger sees the renewal tool", () => {
   const u = (tags, username = "x") => ({ tags, role: "staff", division: "SEAD", username });
@@ -42,6 +42,7 @@ await test("4 the tag is in the list it.admin1 hands out, and a tagged account s
 await test("5 the tab calls only the tagging functions (the database decides who may); removing a tag asks first; the list can be searched and paged", () => {
   const tab = src("src/sead/renewal/RenewalTaggingTab.tsx"), api = src("src/sead/renewalTaggingApi.ts");
   for (const f of ["renewal_tag_scholars", "renewal_untag_scholars", "renewal_tagged_list", "renewal_tag_terms"]) assert.ok(api.includes(`"${f}"`), f);
+  assert.ok(tab.includes("Also auto-approve") && tab.includes("tagScholars(term.schoolYear, term.term, ids, autoApprove)") && api.includes("p_auto_approve: autoApprove") && tab.includes("Auto-approve</span>"));
   assert.ok(tab.includes("Remove the tag?") && tab.includes("Search tagged scholars") && tab.includes("<ListPagination"));
   assert.equal(/\.from\("renewal_tagged_scholars"\)/.test(tab + api), false);
 });
