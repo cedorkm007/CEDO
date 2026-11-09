@@ -83,6 +83,7 @@ export function RenewalSdpReconsiderationTab({ refreshKey, onChanged, only }: { 
             {rows.map(r => {
               const st = sdpReconsiderationStatusText(r.status);
               const nextLabel = r.nextSchoolYear ? termLabelOf(r.nextSchoolYear, r.nextSemester) : "the next semester";
+              const complete = r.status === "pending" && sdpLackingText(r.lacking) === "nothing";      // credits were added after the request: nothing is lacking any more
               return (
                 <li key={r.id} className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-3.5 text-[14px]">
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -95,9 +96,9 @@ export function RenewalSdpReconsiderationTab({ refreshKey, onChanged, only }: { 
                   <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-[11rem_1fr]">
                     <dt className="text-slate-600">Applied for</dt><dd className="text-slate-900">{termLabelOf(r.schoolYear, r.term)} (asked {formatDateTime(r.requestedAt)})</dd>
                     <dt className="text-slate-600">SDP checked for</dt><dd className="text-slate-900">{termLabelOf(r.basisSchoolYear, r.basisTerm)}</dd>
-                    <dt className="text-slate-600">Lacking</dt><dd className="font-semibold text-red-800">{sdpLackingText(r.lacking)}</dd>
+                    <dt className="text-slate-600">Lacking</dt><dd className={complete ? "font-semibold text-green-900" : "font-semibold text-red-800"}>{complete ? "Nothing now: the SDP credits are complete (credits were added after the request)" : sdpLackingText(r.lacking)}</dd>
                     {r.gradesStatus != null && <><dt className="text-slate-600">Grades</dt><dd className={r.gradesComplete ? "font-semibold text-green-900" : "font-semibold text-amber-900"}>{r.gradesStatus === "school" ? "Uploaded by the school" : r.gradesStatus === "approved" ? "Entered by the scholar and approved" : r.gradesStatus === "pending" ? "Entered by the scholar, waiting for the Grades Approver" : r.gradesStatus === "returned" ? "Returned to the scholar for correction" : "Not entered yet"}</dd></>}
-                    <dt className="text-slate-600">If approved</dt><dd className="text-slate-900">Complied for {termLabelOf(r.basisSchoolYear, r.basisTerm)}; the lacking credits are added to the SDP requirement for {nextLabel}.</dd>
+                    <dt className="text-slate-600">{complete ? "If you decide" : "If approved"}</dt><dd className="text-slate-900">{complete ? "No reconsideration is needed any more: the request is simply closed, nothing is added to the next semester and the scholar is told." : <>Complied for {termLabelOf(r.basisSchoolYear, r.basisTerm)}; the lacking credits are added to the SDP requirement for {nextLabel}.</>}</dd>
                     {r.status !== "pending" && <>
                       <dt className="text-slate-600">Decided</dt><dd className="text-slate-900">{r.decidedAt ? formatDateTime(r.decidedAt) : "—"}{r.decidedByLabel ? ` by ${r.decidedByLabel}` : ""}</dd>
                       {r.decisionNote && <><dt className="text-slate-600">Note</dt><dd className="text-slate-900 break-words">{r.decisionNote}</dd></>}
@@ -134,7 +135,9 @@ export function RenewalSdpReconsiderationTab({ refreshKey, onChanged, only }: { 
       {deciding && (
         <ReasonDialog
           title={deciding.approve ? "Approve SDP reconsideration" : "Deny SDP reconsideration"}
-          intro={deciding.approve
+          intro={sdpLackingText(deciding.row.lacking) === "nothing"
+            ? <>The SDP credits of <strong>{deciding.row.name}</strong> for {termLabelOf(deciding.row.basisSchoolYear, deciding.row.basisTerm)} are complete now, so no reconsideration is needed. Whichever you press, the request is closed, nothing is added to the next semester and the scholar is told.</>
+            : deciding.approve
             ? <><strong>{deciding.row.name}</strong> will be treated as complied with the SDP for {termLabelOf(deciding.row.basisSchoolYear, deciding.row.basisTerm)}, and the lacking credits ({sdpLackingText(deciding.row.lacking)}) will be added to their SDP requirement for {deciding.row.nextSchoolYear ? termLabelOf(deciding.row.nextSchoolYear, deciding.row.nextSemester) : "the next semester"}. The scholar is told.</>
             : <>The renewal of <strong>{deciding.row.name}</strong> stays on hold until the missing SDP credits ({sdpLackingText(deciding.row.lacking)}) are recorded. The scholar is told, and sees your reason.</>}
           label={deciding.approve ? "Note to the scholar" : "Reason (the scholar will see this)"} confirmLabel={deciding.approve ? "Approve request" : "Deny request"}
