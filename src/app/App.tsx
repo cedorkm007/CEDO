@@ -15,7 +15,7 @@ import {
   ClipboardCheck, Plane, MessageCircle, Send, Lock, ClipboardList, RotateCw, HardDrive,
 } from "lucide-react";
 import { PushSettings } from "@/app/components/PushSettings";
-import { canApproveRenewalDocuments, canApproveScholarGrades, canDecideSdpReconsideration, canSeeScholarRenewal, isItAdmin, isSeadHead } from "@/lib/renewalAccess";
+import { canApproveRenewalDocuments, canApproveScholarGrades, canDecideSdpReconsideration, canSeeScholarRenewal, canTagRenewedScholars, isItAdmin, isSeadHead } from "@/lib/renewalAccess";
 import { canUseStorageTool } from "@/lib/storageToolAccess";
 import { ReferralFormPanel } from "@/sead/components/ReferralFormPanel";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
@@ -3706,7 +3706,7 @@ export default function App() {
             <StorageToolPage isAdmin={isItAdmin(currentUser)}/>
           )}
           {page==="scholarRenewal" && canSeeScholarRenewal(currentUser) && (
-            <ScholarRenewalPage isEvaluator={currentUser.tags.includes("scholar_renewal_evaluator")} isDivisionHead={currentUser.tags.includes("sead_division_head")} isSeadHead={isSeadHead(currentUser)} isItAdmin={isItAdmin(currentUser)} isSdpApprover={canDecideSdpReconsideration(currentUser)} isGradesApprover={canApproveScholarGrades(currentUser)} isDocumentsApprover={canApproveRenewalDocuments(currentUser)}/>
+            <ScholarRenewalPage isEvaluator={currentUser.tags.includes("scholar_renewal_evaluator")} isDivisionHead={currentUser.tags.includes("sead_division_head")} isSeadHead={isSeadHead(currentUser)} isItAdmin={isItAdmin(currentUser)} isSdpApprover={canDecideSdpReconsideration(currentUser)} isGradesApprover={canApproveScholarGrades(currentUser)} isDocumentsApprover={canApproveRenewalDocuments(currentUser)} isTagger={canTagRenewedScholars(currentUser)}/>
           )}
           {page==="myResearch" && (
             <MyResearchPage/>
