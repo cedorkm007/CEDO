@@ -7,7 +7,7 @@
 import { supabase } from "@/lib/supabase";
 import { isNetworkErrorMessage, makeReadable, networkProblemText, retryOnNetworkError, shrinkImageForUpload, unreadablePictureText, uploadProblemText } from "@/lib/uploadResilience";
 import {
-  DOC_LABEL, RENAMED_DOC_LABEL, RENEWAL_DOCUMENT_BUCKET, renamedDocumentName, renewalDocumentPath, validateRenewalFile, validateSelfGradeImage, validateSelfGradeLines,
+  DOC_LABEL, RENAMED_DOC_LABEL, RENEWAL_DOCUMENT_BUCKET, renamedDocumentName, renewalDocumentPath, tidyGradeText, validateRenewalFile, validateSelfGradeImage, validateSelfGradeLines,
   type ConsultState, type DocKind, type RenewalEvaluation, type RenewalStage, type SelfGradeDifference, type SelfGradeLine, type SelfGradesStatus, type WindowState,
 } from "@/lib/renewal";
 
@@ -144,7 +144,7 @@ export async function applyForRenewal(args: {
   }
   const gradeArgs = {
     p_grade_ack: g?.acknowledged ?? false, p_grade_files: uploaded,
-    p_grade_lines: (g?.lines ?? []).map(l => ({ code: l.code.trim(), subject: l.subject.trim(), units: Number(l.units.replace(",", ".")), grade: l.grade.trim() })),
+    p_grade_lines: (g?.lines ?? []).map(l => ({ code: l.code.trim(), subject: l.subject.trim(), units: Number(l.units.replace(",", ".")), grade: tidyGradeText(l.grade) })),
   };
   // The application itself. If the answer never arrived, the application may still have been saved: look before trying again or giving up.
   const sendApplication = () => incDocs.length > 0
@@ -449,7 +449,7 @@ export async function submitSelfGrades(args: { recordId: string; scholarIdNumber
   const files = [...args.keepFiles.map(k => ({ path: k.path, name: k.name, mime: "image/png", size: 1 })), ...uploaded];
   const { error } = await supabase.rpc("renewal_self_grades_submit", {
     p_record_id: args.recordId, p_acknowledged: args.acknowledged, p_files: files,
-    p_lines: args.lines.map(l => ({ code: l.code.trim(), subject: l.subject.trim(), units: Number(l.units.replace(",", ".")), grade: l.grade.trim() })),
+    p_lines: args.lines.map(l => ({ code: l.code.trim(), subject: l.subject.trim(), units: Number(l.units.replace(",", ".")), grade: tidyGradeText(l.grade) })),
   });
   if (error) { if (uploaded.length) await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).remove(uploaded.map(u => u.path)); return { ok: false, error: error.message }; }
   return { ok: true };

@@ -639,6 +639,16 @@ export const MAX_SUBJECT_UNITS = 20;
 export const SELF_GRADES_MAX_IMAGES = 5;
 export const SELF_GRADES_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const SELF_GRADES_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+/**
+ * A grade the scholar typed, tidied: the spaces around it are cut, and a NUMBER with a stray space or a comma ("1 .0", "1. 5", "1,5") becomes the plain number ("1.0", "1.5").
+ * Anything that is not a plain number (INC, DRP, letters, other marks) only loses the spaces around it. Same as the database's _tidy_grade.
+ */
+export function tidyGradeText(grade: string): string {
+  const t = String(grade ?? "").trim();
+  const compact = t.replace(/\s+/g, "");
+  return /^\d+([.,]\d+)?$/.test(compact) ? compact.replace(",", ".") : t;
+}
+
 /** The sentence the scholar ticks before sending the grades. */
 export const SELF_GRADES_WARNING = "I understand that if I enter wrong or false information, it will result in disciplinary action or removal from the City Scholarship Program.";
 
