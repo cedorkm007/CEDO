@@ -200,9 +200,10 @@ if (D) {
   const lackD = (await evalOf(D)).sdp.lacking;
   for (const cat of Object.keys(lackD)) if (Number(lackD[cat]) > 0) await q("insert into sdp_attendance (activity_id, scholar_id_number, attended_date, occurrence_number, school_year, semester) select $1, $2, current_date, 100 + g, $3, $4 from generate_series(1, $5::int) g",
     [acts[cat], D, basis.basis_school_year, basis.basis_term, Number(lackD[cat])]);
+  // since supabase_migration_sdp_reconsideration_auto_close.sql the request closes BY ITSELF the moment the credits are complete (nobody has to press a button)
   const closed = await decide(ITADMIN, idD, true, "");
-  check("approving when the credits are complete by then closes the request as 'not needed' and owes nothing", closed.ok && closed.rows[0].r === "not_needed"
-    && (await q("select status from sdp_reconsideration_requests where id = $1", [idD]))[0].status === "not_needed" && (await q("select count(*)::int n from sdp_reconsideration_debts where request_id = $1", [idD]))[0].n === 0, closed.msg);
+  check("when the credits become complete the request is closed as 'not needed' by the system and owes nothing; deciding it afterwards is refused as already decided", !closed.ok && /already decided/.test(closed.msg)
+    && (await q("select status, decided_by_label from sdp_reconsideration_requests where id = $1", [idD]))[0].status === "not_needed" && (await q("select count(*)::int n from sdp_reconsideration_debts where request_id = $1", [idD]))[0].n === 0, closed.msg);
 } else check("(not enough lacking scholars in the demo for this case)", true);
 
 console.log("\nThe Scholar List and the rest stay in step");

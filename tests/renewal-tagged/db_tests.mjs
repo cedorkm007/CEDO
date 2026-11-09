@@ -11,7 +11,7 @@ await seedDb(db);
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const read = f => fs.readFileSync(f, "utf8");
 const NEW = "supabase_migration_renewal_tagged_scholars.sql", UNDO = "undo_renewal_tagged_scholars.sql";
-await db.exec(read(NEW)); await db.exec(read(NEW));      // twice: safe
+// (the demo database already has the tagging file and the files after it: the later auto-approve file changes the tag functions, so this test does not run the tagging file again)
 async function as(uid, fn, role = "authenticated") {
   return db.transaction(async tx => {
     await tx.exec(`set local role ${role}`);
@@ -50,6 +50,7 @@ const mine = await attempt(EVAL, "select * from public.renewal_tagged_list($1, $
 const gone = await attempt(ITADMIN, "select public.renewal_untag_scholars($1, $2, $3::text[]) n", [usual.y, usual.t, [usual.s]]);
 check("4 a tag counts for its own term only; the evaluator can read the list; removing a tag works (and a stranger cannot remove)", other.ok && other.rows.length === 0 && mine.ok && mine.rows.some(r => r.scholar_id_number === ready.s && r.renewed === true) && gone.ok && gone.rows[0].n === 1
   && !(await attempt(EVAL, "select public.renewal_untag_scholars($1, $2, $3::text[])", [usual.y, usual.t, [ready.s]])).ok);
+await db.exec(read("undo_renewal_tag_auto_approve.sql"));      // the later file is undone first
 await db.exec(read(UNDO));
 const stillThere = (await q("select to_regclass('public.renewal_tagged_scholars') t"))[0].t;
 check("5 the undo removes the tagging (the table is gone) and the re-check works as before", stillThere === null && (await q("select public._renewal_recheck($1)", [usual.id])).length === 1);
