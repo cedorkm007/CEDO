@@ -3,7 +3,7 @@ import { useLiveReload } from "@/lib/liveUpdates";
 import { RefreshCw, Search } from "lucide-react";
 import { ListPagination } from "@/app/components/PaginatedList";
 import { formatDateTime, termLabelOf } from "@/lib/renewal";
-import { NO_ROLES, type NeededAction, neededActions, type ScholarActionFacts, type ViewerRoles } from "@/lib/renewalActions";
+import { canReferForConsultation, NO_ROLES, type NeededAction, neededActions, REFER_BOOKING_ACTION, type ScholarActionFacts, type ViewerRoles } from "@/lib/renewalActions";
 import { FIRST_SUBTAB, GRADES_FILTER_OPTIONS, LIST_TAB_LABEL, SDP_FILTER_OPTIONS, SUBTABS, type RenewalListTab, type RenewalSubTab } from "@/lib/renewalTabs";
 import { fetchScholarActions, refreshScholarListStep, type ScholarListRow } from "../renewalScholarListApi";
 import {
@@ -21,6 +21,7 @@ import { RenewalEnteredGradesTab } from "./RenewalEnteredGradesTab";
 import { RenewalSdpReconsiderationTab } from "./RenewalSdpReconsiderationTab";
 import { RenewalIncTab } from "./RenewalIncTab";
 import { ReasonDialog } from "./ReasonDialog";
+import { RenewalReferConsultationModal } from "./RenewalReferConsultationModal";
 
 const INTRO: Record<RenewalListTab, string> = {
   applications: "The scholars who applied and are not renewed yet, by the grades of the semester the renewal looks at (worst case first: a scholar is in one sub-tab only). Late and returned applications are here too.",
@@ -60,6 +61,7 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
   const [referring, setReferring] = useState<ScholarInformationRow | null>(null);
   const [referBusy, setReferBusy] = useState<string | null>(null);
   const [marking, setMarking] = useState<RenewalListRow | null>(null);
+  const [referBooking, setReferBooking] = useState<{ row: RenewalListRow; facts: ScholarActionFacts } | null>(null);
   const [actionError, setActionError] = useState("");
   const autoTried = useRef("");
   const picked = useRef(false);        // the person chose a sub-tab: the list stops moving to a sub-tab by itself
@@ -126,6 +128,7 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
     if (a.key === "open_application") { if (f.recordId) onOpenRecord(f.recordId); return; }
     if (a.key === "review_documents") { onGoToDocuments?.(); return; }
     if (a.key === "mark_not_required") { setMarking(r); return; }
+    if (a.key === "refer_booking") { setReferBooking({ row: r, facts: f }); return; }
     if (a.key === "refer_consultation") {
       setReferBusy(r.scholarIdNumber);
       const scholar = await fetchScholarInformationByIdNumber(r.scholarIdNumber);
@@ -141,6 +144,7 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
   const actionsOf = useCallback((r: ScholarListRow, f: ScholarActionFacts | null): NeededAction[] => {
     const list = neededActions(r, f);
     if (tab === "not_applied" && f && !f.recordId) list.push({ key: "mark_not_required", role: "evaluator", label: "Mark not required" });
+    if (tab === "applications" && canReferForConsultation(r, f)) list.push(REFER_BOOKING_ACTION);
     return list;
   }, [tab]);
 
@@ -240,6 +244,11 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
         <ModalShell title={`INC of ${acting.row.name}`} onClose={() => setActing(null)} wide>
           <RenewalIncTab schoolYear={schoolYear} term={term} refreshKey={refreshKey} onOpen={onOpenRecord} onChanged={() => onChanged?.()} only={{ recordId: acting.facts.recordId, onDone: afterAct }} />
         </ModalShell>
+      )}
+      {referBooking && (
+        <RenewalReferConsultationModal recordId={referBooking.facts.recordId as string} scholarName={referBooking.row.name}
+          summary={[referBooking.row.failed > 0 ? `${referBooking.row.failed} failed subject${referBooking.row.failed === 1 ? "" : "s"}` : "", referBooking.row.drp > 0 ? `${referBooking.row.drp} DRP` : "", referBooking.row.inc > 0 ? "an INC" : ""].filter(Boolean).join(", ") + "."}
+          onClose={() => setReferBooking(null)} onDone={() => { setReferBooking(null); onChanged?.(); void loadList(); }} />
       )}
       {referring && <ReferralFormModal mode="create" scholar={referring} onClose={() => setReferring(null)} onDone={afterAct} />}
       {marking && (
