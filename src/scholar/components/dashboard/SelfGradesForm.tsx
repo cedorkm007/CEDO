@@ -1,14 +1,16 @@
 import { ImagePlus, Plus, Trash2 } from "lucide-react";
 import { SELF_GRADES_MAX_IMAGES, SELF_GRADES_MAX_SUBJECTS, SELF_GRADES_WARNING, validateSelfGradeImage, validateSelfGradeLines } from "@/lib/renewal";
 import { makeReadable, unreadablePictureText } from "@/lib/uploadResilience";
+import { gradeWarning, rowsWithWarnings, unitsWarning, type GradeRules } from "@/lib/gradeCheck";
+import { useMyGradeRules } from "../../useMyGradeRules";
 
 export interface GradeFormRow { code: string; subject: string; units: string; grade: string }
 export const emptyGradeRow = (): GradeFormRow => ({ code: "", subject: "", units: "", grade: "" });
 export interface GradeFormFile { name: string; path: string }
 
 /** What is still missing before the grades can be sent: null when everything is there (subjects, at least one image, the tick). */
-export function gradeFormProblem(rows: GradeFormRow[], imageCount: number, acknowledged: boolean): string | null {
-  const p = validateSelfGradeLines(rows);
+export function gradeFormProblem(rows: GradeFormRow[], imageCount: number, acknowledged: boolean, rules?: GradeRules | null): string | null {
+  const p = validateSelfGradeLines(rows, rules);
   if (p) return p;
   if (imageCount === 0) return "Upload at least one screenshot or image of your grades.";
   if (!acknowledged) return "Tick the box to say you understand.";
@@ -26,7 +28,10 @@ export function SelfGradesForm({ basis, rows, setRows, keep, setKeep, newFiles, 
   basis: string; rows: GradeFormRow[]; setRows: (r: GradeFormRow[]) => void; keep: GradeFormFile[]; setKeep: (k: GradeFormFile[]) => void;
   newFiles: File[]; setNewFiles: (f: File[]) => void; ack: boolean; setAck: (a: boolean) => void; onError: (message: string) => void;
 }) {
+  const rules = useMyGradeRules();      // the school's scale, letters and other marks: each grade is checked against them AS IT IS TYPED
   const setRow = (i: number, patch: Partial<GradeFormRow>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const issues = rows.map((r, i) => ({ n: i + 1, grade: gradeWarning(r.grade, rules), units: unitsWarning(r.units) }));
+  const badRows = rowsWithWarnings(rows, rules);
   async function addFiles(list: FileList | null) {
     if (!list) return;
     const chosen = [...list];                 // copy the list first: the input is cleared right after the choice
@@ -42,14 +47,21 @@ export function SelfGradesForm({ basis, rows, setRows, keep, setKeep, newFiles, 
   return (
     <div className="space-y-3 text-[14px] text-slate-900">
       <p>Enter every subject of {basis}, exactly as in your screenshot.</p>
+      {badRows.length > 0 && <p role="status" className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 font-semibold text-red-900">Fix the grade{badRows.length === 1 ? "" : "s"} marked in red before you send: subject {badRows.join(", ")}.</p>}
       <div className="space-y-2">
         {rows.map((r, i) => (
-          <div key={i} className="grid grid-cols-2 gap-2 rounded-lg border border-[#e6ecf5] bg-white p-2 sm:grid-cols-[8rem_1fr_5rem_6rem_auto]">
+          <div key={i} className={`grid grid-cols-2 gap-2 rounded-lg border bg-white p-2 sm:grid-cols-[8rem_1fr_5rem_6rem_auto] ${issues[i].grade || issues[i].units ? "border-red-300" : "border-[#e6ecf5]"}`}>
             <input value={r.code} onChange={e => setRow(i, { code: e.target.value })} placeholder="Subject code" aria-label={`Subject ${i + 1} code`} maxLength={30} className={inputCls} />
             <input value={r.subject} onChange={e => setRow(i, { subject: e.target.value })} placeholder="Subject name" aria-label={`Subject ${i + 1} name`} maxLength={150} className={`${inputCls} col-span-2 sm:col-span-1`} />
-            <input value={r.units} onChange={e => setRow(i, { units: e.target.value })} placeholder="Units" aria-label={`Subject ${i + 1} units`} inputMode="decimal" maxLength={5} className={inputCls} />
-            <input value={r.grade} onChange={e => setRow(i, { grade: e.target.value })} placeholder="Grade" aria-label={`Subject ${i + 1} grade`} maxLength={12} className={inputCls} />
+            <input value={r.units} onChange={e => setRow(i, { units: e.target.value })} placeholder="Units" aria-label={`Subject ${i + 1} units`} inputMode="decimal" maxLength={5} aria-invalid={!!issues[i].units} aria-describedby={issues[i].units ? `gw-u-${i}` : undefined} className={`${inputCls} ${issues[i].units ? "!border-red-500 bg-red-50" : ""}`} />
+            <input value={r.grade} onChange={e => setRow(i, { grade: e.target.value })} placeholder="Grade" aria-label={`Subject ${i + 1} grade`} maxLength={12} aria-invalid={!!issues[i].grade} aria-describedby={issues[i].grade ? `gw-g-${i}` : undefined} className={`${inputCls} ${issues[i].grade ? "!border-red-500 bg-red-50" : ""}`} />
             <button type="button" onClick={() => setRows(rows.length === 1 ? [emptyGradeRow()] : rows.filter((_, j) => j !== i))} aria-label={`Remove subject ${i + 1}`} className="flex items-center justify-center rounded-lg border border-[#062444]/25 px-2 text-[#062444] hover:bg-[#f7f9fc]"><Trash2 size={15} aria-hidden="true" /></button>
+            {(issues[i].grade || issues[i].units) && (
+              <div className="col-span-full space-y-0.5 text-[13.5px] font-semibold text-red-800" role="alert">
+                {issues[i].grade && <p id={`gw-g-${i}`}>Subject {i + 1} grade: {issues[i].grade}</p>}
+                {issues[i].units && <p id={`gw-u-${i}`}>Subject {i + 1} units: {issues[i].units}</p>}
+              </div>
+            )}
           </div>
         ))}
       </div>

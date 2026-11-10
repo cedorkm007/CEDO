@@ -5,6 +5,7 @@
 // supabase_migration_renewal_p2_application.sql); these calls just ask.
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
+import { loadMyGradeRules } from "./useMyGradeRules";
 import { isNetworkErrorMessage, makeReadable, networkProblemText, retryOnNetworkError, shrinkImageForUpload, unreadablePictureText, uploadProblemText } from "@/lib/uploadResilience";
 import {
   DOC_LABEL, RENAMED_DOC_LABEL, RENEWAL_DOCUMENT_BUCKET, renamedDocumentName, renewalDocumentPath, tidyGradeText, validateRenewalFile, validateSelfGradeImage, validateSelfGradeLines,
@@ -110,7 +111,7 @@ export async function applyForRenewal(args: {
     return error ? { ok: false, error: error.message } : { ok: true };
   }
   if (g) {
-    const problem = validateSelfGradeLines(g.lines);
+    const problem = validateSelfGradeLines(g.lines, await loadMyGradeRules());
     if (problem) return { ok: false, error: problem };
     if (!g.acknowledged) return { ok: false, error: "Please tick the box to say you understand." };
     if (g.newFiles.length === 0) return { ok: false, error: "Upload at least one screenshot or image of your grades." };
@@ -431,7 +432,7 @@ export async function fetchMySelfGrades(recordId: string): Promise<{ ok: true; d
  * keepPaths = images of the earlier try that are kept. If saving fails, the images just uploaded are removed again.
  */
 export async function submitSelfGrades(args: { recordId: string; scholarIdNumber: string; lines: { code: string; subject: string; units: string; grade: string }[]; newFiles: File[]; keepFiles: { name: string; path: string }[]; acknowledged: boolean }): Promise<Done> {
-  const problem = validateSelfGradeLines(args.lines);
+  const problem = validateSelfGradeLines(args.lines, await loadMyGradeRules());
   if (problem) return { ok: false, error: problem };
   if (!args.acknowledged) return { ok: false, error: "Please tick the box to say you understand." };
   if (args.newFiles.length + args.keepFiles.length === 0) return { ok: false, error: "Upload at least one screenshot or image of your grades." };

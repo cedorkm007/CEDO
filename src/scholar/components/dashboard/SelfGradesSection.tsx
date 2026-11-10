@@ -4,6 +4,8 @@ import { sanitizeSelfGradesDraft, selfGradesDraftHasContent, selfGradesDraftKey,
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { formatDateTime, selfGradeDifferenceText, selfGradesStatusText, termLabelOf, type RenewalEvaluation } from "@/lib/renewal";
 import { SelfGradesForm, emptyGradeRow, type GradeFormRow } from "./SelfGradesForm";
+import { rowsWithWarnings } from "@/lib/gradeCheck";
+import { useMyGradeRules } from "../../useMyGradeRules";
 import { fetchMySelfGrades, getSelfGradeImageUrl, submitSelfGrades, type MyRenewalRecord, type MySelfGrades } from "../../renewalApi";
 import { useLiveReload } from "@/lib/liveUpdates";
 
@@ -24,6 +26,7 @@ export function SelfGradesSection({ record, ev, scholarIdNumber, onChanged }: { 
   const [keep, setKeep] = useState<{ name: string; path: string }[]>([]);
   const [newFiles, setNewFiles] = useState<File[]>([]);
   const [ack, setAck] = useState(false);
+  const gradeRules = useMyGradeRules();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
@@ -153,7 +156,7 @@ export function SelfGradesSection({ record, ev, scholarIdNumber, onChanged }: { 
           <SelfGradesForm basis={basis} rows={rows} setRows={rowsChanged} keep={keep} setKeep={keepChanged} newFiles={newFiles} setNewFiles={filesChanged} ack={ack} setAck={ackChanged} onError={setError} />
           {error && <p role="alert" className="text-red-700">{error}</p>}
           <div className="flex gap-2">
-            <button onClick={() => void send()} disabled={busy || !ack} className="inline-flex items-center gap-2 rounded-lg bg-[#062444] px-4 py-2 font-bold text-white disabled:opacity-50">
+            <button onClick={() => void send()} disabled={busy || !ack || rowsWithWarnings(rows, gradeRules).length > 0} className="inline-flex items-center gap-2 rounded-lg bg-[#062444] px-4 py-2 font-bold text-white disabled:opacity-50">
               {busy && <Loader2 size={15} className="animate-spin" aria-hidden="true" />} Send my grades for approval
             </button>
             <button onClick={() => void cancelEditing()} disabled={busy} className="rounded-lg border border-[#062444]/25 px-4 py-2 font-semibold text-[#062444]">Cancel</button>

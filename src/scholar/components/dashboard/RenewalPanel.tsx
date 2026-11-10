@@ -9,6 +9,7 @@ import { RenewalProgressBar } from "./RenewalProgressBar";
 import { SelfGradesSection } from "./SelfGradesSection";
 import { RemovalFormCard } from "./RemovalFormCard";
 import { SelfGradesForm, emptyGradeRow, gradeFormProblem, type GradeFormRow } from "./SelfGradesForm";
+import { useMyGradeRules } from "../../useMyGradeRules";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { loadDraft, savedAtText, useDraftAutosave } from "@/lib/formDraft";
 import { applyDraftHasContent, applyDraftKey, sanitizeApplyDraft, type ApplyDraft } from "../../renewalDraft";
@@ -175,6 +176,7 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
   const [gError, setGError] = useState("");
   const [incFiles, setIncFiles] = useState<Record<string, File[]>>(initial?.incFiles ?? { inc_letter: [], study_plan: [], clearance: [] });
   const [serverNeedsInc, setServerNeedsInc] = useState(false);
+  const gradeRules = useMyGradeRules();      // the school's scale and marks: a grade that is not allowed stops Next, and shows why as it is typed
   const [incNote, setIncNote] = useState("");
   const [preview, setPreview] = useState<RenewalEvaluation | null>(null);
   const [previewError, setPreviewError] = useState("");
@@ -224,7 +226,7 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
   const schoolGrades = !!preview?.grades?.school_submitted;
   const offerGrades = gradesInForm && !schoolGrades && preview?.grades?.self_status !== "approved";
   const enterGrades = offerGrades;      // the grades are a must: the application is not taken without them (uploaded by the school, or entered here)
-  const gradeProblem = enterGrades ? gradeFormProblem(gRows, gFiles.length, gAck) : null;
+  const gradeProblem = enterGrades ? gradeFormProblem(gRows, gFiles.length, gAck, gradeRules) : null;
   const gradesReady = !gradesInForm || schoolGrades || preview?.grades?.self_status === "approved" || (enterGrades && !gradeProblem);
   const wantsReconsideration = canAskReconsideration && askReconsideration;      // the choice is offered at once; the application itself is only sent once the grades are in (the Next button waits for them)
   // A scholar with an INC or a failed subject (in the school's grades, or among the grades entered here) sends the letter from the dean, the study plan and the clearance with the application; each has its own upload button.

@@ -1,3 +1,4 @@
+import { gradeWarning, type GradeRules } from "./gradeCheck";
 // ─────────────────────────────────────────────────────────────
 // src/lib/renewal.ts
 // Plain helpers shared by the scholar's Renewal tile and the staff "Scholar Renewal" tool: the stages a renewal moves through, how
@@ -653,14 +654,14 @@ export function tidyGradeText(grade: string): string {
 export const SELF_GRADES_WARNING = "I understand that if I enter wrong or false information, it will result in disciplinary action or removal from the City Scholarship Program.";
 
 /** The same checks the database makes on the entered subjects (so a mistake is shown before sending). null = fine. */
-export function validateSelfGradeLines(lines: { code: string; subject: string; units: string; grade: string }[]): string | null {
+export function validateSelfGradeLines(lines: { code: string; subject: string; units: string; grade: string }[], rules?: GradeRules | null): string | null {
   if (lines.length === 0) return "Enter at least one subject.";
   if (lines.length > SELF_GRADES_MAX_SUBJECTS) return `You can enter at most ${SELF_GRADES_MAX_SUBJECTS} subjects.`;
   const seen = new Set<string>();
   for (const [i, l] of lines.entries()) {
     const n = i + 1;
     if (!l.code.trim() || !l.subject.trim() || !l.grade.trim()) return `Subject ${n}: the subject code, the subject name and the grade are all needed.`;
-    if (!/^[A-Za-z0-9. ]+$/.test(l.grade.trim())) return `Subject ${n}: the grade "${l.grade.trim()}" has a symbol that is not allowed. Use only letters, numbers and a period (for example 1.5, 2.25 or INC). Write the decimal point as a period, not a comma.`;
+    const gw = gradeWarning(l.grade, rules); if (gw) return `Subject ${n}: ${gw}`;
     const u = Number(l.units.replace(",", "."));
     if (!l.units.trim() || !Number.isFinite(u) || u <= 0 || u > MAX_SUBJECT_UNITS) return `Subject ${n}: the units must be a number from 0.5 to ${MAX_SUBJECT_UNITS}.`;
     const key = l.code.trim().toUpperCase();
