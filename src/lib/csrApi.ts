@@ -51,10 +51,13 @@ export async function requestCsr(recordId: string, reason?: string): Promise<Csr
   return { ok: true, url: d.url, csrNumber: str(d.csrNumber), version: Number(d.version ?? 1), fileName: str(d.fileName) };
 }
 
-/** Opens the finished file. A link with the "download" header saves it under its tidy name. */
+/**
+ * Saves the finished file. The link answers with the "download" header, so opening it in the SAME tab saves the file under its tidy name and the page stays where it is.
+ * (It used to open a NEW tab after the wait for the certificate; phones and in-app browsers often block a new tab that opens after a wait, so the download never started.)
+ */
 export function openCsrDownload(url: string, fileName: string): void {
   const a = document.createElement("a");
-  a.href = url; a.download = fileName; a.rel = "noopener"; a.target = "_blank";
+  a.href = url; a.download = fileName; a.rel = "noopener";
   document.body.appendChild(a); a.click(); a.remove();
 }
 
