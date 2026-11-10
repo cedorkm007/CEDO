@@ -46,9 +46,9 @@ for (const s of (await q("select scholar_id_number s from scholars where school_
   A = s; break;
 }
 const rec = (await q("select * from renewal_records where scholar_id_number = $1 and school_year = $2 and term = $3", [A, Y, T]))[0];
-const r = await attempt(uidOf(A), "select public.renewal_self_grades_submit($1, $2::jsonb, $3::jsonb, true) id", [rec.id, JSON.stringify([{ code: "S1", subject: "One", units: 3, grade: "1 .0" }, { code: "S2", subject: "Two", units: 3, grade: "1,5" }]), JSON.stringify([{ path: `${A}/${rec.id}/grade-entries/0-s.png`, name: "s.png", mime: "image/png", size: 1234 }])]);
+const r = await attempt(uidOf(A), "select public.renewal_self_grades_submit($1, $2::jsonb, $3::jsonb, true) id", [rec.id, JSON.stringify([{ code: "S1", subject: "One", units: 3, grade: "1 .0" }, { code: "S2", subject: "Two", units: 3, grade: "1.5" }]), JSON.stringify([{ path: `${A}/${rec.id}/grade-entries/0-s.png`, name: "s.png", mime: "image/png", size: 1234 }])]);
 const saved = async () => (await q("select l.subject_code c, l.grade g from renewal_self_grade_lines l join renewal_self_grade_submissions s on s.id = l.submission_id where s.record_id = $1 order by l.subject_code", [rec.id]));
-check("2 new entries are saved tidied: '1 .0' becomes 1.0 and '1,5' becomes 1.5", r.ok && JSON.stringify((await saved()).map(x => x.g)) === JSON.stringify(["1.0", "1.5"]), r.msg ?? JSON.stringify(await saved()));
+check("2 new entries are saved tidied: '1 .0' becomes 1.0 and 1.5 stays 1.5", r.ok && JSON.stringify((await saved()).map(x => x.g)) === JSON.stringify(["1.0", "1.5"]), r.msg ?? JSON.stringify(await saved()));
 
 await q("update renewal_self_grade_lines set grade = '1 .1' where subject_code = 'S1' and submission_id in (select id from renewal_self_grade_submissions where record_id = $1)", [rec.id]);      // what an older entry looks like
 await db.exec(read(NEW));

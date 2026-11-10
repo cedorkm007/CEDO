@@ -660,6 +660,7 @@ export function validateSelfGradeLines(lines: { code: string; subject: string; u
   for (const [i, l] of lines.entries()) {
     const n = i + 1;
     if (!l.code.trim() || !l.subject.trim() || !l.grade.trim()) return `Subject ${n}: the subject code, the subject name and the grade are all needed.`;
+    if (!/^[A-Za-z0-9. ]+$/.test(l.grade.trim())) return `Subject ${n}: the grade "${l.grade.trim()}" has a symbol that is not allowed. Use only letters, numbers and a period (for example 1.5, 2.25 or INC). Write the decimal point as a period, not a comma.`;
     const u = Number(l.units.replace(",", "."));
     if (!l.units.trim() || !Number.isFinite(u) || u <= 0 || u > MAX_SUBJECT_UNITS) return `Subject ${n}: the units must be a number from 0.5 to ${MAX_SUBJECT_UNITS}.`;
     const key = l.code.trim().toUpperCase();
