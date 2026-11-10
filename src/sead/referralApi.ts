@@ -288,7 +288,7 @@ export async function uploadSignature(blob: Blob): Promise<{ ok: true; path: str
   if (!auth.user) return { ok: false, error: "Not signed in." };
   const path = `${auth.user.id}/signature.png`;
   const { error: uploadError } = await supabase.storage.from(SIGNATURES_BUCKET)
-    .upload(path, blob, { contentType: "image/png", upsert: true });
+    .upload(path, blob, { contentType: "image/png", upsert: true, cacheControl: "60" });      // a replaced signature must show up at once, not after the browser cache
   if (uploadError) return { ok: false, error: uploadError.message };
   const { error: rpcError } = await supabase.rpc("upsert_staff_signature", { p_storage_path: path });
   if (rpcError) return { ok: false, error: rpcError.message };
