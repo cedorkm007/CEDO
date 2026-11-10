@@ -39,8 +39,9 @@ export function SignatureUploadPanel({ onReady }: { onReady: (path: string | nul
       if (!result.ok) { setError(result.error); setProcessing(false); return; }
       setExistingPath(result.path);
       onReady(result.path);
-    } catch {
-      setError("Couldn't process that image — try a different file.");
+    } catch (e) {
+      setPreviewUrl(null);
+      setError(e instanceof Error && e.message ? e.message : "Couldn't process that image — try a different file.");      // say what is wrong (not a picture, no signature found, ...)
     } finally {
       setProcessing(false);
     }
@@ -60,10 +61,10 @@ export function SignatureUploadPanel({ onReady }: { onReady: (path: string | nul
         <div>
           <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#062444]/15 text-[#062444] text-[12.5px] font-semibold px-3.5 py-2 hover:bg-[#f8fafd]">
             <PenLine size={13} className="text-[#0088cc]" /> {processing ? "Processing…" : existingPath ? "Replace Signature" : "Upload Signature"}
-            <input type="file" accept="image/jpeg,image/png" className="hidden" disabled={processing}
-              onChange={e => { const file = e.target.files?.[0]; if (file) void handleFile(file); }} />
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/*" className="hidden" disabled={processing}
+              onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void handleFile(file); }} />
           </label>
-          <p className="text-[13px] text-slate-700 mt-1">JPG or PNG — the background is made transparent automatically and saved for future approvals.</p>
+          <p className="text-[13px] text-slate-700 mt-1">JPG or PNG of the signature in dark ink on plain white paper — the background (also inside the loops) is made transparent automatically and the signature is saved for future approvals.</p>
           {error && <p className="text-[11.5px] text-red-600 mt-1">{error}</p>}
         </div>
       </div>
