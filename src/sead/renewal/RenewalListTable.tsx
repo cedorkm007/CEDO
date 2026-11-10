@@ -144,11 +144,17 @@ function ActionSlots(p: ActionProps) {
   const all = p.actionsFor(p.r, p.facts);
   if (all.length === 0) return <span className="block text-center text-[13px] text-slate-700">No action needed</span>;
   const { sdp, grades, rest } = actionSlots(all);
+  // "Refer for Consultation" is shown as its own visible button under the two slots (not hidden in the "⋮" menu)
+  const refer = rest.find(a => a.key === "refer_booking") ?? null;
+  const others = rest.filter(a => a !== refer);
   return (
-    <div className="mx-auto flex w-fit items-center gap-1">
-      <div className="w-[96px]">{sdp && <ActionButton a={sdp} p={p} solid label={SLOT_LABEL.decide_sdp} />}</div>
-      <div className="w-[122px]">{grades && <ActionButton a={grades} p={p} solid={false} label={SLOT_LABEL.approve_grades} />}</div>
-      <div className="w-8"><MoreMenu items={rest} p={p} /></div>
+    <div className="mx-auto w-fit">
+      <div className="flex items-center gap-1">
+        <div className="w-[96px]">{sdp && <ActionButton a={sdp} p={p} solid label={SLOT_LABEL.decide_sdp} />}</div>
+        <div className="w-[122px]">{grades && <ActionButton a={grades} p={p} solid={false} label={SLOT_LABEL.approve_grades} />}</div>
+        <div className="w-8"><MoreMenu items={others} p={p} /></div>
+      </div>
+      {refer && <div className="mt-1.5"><ActionButton a={refer} p={p} solid={false} label="Refer for Consultation" /></div>}
     </div>
   );
 }
@@ -159,13 +165,17 @@ function CardActions(p: ActionProps) {
   const all = p.actionsFor(p.r, p.facts);
   if (all.length === 0) return <p className="mt-3 text-[13px] text-slate-700">No action needed</p>;
   const { sdp, grades } = actionSlots(all);
-  const first = sdp ?? grades ?? all[0];
-  const label = first === sdp ? SLOT_LABEL.decide_sdp : first === grades ? SLOT_LABEL.approve_grades : first.label;
-  const others = all.filter(a => a !== first);
+  const refer = all.find(a => a.key === "refer_booking") ?? null;
+  const first = sdp ?? grades ?? all.find(a => a !== refer) ?? all[0];
+  const label = first === sdp ? SLOT_LABEL.decide_sdp : first === grades ? SLOT_LABEL.approve_grades : first === refer ? "Refer for Consultation" : first.label;
+  const others = all.filter(a => a !== first && a !== refer);
   return (
-    <div className="mt-3 flex items-center gap-2">
-      <div className="min-w-0 flex-1"><ActionButton a={first} p={p} solid label={label} full /></div>
-      {others.length > 0 && <MoreMenu items={others} p={p} label={`${others.length} more`} />}
+    <div className="mt-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1"><ActionButton a={first} p={p} solid label={label} full /></div>
+        {others.length > 0 && <MoreMenu items={others} p={p} label={`${others.length} more`} />}
+      </div>
+      {refer && first !== refer && <ActionButton a={refer} p={p} solid={false} label="Refer for Consultation" full />}
     </div>
   );
 }
