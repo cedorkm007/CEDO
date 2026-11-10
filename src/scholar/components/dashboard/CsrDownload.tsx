@@ -12,6 +12,7 @@ export function CsrDownload({ recordId }: { recordId: string }) {
   const [info, setInfo] = useState<CsrInfo | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [link, setLink] = useState<{ url: string; fileName: string } | null>(null);      // the link just made (valid for a few minutes): offered again in case the browser blocked the download
 
   const load = useCallback(async () => { setInfo(await fetchCsrInfo(recordId)); }, [recordId]);
   useEffect(() => { void load(); }, [load]);
@@ -21,6 +22,7 @@ export function CsrDownload({ recordId }: { recordId: string }) {
     const r = await requestCsr(recordId);
     setBusy(false);
     if (!r.ok) { setError(r.error); return; }
+    setLink({ url: r.url, fileName: r.fileName });
     openCsrDownload(r.url, r.fileName);
     await load();
   }
@@ -39,6 +41,7 @@ export function CsrDownload({ recordId }: { recordId: string }) {
           <button onClick={() => void download()} disabled={busy} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#062444] px-4 py-2.5 text-[14px] font-bold text-white hover:bg-[#0a3a6e] disabled:opacity-60">
             {busy ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Download size={15} aria-hidden="true" />} Download my certificate (PDF)
           </button>
+          {link && <p className="mt-2 text-[14px] text-green-950">Your certificate is ready. If it did not download, <a href={link.url} download={link.fileName} className="font-bold underline">tap here to download it</a>. This link works for a few minutes; press the button again for a new one.</p>}
           <p className="mt-2 text-[13.5px] text-green-950">The QR on the certificate lets your school check that it is real.</p>
           {info.testing && <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[13.5px] font-semibold text-amber-950">TEST: certificates are switched on for testing only. This is not a real certificate.</p>}
         </>
