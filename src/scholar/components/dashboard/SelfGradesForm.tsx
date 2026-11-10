@@ -1,4 +1,5 @@
 import { ImagePlus, Plus, Trash2 } from "lucide-react";
+import { EnteredGwaLine } from "@/app/components/EnteredGwaLine";
 import { SELF_GRADES_MAX_IMAGES, SELF_GRADES_MAX_SUBJECTS, SELF_GRADES_WARNING, validateSelfGradeImage, validateSelfGradeLines } from "@/lib/renewal";
 import { makeReadable, unreadablePictureText } from "@/lib/uploadResilience";
 import { gradeWarning, rowsWithWarnings, unitsWarning, type GradeRules } from "@/lib/gradeCheck";
@@ -65,6 +66,7 @@ export function SelfGradesForm({ basis, rows, setRows, keep, setKeep, newFiles, 
           </div>
         ))}
       </div>
+      <EnteredGwaLine lines={rows} className="!mt-0" />
       <button type="button" onClick={() => setRows([...rows, emptyGradeRow()])} disabled={rows.length >= SELF_GRADES_MAX_SUBJECTS} className="inline-flex items-center gap-1.5 font-semibold text-[#00709f] hover:underline disabled:opacity-50"><Plus size={14} aria-hidden="true" /> Add a subject</button>
 
       <div>
