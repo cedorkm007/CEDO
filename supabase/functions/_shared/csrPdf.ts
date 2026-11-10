@@ -8,9 +8,21 @@ import * as QRCore from "qrcode/lib/core/qrcode.js";
 import { CSR_ASSETS } from "./csrAssets.ts";
 
 // ── The words printed on the certificate (pure) ─────────────
-/** "JUAN -TEST N. DELA CRUZ": first name, the middle INITIAL with a dot, last name, all capitals. */
+/**
+ * A middle name that is really "no middle name": empty, or a placeholder someone typed in its place (N/A, NA, N.A., none, nil, null, NMN, no middle name, -, --, ...).
+ * Such a middle name is left out of the printed name instead of printing its first letter ("N." from "N/A").
+ */
+export function isNoMiddleName(middle: string | null | undefined): boolean {
+  const t = (middle ?? "").trim().toLowerCase();
+  if (!t) return true;
+  const squeezed = t.replace(/[\s./\\()_‐-―-]+/g, "");
+  if (!squeezed) return true;                      // only dots, dashes or slashes
+  return ["na", "none", "nil", "null", "nmn", "nomiddlename", "nomiddleinitial", "notapplicable", "nomiddle", "undefined"].includes(squeezed);
+}
+
+/** "JUAN -TEST N. DELA CRUZ": first name, the middle INITIAL with a dot, last name, all capitals. No middle name (or a placeholder such as N/A): "ANA REYES". */
 export function csrFullName(first: string, middle: string, last: string): string {
-  const mid = (middle ?? "").trim();
+  const mid = isNoMiddleName(middle) ? "" : (middle ?? "").trim();
   const initial = mid ? mid.charAt(0).toUpperCase() + "." : "";
   return [first, initial, last].map(s => (s ?? "").trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").toUpperCase();
 }

@@ -278,7 +278,7 @@ test("plain next steps for the scholar, in order, for the main cases", () => {
   const study = R.scholarNextSteps("needs_study_plan_consultation", ev([{ kind: "study_plan", label: "Study plan", satisfied: false }]));
   assert.match(study[0], /Upload your study plan/); assert.match(study[1], /consultation/);
   const inc = R.scholarNextSteps("needs_inc_letter_consultation", ev([{ kind: "inc_letter", label: "INC letter from your dean", satisfied: false }]));
-  assert.match(inc[0], /INC letter from your dean/);
+  assert.match(inc[0], /letter from your dean/);
   const wait = R.scholarNextSteps("inc_waiting_compliance", ev(), { incDeadlines: [{ subject: "Math", deadline: "2026-10-25" }, { subject: "Art", deadline: null }] });
   assert.match(wait[0], /Complete your INC in Math by .*2026/); assert.match(wait[1], /Deadline: to be set at your consultation/);
   assert.match(R.scholarNextSteps("returned", ev(), { evaluatorComment: "Please fix X" })[0], /Please fix X/);
@@ -415,13 +415,13 @@ test("a study plan that is not approved yet: the scholar is told to wait, and th
 });
 test("the INC letter needs approval too: the same waiting messages, worded for the INC letter", () => {
   const ev = { required_documents: [{ kind: "inc_letter", label: "INC letter from your dean", satisfied: true, approved: false }], sdp: { applicable: true, complied: true, missing: null }, grades: { reason: "" } };
-  assert.equal(R.consultBlockedBy("inc_letter_pending"), "INC letter");
+  assert.equal(R.consultBlockedBy("inc_letter_pending"), "letter from your dean");
   assert.equal(R.consultBlockedBy("study_plan_missing"), "study plan");
   assert.equal(R.consultBlockedBy("ok"), null);
   const pend = R.scholarNextSteps("needs_inc_letter_consultation", ev, { consultState: "inc_letter_pending" });
-  assert.equal(pend[0], "Wait for the evaluator to approve your INC letter. Then you can book your consultation.");
+  assert.equal(pend[0], "Wait for the evaluator to approve your letter from your dean. Then you can book your consultation.");
   const missing = R.scholarNextSteps("needs_inc_letter_consultation", { ...ev, required_documents: [{ kind: "inc_letter", label: "INC letter from your dean", satisfied: false }] }, { consultState: "inc_letter_missing" });
-  assert.match(missing.join(" "), /Upload the INC letter from your dean/); assert.match(missing.join(" "), /After the evaluator approves your INC letter, you can book/);
+  assert.match(missing.join(" "), /Upload the letter from your dean/); assert.match(missing.join(" "), /After the evaluator approves your letter from your dean, you can book/);
 });
 test("the website's consultation states are the ones the database returns", () => {
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p3_appointments.sql"), "utf8");
@@ -447,7 +447,7 @@ test("SDP on hold says exactly what is missing, per category, in the scholar's w
 test("the example sentences from the owner's list, word for word", () => {
   const ev = (docs) => ({ required_documents: docs, sdp: { applicable: true, complied: true, missing: null } });
   assert.deepEqual(R.scholarNextSteps("needs_study_plan_consultation", ev([{ kind: "study_plan", label: "Study plan", satisfied: false, approved: false }]), { consultState: "study_plan_missing" }).slice(0, 1), ["Upload your study plan."]);
-  assert.deepEqual(R.scholarNextSteps("needs_inc_letter_consultation", ev([{ kind: "inc_letter", label: "INC letter from your dean", satisfied: false, approved: false }]), { consultState: "inc_letter_missing" }).slice(0, 1), ["Upload the INC letter from your dean."]);
+  assert.deepEqual(R.scholarNextSteps("needs_inc_letter_consultation", ev([{ kind: "inc_letter", label: "INC letter from your dean", satisfied: false, approved: false }]), { consultState: "inc_letter_missing" }).slice(0, 1), ["Upload the letter from your dean."]);
   assert.deepEqual(R.scholarNextSteps("summer_requirements", ev([{ kind: "prospectus", label: "Prospectus", satisfied: false }]), { consultState: "ok" }).slice(0, 1), ["Upload your prospectus."]);
   assert.match(R.scholarNextSteps("summer_requirements", ev([{ kind: "prospectus", label: "Prospectus", satisfied: true }]), { consultState: "ok" }).join(" "), /Book your consultation/);
   assert.match(R.scholarNextSteps("summer_requirements", ev([{ kind: "prospectus", label: "Prospectus", satisfied: true }]), { consultState: "ok", isSummer: true, booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } })[0], /^Bring your prospectus hard copy to your consultation on Oct 20, morning [(]AM[)]/);
@@ -786,7 +786,7 @@ test("who can open Scholar Renewal: the evaluator, the Division Head, and the he
 });
 test("the SEAD head sees only the Dashboard; the filter boxes are on the dashboard; the database agrees on who may read", () => {
   const page = fs.readFileSync(path.join(root, "src/sead/ScholarRenewalPage.tsx"), "utf8");
-  assert.match(page, /t\.key !== "divisionHead" \|\| isEvaluator \|\| isDivisionHead/); assert.match(page, /isDivisionHead \? "divisionHead" : seesRenewals \? "dashboard" : isSdpApprover \? "sdpReconsideration" : isGradesApprover \? "enteredGrades" : isDocumentsApprover \? "documents" : "certificate"/);
+  assert.match(page, /t\.key !== "divisionHead" \|\| isEvaluator \|\| isDivisionHead/); assert.match(page, /isDivisionHead \? "divisionHead" : seesRenewals \? "dashboard" : isSdpApprover \? "sdpReconsideration" : isGradesApprover \? "enteredGrades" : isDocumentsApprover \? "documents" : isTagger \? "tagging" : "certificate"/);
   const tab = fs.readFileSync(path.join(root, "src/sead/renewal/RenewalDashboardTab.tsx"), "utf8");
   assert.match(tab, /Choose what goes into the Excel file/); assert.match(tab, /<fieldset/);
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p7_reports.sql"), "utf8");
