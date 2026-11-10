@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────
 // src/sead/renewalDocumentsApi.ts
-// Scholar Renewal > Documents: the study plans, INC letters and clearances scholars send, and where each one stands (waiting, returned, approved).
+// Scholar Renewal > Documents: the study plans, letters from the dean and clearances scholars send, and where each one stands (waiting, returned, approved).
 // The database (supabase_migration_renewal_documents_approver.sql) lists them; the approve / return call is reviewDocument() in renewalApi.ts. `missing: true` = that database update has not been run yet.
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";

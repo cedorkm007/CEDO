@@ -221,7 +221,7 @@ export function buildReportSheets(dash: DashboardData, data: ExportData, filter:
   const applications: ReportSheet = {
     name: "Applications",
     headers: ["Scholar ID", "Name", "School", "Program", "Year level", "Scholarship status now", "Stage", "Rule", "Grades checked", "Failed subjects", "Open INC", "Earlier probation", "SDP",
-      "Study plan", "INC letter", "Prospectus", "Consultation required", "Consultation done", "Next consultation", "No-shows", "Applied late", "Late decision", "Division Head decision",
+      "Study plan", "Letter from dean", "Prospectus", "Consultation required", "Consultation done", "Next consultation", "No-shows", "Applied late", "Late decision", "Division Head decision",
       "Division Head decided", "Result", "Applied", "Confirmed", "Evaluator's note", "Scholar's note", "CSR number", "CSR made"],
     rows: data.applications.map((r): ReportCell[] => [
       s(r.scholar_id_number), safeText(r.name), safeText(r.school), safeText(r.program), s(r.year_level), s(r.scholar_status),

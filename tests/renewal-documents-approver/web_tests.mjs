@@ -27,7 +27,7 @@ console.log("The tag");
 test("it.admin1 can give the Renewal Documents Approver tag from the Staff Accounts page (it is in the list of tags, once)", () => {
   const t = Tags.STAFF_TOOL_TAGS.filter(x => x.key === "renewal_documents_approver");
   assert.equal(t.length, 1); assert.equal(t[0].label, "Renewal Documents Approver");
-  assert.ok(/study plan/i.test(t[0].description) && /INC letter/i.test(t[0].description) && /clearance/i.test(t[0].description) && /at least one account/i.test(t[0].description));
+  assert.ok(/study plan/i.test(t[0].description) && /letter from the dean/i.test(t[0].description) && /clearance/i.test(t[0].description) && /at least one account/i.test(t[0].description));
   assert.equal(new Set(Tags.STAFF_TOOL_TAGS.map(x => x.key)).size, Tags.STAFF_TOOL_TAGS.length);
 });
 

@@ -56,7 +56,7 @@ export const STAFF_TOOL_TAGS: StaffToolTag[] = [
   {
     key: "renewal_documents_approver",
     label: "Renewal Documents Approver",
-    description: "Approve or return the study plan, the INC letter and the clearance that scholars send for their renewal, in Scholar Renewal > Documents. The renewal evaluator can see these documents but can no longer approve them, so give this tag to at least one account.",
+    description: "Approve or return the study plan, the letter from the dean and the clearance that scholars send for their renewal, in Scholar Renewal > Documents. The renewal evaluator can see these documents but can no longer approve them, so give this tag to at least one account.",
   },
   {
     key: "scholar_grades_approver",
