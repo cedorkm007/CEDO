@@ -23,7 +23,7 @@ check("a scholar and the evaluator are told when a certificate exists only becau
 console.log("\nRevert application");
 check("the evaluator sees a 'Revert application' button on a scholar's renewal (not for a removed scholar's)", /r\.stage !== "removed" && <button onClick=\{\(\) => setDialog\("revert"\)\}[^>]*>Revert application<\/button>/.test(detail) && /canAct && \(/.test(detail));
 check("the dialog asks for a reason (at least 5 characters), says what is removed and that no backup is kept, and goes back to the list afterwards", /Revert this application to the start/.test(detail) && /minLength=\{5\}/.test(detail) && /No backup copy is kept, so this cannot be undone/.test(detail) && /setDialog\(null\); onChanged\(\); onBack\(\);/.test(detail));
-check("it says what the database refuses (status changed, Division Head decided, approved SDP reconsideration)", /already changed the scholar's status, the Division Head decided the case, or an SDP reconsideration was approved/.test(detail));
+check("it says what the database refuses (status changed, Division Head decided); an approved SDP reconsideration is kept", /already changed the scholar's status or the Division Head decided the case/.test(detail));
 check("the call goes through the database function, with a clear message when the update is missing", /rpc\("renewal_revert_application"/.test(api) && /Reverting is not set up yet/.test(api));
 
 console.log(`\n${passed} passed, ${failed} failed`);

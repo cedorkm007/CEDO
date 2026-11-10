@@ -287,8 +287,8 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
         <ReasonDialog title="Revert this application to the start" danger label="Why is it reverted? (kept in the log)" confirmLabel="Revert application" minLength={5} onCancel={() => setDialog(null)}
           intro={<>
             <p><strong>{s.name}</strong>'s application for {termLabelOf(r.schoolYear, r.term)} (now: <strong>{r.stage.replace(/_/g, " ")}</strong>) will be <strong>removed</strong>, so the scholar sees "Apply for renewal" again and applies from the beginning. {s.name} is told to apply again.</p>
-            <p className="mt-2">Removed with it: its history, uploaded documents, grades the scholar entered, the SDP reconsideration request, certificate records and notices. A booked consultation time is freed. <strong>No backup copy is kept, so this cannot be undone.</strong></p>
-            <p className="mt-2">The scholar's SDP credits, the school's grades, the scholarship status and other terms are not touched. The database refuses (and tells you why) when the renewal already changed the scholar's status, the Division Head decided the case, or an SDP reconsideration was approved.</p>
+            <p className="mt-2">Removed with it: its history, uploaded documents, grades the scholar entered, a waiting or denied SDP reconsideration request, certificate records and notices. An APPROVED SDP reconsideration is kept: it stays approved (with the credits it added to the next semester), so the scholar does not ask for it again. A booked consultation time is freed. <strong>No backup copy is kept, so this cannot be undone.</strong></p>
+            <p className="mt-2">The scholar's SDP credits, the school's grades, the scholarship status and other terms are not touched. The database refuses (and tells you why) when the renewal already changed the scholar's status or the Division Head decided the case.</p>
           </>}
           onConfirm={async reason => { const x = await revertRenewalApplication(r.id, reason); if (!x.ok) return x.error; setDialog(null); onChanged(); onBack(); return null; }} />
       )}

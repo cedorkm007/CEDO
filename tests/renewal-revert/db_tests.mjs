@@ -23,6 +23,7 @@ const attempt = async (uid, sql, params = []) => { try { return { ok: true, rows
 const run = async sql => { try { await db.exec(sql); return { ok: true }; } catch (e) { return { ok: false, msg: String(e.message) }; } };
 
 await db.exec(read(FILE)); await db.exec(read(FILE));      // twice is safe
+await db.exec(read("supabase_migration_renewal_revert_keep_sdp_approval.sql"));      // the later file: an approved SDP reconsideration no longer blocks the revert
 const EVAL = seedId("staff:demo.evaluator"), COUNSELOR = seedId("staff:demo.counselor"), DH = seedId("staff:demo.divhead");
 const idOf = n => `TEST-${String(n).padStart(4, "0")}`, uidOf = n => seedId(`scholar:${n}`);
 const rec = async (n, year = "2026-2027", term = "1st Semester") => (await q("select * from renewal_records where scholar_id_number = $1 and school_year = $2 and term = $3", [idOf(n), year, term]))[0];
@@ -72,7 +73,7 @@ check("a renewal that changed the scholar's status is refused, with the reason",
 const r44 = await rec(44);
 await q("insert into sdp_reconsideration_requests (scholar_id_number, school_year, term, record_id, basis_school_year, basis_term, status, lacking) values ($1, '2026-2027', '1st Semester', $2, '2025-2026', '2nd Semester', 'approved', '{\"community_service\":1}'::jsonb) on conflict do nothing", [idOf(44), r44.id]);
 const rc = await revert(EVAL, r44.id);
-check("a renewal with an APPROVED SDP reconsideration is refused (it added credits to the next semester)", !rc.ok && /SDP reconsideration was approved/.test(rc.msg) && !!(await rec(44)), rc.msg);
+check("a renewal with an APPROVED SDP reconsideration CAN be reverted now: the application is removed and the approval stays (detached, still approved)", rc.ok && !(await rec(44)) && (await count("select count(*) n from sdp_reconsideration_requests where scholar_id_number = $1 and status = 'approved' and record_id is null", [idOf(44)])) === 1, rc.msg);
 await q("update scholars set status = 'Removed' where scholar_id_number = $1", [idOf(41)]);
 const r41 = await rec(41);
 check("a removed scholar's renewal is refused", r41 && !(await revert(EVAL, r41.id)).ok && !!(await rec(41)));
