@@ -16,7 +16,7 @@ export const NO_ROLES: ViewerRoles = { evaluator: false, gradesApprover: false, 
 export const hasRole = (v: ViewerRoles, r: StaffRole): boolean => (r === "evaluator" ? v.evaluator : r === "grades_approver" ? v.gradesApprover : r === "sdp_approver" ? v.sdpApprover : r === "documents_approver" ? !!v.documentsApprover : v.divisionHead);
 
 /** What a button does: open the entered grades, the SDP reconsideration request or the Division Head's case of the scholar; start a consultation referral; or open the application. */
-export type ActionKey = "approve_grades" | "decide_sdp" | "decide_case" | "refer_consultation" | "open_application" | "decide_inc" | "mark_not_required" | "review_documents";
+export type ActionKey = "approve_grades" | "decide_sdp" | "decide_case" | "refer_consultation" | "refer_booking" | "open_application" | "decide_inc" | "mark_not_required" | "review_documents";
 export interface NeededAction { key: ActionKey; role: StaffRole; label: string }
 
 /** Where one scholar stands for the term, as renewal_scholar_actions() reports it (null for a scholar it did not report). */
@@ -102,3 +102,15 @@ export function renewalSummary(row: ActionRowInput, facts: ScholarActionFacts | 
   }
   return { headline, tone, details };
 }
+
+/**
+ * "Refer for Consultation" on an APPLICATION of a scholar with an INC, a DRP or a failed subject: the evaluator books the scholar's renewal consultation (day, morning or afternoon, staff) FOR the scholar.
+ * Offered while the application is not finished, no consultation is booked or done yet. An optional action: it is not part of what neededActions() says is waiting on staff.
+ */
+export function canReferForConsultation(row: Pick<ActionRowInput, "failed" | "drp" | "inc">, facts: ScholarActionFacts | null): boolean {
+  if (!facts || !facts.recordId) return false;
+  if (!(row.failed > 0 || row.drp > 0 || row.inc > 0)) return false;
+  if (facts.nextConsultation || facts.consultationDoneAt) return false;
+  return !["renewed", "removed", "late_declined", "late_pending", "returned"].includes(facts.stage ?? "");
+}
+export const REFER_BOOKING_ACTION: NeededAction = { key: "refer_booking", role: "evaluator", label: "Refer for Consultation" };
