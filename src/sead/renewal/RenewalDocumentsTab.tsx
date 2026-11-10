@@ -18,7 +18,7 @@ function StatusChip({ status }: { status: QueueDocument["status"] }) {
 }
 
 /**
- * Scholar Renewal > Documents: the study plans, INC letters and clearances the scholars sent, oldest waiting first. The accounts with the Renewal Documents Approver tag approve or return them here;
+ * Scholar Renewal > Documents: the study plans, letters from the dean and clearances the scholars sent, oldest waiting first. The accounts with the Renewal Documents Approver tag approve or return them here;
  * the evaluator (and the other staff who read renewals) sees the same list but cannot act on it. The database checks the tag again on every approve / return.
  */
 export function RenewalDocumentsTab({ canApprove, refreshKey, onChanged }: { canApprove: boolean; refreshKey: number; onChanged?: () => void }) {
@@ -60,8 +60,8 @@ export function RenewalDocumentsTab({ canApprove, refreshKey, onChanged }: { can
     <div>
       <p className="text-[14px] text-slate-700 mb-3">
         {canApprove
-          ? "The study plans, INC letters and clearances the scholars sent. Open a file, then approve it or return it with what to fix. A scholar cannot book a consultation until all of their documents are approved."
-          : "The study plans, INC letters and clearances the scholars sent. Only the Renewal Documents Approver approves or returns them; you can see where each one stands."}
+          ? "The study plans, letters from the dean and clearances the scholars sent. Open a file, then approve it or return it with what to fix. A scholar cannot book a consultation until all of their documents are approved."
+          : "The study plans, letters from the dean and clearances the scholars sent. Only the Renewal Documents Approver approves or returns them; you can see where each one stands."}
       </p>
 
       <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Show documents">

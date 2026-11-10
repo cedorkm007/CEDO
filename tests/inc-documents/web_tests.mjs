@@ -42,18 +42,18 @@ test("the grades and the SDP are still checked first", () => {
 
 console.log("\nThe application form");
 const panel = src("src/scholar/components/dashboard/RenewalPanel.tsx"), api = src("src/scholar/renewalApi.ts");
-test("a scholar with an INC (in the school's grades, or an INC mark among the grades entered) sees three separate upload buttons", () => {
-  assert.ok(panel.includes("(preview.grades?.counts?.inc ?? 0) > 0 || enteredInc || serverNeedsInc") && panel.includes('reservedMark(r.grade) === "INC"'));
+test("a scholar with an INC or a failed subject (in the school's grades, or an INC mark among the grades entered) sees three separate upload buttons", () => {
+  assert.ok(panel.includes("(preview.grades?.counts?.inc ?? 0) > 0 || (preview.grades?.counts?.failed ?? 0) > 0 || (preview.failed_effective ?? 0) > 0 || enteredInc || serverNeedsInc") && panel.includes('reservedMark(r.grade) === "INC"'));
   assert.ok(panel.includes("INC_FORM_DOCS.map(d => (") && panel.includes("<IncDocPicker") && panel.includes("You cannot submit without them."));
   assert.ok(panel.includes("aria-label={`Upload ${label}`}"), "each document has its own upload button");
 });
 test("Next follows the gate with the documents; the review step lists them; they are sent with the application", () => {
   assert.ok(panel.includes("reconsiderationAsked: wantsReconsideration, incDocsNeeded, incDocsReady"));
-  assert.ok(panel.includes("INC documents: <strong>") && panel.includes("incDocuments: incDocsNeeded ?"));
-  assert.ok(panel.includes("You cannot go on yet: upload the INC letter, the study plan and the clearance"));
+  assert.ok(panel.includes("INC documents: <strong>") || panel.includes("Documents: <strong>") && panel.includes("incDocuments: incDocsNeeded ?"));
+  assert.ok(panel.includes("You cannot go on yet: upload the letter from your dean, the study plan and the clearance"));
 });
 test("when the database finds an INC the form did not, the scholar is taken back to the documents", () => {
-  assert.ok(panel.includes("/You have an INC/.test(r.error)") && panel.includes("setServerNeedsInc(true)") && panel.includes("setStep(2)"));
+  assert.ok(panel.includes("/You have an INC|You have a failed subject/.test(r.error)") && panel.includes("setServerNeedsInc(true)") && panel.includes("setStep(2)"));
 });
 test("the documents are uploaded first under the window and removed again if the application is refused; the database call carries them", () => {
   assert.ok(api.includes("/inc-docs/${d.kind}/") && api.includes("p_inc_documents: uploadedDocs") && api.includes("const undo = async () =>"));
@@ -98,7 +98,7 @@ test("a second file of the same kind gets (2); a missing name falls back to the 
 test("the other kinds keep the scholar's own file name", () => assert.equal(R.renamedDocumentName("prospectus", "Reyes", "Ana", "T-1", "a.pdf"), null));
 test("the application form and the later upload both rename before uploading", () => {
   const api = src("src/scholar/renewalApi.ts");
-  assert.ok(api.includes('renamedFile(orig, d.kind, who, args.scholarIdNumber ?? "", i + 1)') && api.includes("renamedFile(args.file, args.kind, await myNameForFiles(), args.scholarIdNumber, args.existingOfKind + 1)"));
+  assert.ok(api.includes('renamedFile(readableDoc, d.kind, who, args.scholarIdNumber ?? "", i + 1)') && api.includes("renamedFile(readableDoc, args.kind, await myNameForFiles(), args.scholarIdNumber, args.existingOfKind + 1)"));
   assert.ok(api.includes("file_name: file.name"));
 });
 

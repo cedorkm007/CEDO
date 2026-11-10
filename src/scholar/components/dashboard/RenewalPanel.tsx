@@ -205,7 +205,7 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
     setBusy(false);
     if (!r.ok) {
       // the database found an INC the form did not: go back and ask for the three documents
-      if (/You have an INC/.test(r.error)) { setServerNeedsInc(true); setIncNote(r.error); setStep(2); return; }
+      if (/You have an INC|You have a failed subject/.test(r.error)) { setServerNeedsInc(true); setIncNote(r.error); setStep(2); return; }
       setError(r.error); return;
     }
     await draft.discard();      // sent: the saved draft is no longer needed
@@ -227,9 +227,9 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
   const gradeProblem = enterGrades ? gradeFormProblem(gRows, gFiles.length, gAck) : null;
   const gradesReady = !gradesInForm || schoolGrades || preview?.grades?.self_status === "approved" || (enterGrades && !gradeProblem);
   const wantsReconsideration = canAskReconsideration && askReconsideration;      // the choice is offered at once; the application itself is only sent once the grades are in (the Next button waits for them)
-  // A scholar with an INC (in the school's grades, or among the grades entered here) sends the INC letter, the study plan and the clearance with the application; each has its own upload button.
+  // A scholar with an INC or a failed subject (in the school's grades, or among the grades entered here) sends the letter from the dean, the study plan and the clearance with the application; each has its own upload button.
   const enteredInc = enterGrades && gRows.some(r => reservedMark(r.grade) === "INC");
-  const incDocsNeeded = !!preview && ((preview.grades?.counts?.inc ?? 0) > 0 || enteredInc || serverNeedsInc);
+  const incDocsNeeded = !!preview && ((preview.grades?.counts?.inc ?? 0) > 0 || (preview.grades?.counts?.failed ?? 0) > 0 || (preview.failed_effective ?? 0) > 0 || enteredInc || serverNeedsInc);      // a failed grade typed here is found by the database when the application is sent (serverNeedsInc)
   const incDocsReady = INC_FORM_DOCS.every(d => incFiles[d.kind].length > 0);
   // Next opens only when the grades are settled (the school's, or entered here) and the SDP is complied or a reconsideration is asked for.
   const gate = renewalNextGate(preview, { gradesEntered: enterGrades && !gradeProblem, reconsiderationAsked: wantsReconsideration, incDocsNeeded, incDocsReady });
@@ -309,8 +309,8 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
           )}
           {preview && incDocsNeeded && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3 text-[14px] text-amber-950">
-              <p className="font-bold">Your INC documents</p>
-              <p className="mt-1">You have an INC, so send these three documents with your application. <strong>You cannot submit without them.</strong> The evaluator approves each one, and you can book your consultation only after all three are approved.</p>
+              <p className="font-bold">Your documents</p>
+              <p className="mt-1">You have an INC or a failed subject, so send these three documents with your application. <strong>You cannot submit without them.</strong> The evaluator approves each one, and you can book your consultation only after all three are approved.</p>
               {incNote && <p role="alert" className="mt-1.5 text-red-800">{incNote}</p>}
               <ul className="mt-2 space-y-2">
                 {INC_FORM_DOCS.map(d => (
@@ -338,7 +338,7 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
           )}
           {preview && !gate.open && gate.blocker === "documents" && (
             <p role="status" className="rounded-lg border border-red-300 bg-red-50 px-3.5 py-2.5 text-[14px] text-red-900">
-              You cannot go on yet: upload the INC letter, the study plan and the clearance (each has its own button above).
+              You cannot go on yet: upload the letter from your dean, the study plan and the clearance (each has its own button above).
             </p>
           )}
           {preview && gate.open && gate.waitsFor.length > 0 && (
@@ -360,7 +360,7 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
             <li>School: {school}</li><li>Program: {program}</li><li>Year level: {yearLevel}</li>
             {note.trim() && <li>Your note: {note.trim()}</li>}
             {enterGrades && <li>Your grades: <strong>{gRows.length} subject{gRows.length === 1 ? "" : "s" } entered</strong> with {gFiles.length} image{gFiles.length === 1 ? "" : "s"}, sent with your application for the Grades Approver to check</li>}
-            {incDocsNeeded && <li>INC documents: <strong>{INC_FORM_DOCS.map(d => `${d.label} (${incFiles[d.kind].length})`).join(", ")}</strong>, sent with your application for the evaluator to approve</li>}
+            {incDocsNeeded && <li>Documents: <strong>{INC_FORM_DOCS.map(d => `${d.label} (${incFiles[d.kind].length})`).join(", ")}</strong>, sent with your application for the evaluator to approve</li>}
             {wantsReconsideration && <li>SDP reconsideration: <strong>requested</strong> (lacking {sdpLackingText(preview?.sdp?.lacking)})</li>}
           </ul>
           {error && <p role="alert" className="text-[14px] text-red-700">{error}</p>}

@@ -346,6 +346,8 @@ export async function seedDb(db) {
   for (const s of SCHOLARS.filter(x => x.renewal?.plan)) {
     const rec = (await db.query("select id from renewal_records where scholar_id_number = $1 order by created_at desc limit 1", [sidNum(s.n)])).rows[0].id;
     await seedDoc(rec, s.n, "study_plan", s.renewal.plan);
+    // since the update "documents for failed subjects" a scholar with a failed subject sends the letter from the dean and the clearance too (same status as the study plan)
+    if (!s.renewal.letter) { await seedDoc(rec, s.n, "inc_letter", s.renewal.plan); await seedDoc(rec, s.n, "clearance", s.renewal.plan); }
   }
   // ── Phase 5: the Division Head's stored signature, and cases at each point of the decisions (through the real functions) ──
   const sigBuf = signaturePng();
