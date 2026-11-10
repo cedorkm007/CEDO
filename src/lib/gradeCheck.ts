@@ -5,7 +5,12 @@
 // ─────────────────────────────────────────────────────────────
 
 /** What the school's grading setup allows (null while it is not known yet: then only the symbol rule is checked). */
-export interface GradeRules { scaleMin: number; scaleMax: number; usesLetterGrades: boolean; letters: string[]; marks: string[] }
+export interface GradeRules {
+  scaleMin: number; scaleMax: number; usesLetterGrades: boolean; letters: string[]; marks: string[];
+  /** To tell passed from failed while the grade is typed (same rule as the database's _grade_outcome): the school's passing mark and which way is better; the number a letter stands for; what each other mark means. */
+  direction?: "lower_is_better" | "higher_is_better"; passingMark?: number | null;
+  letterValues?: Record<string, number | null>; markOutcomes?: Record<string, "passed" | "failed" | "incomplete" | "review">;
+}
 
 const NUM = /^\d+(\.\d+)?$/;
 const lc = (s: string) => s.trim().toLowerCase();
@@ -57,4 +62,29 @@ export function rowsWithWarnings(rows: { grade: string; units: string }[], rules
   const out: number[] = [];
   rows.forEach((r, i) => { if (gradeWarning(r.grade, rules) || unitsWarning(r.units)) out.push(i + 1); });
   return out;
+}
+
+/**
+ * What a typed grade means for the renewal, the way the database reads it (_grade_outcome): inc | drp | failed | passed | review, or null when nothing is typed or the school's rules are not known yet.
+ * The form uses it to show the letter-from-the-dean / study plan / clearance buttons AS SOON AS a failed grade or an INC is typed.
+ */
+export function localGradeOutcome(grade: string, rules: GradeRules | null | undefined): "inc" | "drp" | "failed" | "passed" | "review" | null {
+  const c = compactGrade(grade);
+  if (!c) return null;
+  if (/^inc$/i.test(c)) return "inc";
+  if (/^drp$/i.test(c)) return "drp";
+  if (!rules) return null;
+  const mark = rules.markOutcomes?.[lc(c)];
+  if (mark) return mark === "passed" ? "passed" : mark === "failed" ? "failed" : mark === "incomplete" ? "inc" : "review";
+  if (rules.passingMark == null) return null;
+  let value: number | null | undefined;
+  if (NUM.test(c)) value = Number(c);
+  else if (rules.usesLetterGrades) value = rules.letterValues?.[lc(c)];
+  if (value == null) return "review";
+  return rules.direction === "higher_is_better" ? (value < rules.passingMark ? "failed" : "passed") : (value > rules.passingMark ? "failed" : "passed");
+}
+
+/** True when a typed row is a failed grade, a DRP or an INC (the cases that send the three documents with the application). */
+export function needsDocuments(rows: { grade: string }[], rules: GradeRules | null | undefined): boolean {
+  return rows.some(r => { const o = localGradeOutcome(r.grade, rules); return o === "failed" || o === "drp" || o === "inc"; });
 }

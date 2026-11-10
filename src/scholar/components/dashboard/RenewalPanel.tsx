@@ -10,6 +10,7 @@ import { SelfGradesSection } from "./SelfGradesSection";
 import { RemovalFormCard } from "./RemovalFormCard";
 import { SelfGradesForm, emptyGradeRow, gradeFormProblem, type GradeFormRow } from "./SelfGradesForm";
 import { useMyGradeRules } from "../../useMyGradeRules";
+import { needsDocuments } from "@/lib/gradeCheck";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { loadDraft, savedAtText, useDraftAutosave } from "@/lib/formDraft";
 import { applyDraftHasContent, applyDraftKey, sanitizeApplyDraft, type ApplyDraft } from "../../renewalDraft";
@@ -230,7 +231,7 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
   const gradesReady = !gradesInForm || schoolGrades || preview?.grades?.self_status === "approved" || (enterGrades && !gradeProblem);
   const wantsReconsideration = canAskReconsideration && askReconsideration;      // the choice is offered at once; the application itself is only sent once the grades are in (the Next button waits for them)
   // A scholar with an INC or a failed subject (in the school's grades, or among the grades entered here) sends the letter from the dean, the study plan and the clearance with the application; each has its own upload button.
-  const enteredInc = enterGrades && gRows.some(r => reservedMark(r.grade) === "INC");
+  const enteredInc = enterGrades && (gRows.some(r => reservedMark(r.grade) === "INC") || needsDocuments(gRows, gradeRules));      // an INC, a DRP or a FAILED grade typed here shows the three upload buttons at once (read the way the database reads it)
   const incDocsNeeded = !!preview && ((preview.grades?.counts?.inc ?? 0) > 0 || (preview.grades?.counts?.failed ?? 0) > 0 || (preview.failed_effective ?? 0) > 0 || enteredInc || serverNeedsInc);      // a failed grade typed here is found by the database when the application is sent (serverNeedsInc)
   const incDocsReady = INC_FORM_DOCS.every(d => incFiles[d.kind].length > 0);
   // Next opens only when the grades are settled (the school's, or entered here) and the SDP is complied or a reconsideration is asked for.
