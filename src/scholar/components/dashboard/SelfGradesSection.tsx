@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { EnteredGwaLine } from "@/app/components/EnteredGwaLine";
 import { loadDraft, savedAtText, useDraftAutosave } from "@/lib/formDraft";
 import { sanitizeSelfGradesDraft, selfGradesDraftHasContent, selfGradesDraftKey, type SelfGradesDraft } from "../../renewalDraft";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
@@ -127,10 +128,13 @@ export function SelfGradesSection({ record, ev, scholarIdNumber, onChanged }: { 
           {sub.status === "approved" && <p className="flex items-start gap-1.5 text-green-900"><CheckCircle2 size={15} className="mt-0.5 shrink-0" aria-hidden="true" /> Approved{sub.decidedAt ? ` on ${formatDateTime(sub.decidedAt)}` : ""}. You count as having complete grades{ev.grades?.school_submitted ? "" : " until your school uploads its own grades"}.{sub.note ? ` Note: ${sub.note}` : ""}</p>}
           {sub.status === "returned" && <p className="flex items-start gap-1.5 text-red-900"><XCircle size={15} className="mt-0.5 shrink-0" aria-hidden="true" /> The Grades Approver returned your grades. Reason: {sub.note || "not given"}. Please correct them and send them again.</p>}
           {data.lines.length > 0 && (
+            <>
             <table className="mt-2 w-full text-left text-[14px]">
               <thead className="text-[#062444]"><tr><th scope="col" className="py-1 pr-2 font-bold">Code</th><th scope="col" className="py-1 pr-2 font-bold">Subject</th><th scope="col" className="py-1 pr-2 text-right font-bold">Units</th><th scope="col" className="py-1 text-right font-bold">Grade</th></tr></thead>
               <tbody>{data.lines.map(l => <tr key={l.code} className="border-t border-[#e6ecf5]"><td className="py-1 pr-2">{l.code}</td><td className="py-1 pr-2 break-words">{l.subject}</td><td className="py-1 pr-2 text-right">{l.units}</td><td className="py-1 text-right font-semibold">{l.grade}</td></tr>)}</tbody>
             </table>
+          <EnteredGwaLine lines={data.lines} />
+            </>
           )}
           {data.files.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{data.files.map(f => (thumbs[f.path] ? <a key={f.path} href={thumbs[f.path]} target="_blank" rel="noreferrer" aria-label={`Open ${f.name}`}><img src={thumbs[f.path]} alt={f.name} className="h-16 w-16 rounded-md border border-[#e6ecf5] object-cover" /></a> : <span key={f.path} className="rounded-md border border-[#e6ecf5] px-2 py-1 text-[13px]">{f.name}</span>))}</div>}
           {sub.officialCheckedAt && (

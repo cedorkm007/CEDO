@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { EnteredGwaLine } from "@/app/components/EnteredGwaLine";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { AlertTriangle, CheckCircle2, CornerUpLeft, Loader2, RotateCcw, RotateCw, Search, ZoomIn, ZoomOut } from "lucide-react";
 import {
@@ -154,6 +155,7 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
                     <thead className="text-[#062444]"><tr><th scope="col" className="py-1 pr-2 font-bold">Code</th><th scope="col" className="py-1 pr-2 font-bold">Subject</th><th scope="col" className="py-1 pr-2 text-right font-bold">Units</th><th scope="col" className="py-1 text-right font-bold">Grade</th></tr></thead>
                     <tbody>{r.lines.map(l => <tr key={l.code} className="border-t border-[#eef3fb]"><td className="py-1 pr-2">{l.code}</td><td className="py-1 pr-2 break-words">{l.subject}</td><td className="py-1 pr-2 text-right">{l.units}</td><td className="py-1 text-right font-semibold">{l.grade}</td></tr>)}</tbody>
                   </table>
+                  <EnteredGwaLine lines={r.lines} />
                   {r.officialCheckedAt && (
                     <div className={`mt-2 rounded-md border px-2.5 py-2 ${r.differences && r.differences.length > 0 ? "border-red-300 bg-red-50 text-red-950" : "border-green-300 bg-green-50 text-green-950"}`}>
                       <p className="font-semibold">The school uploaded its grades ({formatDateTime(r.officialCheckedAt)}) and they were compared with these.</p>

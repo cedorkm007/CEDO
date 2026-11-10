@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { EnteredGwaLine } from "@/app/components/EnteredGwaLine";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { ArrowLeft, CheckCircle2, Loader2, Paperclip, ShieldCheck, XCircle } from "lucide-react";
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
@@ -170,6 +171,7 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
                 <thead className="text-[#062444]"><tr><th scope="col" className="py-1 pr-2 font-bold">Code</th><th scope="col" className="py-1 pr-2 font-bold">Subject</th><th scope="col" className="py-1 pr-2 text-right font-bold">Units</th><th scope="col" className="py-1 text-right font-bold">Grade</th></tr></thead>
                 <tbody>{entered.lines.map(l => <tr key={l.code} className="border-t border-[#eef3fb]"><td className="py-1 pr-2">{l.code}</td><td className="py-1 pr-2 break-words">{l.subject}</td><td className="py-1 pr-2 text-right">{l.units}</td><td className="py-1 text-right font-semibold">{l.grade}</td></tr>)}</tbody>
               </table>
+              <EnteredGwaLine lines={entered.lines} />
               <section aria-label="Screenshots the scholar uploaded" className="min-w-0">
                 <p className="mb-1 font-semibold text-[#062444]">Screenshots ({entered.files.length})</p>
                 <div className="space-y-2">{entered.files.map(f => <Thumb key={f.path} path={f.path} name={f.name} />)}</div>
