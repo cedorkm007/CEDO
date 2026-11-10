@@ -88,7 +88,7 @@ test("the scholar's form: subject code, subject name, units and grade per subjec
   for (const label of ["Subject code", "Subject name", "Units", "Grade"]) assert.ok(form.includes(`placeholder="${label}"`), label);
   assert.match(form, /Screenshot or image of your grades/);
   assert.match(form, /\{SELF_GRADES_WARNING\}/);
-  assert.match(f, /disabled=\{busy \|\| !ack\}/, "the Send button waits for the tick");
+  assert.match(f, /disabled=\{busy \|\| !ack \|\| rowsWithWarnings\(rows, gradeRules\)\.length > 0\}/, "the Send button waits for the tick and for every grade to be allowed");
   assert.match(f, /Send my grades for approval/);
   assert.match(f, /Correct and send again/);
   assert.match(f, /They match the grades you entered/);

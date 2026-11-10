@@ -48,7 +48,7 @@ const line = (g) => [{ code: "S1", subject: "One", units: "3", grade: g }];
 const bad = ["1,5", "A+", "1/2", "(1.0)", "1.0%", "2-3", "1;0"];
 const badResults = await Promise.all(bad.map(async g => ({ g, db: await send(g), web: R.validateSelfGradeLines(line(g)) })));
 check("1 the database refuses a comma, plus, slash, brackets, percent, dash and semicolon, with a clear message", badResults.every(r => !r.db.ok && /symbol that is not allowed/.test(r.db.msg)), JSON.stringify(badResults.filter(r => r.db.ok || !/symbol/.test(r.db.msg ?? "")).map(r => r.g)));
-check("2 the website refuses the same grades before sending, saying to use a period", badResults.every(r => /symbol that is not allowed.*period/.test(r.web ?? "")));
+check("2 the website refuses the same grades before sending, saying to use a period", badResults.every(r => /(symbol that is not allowed|uses a comma).*period/.test(r.web ?? "")));
 const good = ["1.5", "2.25", "INC", "DRP", "B", "5", "1 .0"];
 const goodResults = [];
 for (const g of good) goodResults.push({ g, db: await send(g), web: R.validateSelfGradeLines(line(g)) });
