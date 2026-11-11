@@ -224,7 +224,7 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
         {(ev.required_documents ?? []).length === 0 && detail.documents.length === 0 && <p>No documents are needed for this case.</p>}
         {(ev.required_documents ?? []).map(d => (
           <p key={d.kind}>{d.label}: {!d.satisfied ? <strong className="text-amber-900">still needed</strong>
-            : DOC_NEEDS_APPROVAL.includes(d.kind) ? (d.approved ? <strong className="text-green-800">approved</strong> : <strong className="text-sky-900">uploaded — waiting for the Renewal Documents Approver (the scholar cannot book a consultation until it is approved)</strong>)
+            : DOC_NEEDS_APPROVAL.includes(d.kind) ? (d.approved ? <strong className="text-green-800">approved</strong> : <strong className="text-sky-900">uploaded — waiting for the consultation staff to approve it</strong>)
             : <strong className="text-green-800">uploaded</strong>}</p>
         ))}
         {detail.documents.length > 0 && (
@@ -240,7 +240,7 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
                     <button onClick={() => setReviewing({ doc: d, approve: false })} className="rounded-md border border-red-700 px-2.5 py-1 text-[13px] font-bold text-red-800 hover:bg-red-50">Return</button>
                   </span>
                 )}
-                {!canReviewDocuments && d.status === "submitted" && DOC_NEEDS_APPROVAL.includes(d.kind) && <span className="text-[13.5px] text-slate-700">Waiting for the Renewal Documents Approver</span>}
+                {!canReviewDocuments && d.status === "submitted" && DOC_NEEDS_APPROVAL.includes(d.kind) && <span className="text-[13.5px] text-slate-700">Waiting for the consultation staff</span>}
               </li>
             ))}
           </ul>

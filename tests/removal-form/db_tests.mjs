@@ -4,11 +4,13 @@
 import { buildDb } from "../../localdemo/build.mjs";
 import { seedDb, seedId } from "../../localdemo/seed.mjs";
 import fs from "node:fs";
+import { legacyDivisionHeadCases } from "../legacy_division_head_cases.mjs";
 
 let passed = 0, failed = 0;
 const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok   ${name}`); } else { failed++; console.log(`  FAIL ${name} ${extra}`); } };
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+await legacyDivisionHeadCases(db);      // the demo has no Division Head cases of its own any more: three are put on the old route
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const read = f => fs.readFileSync(f, "utf8");
 const FILE = "supabase_migration_removal_form.sql", UNDO = "undo_removal_form.sql";
