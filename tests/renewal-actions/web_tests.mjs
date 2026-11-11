@@ -46,13 +46,13 @@ test("the evaluator's steps follow the stage", () => {
   assert.deepEqual(at("needs_consultation_division_head"), ["evaluator:Send to the Division Head"]);
   for (const s of ["renewed", "removed", "returned", "waiting_grades", "sdp_on_hold", "endorsed_division_head", "inc_waiting_compliance", "late_declined", "not_required"]) assert.deepEqual(at(s), [], s);
 });
-test("documents waiting for review are an action of the Renewal Documents Approver (no longer the evaluator)", () => {
-  assert.deepEqual(keys(row(), facts({ recordId: "r", stage: "needs_study_plan_consultation", docsToReview: 1 })), ["documents_approver:Review 1 document"]);
-  assert.deepEqual(keys(row(), facts({ recordId: "r", stage: "needs_study_plan_consultation", docsToReview: 3 })), ["documents_approver:Review 3 documents"]);
+test("documents waiting for review are an action of the consultation staff (no longer the evaluator or the Documents Approver)", () => {
+  assert.deepEqual(keys(row(), facts({ recordId: "r", stage: "needs_study_plan_consultation", docsToReview: 1 })), ["consultation_staff:Review 1 document"]);
+  assert.deepEqual(keys(row(), facts({ recordId: "r", stage: "needs_study_plan_consultation", docsToReview: 3 })), ["consultation_staff:Review 3 documents"]);
 });
 test("a scholar can have several things waiting, each for its own staff, grades first", () => {
   const k = keys(row({ sdpReconsideration: "pending", sdpComplied: false }), facts({ recordId: "r", stage: "waiting_grades", gradesStatus: "pending", docsToReview: 2 }));
-  assert.deepEqual(k, ["grades_approver:Approve the entered grades", "sdp_approver:Decide the SDP reconsideration", "documents_approver:Review 2 documents"]);
+  assert.deepEqual(k, ["grades_approver:Approve the entered grades", "sdp_approver:Decide the SDP reconsideration", "consultation_staff:Review 2 documents"]);
 });
 test("returned grades wait for the scholar, not for staff", () => assert.deepEqual(keys(row(), facts({ recordId: "r", stage: "waiting_grades", gradesStatus: "returned" })), []));
 

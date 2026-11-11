@@ -47,16 +47,16 @@ test("the page is given the approver's flag from the user's tags", () => {
 console.log("\nThe 'Review N documents' action");
 const row = { eligibility: [], sdpReconsideration: null, sdpApplicable: true, sdpComplied: true, sdpMissing: null, gradesState: "ready", failed: 0, drp: 0, inc: 1, review: 0 };
 const facts = (over = {}) => ({ recordId: "r1", stage: "needs_inc_letter_consultation", isLate: false, appliedAt: null, docsToReview: 2, consultationRequired: false, consultationDoneAt: null, nextConsultation: null, gradesStatus: "school", dhReferralId: null, dhStatus: null, referralStatus: null, ...over });
-test("the action belongs to the Renewal Documents Approver and opens the Documents tab, not the application", () => {
+test("the action belongs to the consultation staff (since the consultation-staff route) and opens the Documents tab, not the application", () => {
   const a = Actions.neededActions(row, facts()).find(x => /Review 2 documents/.test(x.label));
-  assert.ok(a); assert.equal(a.role, "documents_approver"); assert.equal(a.key, "review_documents");
-  assert.equal(Actions.STAFF_ROLE_LABEL.documents_approver, "Renewal Documents Approver");
+  assert.ok(a); assert.equal(a.role, "consultation_staff"); assert.equal(a.key, "review_documents");
+  assert.equal(Actions.STAFF_ROLE_LABEL.consultation_staff, "Consultation staff");
 });
-test("only the approver can press it; the evaluator sees who it is waiting for", () => {
+test("only the consultation staff can press it; the evaluator sees who it is waiting for", () => {
   const a = Actions.neededActions(row, facts())[0];
-  const evaluator = { ...Actions.NO_ROLES, evaluator: true }, approver = { ...Actions.NO_ROLES, documentsApprover: true };
+  const evaluator = { ...Actions.NO_ROLES, evaluator: true }, approver = { ...Actions.NO_ROLES, consultationStaff: true };
   assert.equal(Actions.canDoAction(a, approver), true); assert.equal(Actions.canDoAction(a, evaluator), false);
-  assert.equal(Actions.waitingForText(a), "Waiting for the Renewal Documents Approver");
+  assert.equal(Actions.waitingForText(a), "Waiting for the Consultation staff");
 });
 test("a single document reads 'Review 1 document'", () => assert.ok(Actions.neededActions(row, facts({ docsToReview: 1 })).some(a => a.label === "Review 1 document")));
 
@@ -64,13 +64,13 @@ console.log("\nThe screens");
 const page = src("src/sead/ScholarRenewalPage.tsx"), tab = src("src/sead/renewal/RenewalDocumentsTab.tsx"), detail = src("src/sead/renewal/RenewalDetailView.tsx"), list = src("src/sead/renewal/RenewalListTab.tsx"), api = src("src/sead/renewalDocumentsApi.ts");
 test("a Documents tab is shown to the evaluator (to read) and to the approver, and opens first for an account that only has the tag", () => {
   assert.ok(page.includes('t.key === "documents" ? (isEvaluator || isDocumentsApprover)') && page.includes('{ key: "documents", label: "Documents"') && page.includes('isDocumentsApprover ? "documents" : isTagger ? "tagging" : "certificate"'));
-  assert.ok(page.includes('<RenewalDocumentsTab canApprove={isDocumentsApprover}'));
+  assert.ok(page.includes('<RenewalDocumentsTab canApprove={false}'));      // the consultation staff approve now (Consultation Tool > Renewal Cases); this tab is read-only
 });
 test("the approver also sees the lists, and 'Review documents' takes them to the Documents tab", () => {
   assert.ok(page.includes("isGradesApprover || isDocumentsApprover;") && page.includes('onGoToDocuments={() => setTab("documents")}') && list.includes('a.key === "review_documents"'));
 });
 test("the Documents tab: filters To approve / Returned / Approved / All with numbers, a search, the file opens from the list, Approve and Return only for the approver", () => {
-  for (const s of ['label: "To approve"', 'label: "Returned"', 'label: "Approved"', 'label: "All"', 'aria-label="Search scholars"', "getStaffRenewalDocumentUrl(d.storagePath)", "canApprove ? (", "Waiting for the Renewal Documents Approver"]) assert.ok(tab.includes(s), s);
+  for (const s of ['label: "To approve"', 'label: "Returned"', 'label: "Approved"', 'label: "All"', 'aria-label="Search scholars"', "getStaffRenewalDocumentUrl(d.storagePath)", "canApprove ? (", "Waiting for the consultation staff"]) assert.ok(tab.includes(s), s);
   assert.ok(tab.includes("reviewDocument(reviewing.doc.id, reviewing.approve, c)") && tab.includes("required={!reviewing.approve} minLength={5}"));
 });
 test("the list is read with the three read functions only; before the database update the tab says so", () => {
@@ -78,7 +78,7 @@ test("the list is read with the three read functions only; before the database u
   assert.ok(tab.includes("The Documents tab needs the latest database update"));
 });
 test("the application page: Approve / Return buttons only for the approver; the evaluator is told who approves", () => {
-  assert.ok(detail.includes('canReviewDocuments && d.status === "submitted"') && detail.includes("Waiting for the Renewal Documents Approver") && page.includes("canReviewDocuments={isDocumentsApprover}"));
+  assert.ok(detail.includes('canReviewDocuments && d.status === "submitted"') && detail.includes("Waiting for the consultation staff") && page.includes("canReviewDocuments={false}"));
   assert.equal(detail.includes('canAct && d.status === "submitted"'), false);
 });
 test("readable text in the new tab: nothing under 13px, no pale grey words", () => {
