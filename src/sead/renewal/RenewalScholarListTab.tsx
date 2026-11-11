@@ -189,7 +189,7 @@ export function RenewalScholarListTab({ schoolYear, term, refreshKey, viewer = N
   async function act(a: NeededAction, r: ScholarListRow, f: ScholarActionFacts) {
     setActionError("");
     if (a.key === "open_application" || a.key === "decide_inc") { if (f.recordId && onOpenRecord) onOpenRecord(f.recordId); return; }
-    if (a.key === "mark_not_required" || a.key === "review_documents" || a.key === "refer_booking") return;
+    if (a.key === "mark_not_required" || a.key === "review_documents" || a.key === "refer_booking" || a.key === "endorse_status") return;
     if (a.key === "refer_consultation") {
       setReferBusy(r.scholarIdNumber);
       const scholar = await fetchScholarInformationByIdNumber(r.scholarIdNumber);
