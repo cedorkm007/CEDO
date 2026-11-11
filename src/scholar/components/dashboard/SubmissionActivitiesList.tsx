@@ -8,6 +8,7 @@ import {
 } from "../../submissionsApi";
 import { pubmatUrl } from "@/sead/pubmatApi";
 import { compressSubmissionFile } from "../../submissionCompression";
+import { bigPdfHint } from "@/lib/uploadResilience";
 import { DefaultPubmat } from "./activityCardKit";
 
 type FileUploadStatus = "compressing" | "uploading" | "uploaded" | "error";
@@ -112,6 +113,7 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
   const [existingUploads, setExistingUploads] = useState<SubmissionUploadRecord[]>([]);
   const [filesByField, setFilesByField] = useState<Record<string, File[]>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [sizeHints, setSizeHints] = useState<Record<string, string[]>>({});      // a tip for each big PDF the scholar picked (it never blocks the upload)
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [fileStatuses, setFileStatuses] = useState<Record<string, { status: FileUploadStatus; error?: string; progress?: number }>>({});
@@ -147,6 +149,7 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
     }
     setFilesByField(prev => ({ ...prev, [field.id]: error ? [] : selected }));
     setFieldErrors(prev => ({ ...prev, [field.id]: error }));
+    setSizeHints(prev => ({ ...prev, [field.id]: error ? [] : selected.map(f => bigPdfHint(f)).filter((h): h is string => !!h) }));
   }
 
   async function uploadOneFile(fieldId: string, file: File) {
@@ -265,6 +268,7 @@ function SubmissionActivityCard({ activity }: { activity: SubmissionActivityForS
                 </>
               )}
               {fieldErrors[field.id] && <p className="mt-1 text-[11.5px] text-red-600">{fieldErrors[field.id]}</p>}
+              {!fieldErrors[field.id] && (sizeHints[field.id] ?? []).map(h => <p key={h} role="status" className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11.5px] text-amber-900">{h}</p>)}
               {submitAttempted && field.isRequired && uploadedCountFor(field.id) === 0 && selected.length === 0 && !fieldErrors[field.id] && (
                 <p className="mt-1 text-[11.5px] text-red-600">This file is required.</p>
               )}

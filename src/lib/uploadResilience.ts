@@ -75,6 +75,21 @@ export function shrunkSize(width: number, height: number, maxSide = SHRINK_MAX_S
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
+/** A PDF from this size up gets a friendly tip to make it smaller before it is sent. */
+export const BIG_PDF_HINT_BYTES = 5 * 1024 * 1024;
+/** The biggest file a submission activity takes (the same limit the upload function applies). */
+export const SUBMISSION_MAX_BYTES = 20 * 1024 * 1024;
+/** A tip, in plain words, for a big PDF (usually a scan): how to make it smaller. Null for any other file and for a PDF that is not big. */
+export function bigPdfHint(file: { name: string; type: string; size: number }): string | null {
+  const isPdf = file.type === "application/pdf" || /.pdf$/i.test(file.name);
+  if (!isPdf || file.size < BIG_PDF_HINT_BYTES) return null;
+  const mb = (file.size / (1024 * 1024)).toFixed(1);
+  const how = "Scan it again at a lower quality (for example grayscale, 150 dpi, or the “small file” option of your scanner app), then choose the file again.";
+  return file.size > SUBMISSION_MAX_BYTES
+    ? `“${file.name}” is ${mb} MB, which is over the ${SUBMISSION_MAX_BYTES / (1024 * 1024)} MB limit, so it will most likely be refused. ${how}`
+    : `“${file.name}” is ${mb} MB. Big files upload slowly, most of all on mobile data. If you can, make it smaller first. ${how}`;
+}
+
 /** A big phone PHOTO (JPG) is shrunk before it is sent to a submission activity; its type and name stay the same, so the activity's allowed types still fit. */
 export function shouldShrinkJpeg(file: { type: string; size: number }): boolean {
   return file.type === "image/jpeg" && file.size > SHRINK_ABOVE_BYTES;
