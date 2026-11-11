@@ -127,6 +127,7 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
     setActionError("");
     if (a.key === "open_application") { if (f.recordId) onOpenRecord(f.recordId); return; }
     if (a.key === "review_documents") { onGoToDocuments?.(); return; }
+    if (a.key === "endorse_status") return;      // the consultation staff endorse it in the Consultation Tool, not here
     if (a.key === "mark_not_required") { setMarking(r); return; }
     if (a.key === "refer_booking") { setReferBooking({ row: r, facts: f }); return; }
     if (a.key === "refer_consultation") {
