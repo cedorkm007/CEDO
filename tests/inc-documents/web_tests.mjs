@@ -42,10 +42,10 @@ test("the grades and the SDP are still checked first", () => {
 
 console.log("\nThe application form");
 const panel = src("src/scholar/components/dashboard/RenewalPanel.tsx"), api = src("src/scholar/renewalApi.ts");
-test("a scholar with an INC or a failed subject (in the school's grades, or an INC mark among the grades entered) sees three separate upload buttons", () => {
+test("a scholar with an INC or a failed subject is told the three documents come AFTER the grades are approved (no upload buttons in the application form any more)", () => {
   assert.ok(panel.includes("(preview.grades?.counts?.inc ?? 0) > 0 || (preview.grades?.counts?.failed ?? 0) > 0 || (preview.failed_effective ?? 0) > 0 || enteredInc || serverNeedsInc") && panel.includes('reservedMark(r.grade) === "INC"'));
-  assert.ok(panel.includes("INC_FORM_DOCS.map(d => (") && panel.includes("<IncDocPicker") && panel.includes("You cannot submit without them."));
-  assert.ok(panel.includes("aria-label={`Upload ${label}`}"), "each document has its own upload button");
+  assert.ok(panel.includes("Documents you will send after your grades are approved") && panel.includes("<strong>After your grades are approved</strong>") && panel.includes("const incDocsNeeded = false, incDocsReady = true;"));
+  assert.ok(!panel.includes("<IncDocPicker key"), "no upload buttons for the three documents in the application form");
 });
 test("Next follows the gate with the documents; the review step lists them; they are sent with the application", () => {
   assert.ok(panel.includes("reconsiderationAsked: wantsReconsideration, incDocsNeeded, incDocsReady"));
