@@ -7,16 +7,16 @@
 import { formatSlotShort, gradesStatusText, referralStatusText, sdpStatusText, STAGE_INFO, type RenewalStage } from "./renewal";
 
 /** The staff who act on a renewal. Each action belongs to exactly one of them. */
-export type StaffRole = "evaluator" | "grades_approver" | "sdp_approver" | "documents_approver" | "division_head";
+export type StaffRole = "evaluator" | "grades_approver" | "sdp_approver" | "documents_approver" | "division_head" | "consultation_staff";
 export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
-  evaluator: "Scholar Renewal Evaluator", grades_approver: "Grades Approver", sdp_approver: "SDP Reconsideration Approver", documents_approver: "Renewal Documents Approver", division_head: "Division Head",
+  evaluator: "Scholar Renewal Evaluator", grades_approver: "Grades Approver", sdp_approver: "SDP Reconsideration Approver", documents_approver: "Renewal Documents Approver", division_head: "Division Head", consultation_staff: "Consultation staff",
 };
-export type ViewerRoles = { evaluator: boolean; gradesApprover: boolean; sdpApprover: boolean; documentsApprover?: boolean; divisionHead: boolean };
+export type ViewerRoles = { evaluator: boolean; gradesApprover: boolean; sdpApprover: boolean; documentsApprover?: boolean; divisionHead: boolean; consultationStaff?: boolean };
 export const NO_ROLES: ViewerRoles = { evaluator: false, gradesApprover: false, sdpApprover: false, documentsApprover: false, divisionHead: false };
 export const hasRole = (v: ViewerRoles, r: StaffRole): boolean => (r === "evaluator" ? v.evaluator : r === "grades_approver" ? v.gradesApprover : r === "sdp_approver" ? v.sdpApprover : r === "documents_approver" ? !!v.documentsApprover : v.divisionHead);
 
 /** What a button does: open the entered grades, the SDP reconsideration request or the Division Head's case of the scholar; start a consultation referral; or open the application. */
-export type ActionKey = "approve_grades" | "decide_sdp" | "decide_case" | "refer_consultation" | "refer_booking" | "open_application" | "decide_inc" | "mark_not_required" | "review_documents";
+export type ActionKey = "approve_grades" | "decide_sdp" | "decide_case" | "refer_consultation" | "refer_booking" | "open_application" | "decide_inc" | "mark_not_required" | "review_documents" | "endorse_status";
 export interface NeededAction { key: ActionKey; role: StaffRole; label: string }
 
 /** Where one scholar stands for the term, as renewal_scholar_actions() reports it (null for a scholar it did not report). */
@@ -34,7 +34,7 @@ export interface ActionRowInput {
 
 const EVALUATOR_STAGE_ACTION: Partial<Record<RenewalStage, string>> = {
   late_pending: "Decide the late application", ready_for_confirmation: "Confirm the renewal", reconsidered: "Confirm the renewal", division_head_approved: "Confirm the renewal",
-  ready_to_endorse: "Endorse to the Division Head", review_needed: "Review the application", inc_deadline_passed: "Decide on the INC",
+  ready_to_endorse: "Endorse to the Division Head", endorsed_for_approval: "Approve the endorsement", review_needed: "Review the application", inc_deadline_passed: "Decide on the INC",
 };
 
 /** Everything waiting on staff for this scholar, in the order it should be done. Empty = nothing for staff to do (the scholar, the school or the clock moves it). */
@@ -52,7 +52,8 @@ export function neededActions(row: ActionRowInput, facts: ScholarActionFacts | n
   const byStage = stage ? EVALUATOR_STAGE_ACTION[stage] : undefined;
   if (byStage) out.push({ key: stage === "inc_deadline_passed" ? "decide_inc" : "open_application", role: "evaluator", label: byStage });
   if (stage === "needs_consultation_division_head" && facts.dhStatus !== "forwarded_to_division_head") out.push({ key: "open_application", role: "evaluator", label: "Send to the Division Head" });
-  if (facts.docsToReview > 0) out.push({ key: "review_documents", role: "documents_approver", label: `Review ${facts.docsToReview} document${facts.docsToReview === 1 ? "" : "s"}` });
+  if (stage === "ready_for_endorsement") out.push({ key: "endorse_status", role: "consultation_staff", label: "Endorse the new scholarship status" });
+  if (facts.docsToReview > 0) out.push({ key: "review_documents", role: "consultation_staff", label: `Review ${facts.docsToReview} document${facts.docsToReview === 1 ? "" : "s"}` });
   return out;
 }
 
@@ -111,6 +112,6 @@ export function canReferForConsultation(row: Pick<ActionRowInput, "failed" | "dr
   if (!facts || !facts.recordId) return false;
   if (!(row.failed > 0 || row.drp > 0 || row.inc > 0)) return false;
   if (facts.nextConsultation) return false;      // an upcoming consultation is already booked (a consultation that was already done does not stop a new referral)
-  return !["renewed", "removed", "late_declined", "late_pending", "returned"].includes(facts.stage ?? "");
+  return !["renewed", "removed", "late_declined", "late_pending", "returned", "ready_for_endorsement", "endorsed_for_approval"].includes(facts.stage ?? "");
 }
 export const REFER_BOOKING_ACTION: NeededAction = { key: "refer_booking", role: "evaluator", label: "Refer for Consultation" };

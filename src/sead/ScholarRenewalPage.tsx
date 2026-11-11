@@ -95,7 +95,7 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
       {error && <p role="alert" className="mb-3 text-[14px] text-red-700">Couldn't load the renewal windows: {error}</p>}
 
       {detailId ? (
-        <RenewalDetailView recordId={detailId} canAct={canAct && isEvaluator} canReviewDocuments={isDocumentsApprover} onBack={() => setDetailId(null)} onChanged={bump} />
+        <RenewalDetailView recordId={detailId} canAct={canAct && isEvaluator} canReviewDocuments={false} onBack={() => setDetailId(null)} onChanged={bump} />
       ) : (
         <>
           {termBarNeeded && <div className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-[#f7f9fc] border border-[#e6ecf5] rounded-xl px-4 py-3 mb-4 text-[14px]">
@@ -122,7 +122,7 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
           {tab === "tagging" && <RenewalTaggingTab canManage={isTagger} refreshKey={refreshKey} onChanged={bump} />}
           {tab === "sdpReconsideration" && <RenewalSdpReconsiderationTab refreshKey={refreshKey} onChanged={bump} />}
           {tab === "enteredGrades" && <RenewalEnteredGradesTab refreshKey={refreshKey} onChanged={bump} />}
-          {tab === "documents" && <RenewalDocumentsTab canApprove={isDocumentsApprover} refreshKey={refreshKey} onChanged={bump} />}
+          {tab === "documents" && <RenewalDocumentsTab canApprove={false} refreshKey={refreshKey} onChanged={bump} />}
           {tab === "divisionHead" && <RenewalDivisionHeadTab canDecide={isDivisionHead} onOpenRecord={setDetailId} onChanged={bump} refreshKey={refreshKey} />}
           {tab === "calendar" && <AppointmentsTab readOnly onOpenRecord={setDetailId} />}
           {tab === "dashboard" && current && <RenewalDashboardTab schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} canExport={seesRenewals} />}

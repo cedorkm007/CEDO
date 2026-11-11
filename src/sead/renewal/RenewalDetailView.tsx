@@ -12,6 +12,7 @@ import { Thumb } from "./RenewalEnteredGradesTab";
 import { fetchRecordEnteredGrades, type RecordEnteredGrades } from "../enteredGradesApi";
 import { RenewalCsrSection } from "./RenewalCsrSection";
 import { confirmDivisionHeadDecision, fetchDivisionHeadStatus, sendToDivisionHead, type DivisionHeadStatus } from "../divisionHeadApi";
+import { approveEndorsement, returnEndorsement } from "../consultRenewalApi";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -28,7 +29,7 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
   const [sdpAfter, setSdpAfter] = useState<Awaited<ReturnType<typeof fetchRenewalSdpAfter>>>(null);
   const [entered, setEntered] = useState<RecordEnteredGrades | null>(null);      // the approved grades the scholar entered, with their screenshots (only while those are the grades that count)
   const [error, setError] = useState("");
-  const [dialog, setDialog] = useState<"confirm" | "confirmReconsidered" | "sendDivisionHead" | "endorse" | "return" | "revert" | "accept" | "decline" | null>(null);
+  const [dialog, setDialog] = useState<"confirm" | "confirmReconsidered" | "sendDivisionHead" | "endorse" | "approveEndorsement" | "returnEndorsement" | "return" | "revert" | "accept" | "decline" | null>(null);
   const [dh, setDh] = useState<DivisionHeadStatus | null>(null);
   const [fileError, setFileError] = useState("");
   const [reviewing, setReviewing] = useState<{ doc: DetailDocument; approve: boolean } | null>(null);
@@ -62,7 +63,7 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
     ...(g?.inc_subjects ?? []).map(x => ({ ...x, tag: x.state === "counted_failed" ? "INC (counted as failed)" : x.state === "decided" ? "INC (decided)" : "INC" })),
     ...(g?.review_subjects ?? []).map(x => ({ ...x, tag: "Needs review" })),
   ];
-  const active = !["renewed", "removed", "reconsidered", "division_head_approved", "late_declined", "not_required", "returned", "late_pending", "endorsed_division_head"].includes(r.stage);
+  const active = !["renewed", "removed", "reconsidered", "division_head_approved", "late_declined", "not_required", "returned", "late_pending", "endorsed_division_head", "endorsed_for_approval"].includes(r.stage);
   const sentBack = dh?.status === "reconsideration_requested";
   const withDivisionHead = dh?.status === "forwarded_to_division_head";
   const awaitingFinal = dh?.status === "division_head_approved";      // approved and signed; the consulting staff member makes the final decision
@@ -85,6 +86,10 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
               <button onClick={() => setDialog("decline")} className="rounded-lg border border-red-700 px-4 py-2 text-[14px] font-bold text-red-800 hover:bg-red-50">Decline</button>
             </>}
             {r.stage === "ready_for_confirmation" && <button onClick={() => setDialog("confirm")} className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-4 py-2 text-[14px] font-bold text-white hover:bg-green-900"><CheckCircle2 size={15} aria-hidden="true" /> Confirm renewal</button>}
+            {r.stage === "endorsed_for_approval" && <>
+              <button onClick={() => setDialog("approveEndorsement")} className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-4 py-2 text-[14px] font-bold text-white hover:bg-green-900"><CheckCircle2 size={15} aria-hidden="true" /> Approve the endorsement</button>
+              <button onClick={() => setDialog("returnEndorsement")} className="rounded-lg border border-[#062444]/40 px-4 py-2 text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]">Send back to the consultation staff</button>
+            </>}
             {r.stage === "ready_to_endorse" && <button onClick={() => setDialog("endorse")} className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-4 py-2 text-[14px] font-bold text-white hover:bg-green-900"><CheckCircle2 size={15} aria-hidden="true" /> Endorse to Division Head</button>}
             {r.stage === "needs_consultation_division_head" && !withDivisionHead && !awaitingFinal && <button onClick={() => setDialog("sendDivisionHead")} className="inline-flex items-center gap-1.5 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e]"><ShieldCheck size={15} aria-hidden="true" /> {sentBack ? "Send to the Division Head again" : "Send to the Division Head"}</button>}
             {(r.stage === "reconsidered" || r.stage === "division_head_approved") && <button onClick={() => setDialog("confirmReconsidered")} className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-4 py-2 text-[14px] font-bold text-white hover:bg-green-900"><CheckCircle2 size={15} aria-hidden="true" /> Confirm renewal</button>}
@@ -112,6 +117,15 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
           ) : (
             <p>{r.consultationDoneAt ? "The consultation is done, so this case goes to the Division Head automatically." : "Not sent yet. It goes to the Division Head automatically once the consultation is attended. If the scholar cannot attend (for example after missed consultations), you can send it yourself."}</p>
           )}
+        </Section>
+      )}
+
+      {(r.stage === "endorsed_for_approval" || r.stage === "ready_for_endorsement" || r.endorsedStatus) && (
+        <Section title="Consultation staff's endorsement">
+          {r.stage === "endorsed_for_approval"
+            ? <p><strong className="text-sky-900">Endorsed: {(r.endorsedStatus ?? "")}.</strong> The consultation staff endorsed this status after the consultation and the approved documents. Approve it to renew the scholar, or send it back.</p>
+            : r.stage === "ready_for_endorsement" ? <p>The consultation is done and the three documents are approved. The consultation staff will endorse the new scholarship status; you approve it afterwards.</p>
+            : <p>Endorsed by the consultation staff: <strong>{(r.endorsedStatus ?? "")}</strong>.</p>}
         </Section>
       )}
 
@@ -270,6 +284,16 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
           intro={<>{s.name}'s case goes to the Division Head, who decides <strong>Removed</strong> or <strong>Reconsidered</strong>.{!r.consultationDoneAt ? <> <strong>The consultation has not taken place</strong>, so please say why it is sent now.</> : null}</>}
           label={r.consultationDoneAt ? "Note for the Division Head" : "Why is it sent now?"} required={!r.consultationDoneAt} minLength={5} confirmLabel="Send to the Division Head" onCancel={() => setDialog(null)}
           onConfirm={async note => { const x = await sendToDivisionHead(r.id, note); if (!x.ok) return x.error; setDialog(null); await after(); return null; }} />
+      )}
+      {dialog === "approveEndorsement" && (
+        <ReasonDialog title="Approve the endorsement" intro={<>The consultation staff endorsed <strong>{(r.endorsedStatus ?? "")}</strong> for {s.name}, for the renewal of {termLabelOf(r.schoolYear, r.term)}. Approving
+          {r.endorsedStatus === "Removed" ? <> <strong>ends the scholarship</strong>: the scholar is Removed and the login is switched off.</> : <> makes the scholar <strong>Renewed</strong> with the status <strong>{(r.endorsedStatus ?? "")}</strong>, and the scholar is notified.</>}</>}
+          label="Note (kept in the history)" required={false} confirmLabel="Yes, approve and renew" danger={r.endorsedStatus === "Removed"} onCancel={() => setDialog(null)}
+          onConfirm={async note => { const x = await approveEndorsement(r.id, note); if (!x.ok) return x.error; setDialog(null); await after(); return null; }} />
+      )}
+      {dialog === "returnEndorsement" && (
+        <ReasonDialog title="Send the endorsement back" intro="The consultation staff are told and endorse again." label="Why is it sent back?" confirmLabel="Send back" minLength={5} onCancel={() => setDialog(null)}
+          onConfirm={async reason => { const x = await returnEndorsement(r.id, reason); if (!x.ok) return x.error; setDialog(null); await after(); return null; }} />
       )}
       {dialog === "confirmReconsidered" && (
         <ReasonDialog title="Confirm this renewal" intro={<>{r.stage === "reconsidered" ? <>The Division Head reconsidered {s.name}'s case (status: Reconsidered).</> : <>The Division Head approved Probationary for {s.name} (status: Probationary).</>} Confirming makes the renewal for {termLabelOf(r.schoolYear, r.term)} <strong>Renewed</strong>{r.stage === "reconsidered" ? "" : " as Probationary"} and notifies the scholar.</>}

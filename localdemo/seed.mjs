@@ -112,7 +112,7 @@ const SCHOLARS = [
   { n: 43, school: "lower", last: "One Failed Endorsed", grades: g("5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", plan: "accepted", consultDone: true, endorsed: true } },
   { n: 44, school: "lower", last: "Two Failed No Consultation", grades: g("5.0", "5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1" } },
   { n: 46, school: "lower", last: "Renewed With Certificate", grades: g("1.5", "2.0", "1.75"), sdp: FULL_SDP, renewal: { window: "w1", confirmed: true } },
-  { n: 45, school: "lower", last: "Reconsidered To Confirm", grades: g("5.0", "5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", consultDone: true, reconsidered: true } },
+  { n: 45, school: "lower", last: "Reconsidered To Confirm", grades: g("5.0", "5.0", "1.5"), sdp: FULL_SDP, renewal: { window: "w1", plan: "accepted", consultDone: true, reconsidered: true } },
 ];
 export const SCHOLAR_LAST = Object.fromEntries(SCHOLARS.map(s => [s.n, s.last]));
 const SUBJECTS = ["Mathematics", "English", "Science", "History"];
@@ -363,7 +363,7 @@ export async function seedDb(db) {
     await db.query("update renewal_records set consultation_done_at = now() - interval '2 days' where id = $1", [rec]);
     await db.query("select public._renewal_recheck($1)", [rec]);
   }
-  for (const s of SCHOLARS.filter(x => x.renewal?.endorsed)) { const rec = await recOf(s.n); await as(id("staff:demo.evaluator"), async tx => tx.query("select public.renewal_endorse($1, 'Study plan approved and consultation done.')", [rec])); }
+  for (const s of SCHOLARS.filter(x => x.renewal?.endorsed)) { const rec = await recOf(s.n); await as(id("staff:demo.counselor"), async tx => tx.query("select public.renewal_endorse_status($1, 'Probationary', 'Failed one subject; study plan approved and consultation done.')", [rec])); }      // the consultation staff endorse (no Division Head)
   // Phase 8: certificates are switched ON in the demo (in the real project the office switches them on), and one renewal is already confirmed.
   await db.query("update csr_settings set enabled = true where id");
   // Storage Tool: the demo's biggest file is 20 MB (the real setting is 500 MB), so "a file over the limit" can be tried without a huge file.
@@ -371,10 +371,7 @@ export async function seedDb(db) {
   for (const s of SCHOLARS.filter(x => x.renewal?.confirmed)) { const rec = await recOf(s.n); await as(id("staff:demo.evaluator"), async tx => tx.query("select public.renewal_confirm($1, 'All passed.')", [rec])); }
   for (const s of SCHOLARS.filter(x => x.renewal?.reconsidered)) {
     const rec = await recOf(s.n);
-    await as(id("staff:demo.divhead"), async tx => tx.query("select public.renewal_division_head_decide($1, 'reconsidered', $2, '', 'Given one more chance.')", [rec, `${id("staff:demo.divhead")}/signature.png`]));
-    // the final decision belongs to the consulting staff member the case is assigned to (after the Division Head approves and signs)
-    const waiting = (await db.query("select id, referred_to from scholar_counseling_referrals where renewal_record_id = $1 and status = 'division_head_approved'", [rec])).rows[0];
-    if (waiting) await as(waiting.referred_to, async tx => tx.query("select public.consult_finalize_decision($1)", [waiting.id]));
+    await as(id("staff:demo.counselor"), async tx => tx.query("select public.renewal_endorse_status($1, 'Reconsidered', 'Given one more chance.')", [rec]));      // waits for the evaluator's approval
   }
 
   // The blank study plan form, as the office would add it in Forms Management (the Renewal tile links to it).
