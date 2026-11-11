@@ -232,8 +232,9 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
   const wantsReconsideration = canAskReconsideration && askReconsideration;      // the choice is offered at once; the application itself is only sent once the grades are in (the Next button waits for them)
   // A scholar with an INC or a failed subject (in the school's grades, or among the grades entered here) sends the letter from the dean, the study plan and the clearance with the application; each has its own upload button.
   const enteredInc = enterGrades && (gRows.some(r => reservedMark(r.grade) === "INC") || needsDocuments(gRows, gradeRules));      // an INC, a DRP or a FAILED grade typed here shows the three upload buttons at once (read the way the database reads it)
-  const incDocsNeeded = !!preview && ((preview.grades?.counts?.inc ?? 0) > 0 || (preview.grades?.counts?.failed ?? 0) > 0 || (preview.failed_effective ?? 0) > 0 || enteredInc || serverNeedsInc);      // a failed grade typed here is found by the database when the application is sent (serverNeedsInc)
-  const incDocsReady = INC_FORM_DOCS.every(d => incFiles[d.kind].length > 0);
+  const docsComing = !!preview && ((preview.grades?.counts?.inc ?? 0) > 0 || (preview.grades?.counts?.failed ?? 0) > 0 || (preview.failed_effective ?? 0) > 0 || enteredInc || serverNeedsInc);      // a failed grade typed here is found by the database when the application is sent (serverNeedsInc)
+  // The letter from the dean, the study plan and the clearance are NOT asked for with the application any more: they are required AFTER the grades are in (the Grades Approver approves the entered grades), from the Renewal tile.
+  const incDocsNeeded = false, incDocsReady = true;
   // Next opens only when the grades are settled (the school's, or entered here) and the SDP is complied or a reconsideration is asked for.
   const gate = renewalNextGate(preview, { gradesEntered: enterGrades && !gradeProblem, reconsiderationAsked: wantsReconsideration, incDocsNeeded, incDocsReady });
   const inputCls = "w-full rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] outline-none focus:border-[#062444] bg-white";
@@ -310,17 +311,11 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
               </label>
             </div>
           )}
-          {preview && incDocsNeeded && (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3 text-[14px] text-amber-950">
-              <p className="font-bold">Your documents</p>
-              <p className="mt-1">You have an INC or a failed subject, so send these three documents with your application. <strong>You cannot submit without them.</strong> The evaluator approves each one, and you can book your consultation only after all three are approved.</p>
-              {incNote && <p role="alert" className="mt-1.5 text-red-800">{incNote}</p>}
-              <ul className="mt-2 space-y-2">
-                {INC_FORM_DOCS.map(d => (
-                  <IncDocPicker key={d.kind} kind={d.kind} label={d.label} hint={d.hint} files={incFiles[d.kind]} setFiles={fs => setIncFiles(p => ({ ...p, [d.kind]: fs }))} />
-                ))}
-              </ul>
-              {!incDocsReady && <p className="mt-2">Still needed before you can go on: {INC_FORM_DOCS.filter(d => incFiles[d.kind].length === 0).map(d => d.label).join(", ")}.</p>}
+          {preview && docsComing && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 text-[14px] text-sky-950">
+              <p className="font-bold">Documents you will send after your grades are approved</p>
+              <p className="mt-1">You have an INC or a failed subject. You do not send any document now. {offerGrades ? "Enter your grades and submit; the Grades Approver checks them." : "Submit your application."} <strong>After your grades are approved</strong> you will be asked, in your Renewal tile, to upload these three documents, and the evaluator approves each one before your consultation:</p>
+              <ul className="mt-1.5 list-disc pl-5">{INC_FORM_DOCS.map(d => <li key={d.kind}><strong>{d.label}</strong>: {d.hint}</li>)}</ul>
             </div>
           )}
           {preview && (preview.required_documents ?? []).filter(d => !(incDocsNeeded && INC_FORM_DOCS.some(x => x.kind === d.kind))).length > 0 && (

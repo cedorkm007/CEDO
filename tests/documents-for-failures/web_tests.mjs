@@ -28,7 +28,7 @@ check("4 the buttons are needed when ONE failed grade, TWO failed grades, a DRP 
   G.needsDocuments([{ grade: "1.5" }, { grade: "5.0" }], lower) && G.needsDocuments([{ grade: "5.0" }, { grade: "5.0" }, { grade: "1.5" }], lower) && G.needsDocuments([{ grade: "DRP" }], lower) && G.needsDocuments([{ grade: "INC" }], lower)
   && !G.needsDocuments([{ grade: "1.5" }, { grade: "2.0" }, { grade: "" }], lower));
 const panel = src("src/scholar/components/dashboard/RenewalPanel.tsx"), hook = src("src/scholar/useMyGradeRules.ts");
-check("5 the application form shows the three upload buttons from the typed grades, and the school's passing mark, direction, letters and marks are loaded for it",
-  panel.includes("needsDocuments(gRows, gradeRules)") && panel.includes("const incDocsNeeded = !!preview &&") && panel.includes("enteredInc || serverNeedsInc")
+check("5 the application form notices a typed failed grade, DRP or INC at once (and tells the scholar the documents come after the grades are approved); the school's passing mark, direction, letters and marks are loaded for it",
+  panel.includes("needsDocuments(gRows, gradeRules)") && panel.includes("const docsComing = !!preview &&") && panel.includes("enteredInc || serverNeedsInc") && panel.includes("{preview && docsComing && (")
   && hook.includes("passingMark: cfg.passingMark") && hook.includes("direction: cfg.direction") && hook.includes("markOutcomes:") && hook.includes("letterValues:"));
 console.log(`\n${passed} passed`);
