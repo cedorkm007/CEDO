@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { SUBMISSION_ALLOWED_FILE_TYPES } from "@/sead/submissionActivitiesApi";
+import { shrinkJpegForUpload } from "@/lib/uploadResilience";
 
 // Re-exported so scholar-side callers have one place to import from,
 // without every caller needing to know this constant actually lives in
@@ -244,7 +245,8 @@ export async function uploadSubmissionFile(
   const form = new FormData();
   form.append("activityId", activityId);
   form.append("fieldId", fieldId);
-  form.append("file", file, file.name);
+  const toSend = await shrinkJpegForUpload(file);      // a big phone photo becomes a few hundred KB: far less traffic when many scholars upload at once
+  form.append("file", toSend, toSend.name);
 
   const retryDelaysMs = [1000, 3000];
   for (let attempt = 0; ; attempt++) {

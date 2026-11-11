@@ -439,8 +439,9 @@ export async function submitSelfGrades(args: { recordId: string; scholarIdNumber
   for (const f of args.newFiles) { const p = validateSelfGradeImage(f, 0); if (p) return { ok: false, error: p }; }
   const uploaded: { path: string; name: string; mime: string; size: number }[] = [];
   for (const orig of args.newFiles) {
-    const f = await makeReadable(orig);
-    if (!f) { if (uploaded.length) await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).remove(uploaded.map(u => u.path)); return { ok: false, error: unreadablePictureText(orig.name) }; }
+    const readable = await makeReadable(orig);
+    if (!readable) { if (uploaded.length) await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).remove(uploaded.map(u => u.path)); return { ok: false, error: unreadablePictureText(orig.name) }; }
+    const f = await shrinkImageForUpload(readable);      // a big phone screenshot becomes a small JPG: much less traffic when hundreds of scholars send their grades
     const safe = f.name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80);
     const path = `${args.scholarIdNumber}/${args.recordId}/grade-entries/${crypto.randomUUID()}-${safe}`;
     const up = await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).upload(path, f, { contentType: f.type, upsert: false });

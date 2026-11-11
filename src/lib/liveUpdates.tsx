@@ -12,7 +12,30 @@ import { supabase } from "@/lib/supabase";
 export type LiveKind = "scholar" | "staff" | "school";
 const RPC: Record<LiveKind, string> = { scholar: "scholar_live_stamp", staff: "staff_live_stamp", school: "school_live_stamp" };
 /** How often each portal asks (milliseconds, before a little random spread so thousands of open pages do not ask at the same instant). */
-export const LIVE_INTERVAL_MS: Record<LiveKind, number> = { scholar: 15_000, staff: 10_000, school: 15_000 };
+export const LIVE_INTERVAL_MS: Record<LiveKind, number> = { scholar: 30_000, staff: 10_000, school: 15_000 };
+/**
+ * The least time between two reloads of the screens of a portal. When nothing changed for a while, a change shows at once; when changes keep coming (hundreds of scholars uploading during the renewal),
+ * the screens read their lists again at most this often instead of after every change, so the lists stay quick and the database is not asked the same big question again and again.
+ */
+export const LIVE_MIN_RELOAD_GAP_MS: Record<LiveKind, number> = { scholar: 0, staff: 15_000, school: 15_000 };
+
+/** Lets the first change through at once, and joins a burst of changes into ONE more reload after the gap. Free of React so it can be tested. */
+export function createTickGate(o: { gapMs: number; fire: () => void; now?: () => number; setTimer?: (fn: () => void, ms: number) => unknown; clearTimer?: (id: unknown) => void }) {
+  const now = o.now ?? (() => Date.now());
+  const setTimer = o.setTimer ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
+  const clearTimer = o.clearTimer ?? ((id: unknown) => clearTimeout(id as ReturnType<typeof setTimeout>));
+  let last = -Infinity, timer: unknown = null;
+  const run = () => { timer = null; last = now(); o.fire(); };
+  return {
+    trigger() {
+      if (o.gapMs <= 0) { run(); return; }
+      const wait = last + o.gapMs - now();
+      if (wait <= 0) { if (timer != null) { clearTimer(timer); timer = null; } run(); }
+      else if (timer == null) timer = setTimer(run, wait);
+    },
+    cancel() { if (timer != null) clearTimer(timer); timer = null; },
+  };
+}
 const MAX_BACKOFF_MS = 120_000;
 
 export type StampResult = { ok: true; stamp: string } | { ok: false; fatal: boolean };
@@ -74,10 +97,11 @@ export function useLiveStamp(kind: LiveKind, enabled = true): number {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!enabled) return;
+    const gate = createTickGate({ gapMs: LIVE_MIN_RELOAD_GAP_MS[kind], fire: () => setTick(t => t + 1) });
     const poller = createLivePoller({
       baseMs: LIVE_INTERVAL_MS[kind],
       isHidden: () => typeof document !== "undefined" && document.hidden,
-      onChange: () => setTick(t => t + 1),
+      onChange: () => gate.trigger(),
       fetchStamp: async () => {
         const { data, error } = await supabase.rpc(RPC[kind]);
         if (error) return { ok: false, fatal: isFatalLiveError(error) };
@@ -89,7 +113,7 @@ export function useLiveStamp(kind: LiveKind, enabled = true): number {
     document.addEventListener("visibilitychange", wake);
     window.addEventListener("focus", wake);
     window.addEventListener("online", wake);
-    return () => { poller.stop(); document.removeEventListener("visibilitychange", wake); window.removeEventListener("focus", wake); window.removeEventListener("online", wake); };
+    return () => { poller.stop(); gate.cancel(); document.removeEventListener("visibilitychange", wake); window.removeEventListener("focus", wake); window.removeEventListener("online", wake); };
   }, [kind, enabled]);
   return tick;
 }
