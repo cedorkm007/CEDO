@@ -106,12 +106,13 @@ export function renewalSummary(row: ActionRowInput, facts: ScholarActionFacts | 
 
 /**
  * "Refer for Consultation" on an APPLICATION of a scholar with an INC, a DRP or a failed subject: the evaluator books the scholar's renewal consultation (day, morning or afternoon, staff) FOR the scholar.
- * Offered while the application is not finished and no consultation is booked. An optional action: it is not part of what neededActions() says is waiting on staff.
+ * Offered while the application is not finished and the scholar has no consultation booked and has not attended one yet. An optional action: it is not part of what neededActions() says is waiting on staff.
  */
 export function canReferForConsultation(row: Pick<ActionRowInput, "failed" | "drp" | "inc">, facts: ScholarActionFacts | null): boolean {
   if (!facts || !facts.recordId) return false;
   if (!(row.failed > 0 || row.drp > 0 || row.inc > 0)) return false;
-  if (facts.nextConsultation) return false;      // an upcoming consultation is already booked (a consultation that was already done does not stop a new referral)
+  if (facts.nextConsultation) return false;      // a consultation is already booked
+  if (facts.consultationDoneAt) return false;      // the consultation staff already marked the scholar as attended
   return !["renewed", "removed", "late_declined", "late_pending", "returned", "ready_for_endorsement", "endorsed_for_approval"].includes(facts.stage ?? "");
 }
 export const REFER_BOOKING_ACTION: NeededAction = { key: "refer_booking", role: "evaluator", label: "Refer for Consultation" };
