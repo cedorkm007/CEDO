@@ -3261,21 +3261,27 @@ export default function App() {
   }, [loadingData, currentUser, users, allTasks]);
 
   // ── Periodic background sync ──────────────────────────────
-  // No real-time push from Supabase here (could add via Realtime later),
-  // so we poll every 30s for new notifications/submissions/leave requests.
+  // Realtime pushes changes (below); the poll every 30s is only a safety net for new notifications/submissions/leave requests.
   // Always overwrites from Supabase — it is the source of truth for status.
   useEffect(() => {
     if (!currentUser) return;
 
     let cancelled = false;
 
-    async function syncNow() {
+    // Each sync reads WHOLE tables, so it must not run too often: a change in one table reads only that table (not all four), a burst of changes is joined, and nothing runs while the page is hidden.
+    let running = false;
+    let queued: string[] | "all" | null = null;      // a change that arrived while a read was running is read right after it, never lost
+    async function syncNow(only?: string[]) {
+      if (running) { queued = only && queued !== "all" ? [...(queued ?? []), ...only] : "all"; return; }
+      running = true;
+      const want = (t: string) => !only || only.includes(t);
       try {
+        const none = Promise.resolve([] as Record<string,unknown>[]);
         const [dbNotifs, dbSubs, dbLeave, dbLogs] = await Promise.all([
-          getAll<Record<string,unknown>>(TABLES.NOTIFICATIONS).catch(() => []),
-          getAll<Record<string,unknown>>(TABLES.SUBMISSIONS).catch(() => []),
-          getAll<Record<string,unknown>>(TABLES.LEAVE_REQUESTS).catch(() => []),
-          getAll<Record<string,unknown>>(TABLES.ACCOMPLISHMENT_LOGS).catch(() => []),
+          want(TABLES.NOTIFICATIONS) ? getAll<Record<string,unknown>>(TABLES.NOTIFICATIONS).catch(() => []) : none,
+          want(TABLES.SUBMISSIONS) ? getAll<Record<string,unknown>>(TABLES.SUBMISSIONS).catch(() => []) : none,
+          want(TABLES.LEAVE_REQUESTS) ? getAll<Record<string,unknown>>(TABLES.LEAVE_REQUESTS).catch(() => []) : none,
+          want(TABLES.ACCOMPLISHMENT_LOGS) ? getAll<Record<string,unknown>>(TABLES.ACCOMPLISHMENT_LOGS).catch(() => []) : none,
         ]);
         if (cancelled) return;
 
@@ -3330,22 +3336,37 @@ export default function App() {
         }
       } catch (err) {
         console.error("Background sync failed:", err);
+      } finally {
+        running = false;
+        if (queued && !cancelled) { const next = queued === "all" ? undefined : queued; queued = null; void syncNow(next); }
       }
     }
 
-    syncNow();
-    const interval = setInterval(syncNow, 5_000);
+    // The first change reads at once; a burst of changes (hundreds of notices during the renewal) becomes ONE more read after 10 seconds.
+    function throttledSync(table: string) {
+      let last = 0; let timer: ReturnType<typeof setTimeout> | null = null;
+      return () => {
+        const wait = last + 10_000 - Date.now();
+        if (wait <= 0) { last = Date.now(); void syncNow([table]); }
+        else if (!timer) timer = setTimeout(() => { timer = null; last = Date.now(); void syncNow([table]); }, wait);
+      };
+    }
 
-    // Realtime push — triggers syncNow instantly on any DB change
-    // instead of waiting for the next poll tick.
-    const unsubNotifs = subscribeToTable(TABLES.NOTIFICATIONS, syncNow);
-    const unsubSubs = subscribeToTable(TABLES.SUBMISSIONS, syncNow);
-    const unsubLeave = subscribeToTable(TABLES.LEAVE_REQUESTS, syncNow);
-    const unsubLogs = subscribeToTable(TABLES.ACCOMPLISHMENT_LOGS, syncNow);
+    void syncNow();
+    const interval = setInterval(() => { if (!document.hidden) void syncNow(); }, 30_000);
+    const onShow = () => { if (!document.hidden) void syncNow(); };
+    document.addEventListener("visibilitychange", onShow);
+
+    // Realtime push — reads the changed table soon instead of waiting for the next poll tick.
+    const unsubNotifs = subscribeToTable(TABLES.NOTIFICATIONS, throttledSync(TABLES.NOTIFICATIONS));
+    const unsubSubs = subscribeToTable(TABLES.SUBMISSIONS, throttledSync(TABLES.SUBMISSIONS));
+    const unsubLeave = subscribeToTable(TABLES.LEAVE_REQUESTS, throttledSync(TABLES.LEAVE_REQUESTS));
+    const unsubLogs = subscribeToTable(TABLES.ACCOMPLISHMENT_LOGS, throttledSync(TABLES.ACCOMPLISHMENT_LOGS));
 
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onShow);
       unsubNotifs();
       unsubSubs();
       unsubLeave();

@@ -75,6 +75,16 @@ export function shrunkSize(width: number, height: number, maxSide = SHRINK_MAX_S
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
+/** A big phone PHOTO (JPG) is shrunk before it is sent to a submission activity; its type and name stay the same, so the activity's allowed types still fit. */
+export function shouldShrinkJpeg(file: { type: string; size: number }): boolean {
+  return file.type === "image/jpeg" && file.size > SHRINK_ABOVE_BYTES;
+}
+export async function shrinkJpegForUpload(file: File): Promise<File> {
+  if (!shouldShrinkJpeg(file)) return file;
+  const small = await shrinkImageForUpload(file);
+  return small === file ? file : new File([small], file.name, { type: "image/jpeg", lastModified: file.lastModified });
+}
+
 /** Should this picture be shrunk before it is sent? Only big JPG, PNG or WEBP pictures. */
 export function shouldShrink(file: { type: string; size: number }): boolean {
   return ["image/jpeg", "image/png", "image/webp"].includes(file.type) && file.size > SHRINK_ABOVE_BYTES;
