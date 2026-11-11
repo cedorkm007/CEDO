@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { LiveProvider } from "@/lib/liveUpdates";
-import { ClipboardList, AlertTriangle, LayoutDashboard, CalendarClock } from "lucide-react";
+import { ClipboardList, AlertTriangle, LayoutDashboard, CalendarClock, FileCheck2 } from "lucide-react";
 import { ScholarCounselingTab } from "./pages/ScholarCounselingTab";
 import { ProbationMonitoringTab } from "./pages/ProbationMonitoringTab";
 import { ScholarCounselingDashboardTab } from "./pages/ScholarCounselingDashboardTab";
 import { AppointmentsTab } from "./appointments/AppointmentsTab";
+import { ScholarCounselingRenewalCasesTab } from "./pages/ScholarCounselingRenewalCasesTab";
 
-type ScholarCounselingSubtab = "main-dashboard" | "daily-records" | "probation-monitoring" | "appointments";
+type ScholarCounselingSubtab = "main-dashboard" | "daily-records" | "probation-monitoring" | "appointments" | "renewal-cases";
 
 /**
  * Gated by the "scholar_counseling" tag (src/app/staffToolTags.ts),
@@ -25,6 +26,7 @@ function ScholarCounselingToolPageInner() {
   const TABS: { key: ScholarCounselingSubtab; label: string; icon: React.ReactNode }[] = [
     { key: "main-dashboard", label: "Main Dashboard", icon: <LayoutDashboard size={14} /> },
     { key: "appointments", label: "Appointments", icon: <CalendarClock size={14} /> },
+    { key: "renewal-cases", label: "Renewal Cases", icon: <FileCheck2 size={14} /> },
     { key: "daily-records", label: "Daily Records", icon: <ClipboardList size={14} /> },
     { key: "probation-monitoring", label: "Probationary Monitoring", icon: <AlertTriangle size={14} /> },
   ];
@@ -51,6 +53,7 @@ function ScholarCounselingToolPageInner() {
 
       {tab === "main-dashboard" && <ScholarCounselingDashboardTab />}
       {tab === "appointments" && <AppointmentsTab />}
+      {tab === "renewal-cases" && <ScholarCounselingRenewalCasesTab />}
       {tab === "daily-records" && <ScholarCounselingTab />}
       {tab === "probation-monitoring" && <ProbationMonitoringTab />}
     </div>

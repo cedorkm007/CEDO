@@ -60,8 +60,8 @@ export function RenewalDocumentsTab({ canApprove, refreshKey, onChanged }: { can
     <div>
       <p className="text-[14px] text-slate-700 mb-3">
         {canApprove
-          ? "The study plans, letters from the dean and clearances the scholars sent. Open a file, then approve it or return it with what to fix. A scholar cannot book a consultation until all of their documents are approved."
-          : "The study plans, letters from the dean and clearances the scholars sent. Only the Renewal Documents Approver approves or returns them; you can see where each one stands."}
+          ? "The study plans, letters from the dean and clearances the scholars sent. Open a file, then approve it or return it with what to fix."
+          : "The study plans, letters from the dean and clearances the scholars sent. The consultation staff approve or return them (Consultation Tool, Renewal Cases tab); you can see where each one stands."}
       </p>
 
       <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Show documents">
@@ -107,7 +107,7 @@ export function RenewalDocumentsTab({ canApprove, refreshKey, onChanged }: { can
                           <button onClick={() => setReviewing({ doc: d, approve: true })} className="rounded-md bg-green-800 px-2.5 py-1 text-[13px] font-bold text-white hover:bg-green-900">Approve</button>
                           <button onClick={() => setReviewing({ doc: d, approve: false })} className="rounded-md border border-red-700 px-2.5 py-1 text-[13px] font-bold text-red-800 hover:bg-red-50">Return</button>
                         </span>
-                      ) : <span className="text-[13.5px] text-slate-800">Waiting for the Renewal Documents Approver</span>}
+                      ) : <span className="text-[13.5px] text-slate-800">Waiting for the consultation staff</span>}
                     </td>
                   </tr>
                 ))}

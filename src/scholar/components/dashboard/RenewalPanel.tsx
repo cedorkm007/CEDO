@@ -314,7 +314,7 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
           {preview && docsComing && (
             <div className="rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 text-[14px] text-sky-950">
               <p className="font-bold">Documents you will send after your grades are approved</p>
-              <p className="mt-1">You have an INC or a failed subject. You do not send any document now. {offerGrades ? "Enter your grades and submit; the Grades Approver checks them." : "Submit your application."} <strong>After your grades are approved</strong> you will be asked, in your Renewal tile, to upload these three documents, and the evaluator approves each one before your consultation:</p>
+              <p className="mt-1">You have an INC or a failed subject. You do not send any document now. {offerGrades ? "Enter your grades and submit; the Grades Approver checks them." : "Submit your application."} <strong>After your grades are approved</strong> you will be asked, in your Renewal tile, to upload these three documents; you can book your consultation first, and the consultation staff approve each document before your new scholarship status is endorsed:</p>
               <ul className="mt-1.5 list-disc pl-5">{INC_FORM_DOCS.map(d => <li key={d.kind}><strong>{d.label}</strong>: {d.hint}</li>)}</ul>
             </div>
           )}
