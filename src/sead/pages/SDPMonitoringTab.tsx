@@ -29,7 +29,7 @@ import { BarangayClusterPicker } from "../components/BarangayClusterPicker";
 import { SubCategorySelect } from "../components/SubCategorySelect";
 import { ProgressMonitoringSection } from "../components/ProgressMonitoringSection";
 import { ProgressAttachSection } from "../components/ProgressAttachSection";
-import { fetchProgressEnabled, enableProgress } from "../progressMonitorApi";
+import { fetchProgressEnabled, enableProgress, disableProgress, fetchHasQrAttendance } from "../progressMonitorApi";
 
 function sameSet(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every(x => b.includes(x));
@@ -928,6 +928,15 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
     return [base, ...extra];
   });
   const [credits, setCredits] = useState(String(activity.credits));
+  // Progress Monitoring (attendance by picture) can be attached to / taken off an EXISTING activity from the edit form too (undefined = loading, null = the database update has not been run)
+  const [progressSaved, setProgressSaved] = useState<boolean | null | undefined>(undefined);
+  const [progressWant, setProgressWant] = useState(false);
+  const [hasQr, setHasQr] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void (async () => { const e = await fetchProgressEnabled(activity.id); const q = await fetchHasQrAttendance(activity.id); if (!live) return; setProgressSaved(e); setProgressWant(!!e); setHasQr(q); })();
+    return () => { live = false; };
+  }, [activity.id]);
 
   async function handlePubmatFile(file: File) {
     setPubmatBusy(true);
@@ -1016,8 +1025,14 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
       ...(!sameSet(targetBarangays, activity.targetBarangays) ? { targetBarangays } : {}),
       ...(!sameSet(targetClusters, activity.targetClusters) ? { targetClusters } : {}),
     });
+    if (!result.ok) { setBusy(false); setError(result.error || "Failed to save."); return; }
+    // the Progress Monitoring tick box (only when it was changed): attach it to, or take it off, this activity
+    if (progressSaved !== null && progressSaved !== undefined && progressWant !== progressSaved) {
+      const pr = progressWant ? await enableProgress(activity.id) : await disableProgress(activity.id);
+      if (!pr.ok) { setBusy(false); onChanged(); setError(`The activity was saved, but progress monitoring could not be ${progressWant ? "attached" : "turned off"}: ${pr.error}`); return; }
+      setProgressSaved(progressWant);
+    }
     setBusy(false);
-    if (!result.ok) { setError(result.error || "Failed to save."); return; }
     onChanged();
     onClose();
   }
@@ -1209,6 +1224,18 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
               </label>
             </div>
           </div>
+
+          {progressSaved !== undefined && progressSaved !== null && (
+            <div className="border-t border-[#f0f3f8] pt-3">
+              <label className={`flex items-center gap-2 text-[12.5px] font-semibold text-[#062444] ${hasQr && !progressSaved ? "opacity-60" : "cursor-pointer"}`}>
+                <input type="checkbox" checked={progressWant} disabled={hasQr && !progressSaved} onChange={e => setProgressWant(e.target.checked)} className="w-4 h-4 accent-[#062444]" />
+                <Camera size={14} /> Include Progress Monitoring (attendance by picture)
+              </label>
+              {hasQr && !progressSaved
+                ? <p className="mt-1.5 pl-1 text-[12px] text-amber-900">QR attendance is already attached to this activity, so progress monitoring cannot be attached too: an activity uses one way of confirming attendance.</p>
+                : <p className="mt-1.5 pl-1 text-[11px] text-slate-500">Scholars press <strong>Capture a Picture</strong> in the Scholar Portal (the place, the date and the time are printed on the picture) and you approve each one in SDP Monitoring &gt; Progress Monitoring. It is attached when you press Save Changes.{progressSaved && !progressWant ? " Pictures that are still waiting must be approved or rejected before it can be turned off." : ""}</p>}
+            </div>
+          )}
 
           <MonitorsSection activityType="sdp" activityId={activity.id} />
 

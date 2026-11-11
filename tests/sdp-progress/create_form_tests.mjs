@@ -19,7 +19,7 @@ test("an activity uses ONE way of confirming attendance: ticking one unticks the
 });
 test("after the activity is created, progress monitoring is attached to it", () => {
   assert.ok(/if \(progressEnabled\) \{\s+const pr = await enableProgress\(result\.id\)/.test(form));
-  assert.ok(tab.includes('import { fetchProgressEnabled, enableProgress } from "../progressMonitorApi"'));
+  assert.ok(tab.includes('import { fetchProgressEnabled, enableProgress, disableProgress, fetchHasQrAttendance } from "../progressMonitorApi"'));      // (the edit form uses the other two as well)
 });
 test("if attaching fails the activity is kept (no duplicate on a second press) and the message says where to attach it later", () => {
   assert.ok(/progress monitoring could not be attached/.test(form) && /setCreatedWithoutPubmat\(true\); onCreated\(\);/.test(form) && /Progress Monitoring tab/.test(form));
