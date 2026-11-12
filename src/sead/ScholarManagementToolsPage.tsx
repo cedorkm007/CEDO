@@ -1,3 +1,4 @@
+import { KeepAlivePane, TAB_STALE_MS } from "@/lib/keepAlive";
 import { Users, History, CalendarDays, UserX } from "lucide-react";
 import { ScholarsTab } from "./pages/ScholarsTab";
 import { RemovedScholarsTab } from "./pages/RemovedScholarsTab";
@@ -51,10 +52,10 @@ export function ScholarManagementToolsPage() {
         ))}
       </div>
 
-      {tab === "scholars" && <ScholarsTab />}
-      {tab === "removed-scholars" && <RemovedScholarsTab />}
-      {tab === "formation-activities" && <FormationActivitiesTab />}
-      {tab === "history" && <ScholarAccountHistoryTab />}
+      <KeepAlivePane active={tab === "scholars"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarsTab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "removed-scholars"} staleAfterMs={TAB_STALE_MS}>{() => <RemovedScholarsTab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "formation-activities"} staleAfterMs={TAB_STALE_MS}>{() => <FormationActivitiesTab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "history"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarAccountHistoryTab />}</KeepAlivePane>
     </div>
   );
 }

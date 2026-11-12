@@ -1,3 +1,4 @@
+import { KeepAlivePane, TAB_STALE_MS } from "@/lib/keepAlive";
 import { BookOpen, BarChart3 } from "lucide-react";
 import { QuestionBankTab } from "./pages/QuestionBankTab";
 import { QuestsMonitoringTab } from "./pages/QuestsMonitoringTab";
@@ -38,8 +39,8 @@ export function QuestManagementToolsPage() {
         ))}
       </div>
 
-      {tab === "question-bank" && <QuestionBankTab />}
-      {tab === "quests-monitoring" && <QuestsMonitoringTab />}
+      <KeepAlivePane active={tab === "question-bank"} staleAfterMs={TAB_STALE_MS}>{() => <QuestionBankTab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "quests-monitoring"} staleAfterMs={TAB_STALE_MS}>{() => <QuestsMonitoringTab />}</KeepAlivePane>
     </div>
   );
 }

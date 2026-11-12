@@ -101,7 +101,7 @@ test("who sees the tool: the IT admin and staff with the Storage Tool tag, nobod
 test("the tag exists in the Staff Accounts list, the page is checked in App and the sidebar, and a person without access never reaches the page", () => {
   assert.match(read("src/app/staffToolTags.ts"), /key: "storage_tool",\s*label: "Storage Tool"/);
   const app = read("src/app/App.tsx");
-  assert.match(app, /case "storageTool": return canUseStorageTool\(user\)/); assert.match(app, /page==="storageTool" && canUseStorageTool\(currentUser\)/); assert.match(app, /"scanningTools", "storageTool"\]/);
+  assert.match(app, /case "storageTool": return canUseStorageTool\(user\)/); assert.match(app, /canUseStorageTool\(currentUser\) && \(\s*<KeepAlivePane active=\{page==="storageTool"\}/); assert.match(app, /"scanningTools", "storageTool"\]/);
   const side = read("src/app/components/Sidebar.tsx");
   assert.match(side, /\{canUseStorageTool\(user\) && \(\s*<SidebarMenuItem[^]*?Storage Tool/); assert.match(side, /\|\| canUseStorageTool\(user\)/);
   assert.match(read("supabase_migration_storage_tool_p1.sql"), /t\.tag_key = 'storage_tool'/);

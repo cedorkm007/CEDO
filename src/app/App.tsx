@@ -36,6 +36,7 @@ import { KaubanContentManagementPage } from "@/kauban/admin/KaubanContentManagem
 import { ScholarshipProgramInfoPage } from "@/sead/pages/ScholarshipProgramInfoPage";
 import { ResearchProjectMonitoringTab } from "@/sead/pages/ResearchProjectMonitoringTab";
 import { FinancialAssistanceToolsPage } from "@/sead/FinancialAssistanceToolsPage";
+import { KeepAlivePane, TOOL_STALE_MS } from "@/lib/keepAlive";
 import { ScholarCounselingToolPage } from "@/sead/ScholarCounselingToolPage";
 import { ScholarsGradesMonitoringPage } from "@/sead/ScholarsGradesMonitoringPage";
 import { ScholarRenewalPage } from "@/sead/ScholarRenewalPage";
@@ -2638,7 +2639,7 @@ function FloatingChatWidget({ currentUser, allUsers }: { currentUser: UserProfil
   useEffect(() => {
     loadMessages();
     const unsub = subscribeToTable(TABLES.CHAT_MESSAGES, loadMessages);
-    const interval = setInterval(loadMessages, 4000);
+    const interval = setInterval(() => { if (!document.hidden) void loadMessages(); }, 15_000);      // the live push brings new messages at once; this is only a safety net
     return () => { unsub(); clearInterval(interval); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -3684,62 +3685,94 @@ export default function App() {
               onOpenPage={setPage} canOpen={p=>isPageAuthorizedFor(p, currentUser)}
             />
           )}
-          {page==="admin" && currentUser.role==="super_admin" && (
+          {currentUser.role==="super_admin" && (
+            <KeepAlivePane active={page==="admin"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <AdminManagementPage users={users} currentUser={currentUser} onChangeRole={handleChangeUserRole}/>
+            )}</KeepAlivePane>
           )}
-          {page==="scholarManagement" && currentUser.tags.includes("scholar_management") && (
+          {currentUser.tags.includes("scholar_management") && (
+            <KeepAlivePane active={page==="scholarManagement"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <ScholarManagementToolsPage />
+            )}</KeepAlivePane>
           )}
-          {page==="questManagement" && currentUser.tags.includes("quest_management") && (
+          {currentUser.tags.includes("quest_management") && (
+            <KeepAlivePane active={page==="questManagement"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <QuestManagementToolsPage />
+            )}</KeepAlivePane>
           )}
-          {page==="sdpMonitoring" && currentUser.tags.includes("sdp_monitoring") && (
+          {currentUser.tags.includes("sdp_monitoring") && (
+            <KeepAlivePane active={page==="sdpMonitoring"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <SDPMonitoringTab/>
+            )}</KeepAlivePane>
           )}
-          {page==="scanningTools" && currentUser.hasMonitorAssignment && (
+          {currentUser.hasMonitorAssignment && (
+            <KeepAlivePane active={page==="scanningTools"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <ScanningToolsTab/>
+            )}</KeepAlivePane>
           )}
-          {page==="formationTools" && currentUser.tags.includes("scholars_formation") && (
+          {currentUser.tags.includes("scholars_formation") && (
+            <KeepAlivePane active={page==="formationTools"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <FormationToolsTab canManageActivities={currentUser.tags.includes("scholar_management")}/>
+            )}</KeepAlivePane>
           )}
-          {page==="formsManagement" && currentUser.tags.includes("forms_management") && (
+          {currentUser.tags.includes("forms_management") && (
+            <KeepAlivePane active={page==="formsManagement"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <FormsManagementTab/>
+            )}</KeepAlivePane>
           )}
-          {page==="kaubanContent" && currentUser.tags.includes("kauban_content") && (
+          {currentUser.tags.includes("kauban_content") && (
+            <KeepAlivePane active={page==="kaubanContent"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <KaubanContentManagementPage/>
+            )}</KeepAlivePane>
           )}
-          {page==="scholarshipProgramInfo" && currentUser.tags.includes("scholarship_program_info") && (
+          {currentUser.tags.includes("scholarship_program_info") && (
+            <KeepAlivePane active={page==="scholarshipProgramInfo"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <ScholarshipProgramInfoPage/>
+            )}</KeepAlivePane>
           )}
-          {page==="researchProjectMonitoring" && currentUser.tags.includes("research_project_monitoring") && (
+          {currentUser.tags.includes("research_project_monitoring") && (
+            <KeepAlivePane active={page==="researchProjectMonitoring"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <ResearchProjectMonitoringTab/>
+            )}</KeepAlivePane>
           )}
-          {page==="financialAssistanceTools" && currentUser.tags.includes("financial_assistance") && (
+          {currentUser.tags.includes("financial_assistance") && (
+            <KeepAlivePane active={page==="financialAssistanceTools"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <FinancialAssistanceToolsPage/>
+            )}</KeepAlivePane>
           )}
-          {page==="scholarCounseling" && currentUser.tags.includes("scholar_counseling") && (
+          {currentUser.tags.includes("scholar_counseling") && (
+            <KeepAlivePane active={page==="scholarCounseling"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <ScholarCounselingToolPage/>
+            )}</KeepAlivePane>
           )}
-          {page==="scholarsGradesMonitoring" && currentUser.tags.includes("scholars_grades_monitoring") && (
+          {currentUser.tags.includes("scholars_grades_monitoring") && (
+            <KeepAlivePane active={page==="scholarsGradesMonitoring"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <ScholarsGradesMonitoringPage/>
+            )}</KeepAlivePane>
           )}
-          {page==="storageTool" && canUseStorageTool(currentUser) && (
+          {canUseStorageTool(currentUser) && (
+            <KeepAlivePane active={page==="storageTool"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <StorageToolPage isAdmin={isItAdmin(currentUser)}/>
+            )}</KeepAlivePane>
           )}
-          {page==="scholarRenewal" && canSeeScholarRenewal(currentUser) && (
+          {canSeeScholarRenewal(currentUser) && (
+            <KeepAlivePane active={page==="scholarRenewal"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <ScholarRenewalPage isEvaluator={currentUser.tags.includes("scholar_renewal_evaluator")} isDivisionHead={currentUser.tags.includes("sead_division_head")} isSeadHead={isSeadHead(currentUser)} isItAdmin={isItAdmin(currentUser)} isSdpApprover={canDecideSdpReconsideration(currentUser)} isGradesApprover={canApproveScholarGrades(currentUser)} isDocumentsApprover={canApproveRenewalDocuments(currentUser)} isTagger={canTagRenewedScholars(currentUser)}/>
+            )}</KeepAlivePane>
           )}
-          {page==="myResearch" && (
+          {<KeepAlivePane active={page==="myResearch"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <MyResearchPage/>
-          )}
-          {page==="myPresentations" && (
+            )}</KeepAlivePane>}
+          {<KeepAlivePane active={page==="myPresentations"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <MyPresentationsPage/>
-          )}
-          {page==="mySurveys" && (
+            )}</KeepAlivePane>}
+          {<KeepAlivePane active={page==="mySurveys"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <MySurveysPage/>
-          )}
-          {page==="staffAccounts" && currentUser.username.toLowerCase()===IT_ADMIN_USERNAME && (
+            )}</KeepAlivePane>}
+          {currentUser.username.toLowerCase()===IT_ADMIN_USERNAME && (
+            <KeepAlivePane active={page==="staffAccounts"} staleAfterMs={TOOL_STALE_MS}>{() => (
             <AccountsPage/>
+            )}</KeepAlivePane>
           )}
         </div>
         <FloatingChatWidget currentUser={currentUser} allUsers={users}/>

@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
+import { useLiveReloadGate, useTabActive } from "@/lib/keepAlive";
 
 export type LiveKind = "scholar" | "staff" | "school";
 const RPC: Record<LiveKind, string> = { scholar: "scholar_live_stamp", staff: "staff_live_stamp", school: "school_live_stamp" };
@@ -56,6 +57,8 @@ export function isFatalLiveError(e: { code?: string | null; message?: string | n
 export interface LivePollerOptions {
   fetchStamp: () => Promise<StampResult>;
   onChange: () => void;
+  /** The last code this page knew before it paused (a tool that was hidden): the first answer is compared with it, so a change made meanwhile still reloads. */
+  initialStamp?: string | null;
   baseMs: number;
   isHidden?: () => boolean;
   setTimer?: (fn: () => void, ms: number) => unknown;
@@ -67,7 +70,7 @@ export interface LivePollerOptions {
 export function createLivePoller(o: LivePollerOptions) {
   const setTimer = o.setTimer ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
   const clearTimer = o.clearTimer ?? ((id: unknown) => clearTimeout(id as ReturnType<typeof setTimeout>));
-  let stopped = false, running = false, timer: unknown = null, last: string | null = null, failures = 0;
+  let stopped = false, running = false, timer: unknown = null, last: string | null = o.initialStamp ?? null, failures = 0;
 
   const schedule = () => { if (!stopped) timer = setTimer(() => { void poll(); }, nextLiveDelay(o.baseMs, failures, o.random)); };
   async function poll(): Promise<void> {
@@ -95,6 +98,7 @@ export function createLivePoller(o: LivePollerOptions) {
 /** A number that goes up each time the portal's code changes. */
 export function useLiveStamp(kind: LiveKind, enabled = true): number {
   const [tick, setTick] = useState(0);
+  const lastStamp = useRef<string | null>(null);      // survives a pause (the tool was hidden), so a change made meanwhile is found when it is shown again
   useEffect(() => {
     if (!enabled) return;
     const gate = createTickGate({ gapMs: LIVE_MIN_RELOAD_GAP_MS[kind], fire: () => setTick(t => t + 1) });
@@ -102,9 +106,11 @@ export function useLiveStamp(kind: LiveKind, enabled = true): number {
       baseMs: LIVE_INTERVAL_MS[kind],
       isHidden: () => typeof document !== "undefined" && document.hidden,
       onChange: () => gate.trigger(),
+      initialStamp: lastStamp.current,
       fetchStamp: async () => {
         const { data, error } = await supabase.rpc(RPC[kind]);
         if (error) return { ok: false, fatal: isFatalLiveError(error) };
+        lastStamp.current = String(data ?? "");
         return { ok: true, stamp: String(data ?? "") };
       },
     });
@@ -122,7 +128,8 @@ const LiveContext = createContext(0);
 
 /** Wrap a whole portal (or one page of it) once; everything inside can register with useLiveReload(). */
 export function LiveProvider({ kind, enabled = true, children }: { kind: LiveKind; enabled?: boolean; children: ReactNode }) {
-  const tick = useLiveStamp(kind, enabled);
+  const tabActive = useTabActive();
+  const tick = useLiveStamp(kind, enabled && tabActive);      // a tool that is hidden does not ask the database; shown again, it asks at once
   return <LiveContext.Provider value={tick}>{children}</LiveContext.Provider>;
 }
 
@@ -133,13 +140,6 @@ export const useLiveTick = (): number => useContext(LiveContext);
  * what is on screen, so the page updates in place.
  */
 export function useLiveReload(reload: () => unknown): void {
-  const tick = useLiveTick();
-  const latest = useRef(reload);
-  latest.current = reload;
-  const seen = useRef(tick);
-  useEffect(() => {
-    if (tick === seen.current) return;
-    seen.current = tick;
-    void latest.current();
-  }, [tick]);
+  // A screen inside a hidden tab (src/lib/keepAlive.tsx) does not read while nobody looks at it: it reads ONCE when its tab is shown again, if something changed meanwhile.
+  useLiveReloadGate(reload, useLiveTick(), useTabActive());
 }
