@@ -11,6 +11,7 @@ import { RenewalWindowsTab } from "./renewal/RenewalWindowsTab";
 import { RenewalDetailView } from "./renewal/RenewalDetailView";
 import { AppointmentsTab } from "./appointments/AppointmentsTab";
 import { RenewalDivisionHeadTab } from "./renewal/RenewalDivisionHeadTab";
+import { KeepAlivePane } from "@/lib/keepAlive";
 import { RenewalDashboardTab } from "./renewal/RenewalDashboardTab";
 import { RenewalCertificateTab } from "./renewal/RenewalCertificateTab";
 import { RenewalTaggingTab } from "./renewal/RenewalTaggingTab";
@@ -41,6 +42,10 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
   const [tab, setTab] = useState<Tab>(isEvaluator ? "applications" : isDivisionHead ? "divisionHead" : seesRenewals ? "dashboard" : isSdpApprover ? "sdpReconsideration" : isGradesApprover ? "enteredGrades" : isDocumentsApprover ? "documents" : isTagger ? "tagging" : "certificate");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  /** A tab is "shown" when it is the chosen tab and no scholar's detail page is open on top of it. */
+  const shown = (k: Tab) => !detailId && tab === k;
+  /** The tabs that do not need a renewal term (they have their own data). */
+  const NO_TERM_NEEDED: Tab[] = ["windows", "calendar", "divisionHead", "certificate", "sdpReconsideration", "enteredGrades", "documents", "tagging"];
 
   const loadWindows = useCallback(async () => {
     if (!seesRenewals && !seesList) return;
@@ -94,10 +99,9 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
       <p className="text-sm text-slate-700 mb-4">{!seesRenewals ? (isSdpApprover ? "Requests from scholars who lack SDP credits and ask, with their renewal application, to be treated as complied." : isGradesApprover ? "Grades that scholars entered themselves during renewal, waiting for your approval." : isDocumentsApprover ? "The study plans, INC letters and clearances that scholars sent for their renewal, waiting for your approval." : isTagger && !isItAdmin ? "Tag scholars for automatic renewal: a tagged scholar who applies is renewed once their grades and SDP are approved." : "The signatories and the on/off switch of the Certificate of Scholarship Renewal.") : isEvaluator ? "Review renewal applications, accept late ones, track INC subjects, send cases to the Division Head, and confirm every renewal." : isDivisionHead ? "The renewal cases that wait for your decision, and how each term is going." : "How each renewal term is going, and the Excel report."}</p>
       {error && <p role="alert" className="mb-3 text-[14px] text-red-700">Couldn't load the renewal windows: {error}</p>}
 
-      {detailId ? (
-        <RenewalDetailView recordId={detailId} canAct={canAct && isEvaluator} canReviewDocuments={false} onBack={() => setDetailId(null)} onChanged={bump} />
-      ) : (
-        <>
+      {/* A scholar's detail page opens ON TOP of the tabs: the tabs stay alive (hidden), so "Back to the list" shows the same list at once (same filters, page and scroll) with no new read. */}
+      {detailId && <RenewalDetailView recordId={detailId} canAct={canAct && isEvaluator} canReviewDocuments={false} onBack={() => setDetailId(null)} onChanged={bump} />}
+      <div hidden={!!detailId}>
           {termBarNeeded && <div className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-[#f7f9fc] border border-[#e6ecf5] rounded-xl px-4 py-3 mb-4 text-[14px]">
             <label className="font-bold text-[#062444]" htmlFor="renewal-term">Renewal term</label>
             {windows && windows.length > 0 ? (
@@ -118,25 +122,26 @@ function ScholarRenewalPageInner({ canAct = true, isEvaluator = true, isDivision
             ))}
           </div>
 
-          {tab === "certificate" && <RenewalCertificateTab />}
-          {tab === "tagging" && <RenewalTaggingTab canManage={isTagger} refreshKey={refreshKey} onChanged={bump} />}
-          {tab === "sdpReconsideration" && <RenewalSdpReconsiderationTab refreshKey={refreshKey} onChanged={bump} />}
-          {tab === "enteredGrades" && <RenewalEnteredGradesTab refreshKey={refreshKey} onChanged={bump} />}
-          {tab === "documents" && <RenewalDocumentsTab canApprove={false} refreshKey={refreshKey} onChanged={bump} />}
-          {tab === "divisionHead" && <RenewalDivisionHeadTab canDecide={isDivisionHead} onOpenRecord={setDetailId} onChanged={bump} refreshKey={refreshKey} />}
-          {tab === "calendar" && <AppointmentsTab readOnly onOpenRecord={setDetailId} />}
-          {tab === "dashboard" && current && <RenewalDashboardTab schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} canExport={seesRenewals} />}
-          {tab === "windows" && <RenewalWindowsTab windows={windows ?? []} onChanged={async () => { await loadWindows(); bump(); }} />}
-          {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && tab !== "certificate" && tab !== "sdpReconsideration" && tab !== "enteredGrades" && tab !== "documents" && tab !== "tagging" && !current && <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{isEvaluator ? "Open a renewal window first (Windows tab)." : "No renewal window has been opened yet."}</p>}
-          {tab !== "windows" && tab !== "calendar" && tab !== "divisionHead" && tab !== "certificate" && tab !== "dashboard" && tab !== "sdpReconsideration" && tab !== "enteredGrades" && tab !== "documents" && current && (
+
+          {/* Every tab the staff member opened stays alive while they look at another tab: coming back shows it at once; it reads again only when something changed meanwhile (live updates / refreshKey). */}
+          <KeepAlivePane active={shown("certificate")} refreshKey={refreshKey}>{() => <RenewalCertificateTab />}</KeepAlivePane>
+          <KeepAlivePane active={shown("tagging")} refreshKey={refreshKey}>{rk => <RenewalTaggingTab canManage={isTagger} refreshKey={rk} onChanged={bump} />}</KeepAlivePane>
+          <KeepAlivePane active={shown("sdpReconsideration")} refreshKey={refreshKey}>{rk => <RenewalSdpReconsiderationTab refreshKey={rk} onChanged={bump} />}</KeepAlivePane>
+          <KeepAlivePane active={shown("enteredGrades")} refreshKey={refreshKey}>{rk => <RenewalEnteredGradesTab refreshKey={rk} onChanged={bump} />}</KeepAlivePane>
+          <KeepAlivePane active={shown("documents")} refreshKey={refreshKey}>{rk => <RenewalDocumentsTab canApprove={false} refreshKey={rk} onChanged={bump} />}</KeepAlivePane>
+          <KeepAlivePane active={shown("divisionHead")} refreshKey={refreshKey}>{rk => <RenewalDivisionHeadTab canDecide={isDivisionHead} onOpenRecord={setDetailId} onChanged={bump} refreshKey={rk} />}</KeepAlivePane>
+          <KeepAlivePane active={shown("calendar")} refreshKey={refreshKey}>{() => <AppointmentsTab readOnly onOpenRecord={setDetailId} />}</KeepAlivePane>
+          {current && <KeepAlivePane active={shown("dashboard")} refreshKey={refreshKey}>{rk => <RenewalDashboardTab schoolYear={current.schoolYear} term={current.term} refreshKey={rk} canExport={seesRenewals} />}</KeepAlivePane>}
+          <KeepAlivePane active={shown("windows")} refreshKey={refreshKey}>{() => <RenewalWindowsTab windows={windows ?? []} onChanged={async () => { await loadWindows(); bump(); }} />}</KeepAlivePane>
+          {!current && !NO_TERM_NEEDED.includes(tab) && <p className="rounded-xl border border-dashed border-[#e6ecf5] px-4 py-8 text-center text-[14px] text-slate-700">{isEvaluator ? "Open a renewal window first (Windows tab)." : "No renewal window has been opened yet."}</p>}
+          {current && (
             <>
-              {tab === "applications" && <RenewalListTab tab="applications" schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} onGoToDocuments={() => setTab("documents")} />}
-              {tab === "renewed" && <RenewalListTab tab="renewed" schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} onGoToDocuments={() => setTab("documents")} />}
-              {tab === "notApplied" && <RenewalListTab tab="not_applied" schoolYear={current.schoolYear} term={current.term} refreshKey={refreshKey} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} onGoToDocuments={() => setTab("documents")} />}
+              <KeepAlivePane active={shown("applications")} refreshKey={refreshKey}>{rk => <RenewalListTab tab="applications" schoolYear={current.schoolYear} term={current.term} refreshKey={rk} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} onGoToDocuments={() => setTab("documents")} />}</KeepAlivePane>
+              <KeepAlivePane active={shown("renewed")} refreshKey={refreshKey}>{rk => <RenewalListTab tab="renewed" schoolYear={current.schoolYear} term={current.term} refreshKey={rk} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} onGoToDocuments={() => setTab("documents")} />}</KeepAlivePane>
+              <KeepAlivePane active={shown("notApplied")} refreshKey={refreshKey}>{rk => <RenewalListTab tab="not_applied" schoolYear={current.schoolYear} term={current.term} refreshKey={rk} viewer={viewer} onOpenRecord={setDetailId} onChanged={bump} onGoToDocuments={() => setTab("documents")} />}</KeepAlivePane>
             </>
           )}
-        </>
-      )}
+      </div>
     </div>
   );
 }

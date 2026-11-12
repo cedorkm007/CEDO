@@ -1,3 +1,4 @@
+import { KeepAlivePane, TAB_STALE_MS } from "@/lib/keepAlive";
 import { ClipboardList, FolderCheck } from "lucide-react";
 import { MyProposalsSubtab } from "./myresearch/MyProposalsSubtab";
 import { MyApprovedProjectsSubtab } from "./myresearch/MyApprovedProjectsSubtab";
@@ -40,8 +41,8 @@ export function MyResearchPage() {
         ))}
       </div>
 
-      {tab === "proposals" && <MyProposalsSubtab />}
-      {tab === "approved" && <MyApprovedProjectsSubtab />}
+      <KeepAlivePane active={tab === "proposals"} staleAfterMs={TAB_STALE_MS}>{() => <MyProposalsSubtab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "approved"} staleAfterMs={TAB_STALE_MS}>{() => <MyApprovedProjectsSubtab />}</KeepAlivePane>
     </div>
   );
 }

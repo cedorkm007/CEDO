@@ -6,6 +6,7 @@ import { ProbationMonitoringTab } from "./pages/ProbationMonitoringTab";
 import { ScholarCounselingDashboardTab } from "./pages/ScholarCounselingDashboardTab";
 import { AppointmentsTab } from "./appointments/AppointmentsTab";
 import { ScholarCounselingRenewalCasesTab } from "./pages/ScholarCounselingRenewalCasesTab";
+import { KeepAlivePane, TAB_STALE_MS } from "@/lib/keepAlive";
 
 type ScholarCounselingSubtab = "main-dashboard" | "daily-records" | "probation-monitoring" | "appointments" | "renewal-cases";
 
@@ -51,11 +52,12 @@ function ScholarCounselingToolPageInner() {
         ))}
       </div>
 
-      {tab === "main-dashboard" && <ScholarCounselingDashboardTab />}
-      {tab === "appointments" && <AppointmentsTab />}
-      {tab === "renewal-cases" && <ScholarCounselingRenewalCasesTab />}
-      {tab === "daily-records" && <ScholarCounselingTab />}
-      {tab === "probation-monitoring" && <ProbationMonitoringTab />}
+      <KeepAlivePane active={tab === "main-dashboard"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarCounselingDashboardTab />}</KeepAlivePane>
+      {/* these two follow the live updates, so they stay alive while another tab is open: coming back shows them at once and they read again only if something changed meanwhile */}
+      <KeepAlivePane active={tab === "appointments"}>{() => <AppointmentsTab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "renewal-cases"}>{() => <ScholarCounselingRenewalCasesTab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "daily-records"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarCounselingTab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "probation-monitoring"} staleAfterMs={TAB_STALE_MS}>{() => <ProbationMonitoringTab />}</KeepAlivePane>
     </div>
   );
 }

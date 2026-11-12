@@ -1,3 +1,4 @@
+import { KeepAlivePane, TAB_STALE_MS } from "@/lib/keepAlive";
 import { LayoutDashboard, ClipboardList, BarChart3 } from "lucide-react";
 import { MonitoringSubtab } from "./research/MonitoringSubtab";
 import { SurveyToolsSubtab } from "./research/SurveyToolsSubtab";
@@ -44,9 +45,9 @@ export function ResearchProjectMonitoringTab() {
         ))}
       </div>
 
-      {tab === "monitoring" && <MonitoringSubtab />}
-      {tab === "survey-tools" && <SurveyToolsSubtab />}
-      {tab === "survey-results" && <SurveyResultsSubtab />}
+      <KeepAlivePane active={tab === "monitoring"} staleAfterMs={TAB_STALE_MS}>{() => <MonitoringSubtab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "survey-tools"} staleAfterMs={TAB_STALE_MS}>{() => <SurveyToolsSubtab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "survey-results"} staleAfterMs={TAB_STALE_MS}>{() => <SurveyResultsSubtab />}</KeepAlivePane>
     </div>
   );
 }

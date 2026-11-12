@@ -1,3 +1,4 @@
+import { KeepAlivePane, TAB_STALE_MS } from "@/lib/keepAlive";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { School, Users, Pencil, Check, CalendarRange, AlertTriangle, FileSignature, Wrench, Download, SlidersHorizontal, Table2 } from "lucide-react";
 import { ScholarsGradesMonitoringSchoolsTab } from "./pages/ScholarsGradesMonitoringSchoolsTab";
@@ -172,12 +173,12 @@ export function ScholarsGradesMonitoringPage() {
         ))}
       </div>
 
-      {tab === "schools" && <ScholarsGradesMonitoringSchoolsTab period={viewPeriod} periodId={viewing?.id ?? null} />}
-      {tab === "scholars" && <ScholarsGradesMonitoringScholarsTab period={viewPeriod} periodId={viewing?.id ?? null} />}
-      {tab === "corrections" && <ScholarsGradesMonitoringCorrectionsTab />}
-      {tab === "setup" && <ScholarsGradesMonitoringSetupTab />}
-      {tab === "rules" && <ScholarsGradesMonitoringRulesTab />}
-      {tab === "cleanup" && <ScholarsGradesMonitoringCleanupTab />}
+      <KeepAlivePane active={tab === "schools"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarsGradesMonitoringSchoolsTab period={viewPeriod} periodId={viewing?.id ?? null} />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "scholars"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarsGradesMonitoringScholarsTab period={viewPeriod} periodId={viewing?.id ?? null} />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "corrections"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarsGradesMonitoringCorrectionsTab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "setup"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarsGradesMonitoringSetupTab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "rules"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarsGradesMonitoringRulesTab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "cleanup"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarsGradesMonitoringCleanupTab />}</KeepAlivePane>
 
       {exporting && <GradesExportDialog periods={periods} current={period} viewKey={effectiveKey} onClose={() => setExporting(false)} />}
 

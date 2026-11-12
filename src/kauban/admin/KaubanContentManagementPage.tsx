@@ -1,3 +1,4 @@
+import { KeepAlivePane, TAB_STALE_MS } from "@/lib/keepAlive";
 import { useState } from "react";
 import { Video, UploadCloud, LibraryBig, MessageSquareText, Siren } from "lucide-react";
 import { BatchVideoUpload } from "./BatchVideoUpload";
@@ -53,10 +54,10 @@ export function KaubanContentManagementPage() {
         </button>
       </div>
 
-      {tab === "upload" && <BatchVideoUpload />}
-      {tab === "library" && <VideoLibrary />}
-      {tab === "phrases" && <QuickPhrasesManager />}
-      {tab === "emergency" && <EmergencyContentManager />}
+      <KeepAlivePane active={tab === "upload"} staleAfterMs={TAB_STALE_MS}>{() => <BatchVideoUpload />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "library"} staleAfterMs={TAB_STALE_MS}>{() => <VideoLibrary />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "phrases"} staleAfterMs={TAB_STALE_MS}>{() => <QuickPhrasesManager />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "emergency"} staleAfterMs={TAB_STALE_MS}>{() => <EmergencyContentManager />}</KeepAlivePane>
     </div>
   );
 }

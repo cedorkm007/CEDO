@@ -1,3 +1,4 @@
+import { KeepAlivePane, TAB_STALE_MS } from "@/lib/keepAlive";
 import { useState } from "react";
 import { Users, Building2 } from "lucide-react";
 import { StaffAccountsPage } from "./StaffAccountsPage";
@@ -40,8 +41,8 @@ export function AccountsPage() {
         ))}
       </div>
 
-      {tab === "staff" && <StaffAccountsPage />}
-      {tab === "schools" && <SchoolAccountsPage />}
+      <KeepAlivePane active={tab === "staff"} staleAfterMs={TAB_STALE_MS}>{() => <StaffAccountsPage />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "schools"} staleAfterMs={TAB_STALE_MS}>{() => <SchoolAccountsPage />}</KeepAlivePane>
     </div>
   );
 }
