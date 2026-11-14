@@ -8,6 +8,7 @@ import {
   confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, fetchRenewalSdpAfter, getStaffRenewalDocumentUrl, returnRenewal, revertRenewalApplication, reviewDocument, type DetailDocument, type RenewalDetail,
 } from "../renewalApi";
 import { ReasonDialog } from "./ReasonDialog";
+import { tagSummaryText } from "@/lib/tempProbation";
 import { Thumb } from "./RenewalEnteredGradesTab";
 import { fetchRecordEnteredGrades, type RecordEnteredGrades } from "../enteredGradesApi";
 import { RenewalCsrSection } from "./RenewalCsrSection";
@@ -120,6 +121,12 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
         </Section>
       )}
 
+      {r.tempTagAt && (
+        <Section title="Temporary probation (tagged by the Grades Approver)">
+          <p>{tagSummaryText(r.tempTagDays, r.tempTagRemarks)}</p>
+          <p className="text-[13.5px] text-slate-600 mt-1">{r.stage === "renewed" ? (r.tempProbation ? "The scholar is renewed as Probationary (temporary). The INC / missing grade is followed up automatically: passed = back to Regular; failed or not complied in time = stays Probationary." : "The follow-up is finished (see the history).") : "No documents and no consultation are needed. Confirming the renewal puts the scholar on temporary probation and starts the days."}</p>
+        </Section>
+      )}
       {(r.stage === "endorsed_for_approval" || r.stage === "ready_for_endorsement" || r.endorsedStatus) && (
         <Section title="Consultation staff's endorsement">
           {r.stage === "endorsed_for_approval"

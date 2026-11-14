@@ -407,6 +407,9 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
     case "summer_requirements": upload(); consult(); if (!consultNeeded) steps.push("Waiting for the CEDO office to receive the hard copy of your prospectus."); break;
     case "returned": steps.push(opts.evaluatorComment ? `The evaluator asked: ${opts.evaluatorComment}` : "The evaluator returned your application with comments."); steps.push("Fix what was asked and press “Submit again”."); break;
     case "renewed":
+      if ((opts.incDeadlines ?? []).length > 0) {
+        for (const i of opts.incDeadlines ?? []) steps.push(i.deadline ? `Complete your INC / missing grade in ${i.subject} by ${formatDay(i.deadline)}: ${daysLeftText(daysUntil(i.deadline))}. If you pass, you go back to Regular.` : `Complete your INC / missing grade in ${i.subject}.`);
+      }
       steps.push(opts.result === "renewed_probationary"
         ? "You are renewed with Probationary status. Your Certificate of Scholarship Renewal is in the green box below."
         : opts.result === "reconsidered" ? "You are renewed with Reconsidered status. Your Certificate of Scholarship Renewal is in the green box below."
@@ -665,14 +668,20 @@ export function tidyGradeText(grade: string): string {
 export const SELF_GRADES_WARNING = "I understand that if I enter wrong or false information, it will result in disciplinary action or removal from the City Scholarship Program.";
 
 /** The same checks the database makes on the entered subjects (so a mistake is shown before sending). null = fine. */
-export function validateSelfGradeLines(lines: { code: string; subject: string; units: string; grade: string }[], rules?: GradeRules | null): string | null {
+export function validateSelfGradeLines(lines: { code: string; subject: string; units: string; grade: string; noGrade?: boolean }[], rules?: GradeRules | null): string | null {
   if (lines.length === 0) return "Enter at least one subject.";
   if (lines.length > SELF_GRADES_MAX_SUBJECTS) return `You can enter at most ${SELF_GRADES_MAX_SUBJECTS} subjects.`;
   const seen = new Set<string>();
+  let noGradeCount = 0;
   for (const [i, l] of lines.entries()) {
     const n = i + 1;
-    if (!l.code.trim() || !l.subject.trim() || !l.grade.trim()) return `Subject ${n}: the subject code, the subject name and the grade are all needed.`;
-    const gw = gradeWarning(l.grade, rules); if (gw) return `Subject ${n}: ${gw}`;
+    if (!l.code.trim() || !l.subject.trim()) return `Subject ${n}: the subject code and the subject name are both needed.`;
+    if (!l.grade.trim()) {
+      // ONE subject may have no grade yet (a lacking grade) - only when the scholar ticked "No grade yet"
+      if (!l.noGrade) return `Subject ${n}: type the grade, or tick "No grade yet" if your school has not given a grade for this subject.`;
+      noGradeCount++;
+      if (noGradeCount > 1) return "Only ONE subject can have no grade yet. Type the grade of the others.";
+    } else { const gw = gradeWarning(l.grade, rules); if (gw) return `Subject ${n}: ${gw}`; }
     const u = Number(l.units.replace(",", "."));
     if (!l.units.trim() || !Number.isFinite(u) || u <= 0 || u > MAX_SUBJECT_UNITS) return `Subject ${n}: the units must be a number from 0.5 to ${MAX_SUBJECT_UNITS}.`;
     const key = l.code.trim().toUpperCase();
