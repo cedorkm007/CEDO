@@ -9,6 +9,7 @@ import {
 import { formatDateTime, selfGradeDifferenceText, selfGradesStatusText, termLabelOf } from "@/lib/renewal";
 import { ListPagination } from "@/app/components/PaginatedList";
 import { ReasonDialog } from "./ReasonDialog";
+import { TEMP_TAG_DEFAULT_DAYS, TEMP_TAG_EXPLANATION, tagHint, tagProblem } from "@/lib/tempProbation";
 import { nextQuarter, nextZoom, turnedLayout, type Quarter } from "@/lib/pictureTurn";
 
 const TONE: Record<"good" | "bad" | "warn" | "plain", string> = {
@@ -87,6 +88,9 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
   const [notice, setNotice] = useState("");
   const [deciding, setDeciding] = useState<{ row: EnteredGradesRow; approve: boolean } | null>(null);
   const [reverting, setReverting] = useState<EnteredGradesRow | null>(null);      // an approved try whose approval the Grades Approver wants to take back
+  // the temporary probationary tag (a regular scholar with an INC or ONE missing grade): chosen inside the approve dialog
+  const [tag, setTag] = useState({ on: false, remarks: "", days: String(TEMP_TAG_DEFAULT_DAYS) });
+  const openDeciding = (row: EnteredGradesRow, approve: boolean) => { setTag({ on: false, remarks: "", days: String(TEMP_TAG_DEFAULT_DAYS) }); setDeciding({ row, approve }); };
 
   useEffect(() => { const t = setTimeout(() => { setQuery(typed); setPage(1); }, 350); return () => clearTimeout(t); }, [typed]);
   const load = useCallback(async () => {
@@ -174,8 +178,8 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
                   )}
                   {r.canDecide && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button onClick={() => { setNotice(""); setDeciding({ row: r, approve: true }); }} className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-3 py-1.5 font-bold text-white hover:bg-green-900"><CheckCircle2 size={15} aria-hidden="true" /> Approve</button>
-                      <button onClick={() => { setNotice(""); setDeciding({ row: r, approve: false }); }} className="inline-flex items-center gap-1.5 rounded-lg bg-red-700 px-3 py-1.5 font-bold text-white hover:bg-red-800"><CornerUpLeft size={15} aria-hidden="true" /> Return for correction</button>
+                      <button onClick={() => { setNotice(""); openDeciding(r, true); }} className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-3 py-1.5 font-bold text-white hover:bg-green-900"><CheckCircle2 size={15} aria-hidden="true" /> Approve</button>
+                      <button onClick={() => { setNotice(""); openDeciding(r, false); }} className="inline-flex items-center gap-1.5 rounded-lg bg-red-700 px-3 py-1.5 font-bold text-white hover:bg-red-800"><CornerUpLeft size={15} aria-hidden="true" /> Return for correction</button>
                     </div>
                   )}
                   </div>
@@ -211,16 +215,39 @@ export function RenewalEnteredGradesTab({ refreshKey, onChanged, only }: { refre
           intro={deciding.approve
             ? <>I checked that the grades of <strong>{deciding.row.name}</strong> match the screenshot. They will count as the scholar's complete grades for {termLabelOf(deciding.row.basisSchoolYear, deciding.row.basisTerm)} until the school uploads its own.</>
             : <>The scholar is told your reason and enters the grades again. The renewal keeps waiting.</>}
-          label={deciding.approve ? "Note to the scholar" : "Reason (the scholar will see this)"} confirmLabel={deciding.approve ? "Approve" : "Return"}
+          label={deciding.approve ? "Note to the scholar" : "Reason (the scholar will see this)"} confirmLabel={deciding.approve ? (tag.on ? "Approve and tag" : "Approve") : "Return"}
           required={!deciding.approve} danger={!deciding.approve} minLength={3} onCancel={() => setDeciding(null)}
+          extraValid={!(deciding.approve && tag.on) || tagProblem(tag.remarks, tag.days) === null}
           onConfirm={async reason => {
-            const r = await decideEnteredGrades(deciding.row.id, deciding.approve, reason);
+            const r = await decideEnteredGrades(deciding.row.id, deciding.approve, reason, deciding.approve && tag.on ? { remarks: tag.remarks.trim(), days: Number(tag.days) } : undefined);
             if (!r.ok) return r.error;
             setNotice(r.result === "returned" ? `Returned. ${deciding.row.name} was told.`
               : r.result === "approved_needs_setup" ? `Approved and ${deciding.row.name} was told. But this school has no passing mark yet, so the grades cannot be judged: ask Scholars' Grades Monitoring staff to set up the school's grading system.` : `Approved. ${deciding.row.name} counts as having complete grades and was told.`);
             setDeciding(null); onChanged(); await load(); only?.onDone(); return null;
           }}
-        />
+        >
+          {deciding.approve && tagHint(deciding.row.lines).canTag && (
+            <fieldset className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-[14px] text-amber-950">
+              <legend className="px-1 font-bold">INC or missing grade</legend>
+              <label className="flex items-start gap-2 font-semibold">
+                <input type="checkbox" className="mt-1" checked={tag.on} onChange={e => setTag(t => ({ ...t, on: e.target.checked }))} />
+                <span>Tag {deciding.row.name} as <strong>temporary probationary</strong> (only for a Regular scholar)</span>
+              </label>
+              <p className="mt-1 text-[13.5px]">{TEMP_TAG_EXPLANATION}</p>
+              {tag.on && (
+                <div className="mt-2 space-y-2">
+                  <label className="block font-semibold">Remarks (which subject, why)
+                    <textarea value={tag.remarks} onChange={e => setTag(t => ({ ...t, remarks: e.target.value }))} rows={2} maxLength={500} className="mt-1 w-full rounded-lg border border-[#062444]/25 bg-white px-3 py-2 text-[14px] font-normal outline-none focus:border-[#062444]" />
+                  </label>
+                  <label className="block font-semibold">Days to comply after the renewal
+                    <input value={tag.days} onChange={e => setTag(t => ({ ...t, days: e.target.value.replace(/\D/g, "").slice(0, 3) }))} inputMode="numeric" className="mt-1 w-24 rounded-lg border border-[#062444]/25 bg-white px-3 py-2 text-[14px] font-normal outline-none focus:border-[#062444]" />
+                  </label>
+                  {tagProblem(tag.remarks, tag.days) && <p role="status" className="text-[13.5px] text-amber-900">{tagProblem(tag.remarks, tag.days)}</p>}
+                </div>
+              )}
+            </fieldset>
+          )}
+        </ReasonDialog>
       )}
     </div>
   );

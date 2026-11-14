@@ -5,7 +5,7 @@ import { makeReadable, unreadablePictureText } from "@/lib/uploadResilience";
 import { gradeWarning, rowsWithWarnings, unitsWarning, type GradeRules } from "@/lib/gradeCheck";
 import { useMyGradeRules } from "../../useMyGradeRules";
 
-export interface GradeFormRow { code: string; subject: string; units: string; grade: string }
+export interface GradeFormRow { code: string; subject: string; units: string; grade: string; /** ticked when the school has not given a grade for this subject yet (only ONE subject) */ noGrade?: boolean }
 export const emptyGradeRow = (): GradeFormRow => ({ code: "", subject: "", units: "", grade: "" });
 export interface GradeFormFile { name: string; path: string }
 
@@ -55,8 +55,12 @@ export function SelfGradesForm({ basis, rows, setRows, keep, setKeep, newFiles, 
             <input value={r.code} onChange={e => setRow(i, { code: e.target.value })} placeholder="Subject code" aria-label={`Subject ${i + 1} code`} maxLength={30} className={inputCls} />
             <input value={r.subject} onChange={e => setRow(i, { subject: e.target.value })} placeholder="Subject name" aria-label={`Subject ${i + 1} name`} maxLength={150} className={`${inputCls} col-span-2 sm:col-span-1`} />
             <input value={r.units} onChange={e => setRow(i, { units: e.target.value })} placeholder="Units" aria-label={`Subject ${i + 1} units`} inputMode="decimal" maxLength={5} aria-invalid={!!issues[i].units} aria-describedby={issues[i].units ? `gw-u-${i}` : undefined} className={`${inputCls} ${issues[i].units ? "!border-red-500 bg-red-50" : ""}`} />
-            <input value={r.grade} onChange={e => setRow(i, { grade: e.target.value })} placeholder="Grade" aria-label={`Subject ${i + 1} grade`} maxLength={12} aria-invalid={!!issues[i].grade} aria-describedby={issues[i].grade ? `gw-g-${i}` : undefined} className={`${inputCls} ${issues[i].grade ? "!border-red-500 bg-red-50" : ""}`} />
+            <input value={r.grade} onChange={e => setRow(i, { grade: e.target.value, noGrade: false })} disabled={!!r.noGrade} placeholder={r.noGrade ? "No grade yet" : "Grade"} aria-label={`Subject ${i + 1} grade`} maxLength={12} aria-invalid={!!issues[i].grade} aria-describedby={issues[i].grade ? `gw-g-${i}` : undefined} className={`${inputCls} ${issues[i].grade ? "!border-red-500 bg-red-50" : ""}`} />
             <button type="button" onClick={() => setRows(rows.length === 1 ? [emptyGradeRow()] : rows.filter((_, j) => j !== i))} aria-label={`Remove subject ${i + 1}`} className="flex items-center justify-center rounded-lg border border-[#062444]/25 px-2 text-[#062444] hover:bg-[#f7f9fc]"><Trash2 size={15} aria-hidden="true" /></button>
+            <label className="col-span-full flex items-center gap-2 text-[13.5px] text-slate-800">
+              <input type="checkbox" checked={!!r.noGrade} onChange={e => setRow(i, { noGrade: e.target.checked, grade: "" })} disabled={!r.noGrade && rows.some((x, j) => j !== i && x.noGrade)} />
+              No grade yet for this subject (my school has not given one)
+            </label>
             {(issues[i].grade || issues[i].units) && (
               <div className="col-span-full space-y-0.5 text-[13.5px] font-semibold text-red-800" role="alert">
                 {issues[i].grade && <p id={`gw-g-${i}`}>Subject {i + 1} grade: {issues[i].grade}</p>}
@@ -66,6 +70,7 @@ export function SelfGradesForm({ basis, rows, setRows, keep, setKeep, newFiles, 
           </div>
         ))}
       </div>
+      {rows.some(r => r.noGrade) && <p role="status" className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-[14px] text-sky-950">You marked a subject as having no grade yet. If you are a Regular scholar, the Grades Approver may tag you as <strong>temporary probationary</strong>: you will be renewed, and after the renewal you will be given some days to get that grade.</p>}
       <EnteredGwaLine lines={rows} className="!mt-0" />
       <button type="button" onClick={() => setRows([...rows, emptyGradeRow()])} disabled={rows.length >= SELF_GRADES_MAX_SUBJECTS} className="inline-flex items-center gap-1.5 font-semibold text-[#00709f] hover:underline disabled:opacity-50"><Plus size={14} aria-hidden="true" /> Add a subject</button>
 

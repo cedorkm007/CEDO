@@ -54,8 +54,10 @@ export async function fetchEnteredGradesCounts(): Promise<{ ok: true; counts: En
 }
 
 /** Approve or return. Returning needs a reason. Result: "approved", "approved_needs_setup" (approved, but the school's grading system has no passing mark yet) or "returned". */
-export async function decideEnteredGrades(id: string, approve: boolean, note: string): Promise<{ ok: true; result: string } | { ok: false; error: string }> {
-  const { data, error } = await supabase.rpc("renewal_self_grades_decide", { p_submission_id: id, p_approve: approve, p_note: note });
+export async function decideEnteredGrades(id: string, approve: boolean, note: string, tag?: { remarks: string; days: number }): Promise<{ ok: true; result: string } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("renewal_self_grades_decide", tag
+    ? { p_submission_id: id, p_approve: approve, p_note: note, p_tag: true, p_tag_remarks: tag.remarks, p_tag_days: tag.days }
+    : { p_submission_id: id, p_approve: approve, p_note: note });
   return error ? { ok: false, error: error.message } : { ok: true, result: str(data) };
 }
 

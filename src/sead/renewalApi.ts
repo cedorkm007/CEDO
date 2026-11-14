@@ -201,6 +201,8 @@ export interface RenewalDetail {
     divisionHeadDecision: string | null; divisionHeadDecidedAt: string | null; divisionHeadNote: string | null;
     /** The status the consultation staff endorsed (waiting for the evaluator's approval), if any. */
     endorsedStatus: string | null;
+    /** The temporary probationary tag of the Grades Approver (an INC or one missing grade), if any. */
+    tempTagAt: string | null; tempTagDays: number | null; tempTagRemarks: string | null;
   };
   scholar: { scholarIdNumber: string; name: string; school: string; program: string; yearLevel: string; status: string; contactNo: string };
   evaluation: RenewalEvaluation;
@@ -238,6 +240,7 @@ export async function fetchRenewalDetail(recordId: string): Promise<{ ok: true; 
         consultationRequired: !!r.consultation_required, consultationDoneAt: strOrNull(r.consultation_done_at), hardCopyReceivedAt: strOrNull(r.hard_copy_received_at), noShow: !!r.no_show_flag, tempProbation: !!r.temp_probation,
         evaluatorComment: strOrNull(r.evaluator_comment), confirmedAt: strOrNull(r.confirmed_at), result: strOrNull(r.result), notRequiredReason: strOrNull(r.not_required_reason),
         divisionHeadDecision: strOrNull(r.division_head_decision), divisionHeadDecidedAt: strOrNull(r.division_head_decided_at), divisionHeadNote: strOrNull(r.division_head_note), endorsedStatus: strOrNull(r.endorsed_status),
+        tempTagAt: strOrNull(r.temp_tag_at), tempTagDays: r.temp_tag_days == null ? null : Number(r.temp_tag_days), tempTagRemarks: strOrNull(r.temp_tag_remarks),
       },
       scholar: { scholarIdNumber: str(s.scholar_id_number), name: str(s.name), school: str(s.school), program: str(s.program), yearLevel: str(s.year_level), status: str(s.status), contactNo: str(s.contact_no) },
       evaluation: (d.evaluation ?? {}) as RenewalEvaluation,
