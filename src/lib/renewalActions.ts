@@ -110,7 +110,7 @@ export function renewalSummary(row: ActionRowInput, facts: ScholarActionFacts | 
  */
 export function canReferForConsultation(row: Pick<ActionRowInput, "failed" | "drp" | "inc">, facts: ScholarActionFacts | null): boolean {
   if (!facts || !facts.recordId) return false;
-  if (!(row.failed > 0 || row.drp > 0 || row.inc > 0)) return false;
+  if (!(row.failed > 0 || row.drp > 0 || row.inc > 0 || facts.stage === "needs_gwa_consultation")) return false;
   if (facts.nextConsultation) return false;      // a consultation is already booked
   if (facts.consultationDoneAt) return false;      // the consultation staff already marked the scholar as attended
   return !["renewed", "removed", "late_declined", "late_pending", "returned", "ready_for_endorsement", "endorsed_for_approval"].includes(facts.stage ?? "");

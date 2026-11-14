@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, Pencil, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw, UserX } from "lucide-react";
+import { GraduationCap, Search, UserPlus, KeyRound, ChevronLeft, ChevronRight, UploadCloud, Trash2, FilePenLine, Pencil, AlertTriangle, X, Users, Info, SlidersHorizontal, Filter, RotateCcw, UserX } from "lucide-react";
 import { fetchScholars, resetScholarPassword, resetAllScholarPasswords, deleteScholarAccount, removeScholarAccount, updateScholarStatus, SCHOLARS_PAGE_SIZE, fetchScholarsInformationPage, fetchAllScholarsInformationForExport, type ScholarInformationRow, type ScholarInformationFilters, type ScholarInformationEmptyableField } from "../seadApi";
 import { AddScholarModal } from "../components/AddScholarModal";
 import { TemporaryPasswordNotice, type TemporaryCredential } from "@/app/components/TemporaryPasswordNotice";
@@ -15,8 +15,9 @@ import { SCHOLARSHIP_STATUSES, EDITABLE_SCHOLARSHIP_STATUSES, type ScholarListIt
 import { useSortState, SortableTh } from "@/app/components/SortableTable";
 import { ExportButtonGroup, type ExportFormat } from "@/app/components/ExportButtons";
 import { formatPersonName } from "@/lib/personName";
+import { ScholarsGradesAcademicSubtab } from "./ScholarsGradesAcademicSubtab";
 
-type ScholarsSubtab = "account" | "information";
+type ScholarsSubtab = "account" | "information" | "academic";
 
 export function ScholarsTab() {
   const [subtab, setSubtab] = useState<ScholarsSubtab>("account");
@@ -31,8 +32,12 @@ export function ScholarsTab() {
           className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-bold ${subtab === "information" ? "bg-[#062444] text-white" : "bg-white border border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
           <Info size={14} /> Scholars Information
         </button>
+        <button onClick={() => setSubtab("academic")}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-bold ${subtab === "academic" ? "bg-[#062444] text-white" : "bg-white border border-[#e6ecf5] text-slate-500 hover:bg-[#f8fafd]"}`}>
+          <GraduationCap size={14} /> Grades and Academic Management
+        </button>
       </div>
-      {subtab === "account" ? <ScholarsAccountSubtab /> : <ScholarsInformationSubtab />}
+      {subtab === "account" ? <ScholarsAccountSubtab /> : subtab === "information" ? <ScholarsInformationSubtab /> : <ScholarsGradesAcademicSubtab />}
     </div>
   );
 }
@@ -289,6 +294,7 @@ const INFO_COLUMNS: { key: keyof ScholarInformationRow; label: string }[] = [
   { key: "status", label: "Scholarship Status" },
   { key: "barangay", label: "Barangay" },
   { key: "course", label: "Program" },
+  { key: "academicStatus", label: "Academic Status" },
   { key: "birthday", label: "Age" }, // displayed as a computed age, stored/fetched as birthday
   { key: "civilStatus", label: "Civil Status" },
   { key: "contactNo", label: "Contact Number" },

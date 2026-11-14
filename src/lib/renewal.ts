@@ -15,7 +15,7 @@ export const RENEWAL_STAGES = [
   "ready_to_endorse", "endorsed_division_head", "needs_study_plan_consultation", "needs_consultation_division_head", "needs_inc_letter_consultation",
   "inc_waiting_compliance", "inc_deadline_passed", "summer_requirements",
   "returned", "renewed", "removed", "reconsidered", "division_head_approved", "not_required",
-  "ready_for_endorsement", "endorsed_for_approval",
+  "ready_for_endorsement", "endorsed_for_approval", "needs_gwa_consultation",
 ] as const;
 export type RenewalStage = (typeof RENEWAL_STAGES)[number];
 
@@ -45,6 +45,7 @@ export const STAGE_INFO: Record<RenewalStage, { title: string; tone: StageTone; 
   not_required: { title: "Not required this term", tone: "neutral", short: "Not required" },
   ready_for_endorsement: { title: "Ready for the consultation staff to endorse", tone: "success", short: "Ready to endorse" },
   endorsed_for_approval: { title: "Endorsed — waiting for the evaluator's approval", tone: "info", short: "Endorsed — to approve" },
+  needs_gwa_consultation: { title: "Needs a consultation (GWA below the passing GWA)", tone: "info", short: "Consultation (GWA)" },
 };
 
 export function stageTitle(stage: string): string {
@@ -54,7 +55,7 @@ export function stageTitle(stage: string): string {
 /** Stages whose application is still open (the evaluator can return it; the rules may still move it). */
 export const ACTIVE_STAGES: readonly RenewalStage[] = [
   "submitted", "sdp_on_hold", "waiting_grades", "review_needed", "ready_for_confirmation", "ready_to_endorse", "ready_for_endorsement", "needs_study_plan_consultation",
-  "needs_consultation_division_head", "needs_inc_letter_consultation", "inc_waiting_compliance", "inc_deadline_passed", "summer_requirements",
+  "needs_consultation_division_head", "needs_inc_letter_consultation", "inc_waiting_compliance", "inc_deadline_passed", "summer_requirements", "needs_gwa_consultation",
 ];
 export const CLOSED_STAGES: readonly RenewalStage[] = ["renewed", "removed", "late_declined", "not_required"];
 export const isActiveStage = (stage: string): boolean => (ACTIVE_STAGES as readonly string[]).includes(stage);
@@ -65,7 +66,7 @@ export const BOARD_GROUPS: { key: string; label: string; stages: readonly Renewa
   { key: "to_confirm", label: "Ready for the evaluator", stages: ["ready_for_confirmation", "endorsed_for_approval", "ready_to_endorse", "reconsidered", "division_head_approved"] },
   { key: "late", label: "Late — needs acceptance", stages: ["late_pending"] },
   { key: "on_hold", label: "On hold / waiting", stages: ["sdp_on_hold", "waiting_grades", "review_needed"] },
-  { key: "consult", label: "Needs documents + consultation", stages: ["needs_study_plan_consultation", "ready_for_endorsement", "needs_inc_letter_consultation", "summer_requirements", "submitted"] },
+  { key: "consult", label: "Needs documents + consultation", stages: ["needs_study_plan_consultation", "needs_gwa_consultation", "ready_for_endorsement", "needs_inc_letter_consultation", "summer_requirements", "submitted"] },
   { key: "dh", label: "Division Head decision", stages: ["needs_consultation_division_head", "endorsed_division_head"] },
   { key: "inc", label: "INC", stages: ["inc_waiting_compliance", "inc_deadline_passed"] },
   { key: "returned", label: "Returned", stages: ["returned"] },
@@ -308,6 +309,8 @@ export interface RenewalEvaluation {
   required_documents?: { kind: DocKind; label: string; satisfied: boolean; approved?: boolean }[];
   /** True when the case follows the consultation-staff route (no Division Head): consultation, documents approved by the consultation staff, the staff endorse a status, the evaluator approves. */
   consult_route?: boolean;
+  /** The scholar's GWA of the semester the renewal looks at (standard scale, 1.00 best), the passing GWA of the scholar's program group, and whether the GWA is worse (then a consultation is needed). */
+  gwa?: number | null; passing_gwa?: number | null; low_gwa?: boolean;
   consultation_required?: boolean; consultation_done?: boolean;
   /** Set by the database when the application form can carry the scholar's grades (supabase_migration_entered_grades_d_apply_flow.sql is installed). */
   grades_in_form?: boolean;
@@ -396,6 +399,11 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
     case "submitted": steps.push("We are checking your SDP and grades. This only takes a moment."); break;
     case "ready_for_confirmation": steps.push("Waiting for evaluator confirmation."); break;
     case "ready_to_endorse": steps.push("Waiting for the evaluator to review your case and send it to the Division Head for approval."); break;
+    case "needs_gwa_consultation":
+      steps.push(`Your GWA${ev?.gwa != null ? ` (${Number(ev.gwa).toFixed(2)})` : ""} is below the passing GWA of your program${ev?.passing_gwa != null ? ` (${Number(ev.passing_gwa).toFixed(2)})` : ""}, so a consultation is needed. No documents are needed.`);
+      consult();
+      if (consultNeeded) steps.push("After your consultation, the evaluator confirms your renewal.");
+      break;
     case "ready_for_endorsement": steps.push("Your consultation is done and your documents are approved. The consultation staff will now endorse your new scholarship status."); steps.push("Nothing to do right now."); break;
     case "endorsed_for_approval": steps.push("The consultation staff endorsed your new scholarship status. The Scholar Renewal evaluator will approve it, and then you are renewed. We will tell you the result."); steps.push("Nothing to do right now."); break;
     case "endorsed_division_head": steps.push("The evaluator sent your case to the Division Head for approval. We will tell you the result."); steps.push("Nothing to do right now."); break;
