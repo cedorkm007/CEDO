@@ -200,7 +200,7 @@ export async function flagRenewalProblem(recordId: string, note: string): Promis
 }
 
 // ── Consultation booking ──
-/** Open 10-minute slots of ALL consultation staff, at least 12 hours from now. */
+/** Open 10-minute slots of ALL consultation staff, at least 1 hour from now (the same day counts). */
 export async function fetchOpenSlots(recordId: string): Promise<{ ok: true; slots: OpenSlot[] } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("renewal_open_slots", { p_record_id: recordId });
   if (error) return { ok: false, error: error.message };

@@ -181,8 +181,10 @@ export function daysLeftText(days: number | null): string {
 }
 
 // ── Consultation appointments ──
-/** A scholar can book, change or cancel a consultation only while it is at least this many hours away. */
+/** A scholar can CHANGE or CANCEL a consultation only while it is at least this many hours away. */
 export const CONSULT_CHANGE_CUTOFF_HOURS = 12;
+/** A consultation can be BOOKED for any morning or afternoon that still has room at least this many minutes from now: so also on the same day (the database uses the same lead: _consult_lead()). */
+export const CONSULT_BOOK_LEAD_MINUTES = 60;
 export const SLOT_MINUTES = 10;
 
 /** A consultation is booked for a morning (AM, before noon) or an afternoon (PM), Philippine time. The database uses the same rule (_consult_half). */

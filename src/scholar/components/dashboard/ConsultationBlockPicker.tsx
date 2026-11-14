@@ -117,7 +117,7 @@ export function ConsultationBlockPicker({ recordId, reschedule, currentType, ref
 
       {typeKey && !blocks && !error && <p className="text-[14px] text-slate-600 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading the available days…</p>}
       {blocks && blocks.length === 0 && !error && (
-        <p className="text-[14px] text-slate-700">There is no room for this type of consultation right now (a day must be at least 12 hours away). Please check again later — the CEDO staff add availability regularly.</p>
+        <p className="text-[14px] text-slate-700">There is no room for this type of consultation right now (a morning or afternoon must still have time left, at least 1 hour from now; today counts too). Please check again later — the CEDO staff add availability regularly.</p>
       )}
       {blocks && blocks.length > 0 && shownDay && (
         <>

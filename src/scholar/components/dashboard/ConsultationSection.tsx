@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, CalendarPlus, Loader2 } from "lucide-react";
-import { CONSULT_CHANGE_CUTOFF_HOURS, consultBlockedBy, formatSlot, formatTimeOnly, groupSlotsByDay } from "@/lib/renewal";
+import { CONSULT_BOOK_LEAD_MINUTES, CONSULT_CHANGE_CUTOFF_HOURS, consultBlockedBy, formatSlot, formatTimeOnly, groupSlotsByDay } from "@/lib/renewal";
 import { ConsultationBlockPicker } from "./ConsultationBlockPicker";
 import { bookConsultation, cancelConsultation, fetchOpenSlots, rescheduleConsultation, type MyRenewalWindow, type OpenSlot } from "../../renewalApi";
 
@@ -102,7 +102,7 @@ function SlotPicker({ recordId, reschedule, onCancel, onDone }: { recordId: stri
   return (
     <div className="mt-3 border-t border-[#e6ecf5] pt-3">
       {!slots && !error && <p className="text-[14px] text-slate-600 flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading the available times…</p>}
-      {slots && slots.length === 0 && <p className="text-[14px] text-slate-700">There are no open times right now (times must be at least {CONSULT_CHANGE_CUTOFF_HOURS} hours away). Please check again later — the CEDO staff add new times regularly.</p>}
+      {slots && slots.length === 0 && <p className="text-[14px] text-slate-700">There are no open times right now (a time must be at least {CONSULT_BOOK_LEAD_MINUTES / 60} hour away, so today counts too). Please check again later — the CEDO staff add new times regularly.</p>}
       {slots && slots.length > 0 && today && (
         <>
           <p className="text-[14px] font-semibold text-[#062444] mb-1.5">Choose a day</p>
