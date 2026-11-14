@@ -1,0 +1,423 @@
+-- undo_academic_per_school.sql: back to ONE passing GWA for everybody and programs without a school (the first version). The per-school tables and their data are KEPT.
+begin;
+
+drop function if exists public.academic_settings_get(uuid);
+drop function if exists public.academic_settings_save(uuid, numeric, numeric);
+drop function if exists public.academic_program_save(uuid, text, text, numeric);
+drop function if exists public.academic_status_map();
+drop function if exists public._academic_check_gwa(uuid, numeric);
+
+create or replace function public._scholar_academic(p_scholar text)
+returns table(academic_status text, is_set boolean, passing_gwa numeric, special boolean)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(ap.academic_status, 'academic'), ap.program_key is not null,
+         coalesce(ap.special_passing_gwa, case coalesce(ap.academic_status, 'academic') when 'non_academic' then g.non_academic_passing_gwa else g.academic_passing_gwa end),
+         ap.special_passing_gwa is not null
+  from public.scholars s
+  cross join public.academic_gwa_settings g
+  left join public.academic_programs ap on ap.program_key = public._program_key(s.course)
+  where s.scholar_id_number = p_scholar;
+$$;
+revoke all on function public._scholar_academic(text) from public, anon, authenticated;
+create or replace function public.academic_settings_get()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  g public.academic_gwa_settings%rowtype;
+begin
+  perform public._academic_require_manager();
+  select * into g from public.academic_gwa_settings where id;
+  return jsonb_build_object(
+    'academic_passing_gwa', g.academic_passing_gwa, 'non_academic_passing_gwa', g.non_academic_passing_gwa, 'updated_at', g.updated_at,
+    'programs', coalesce((
+      select jsonb_agg(jsonb_build_object('key', p.k, 'program', p.name, 'scholars', p.n, 'academic_status', ap.academic_status, 'special_passing_gwa', ap.special_passing_gwa, 'is_set', ap.program_key is not null) order by p.name)
+      from (
+        select public._program_key(s.course) as k, (array_agg(btrim(s.course) order by length(btrim(s.course)) desc))[1] as name, count(*)::int as n
+        from public.scholars s where nullif(btrim(coalesce(s.course, '')), '') is not null and s.status not in ('Removed')
+        group by public._program_key(s.course)
+      ) p
+      left join public.academic_programs ap on ap.program_key = p.k), '[]'::jsonb),
+    'schools_not_standard', coalesce((
+      select jsonb_agg(jsonb_build_object('school', sc.name, 'scholars', n.c, 'scale', coalesce(cf.scale_min::text || ' to ' || cf.scale_max::text || ', ' || replace(cf.direction, '_', ' '), 'no grading setup')) order by sc.name)
+      from public.schools sc
+      left join public.school_grading_configs cf on cf.school_id = sc.id
+      join lateral (select count(*)::int as c from public.scholars s where s.school_id = sc.id and s.status not in ('Removed')) n on n.c > 0
+      where cf.school_id is null or cf.scale_min <> 1 or cf.scale_max <> 5 or cf.direction <> 'lower_is_better'), '[]'::jsonb));
+end;
+$$;
+revoke all on function public.academic_settings_get() from public, anon;
+grant execute on function public.academic_settings_get() to authenticated;
+create or replace function public.academic_settings_save(p_academic numeric, p_non_academic numeric)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform public._academic_require_manager();
+  if (p_academic is not null and (p_academic < 1 or p_academic > 5)) or (p_non_academic is not null and (p_non_academic < 1 or p_non_academic > 5)) then
+    raise exception 'A passing GWA is a number from 1.00 to 5.00 (1.00 is the best).';
+  end if;
+  update public.academic_gwa_settings set academic_passing_gwa = p_academic, non_academic_passing_gwa = p_non_academic, version = version + 1, updated_by = auth.uid(), updated_at = now() where id;
+  insert into public.academic_settings_audit (by_label, what) values (public._actor_name(), 'Passing GWA: Academic ' || coalesce(to_char(p_academic, 'FM0.00'), 'not set') || ', Non-academic ' || coalesce(to_char(p_non_academic, 'FM0.00'), 'not set'));
+end;
+$$;
+revoke all on function public.academic_settings_save(numeric, numeric) from public, anon;
+grant execute on function public.academic_settings_save(numeric, numeric) to authenticated;
+create or replace function public.academic_program_save(p_program text, p_status text, p_special numeric default null)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_key text := public._program_key(p_program);
+begin
+  perform public._academic_require_manager();
+  if v_key = '' then raise exception 'Choose a program.'; end if;
+  if p_status is not null and p_status not in ('academic', 'non_academic') then raise exception 'The academic status is Academic or Non-academic.'; end if;
+  if p_special is not null and (p_special < 1 or p_special > 5) then raise exception 'A passing GWA is a number from 1.00 to 5.00 (1.00 is the best).'; end if;
+  if p_status is null then
+    delete from public.academic_programs where program_key = v_key;
+  else
+    insert into public.academic_programs (program_key, program, academic_status, special_passing_gwa, updated_by, updated_at)
+    values (v_key, btrim(p_program), p_status, p_special, auth.uid(), now())
+    on conflict (program_key) do update set program = excluded.program, academic_status = excluded.academic_status, special_passing_gwa = excluded.special_passing_gwa, updated_by = excluded.updated_by, updated_at = excluded.updated_at;
+  end if;
+  update public.academic_gwa_settings set version = version + 1, updated_at = now() where id;
+  insert into public.academic_settings_audit (by_label, what) values (public._actor_name(), 'Program ' || btrim(p_program) || ': ' || coalesce(case p_status when 'academic' then 'Academic' else 'Non-academic' end, 'not set') || coalesce(', own passing GWA ' || to_char(p_special, 'FM0.00'), ''));
+end;
+$$;
+revoke all on function public.academic_program_save(text, text, numeric) from public, anon;
+grant execute on function public.academic_program_save(text, text, numeric) to authenticated;
+create or replace function public.academic_status_map()
+returns table(program_key text, academic_status text)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_cedo_staff() then raise exception 'Not authorized.'; end if;
+  return query select ap.program_key, ap.academic_status from public.academic_programs ap;
+end;
+$$;
+revoke all on function public.academic_status_map() from public, anon;
+grant execute on function public.academic_status_map() to authenticated;
+create or replace function public._renewal_evaluate(p_scholar_id_number text, p_school_year text, p_term text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_scholar public.scholars%rowtype;
+  v_rec public.renewal_records%rowtype;
+  v_b_year text;
+  v_b_term text;
+  v_summer boolean := (p_term = 'Summer');
+  v_sdp record;
+  v_rc public.sdp_reconsideration_requests%rowtype;
+  v_req jsonb;
+  v_next record;
+  v_self public.renewal_self_grade_submissions%rowtype;
+  v_use_self boolean := false;
+  v_sdp_json jsonb := jsonb_build_object('applicable', not v_summer, 'complied', null, 'missing', null);
+  v_sdp_ok boolean := true;
+  v_period_id uuid;
+  v_submitted boolean := false;
+  v_school_sub boolean := false;
+  v_state text := 'ready';
+  v_reason text := '';
+  v_total integer := 0;  v_passed integer := 0;  v_failed integer := 0;  v_drp integer := 0;  v_inc integer := 0;
+  v_review integer := 0; v_ungraded integer := 0; v_nopm integer := 0;
+  v_failed_list jsonb := '[]'::jsonb;  v_inc_list jsonb := '[]'::jsonb;  v_review_list jsonb := '[]'::jsonb;
+  g record;
+  v_outcome text;
+  v_school uuid;
+  v_item public.renewal_inc_items%rowtype;
+  v_counted_failed integer := 0;
+  v_inc_open integer := 0;
+  v_inc_open_without_deadline integer := 0;
+  v_inc_overdue integer := 0;
+  v_prev boolean;
+  v_failed_eff integer;
+  v_c boolean;
+  v_b boolean;
+  v_docs jsonb := '[]'::jsonb;
+  v_need_study boolean := false;
+  v_need_inc boolean := false;
+  v_docs_complete boolean := true;
+  v_need_clear boolean := false;  v_clear_have integer := 0;  v_clear_approved integer := 0;
+  v_study_have integer := 0;  v_inc_have integer := 0;  v_prosp_have integer := 0;  v_study_approved integer := 0;  v_inc_approved integer := 0;
+  v_consult_done boolean := false;
+  v_hard_copy boolean := false;
+  v_consult_required boolean := false;
+  v_stage text;
+  v_code text;
+  v_text text;
+  v_legacy boolean := false;
+  v_tag boolean := false;
+  v_gwa numeric;
+  v_pass numeric;
+  v_low_gwa boolean := false;
+begin
+  select * into v_scholar from public.scholars where scholar_id_number = p_scholar_id_number;
+  if not found then return jsonb_build_object('error', 'Scholar not found.'); end if;
+  select * into v_rec from public.renewal_records where scholar_id_number = p_scholar_id_number and school_year = p_school_year and term = p_term;
+  -- the Grades Approver tagged this scholar as temporary probationary (an INC or one missing grade): see renewal_tag_temp_probation()
+  v_tag := v_rec.id is not null and v_rec.temp_tag_at is not null;
+
+  select b.basis_school_year, b.basis_term into v_b_year, v_b_term from public._renewal_basis(p_school_year, p_term) b;
+  v_prev := public.scholar_had_regular_probation(p_scholar_id_number);
+
+  -- SDP (1st and 2nd Semester only), checked for the basis semester.
+  if not v_summer then
+    select * into v_sdp from public._sdp_compliance(v_b_year, v_b_term, p_scholar_id_number) limit 1;
+    if found then
+      v_sdp_ok := coalesce(v_sdp.complied, false);
+      v_sdp_json := jsonb_build_object('applicable', true, 'complied', v_sdp.complied, 'missing', v_sdp.missing,
+        'community_service', v_sdp.community_service, 'community_volunteerism', v_sdp.community_volunteerism, 'formation_program', v_sdp.formation_program);
+    else
+      v_sdp_ok := false;
+      v_sdp_json := jsonb_build_object('applicable', true, 'complied', false, 'missing', 'No SDP record found');
+    end if;
+    -- what each category needs (3, plus what the scholar owes for this semester), what is lacking, and the semester after (where a reconsideration's lacking credits are added)
+    v_req := public._sdp_required_map(p_scholar_id_number, v_b_year, v_b_term);
+    select n.school_year, n.semester into v_next from public._sdp_next_semester(v_b_year, v_b_term) n;
+    v_sdp_json := v_sdp_json || jsonb_build_object('required', v_req,
+      'lacking', jsonb_build_object(
+        'community_service', greatest(0, (v_req ->> 'community_service')::integer - coalesce((v_sdp_json ->> 'community_service')::integer, 0)),
+        'community_volunteerism', greatest(0, (v_req ->> 'community_volunteerism')::integer - coalesce((v_sdp_json ->> 'community_volunteerism')::integer, 0)),
+        'formation_program', greatest(0, (v_req ->> 'formation_program')::integer - coalesce((v_sdp_json ->> 'formation_program')::integer, 0))),
+      'next_school_year', v_next.school_year, 'next_semester', v_next.semester);
+  end if;
+  -- the scholar's SDP reconsideration request for this term, if there is one (an approved one already made the check above say "complied")
+  select * into v_rc from public.sdp_reconsideration_requests r where r.scholar_id_number = p_scholar_id_number and r.school_year = p_school_year and r.term = p_term;
+  if found then
+    v_sdp_json := v_sdp_json || jsonb_build_object('reconsideration', jsonb_build_object('id', v_rc.id, 'status', v_rc.status, 'requested_at', v_rc.requested_at,
+      'decided_at', v_rc.decided_at, 'note', v_rc.decision_note, 'lacking', v_rc.lacking));
+    if v_rc.status = 'approved' then v_sdp_json := v_sdp_json || jsonb_build_object('by_reconsideration', true); end if;
+  end if;
+
+  -- Grades for the basis semester: has the school submitted it?
+  select p.id into v_period_id from public.academic_periods p where p.school_year = v_b_year and p.term = v_b_term;
+  if v_scholar.school_id is null then
+    v_state := 'review'; v_reason := 'The scholar is not linked to a school.';
+  else
+    select exists (
+      select 1 from public.school_period_submissions s
+      where s.school_id = v_scholar.school_id and s.period_id = v_period_id and s.status = 'submitted'
+    ) into v_school_sub;
+    -- the school's grades count for THIS scholar only when the school submitted the semester AND recorded at least one graded subject for the scholar
+    -- (a school can submit a semester without a single grade for this scholar: then the scholar must enter their own, like when the school has not submitted)
+    v_submitted := v_school_sub and exists (
+      select 1 from public.scholar_subjects_grades r
+      where r.scholar_id_number = p_scholar_id_number and r.school_year = v_b_year and r.semester = v_b_term and nullif(btrim(coalesce(r.grade, '')), '') is not null);
+    -- the grades the scholar entered in the portal for this semester (the newest try that is waiting or approved)
+    select * into v_self from public.renewal_self_grade_submissions e where e.scholar_id_number = p_scholar_id_number and e.basis_school_year = v_b_year and e.basis_term = v_b_term
+      and e.status in ('pending', 'approved') order by e.version desc limit 1;
+    if not v_submitted then
+      if v_self.status = 'approved' then
+        v_use_self := true;     -- the school has not uploaded yet: the entered grades the Grades Approver approved count as the scholar's grades
+      elsif v_self.status = 'pending' then
+        v_state := 'waiting';
+        v_reason := 'The grades you entered for ' || public._renewal_term_label(v_b_year, v_b_term) || ' are waiting for the Grades Approver.';
+      else
+        v_state := 'waiting';
+        v_reason := case when v_school_sub then 'Your school has submitted its grades but has none recorded for you for ' || public._renewal_term_label(v_b_year, v_b_term) || ' yet.'
+                         else 'Your school has not submitted its grades for ' || public._renewal_term_label(v_b_year, v_b_term) || ' yet.' end;
+      end if;
+    end if;
+  end if;
+
+  if v_state = 'ready' or v_state = 'waiting' then
+    for g in
+      select r.id, r.subject_code, r.subject, r.grade, r.recorded_by_school_id
+      from public.scholar_subjects_grades r
+      where not v_use_self and r.scholar_id_number = p_scholar_id_number and r.school_year = v_b_year and r.semester = v_b_term
+      union all
+      select l.id, l.subject_code, l.subject, l.grade, null::uuid
+      from public.renewal_self_grade_lines l
+      where v_use_self and l.submission_id = v_self.id
+      order by 2, 3
+    loop
+      v_school := coalesce(g.recorded_by_school_id, v_scholar.school_id);
+      v_outcome := public._grade_outcome(v_school, g.grade);
+      v_total := v_total + 1;
+      if v_outcome = 'passed' then v_passed := v_passed + 1;
+      elsif v_outcome = 'failed' or v_outcome = 'drp' then
+        v_failed := v_failed + 1; if v_outcome = 'drp' then v_drp := v_drp + 1; end if;
+        v_failed_list := v_failed_list || jsonb_build_array(jsonb_build_object('code', g.subject_code, 'subject', g.subject, 'grade', g.grade, 'outcome', v_outcome));
+      elsif v_outcome = 'inc' or (v_outcome = 'ungraded' and v_tag) then      -- a missing grade of a tagged scholar is tracked like an INC (with its own deadline)
+        v_inc := v_inc + 1;
+        v_item := null;
+        if v_rec.id is not null then
+          select * into v_item from public.renewal_inc_items i where i.record_id = v_rec.id and i.subject_code = g.subject_code;
+        end if;
+        v_inc_list := v_inc_list || jsonb_build_array(jsonb_build_object('code', g.subject_code, 'subject', g.subject, 'grade', g.grade,
+          'state', coalesce(v_item.state, 'open'), 'deadline', v_item.deadline, 'item_id', v_item.id,
+          'kind', case when v_outcome = 'ungraded' then 'lacking' else 'inc' end));
+        if coalesce(v_item.state, 'open') = 'counted_failed' then v_counted_failed := v_counted_failed + 1;
+        elsif coalesce(v_item.state, 'open') = 'open' then
+          v_inc_open := v_inc_open + 1;
+          if v_item.deadline is null then v_inc_open_without_deadline := v_inc_open_without_deadline + 1;
+          elsif v_item.deadline < (now() at time zone 'Asia/Manila')::date then v_inc_overdue := v_inc_overdue + 1; end if;
+        end if;
+      elsif v_outcome = 'ungraded' then v_ungraded := v_ungraded + 1;
+      else
+        v_review := v_review + 1; if v_outcome = 'no_passing_mark' then v_nopm := v_nopm + 1; end if;
+        v_review_list := v_review_list || jsonb_build_array(jsonb_build_object('code', g.subject_code, 'subject', g.subject, 'grade', g.grade, 'outcome', v_outcome));
+      end if;
+    end loop;
+
+    if v_state = 'ready' then
+      if v_total = 0 then
+        v_state := 'no_grades'; v_reason := 'No grades are recorded for ' || public._renewal_term_label(v_b_year, v_b_term) || '.';
+      elsif v_ungraded > 0 then
+        v_state := 'waiting'; v_reason := 'Some grades for ' || public._renewal_term_label(v_b_year, v_b_term) || ' are still blank.';
+      elsif v_nopm > 0 then
+        v_state := 'review'; v_reason := 'The school has not set its passing mark, so the grades cannot be judged yet.';
+      elsif v_review > 0 then
+        v_state := 'review'; v_reason := 'Some marks cannot be read as passed or failed and need the evaluator''s review.';
+      end if;
+    end if;
+  end if;
+
+  v_failed_eff := v_failed + v_counted_failed;
+  -- the academic status of the program sets a passing GWA (1.0 to 5.0, lower is better); a GWA worse than it needs a consultation (also with no failed subject)
+  if v_state = 'ready' and not v_summer then
+    v_pass := public._scholar_passing_gwa(p_scholar_id_number);
+    v_gwa := public._scholar_gwa_standard(p_scholar_id_number, v_b_year, v_b_term, case when v_use_self then v_self.id else null end);
+    v_low_gwa := v_pass is not null and v_gwa is not null and v_gwa > v_pass;
+  end if;
+  v_c := (v_failed_eff >= 2) or (v_failed_eff = 1 and v_prev);
+  v_b := (v_failed_eff = 1 and not v_prev);
+  v_consult_done := v_rec.consultation_done_at is not null;
+  v_hard_copy := v_rec.hard_copy_received_at is not null;
+  -- a case the Division Head already has (or had) keeps the old route; every other case with a failed subject / DRP follows the consultation staff's endorsement
+  v_legacy := v_rec.id is not null and exists (select 1 from public.scholar_counseling_referrals f where f.renewal_record_id = v_rec.id);
+
+  -- Documents this case needs (independent of the stage, so a scholar can see what is coming).
+  if v_state = 'ready' then
+    -- a scholar with a failed subject (one or two or more) or an INC sends the three documents: the letter from the dean, the study plan and the clearance
+    -- (a tagged scholar with only an INC / one missing grade sends no documents and has no consultation: the evaluator renews them as temporary probationary)
+    v_need_study := v_failed_eff >= 1 or (v_inc_open > 0 and not v_tag);
+    -- the letter from the dean is NOT needed for failed subjects (one, two or more): the study plan and the clearance only. An INC still needs it.
+    v_need_inc := v_inc_open > 0 and not v_tag;
+    v_need_clear := v_failed_eff >= 1 or (v_inc_open > 0 and not v_tag);
+  end if;
+  if v_rec.id is not null then
+    select count(*) filter (where d.kind = 'study_plan'), count(*) filter (where d.kind = 'inc_letter'), count(*) filter (where d.kind = 'prospectus'),
+           count(*) filter (where d.kind = 'study_plan' and d.status = 'accepted'), count(*) filter (where d.kind = 'inc_letter' and d.status = 'accepted'),
+           count(*) filter (where d.kind = 'clearance'), count(*) filter (where d.kind = 'clearance' and d.status = 'accepted')
+      into v_study_have, v_inc_have, v_prosp_have, v_study_approved, v_inc_approved, v_clear_have, v_clear_approved
+    from public.renewal_documents d where d.record_id = v_rec.id and d.status <> 'returned';
+  end if;
+  if v_need_study then
+    -- "satisfied" = uploaded; "approved" = the evaluator accepted it (the scholar cannot book a consultation, and the case cannot be endorsed, before that).
+    v_docs := v_docs || jsonb_build_array(jsonb_build_object('kind', 'study_plan', 'label', 'Study plan', 'satisfied', v_study_have > 0, 'approved', v_study_approved > 0));
+    if v_study_have = 0 or v_study_approved = 0 then v_docs_complete := false; end if;
+  end if;
+  if v_need_inc then
+    v_docs := v_docs || jsonb_build_array(jsonb_build_object('kind', 'inc_letter', 'label', 'Letter from your dean', 'satisfied', v_inc_have > 0, 'approved', v_inc_approved > 0));
+    if v_inc_have = 0 or v_inc_approved = 0 then v_docs_complete := false; end if;
+  end if;
+  if v_need_clear then
+    v_docs := v_docs || jsonb_build_array(jsonb_build_object('kind', 'clearance', 'label', 'Clearance (from your school Guidance office or School coordinator)', 'satisfied', v_clear_have > 0, 'approved', v_clear_approved > 0));
+    if v_clear_have = 0 or v_clear_approved = 0 then v_docs_complete := false; end if;
+  end if;
+  if v_summer then
+    v_docs := v_docs || jsonb_build_array(jsonb_build_object('kind', 'prospectus', 'label', 'Prospectus (bring the hard copy to your consultation)', 'satisfied', v_prosp_have > 0));
+    if v_prosp_have = 0 then v_docs_complete := false; end if;
+  end if;
+
+  v_consult_required := (v_state = 'ready') and (v_failed_eff >= 1 or (v_inc_open > 0 and not v_tag) or v_summer or v_low_gwa);
+
+  -- Rule code and plain-language text.
+  if v_state = 'ready' then
+    if v_c then v_code := case when v_failed_eff >= 2 then 'C2' else 'C1P' end;
+      v_text := case when v_failed_eff >= 2
+        then 'Two or more failed subjects: the letter from your dean, the study plan and the clearance, then a consultation, then the Division Head decides (Removed if approved).'
+        else 'One failed subject and the scholar was on probation before: treated like two or more failed subjects — the letter from your dean, the study plan and the clearance, then a consultation, then the Division Head decides (Removed if approved).' end;
+    elsif v_b then v_code := 'B';
+      v_text := 'One failed subject and no previous probation: the letter from your dean, the study plan and the clearance, then a consultation, then the evaluator endorses the scholar for Probationary to the Division Head, who approves (Renewed as Probationary if approved).';
+    elsif v_tag and v_inc_open > 0 then v_code := 'T';
+      v_text := 'Tagged as temporary probationary (an INC or one missing grade): no documents and no consultation. The evaluator renews the scholar as Probationary (temporary); the scholar has the days the Grades Approver gave to comply, then returns to Regular if the grade is passed, or stays Probationary.';
+    elsif v_inc_open > 0 then v_code := 'D';
+      v_text := 'Has an INC subject: INC letter from the dean, study plan and clearance, temporary probation and a consultation where staff set the deadline to comply. Decided after the INC is resolved.';
+    else v_code := case when v_low_gwa then 'G' else 'A' end;
+      v_text := case when v_low_gwa then 'All subjects passed, but the GWA (' || to_char(v_gwa, 'FM0.00') || ') is below the passing GWA of the scholar''s program group (' || to_char(v_pass, 'FM0.00') || '): the scholar books a consultation, then the evaluator confirms the renewal.'
+                     else 'All subjects passed: no documents needed. The evaluator confirms the renewal.' end;
+    end if;
+    if not v_legacy and (v_c or v_b) then
+      v_text := 'A failed subject (or a DRP): book your consultation, send ' || case when v_inc_open = 0 then 'the study plan and the clearance' else 'the letter from your dean, the study plan and the clearance' end || ' (the consultation staff approve them), then the consultation staff endorse your new scholarship status and the evaluator approves it.';
+    end if;
+    if v_inc_open > 0 and v_failed_eff >= 1 then
+      v_code := v_code || '+D';
+      v_text := v_text || ' The INC stays on temporary probation until it is resolved, then the case is re-checked.';
+    end if;
+    if v_summer then
+      v_code := v_code || '+S';
+      v_text := v_text || ' Summer: no SDP requirement; the prospectus and a face-to-face consultation (hard copy received) are always required before the evaluator confirms.';
+    end if;
+  end if;
+
+  -- The stage.
+  if not v_sdp_ok then
+    v_stage := 'sdp_on_hold'; v_reason := coalesce(v_sdp_json ->> 'missing', 'SDP not complied');
+    v_code := 'SDP_HOLD';
+    v_text := case when v_rc.status = 'pending' then 'SDP is not complied: an SDP reconsideration was requested and is waiting for a decision. It is re-checked automatically.'
+                   when v_rc.status = 'denied' then 'SDP is not complied: the SDP reconsideration request was denied, so the application is on hold until the missing credits are recorded. It is re-checked automatically.'
+                   else 'SDP is not complied: the application is on hold until the missing credits are recorded. It is re-checked automatically.' end;
+  elsif v_state = 'waiting' then
+    v_stage := 'waiting_grades'; v_code := 'WAITING'; v_text := 'Waiting for grades: re-checked automatically when the school submits.';
+  elsif v_state in ('no_grades', 'review') then
+    v_stage := 'review_needed'; v_code := 'REVIEW'; v_text := 'Needs the evaluator''s manual review: ' || v_reason;
+  elsif (v_c or v_b) and not v_legacy then
+    v_stage := case when v_docs_complete and v_consult_done then 'ready_for_endorsement' else 'needs_study_plan_consultation' end;
+  elsif v_c then v_stage := 'needs_consultation_division_head';
+  elsif v_b then
+    v_stage := case when v_docs_complete and v_consult_done and v_inc_open = 0 then 'ready_to_endorse' else 'needs_study_plan_consultation' end;
+  elsif v_tag and v_inc_open > 0 and not v_summer then
+    v_stage := 'ready_for_confirmation';
+  elsif v_inc_open > 0 then
+    v_stage := case when v_inc_open_without_deadline > 0 then 'needs_inc_letter_consultation'
+                    when v_inc_overdue > 0 then 'inc_deadline_passed'
+                    else 'inc_waiting_compliance' end;
+  elsif v_summer then
+    v_stage := case when v_docs_complete and v_consult_done and v_hard_copy then 'ready_for_confirmation' else 'summer_requirements' end;
+  elsif v_low_gwa then
+    v_stage := case when v_consult_done then 'ready_for_confirmation' else 'needs_gwa_consultation' end;
+  else
+    v_stage := 'ready_for_confirmation';
+  end if;
+
+  return jsonb_build_object(
+    'basis_school_year', v_b_year, 'basis_term', v_b_term, 'sdp', v_sdp_json,
+    'grades', jsonb_build_object(
+      'state', v_state, 'school_submitted', v_submitted, 'reason', v_reason,
+      'self_reported', v_use_self, 'self_status', v_self.status, 'self_submission_id', v_self.id,
+      'counts', jsonb_build_object('total', v_total, 'passed', v_passed, 'failed', v_failed, 'drp', v_drp, 'inc', v_inc, 'review', v_review, 'ungraded', v_ungraded),
+      'failed_subjects', v_failed_list, 'inc_subjects', v_inc_list, 'review_subjects', v_review_list),
+    'temp_tag', v_tag, 'gwa', v_gwa, 'passing_gwa', v_pass, 'low_gwa', v_low_gwa, 'academic_version', (select ags.version from public.academic_gwa_settings ags where ags.id), 'previous_probation', v_prev, 'failed_effective', v_failed_eff, 'open_inc', v_inc_open,
+    'rule_code', v_code, 'rule_text', v_text, 'stage', v_stage, 'reason', v_reason,
+    'required_documents', v_docs, 'consult_route', ((v_c or v_b) and not v_legacy), 'consultation_required', v_consult_required, 'consultation_done', v_consult_done);
+end;
+$$;
+revoke all on function public._renewal_evaluate(text, text, text) from public, anon, authenticated;
+
+drop function if exists public._scholar_gwa_check(text, text, text, uuid);
+drop function if exists public._academic_school_scale(uuid);
+
+notify pgrst, 'reload schema';
+commit;
