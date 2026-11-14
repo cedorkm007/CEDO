@@ -1187,7 +1187,7 @@ const INVERTED_SORT_COLUMNS = new Set<ScholarInformationSortColumn>(["birthday"]
 /** Adds the academic status (from the program) to the rows. Before the database update is run the status is simply "Not set". */
 async function withAcademicStatus(rows: ScholarInformationRow[]): Promise<ScholarInformationRow[]> {
   const map = await fetchAcademicStatusMap();
-  return rows.map(r => ({ ...r, academicStatus: academicStatusText(map, r.course) }));
+  return rows.map(r => ({ ...r, academicStatus: academicStatusText(map, r.school, r.course) }));
 }
 
 export async function fetchScholarsInformationPage(

@@ -1,4 +1,4 @@
-// tests/academic-status/db_tests.mjs — academic status of a program, the passing GWA (Academic / Non-academic / special program), and the consultation in the renewal (5 checks, short on purpose)
+// tests/academic-status/db_tests.mjs — the academic status of a program and the passing GWA, SET PER SCHOOL (on the school's own scale), and the consultation in the renewal (5 checks, short on purpose)
 // Run:  node tests/academic-status/db_tests.mjs
 import { buildDb } from "../../localdemo/build.mjs";
 import { seedDb, seedId } from "../../localdemo/seed.mjs";
@@ -10,7 +10,7 @@ const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const read = f => fs.readFileSync(f, "utf8");
-const NEW = "supabase_migration_academic_status.sql", UNDO = "undo_academic_status.sql";
+const FIRST = "supabase_migration_academic_status.sql", NEW = "supabase_migration_academic_per_school.sql", UNDO = "undo_academic_per_school.sql";
 async function as(uid, sql, params = []) {
   return db.transaction(async tx => {
     await tx.exec("set local role authenticated");
@@ -19,66 +19,91 @@ async function as(uid, sql, params = []) {
   });
 }
 const attempt = async (uid, sql, params = []) => { try { return { ok: true, rows: await as(uid, sql, params) }; } catch (e) { return { ok: false, msg: String(e.message) }; } };
-await db.exec(read(NEW)); await db.exec(read(NEW));      // twice: safe
 const MANAGER = seedId("staff:demo.admin"), PLAIN = seedId("staff:demo.plain");
 await q("insert into staff_account_tags (staff_id, tag_key) values ($1, 'scholar_management') on conflict do nothing", [MANAGER]);
 const uidOf = s => seedId(`scholar:${Number(s.split("-")[1])}`);
 const LOWER = (await q("select id from schools where name like '%Lower-Is-Better%'"))[0].id;
+const HIGHER = (await q("select id from schools where name like '%Higher-Is-Better%'"))[0].id;
 const win = (await q(`select w.* from renewal_windows w order by (select count(*) from renewal_records r where r.window_id = w.id) desc limit 1`))[0];
 await q("update renewal_windows set testers = null, school_ids = null, opens_on = current_date - 3, closes_on = current_date + 20, late_allowed = true where id = $1", [win.id]).catch(() => {});
 const Y = win.school_year, T = win.term;
 const basis = (await q("select * from public._renewal_basis($1, $2)", [Y, T]))[0];
 await q("insert into academic_periods (school_year, term, status) values ($1, $2, 'open') on conflict (school_year, term) do nothing", [basis.basis_school_year, basis.basis_term]);
 await q("delete from school_period_submissions");
-const four = (await q("select s.scholar_id_number s, s.course from scholars s where s.school_id = $1 and s.status = 'Regular' order by 1 limit 3", [LOWER]));
-const [A, B, C] = four.map(r => r.s);
-await q("delete from renewal_records where scholar_id_number = any($1::text[]) and school_year = $2 and term = $3", [four.map(r => r.s), Y, T]);
-// the three scholars share one program (to be placed by the staff); give C a different program that becomes a SPECIAL program
-await q("update scholars set course = 'BS Academic Test Program' where scholar_id_number in ($1, $2)", [A, B]);
+const [A, B, C] = (await q("select s.scholar_id_number s from scholars s where s.school_id = $1 and s.status = 'Regular' order by 1 limit 3", [LOWER])).map(r => r.s);
+const [H1, H2] = (await q("select s.scholar_id_number s from scholars s where s.school_id = $1 and s.status = 'Regular' order by 1 limit 2", [HIGHER])).map(r => r.s);
+await q("delete from renewal_records where scholar_id_number = any($1::text[]) and school_year = $2 and term = $3", [[A, B, C, H1, H2], Y, T]);
+await q("update scholars set course = 'BS Academic Test Program' where scholar_id_number in ($1, $2, $3)", [A, B, H1]);
 await q("update scholars set course = 'BS Special Test Program' where scholar_id_number = $1", [C]);
+await q("update scholars set course = 'BS Higher Only Program' where scholar_id_number = $1", [H2]);
 
-// 1. only Scholar Management staff; the numbers are checked
-const plain = await attempt(PLAIN, "select public.academic_settings_get()");
-const bad = await attempt(MANAGER, "select public.academic_settings_save(6, 3)");
-const save = await attempt(MANAGER, "select public.academic_settings_save(2.00, 3.00)");
-const get = await attempt(MANAGER, "select public.academic_settings_get() g");
-const g = get.rows?.[0]?.g;
-check("1 only Scholar Management staff can use the settings; a passing GWA must be from 1.00 to 5.00; the tab data lists the programs with their scholars and the schools that are not on the standard scale",
-  !plain.ok && /Scholar Management/.test(plain.msg) && !bad.ok && save.ok && !!g && Number(g.academic_passing_gwa) === 2 && Number(g.non_academic_passing_gwa) === 3
-  && g.programs.some(p => p.program === "BS Academic Test Program" && p.scholars === 2 && p.is_set === false) && Array.isArray(g.schools_not_standard), `${plain.msg} | ${bad.msg} | ${save.msg} | ${JSON.stringify(g?.programs?.length)}`);
-// 2. status of a program; a program not placed counts as academic; a special program has its own passing GWA
+// 1. what the first version saved (one passing GWA, programs without a school) is copied to the schools; running it twice is safe
+await q("delete from academic_school_settings"); await q("delete from academic_school_programs");
+await q("update academic_gwa_settings set academic_passing_gwa = 2.00, non_academic_passing_gwa = 3.00");
+await q("insert into academic_programs (program_key, program, academic_status) values ('bs academic test program', 'BS Academic Test Program', 'non_academic') on conflict (program_key) do update set academic_status = 'non_academic'");
+await q("insert into academic_programs (program_key, program, academic_status, special_passing_gwa) values ('bs special test program', 'BS Special Test Program', 'academic', 3.5) on conflict (program_key) do update set special_passing_gwa = 3.5");
+await db.exec(read(NEW)); await db.exec(read(NEW));
+const lowCopy = (await q("select * from academic_school_settings where school_id = $1", [LOWER]))[0];
+const highCopy = (await q("select * from academic_school_settings where school_id = $1", [HIGHER]))[0];
+const progCopy = await q("select school_id, program_key from academic_school_programs order by 2");
+check("1 the numbers and programs of the first version are copied to the schools (the passing GWAs only to the schools on the standard scale; a program only to a school that has scholars in it), and running the update twice changes nothing more",
+  Number(lowCopy?.academic_passing_gwa) === 2 && Number(lowCopy?.non_academic_passing_gwa) === 3 && !highCopy
+  && progCopy.some(p => p.school_id === LOWER && p.program_key === "bs special test program") && progCopy.some(p => p.school_id === HIGHER && p.program_key === "bs academic test program") && !progCopy.some(p => p.school_id === HIGHER && p.program_key === "bs special test program") && progCopy.length === 3, JSON.stringify([lowCopy, highCopy, progCopy.length]));
+
+// 2. the tab: only Scholar Management staff; the schools with their own scale; the programs are those of the chosen school; a passing GWA must be on the school's own scale
+await q("delete from academic_school_settings"); await q("delete from academic_school_programs");
+await q("insert into schools (name) values ('TEST – No Grading Setup School') on conflict do nothing");
+const NOSETUP = (await q("select id from schools where name = 'TEST – No Grading Setup School'"))[0].id;
+const plain = await attempt(PLAIN, "select public.academic_settings_get($1)", [LOWER]);
+const gl = (await attempt(MANAGER, "select public.academic_settings_get($1) g", [LOWER])).rows?.[0]?.g, gh = (await attempt(MANAGER, "select public.academic_settings_get($1) g", [HIGHER])).rows?.[0]?.g;
+const sl = gl?.schools?.find(s => s.id === LOWER), sh = gl?.schools?.find(s => s.id === HIGHER);
+const badLow = await attempt(MANAGER, "select public.academic_settings_save($1, 80, null)", [LOWER]);
+const badHigh = await attempt(MANAGER, "select public.academic_settings_save($1, 3, null)", [HIGHER]);
+const noSetup = await attempt(MANAGER, "select public.academic_settings_save($1, 2, null)", [NOSETUP]);
+const okLow = await attempt(MANAGER, "select public.academic_settings_save($1, 2.00, 3.00)", [LOWER]);
+const okHigh = await attempt(MANAGER, "select public.academic_settings_save($1, 90, 80)", [HIGHER]);
+check("2 only Scholar Management staff can use it; each school shows its own scale (1-5 lower is better, 60-100 higher is better); the programs listed are those of the chosen school only; a passing GWA outside the school's scale or for a school with no grading setup is refused",
+  !plain.ok && /Scholar Management/.test(plain.msg) && sl?.has_setup && Number(sl.scale_max) === 5 && sl.direction === "lower_is_better" && sh?.has_setup && Number(sh.scale_min) === 60 && sh.direction === "higher_is_better"
+  && gl.school === LOWER && gl.programs.some(p => p.program === "BS Academic Test Program" && p.scholars === 2) && !gl.programs.some(p => p.program === "BS Higher Only Program")
+  && gh.programs.some(p => p.program === "BS Higher Only Program") && !gh.programs.some(p => p.program === "BS Special Test Program")
+  && !badLow.ok && !badHigh.ok && !noSetup.ok && /no grading setup/.test(noSetup.msg) && okLow.ok && okHigh.ok, `${plain.msg} | ${badLow.msg} | ${badHigh.msg} | ${noSetup.msg} | ${okLow.msg} ${okHigh.msg}`);
+
+// 3. the same program is placed differently in two schools; a program not placed counts as Academic; a special program has its own passing GWA
 const before = (await q("select * from public._scholar_academic($1)", [A]))[0];
-await attempt(MANAGER, "select public.academic_program_save('BS Academic Test Program', 'non_academic', null)");
-await attempt(MANAGER, "select public.academic_program_save('  bs   special test program ', 'academic', 3.50)");
-const afterA = (await q("select * from public._scholar_academic($1)", [A]))[0], afterC = (await q("select * from public._scholar_academic($1)", [C]))[0];
-check("2 a program not placed yet counts as Academic (flagged 'not set'); once set the scholar has that status and the group's passing GWA; a special program has its own passing GWA (the program is matched however it is typed)",
-  before.academic_status === "academic" && before.is_set === false && Number(before.passing_gwa) === 2 && afterA.academic_status === "non_academic" && Number(afterA.passing_gwa) === 3 && afterC.special === true && Number(afterC.passing_gwa) === 3.5, JSON.stringify([before, afterA, afterC]));
-// 3. the renewal: a GWA worse than the passing GWA needs a consultation (no failed subject)
+await attempt(MANAGER, "select public.academic_program_save($1, 'BS Academic Test Program', 'non_academic', null)", [LOWER]);
+await attempt(MANAGER, "select public.academic_program_save($1, 'BS Academic Test Program', 'academic', null)", [HIGHER]);
+await attempt(MANAGER, "select public.academic_program_save($1, '  bs   special test program ', 'academic', 3.50)", [LOWER]);
+const lowA = (await q("select * from public._scholar_academic($1)", [A]))[0], highH1 = (await q("select * from public._scholar_academic($1)", [H1]))[0], spC = (await q("select * from public._scholar_academic($1)", [C]))[0];
+const map = (await attempt(MANAGER, "select * from public.academic_status_map()")).rows;
+check("3 a program not placed counts as Academic (flagged 'not set'); the same program name is Non-academic in one school (its own passing GWA 3.00) and Academic in another (90.00); a special program has its own passing GWA; the Information list gets the status per school",
+  before.academic_status === "academic" && before.is_set === false && Number(before.passing_gwa) === 2
+  && lowA.academic_status === "non_academic" && Number(lowA.passing_gwa) === 3 && highH1.academic_status === "academic" && Number(highH1.passing_gwa) === 90 && spC.special === true && Number(spC.passing_gwa) === 3.5
+  && map.some(r => /Lower-Is-Better/.test(r.school_name) && r.program_key === "bs academic test program" && r.academic_status === "non_academic") && map.some(r => /Higher-Is-Better/.test(r.school_name) && r.program_key === "bs academic test program" && r.academic_status === "academic"), JSON.stringify([before, lowA, highH1, spC]));
+
+// 4. the renewal: a GWA worse than the passing GWA of the school (on its own scale and direction) needs a consultation; the rule is checked again when the passing GWA changes
 const apply = (s, grades) => attempt(uidOf(s), "select public.renewal_apply($1, 'School', 'Program', '2nd Year', '', false, $2::jsonb, $3::jsonb, true, '[]'::jsonb) id",
   [win.id, JSON.stringify(grades.map((gr, i) => ({ code: `S${i + 1}`, subject: `Subject ${i + 1}`, units: 3, grade: gr }))), JSON.stringify([{ path: `${s}/${win.id}/grade-entries/0-s.png`, name: "s.png", mime: "image/png", size: 1234 }])]);
 const rec = async s => (await q("select * from renewal_records where scholar_id_number = $1 and school_year = $2 and term = $3", [s, Y, T]))[0];
 const approve = async s => { const sub = (await q("select id from renewal_self_grade_submissions where record_id = $1 and status = 'pending'", [(await rec(s)).id]))[0].id; await q("select public._eg_decide_core($1, true, 'ok', 'Test approver', null)", [sub]); };
-await attempt(MANAGER, "select public.academic_program_save('BS Academic Test Program', 'academic', null)");
-await attempt(MANAGER, "select public.academic_settings_save(2.00, 3.00)");
-await apply(A, ["2.5", "2.75"]); await approve(A);       // GWA 2.63 > the Academic passing GWA 2.00
-await apply(C, ["2.5", "2.75"]); await approve(C);       // the special program: its own passing GWA 3.50 (looser), so the same GWA is fine
-const ra = await rec(A), rcc = await rec(C);
-check("3 a scholar with no failed subject whose GWA (2.63) is worse than the passing GWA of the group (2.00) needs a consultation; the same GWA in a special program with its own looser passing GWA (3.50) does not",
-  ra.stage === "needs_gwa_consultation" && ra.consultation_required === true && ra.rule_code === "G" && rcc.stage === "ready_for_confirmation" && rcc.rule_code === "A", `${ra.stage} ${ra.rule_code} | ${rcc.stage} ${rcc.rule_code} | ${JSON.stringify(ra.evaluation?.gwa)} ${JSON.stringify(ra.evaluation?.passing_gwa)}`);
-// 4. after the consultation the evaluator can confirm; the evaluator can refer while it waits; changing the setting re-checks the open renewals (in batches)
-const canRefer = (await q("select public._renewal_can_refer(r) c from renewal_records r where r.id = $1", [ra.id]))[0].c;
-await q("update renewal_records set consultation_done_at = now() where id = $1", [ra.id]);
-await q("select public._renewal_recheck($1)", [ra.id]);
-await apply(B, ["2.5", "2.75"]); await approve(B);       // Academic, passing GWA 2.00: needs the consultation
-const rb1 = await rec(B).then(r => r.stage);
-await attempt(MANAGER, "select public.academic_settings_save(3.50, 3.00)");      // looser: B no longer needs it, found by the batch re-check
+await attempt(MANAGER, "select public.academic_program_save($1, 'BS Academic Test Program', 'academic', null)", [LOWER]);
+await apply(A, ["2.5", "2.75"]); await approve(A);          // 1-5 school, Academic passing GWA 2.00: GWA 2.63 is worse (bigger)
+await apply(C, ["2.5", "2.75"]); await approve(C);          // special program, own passing GWA 3.50: fine
+await apply(H1, ["85", "86"]); await approve(H1);           // 60-100 school (higher is better), passing GWA 90: 85.50 is worse (smaller)
+await apply(H2, ["95", "92"]); await approve(H2);           // not placed (counts as Academic, passing 90): 93.50 is fine
+const [ra, rc, rh1, rh2] = [await rec(A), await rec(C), await rec(H1), await rec(H2)];
+await apply(B, ["2.5", "2.75"]); await approve(B);
+const rb1 = (await rec(B)).stage;
+await attempt(MANAGER, "select public.academic_settings_save($1, 3.50, 3.00)", [LOWER]);   // looser: B no longer needs it, found by the background re-check
 const n = (await q("select public._academic_recheck_batch(100) n"))[0].n;
-const rb2 = await rec(B).then(r => r.stage);
-check("4 the evaluator can refer while the consultation is needed; after the consultation the renewal is ready for the evaluator; changing the passing GWA re-checks the open renewals in the background batch",
-  canRefer === true && (await rec(A)).stage === "ready_for_confirmation" && rb1 === "needs_gwa_consultation" && n >= 1 && rb2 === "ready_for_confirmation", `${canRefer} ${(await rec(A)).stage} ${rb1} ${n} ${rb2}`);
+const rb2 = (await rec(B)).stage;
+check("4 a GWA worse than the passing GWA of the school's group needs a consultation on the school's OWN scale (2.63 vs 2.00 where lower is better; 85.50 vs 90 where higher is better), a special program uses its own passing GWA, and changing a school's passing GWA re-checks its open renewals in the background",
+  ra.stage === "needs_gwa_consultation" && ra.rule_code === "G" && rc.stage === "ready_for_confirmation" && rh1.stage === "needs_gwa_consultation" && rh2.stage === "ready_for_confirmation" && rb1 === "needs_gwa_consultation" && n >= 1 && rb2 === "ready_for_confirmation",
+  `${ra.stage} ${rc.stage} | ${rh1.stage} ${JSON.stringify(rh1.evaluation?.gwa)} ${JSON.stringify(rh1.evaluation?.passing_gwa)} | ${rh2.stage} ${JSON.stringify(rh2.evaluation?.gwa)} | ${rb1} ${n} ${rb2}`);
+
+// 5. undo: back to one passing GWA for everybody; the per-school data is kept
 await db.exec(read(UNDO));
-const gone = (await q("select to_regprocedure('public._academic_recheck_batch(integer)') f"))[0].f;
-const kept = (await q("select count(*)::int n from academic_programs"))[0].n;
-check("5 after the undo the renewal rules are as before (no GWA rule, the new stage is gone, the settings and the programs are kept)", gone === null && kept >= 2 && (await q("select count(*)::int n from renewal_records where stage = 'needs_gwa_consultation'"))[0].n === 0);
+const back = await q("select to_regprocedure('public.academic_settings_get()') a, to_regprocedure('public.academic_settings_get(uuid)') b, to_regprocedure('public._scholar_gwa_check(text,text,text,uuid)') c");
+const kept = (await q("select count(*)::int n from academic_school_programs"))[0].n;
+check("5 after the undo the first version is back (one passing GWA for everybody, programs without a school) and the per-school settings and programs are kept", back[0].a !== null && back[0].b === null && back[0].c === null && kept >= 3);
 console.log(`\n${passed} passed${failed ? `, ${failed} FAILED` : ""}`);
 process.exit(failed ? 1 : 0);
