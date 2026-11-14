@@ -39,7 +39,7 @@ export function ConsultationPanel() {
 
   return (
     <div className="space-y-5">
-      <p className="text-[14px] text-slate-700">Face-to-face consultations at the CEDO office. You can book one whenever a staff member has time available{selfEnabled ? "" : " for your case"}. You choose what it is about, a day, morning or afternoon{selfEnabled ? " and, if you wish, who you would like to see" : ""}. You can change or cancel as often as you need, up to {CONSULT_CHANGE_CUTOFF_HOURS} hours before it starts.</p>
+      <p className="text-[14px] text-slate-700">Face-to-face consultations at the CEDO office. You can book one whenever a staff member has time available (also today, at least 1 hour ahead){selfEnabled ? "" : " for your case"}. You choose what it is about, a day, morning or afternoon{selfEnabled ? " and, if you wish, who you would like to see" : ""}. You can change or cancel as often as you need, up to {CONSULT_CHANGE_CUTOFF_HOURS} hours before it starts.</p>
 
       {referrals.length > 0 && (
         <section aria-label="Consultations CEDO referred you for" className="space-y-3">
