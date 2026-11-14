@@ -347,7 +347,10 @@ export async function seedDb(db) {
     const rec = (await db.query("select id from renewal_records where scholar_id_number = $1 order by created_at desc limit 1", [sidNum(s.n)])).rows[0].id;
     await seedDoc(rec, s.n, "study_plan", s.renewal.plan);
     // since the update "documents for failed subjects" a scholar with a failed subject sends the letter from the dean and the clearance too (same status as the study plan)
-    if (!s.renewal.letter) { await seedDoc(rec, s.n, "inc_letter", s.renewal.plan); await seedDoc(rec, s.n, "clearance", s.renewal.plan); }
+    if (!s.renewal.letter) {
+      await seedDoc(rec, s.n, "inc_letter", s.renewal.plan).catch(() => {});      // since the update "one failed subject sends no letter" the database refuses the letter for a scholar with ONE failed subject (the others still send it)
+      await seedDoc(rec, s.n, "clearance", s.renewal.plan);
+    }
   }
   // ── Phase 5: the Division Head's stored signature, and cases at each point of the decisions (through the real functions) ──
   const sigBuf = signaturePng();

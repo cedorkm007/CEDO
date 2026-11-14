@@ -109,6 +109,15 @@ export const INC_FORM_DOCS: { kind: DocKind; label: string; hint: string }[] = [
   { kind: "study_plan", label: "Study plan", hint: "Your study plan for completing the INC or improving the failed subject." },
   { kind: "clearance", label: "Clearance", hint: "Claim it from your school Guidance office or School coordinator." },
 ];
+/**
+ * Which documents a case sends: failed subjects (one, two or more; a DRP counts as failed) send the study plan and the clearance only; an INC sends all three (the letter from the dean
+ * explains the INC), also with a failed subject as well. The database decides (_renewal_evaluate); this only words it before the application is sent.
+ */
+export function docsForCase(c: { failed: number; inc: number }): DocKind[] {
+  if (c.inc > 0) return INC_FORM_DOCS.map(d => d.kind);
+  if (c.failed >= 1) return ["study_plan", "clearance"];
+  return [];
+}
 export const DOC_ACCEPT = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp";
 export const DOC_MAX_BYTES = 10 * 1024 * 1024;
 export const DOC_MAX_PER_KIND = 3;
