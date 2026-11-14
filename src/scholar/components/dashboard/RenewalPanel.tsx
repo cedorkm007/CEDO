@@ -10,7 +10,7 @@ import { SelfGradesSection } from "./SelfGradesSection";
 import { RemovalFormCard } from "./RemovalFormCard";
 import { SelfGradesForm, emptyGradeRow, gradeFormProblem, type GradeFormRow } from "./SelfGradesForm";
 import { useMyGradeRules } from "../../useMyGradeRules";
-import { needsDocuments } from "@/lib/gradeCheck";
+import { localGradeOutcome, needsDocuments } from "@/lib/gradeCheck";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { loadDraft, savedAtText, useDraftAutosave } from "@/lib/formDraft";
 import { applyDraftHasContent, applyDraftKey, sanitizeApplyDraft, type ApplyDraft } from "../../renewalDraft";
@@ -18,7 +18,7 @@ import { StudyPlanFormLink } from "./StudyPlanFormLink";
 import { reservedMark } from "@/lib/subjectOutcome";
 import { buildNextSteps } from "../../renewalSummary";
 import {
-  DOC_ACCEPT, DOC_LABEL, DOC_NEEDS_APPROVAL, INC_FORM_DOCS, validateRenewalFile, daysLeftText, daysUntil, formatDateTime, formatDay, renewalBasis, renewalNextGate, renewalProgress, sdpLackingText, sdpLackingTotal, sdpReconsiderationImplication, termLabelOf,
+  DOC_ACCEPT, DOC_LABEL, DOC_NEEDS_APPROVAL, INC_FORM_DOCS, docsForCase, validateRenewalFile, daysLeftText, daysUntil, formatDateTime, formatDay, renewalBasis, renewalNextGate, renewalProgress, sdpLackingText, sdpLackingTotal, sdpReconsiderationImplication, termLabelOf,
   type DocKind, type RenewalEvaluation, type WindowState,
 } from "@/lib/renewal";
 import {
@@ -235,6 +235,10 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
   const docsComing = !!preview && ((preview.grades?.counts?.inc ?? 0) > 0 || (preview.grades?.counts?.failed ?? 0) > 0 || (preview.failed_effective ?? 0) > 0 || enteredInc || serverNeedsInc);      // a failed grade typed here is found by the database when the application is sent (serverNeedsInc)
   // The letter from the dean, the study plan and the clearance are NOT asked for with the application any more: they are required AFTER the grades are in (the Grades Approver approves the entered grades), from the Renewal tile.
   const incDocsNeeded = false, incDocsReady = true;
+  // which of the three documents this case sends: one failed subject = study plan and clearance only; two or more failed subjects or an INC = all three
+  const typedCounts = enterGrades ? gRows.reduce((c, r) => { const o = reservedMark(r.grade) === "INC" ? "inc" : localGradeOutcome(r.grade, gradeRules); return { failed: c.failed + (o === "failed" || o === "drp" ? 1 : 0), inc: c.inc + (o === "inc" ? 1 : 0) }; }, { failed: 0, inc: 0 }) : null;
+  const caseCounts = typedCounts && (typedCounts.failed > 0 || typedCounts.inc > 0) ? typedCounts : { failed: Math.max((preview?.grades?.counts?.failed ?? 0) + (preview?.grades?.counts?.drp ?? 0), preview?.failed_effective ?? 0), inc: Math.max(preview?.grades?.counts?.inc ?? 0, preview?.open_inc ?? 0) };
+  const docsToSend = docsForCase(caseCounts).length > 0 ? INC_FORM_DOCS.filter(d => docsForCase(caseCounts).includes(d.kind)) : INC_FORM_DOCS;
   // Next opens only when the grades are settled (the school's, or entered here) and the SDP is complied or a reconsideration is asked for.
   const gate = renewalNextGate(preview, { gradesEntered: enterGrades && !gradeProblem, reconsiderationAsked: wantsReconsideration, incDocsNeeded, incDocsReady });
   const inputCls = "w-full rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] outline-none focus:border-[#062444] bg-white";
@@ -314,8 +318,8 @@ function ApplyFlowForm({ data, overview, onCancel, onDone, draftKey, initial, re
           {preview && docsComing && (
             <div className="rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 text-[14px] text-sky-950">
               <p className="font-bold">Documents you will send after your grades are approved</p>
-              <p className="mt-1">You have an INC or a failed subject. You do not send any document now. {offerGrades ? "Enter your grades and submit; the Grades Approver checks them." : "Submit your application."} <strong>After your grades are approved</strong> you will be asked, in your Renewal tile, to upload these three documents; you can book your consultation first, and the consultation staff approve each document before your new scholarship status is endorsed:</p>
-              <ul className="mt-1.5 list-disc pl-5">{INC_FORM_DOCS.map(d => <li key={d.kind}><strong>{d.label}</strong>: {d.hint}</li>)}</ul>
+              <p className="mt-1">You have an INC or a failed subject. You do not send any document now. {offerGrades ? "Enter your grades and submit; the Grades Approver checks them." : "Submit your application."} <strong>After your grades are approved</strong> you will be asked, in your Renewal tile, to upload {docsToSend.length === 3 ? "these three documents" : "these two documents"}; you can book your consultation first, and the consultation staff approve each document before your new scholarship status is endorsed:</p>
+              <ul className="mt-1.5 list-disc pl-5">{docsToSend.map(d => <li key={d.kind}><strong>{d.label}</strong>: {d.hint}</li>)}</ul>
             </div>
           )}
           {preview && (preview.required_documents ?? []).filter(d => !(incDocsNeeded && INC_FORM_DOCS.some(x => x.kind === d.kind))).length > 0 && (
