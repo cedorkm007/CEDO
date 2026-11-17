@@ -407,6 +407,8 @@ export interface ScholarSdpCompliance {
   complied: boolean | null;
   /** What is missing, e.g. "Formation Program: 2 of 3"; empty when complied. For Summer: "Not required for Summer". */
   missing: string;
+  /** The scholar's year level as saved on their record ("1st Year" … "5th Year"); empty when none is saved. */
+  yearLevel: string;
 }
 
 /**
@@ -424,21 +426,38 @@ export async function fetchScholarsSdpCompliance(period: { schoolYear: string; s
     rows.push(...page.map(r => ({
       scholarIdNumber: String(r.scholar_id_number), name: String(r.name ?? ""),
       communityService: Number(r.community_service ?? 0), communityVolunteerism: Number(r.community_volunteerism ?? 0), formationProgram: Number(r.formation_program ?? 0),
-      applicable: r.applicable !== false, complied: r.complied == null ? null : !!r.complied, missing: String(r.missing ?? ""),
+      applicable: r.applicable !== false, complied: r.complied == null ? null : !!r.complied, missing: String(r.missing ?? ""), yearLevel: "",
     })));
     if (page.length < PAGE) break;
   }
+  await attachYearLevels(rows);
   return { ok: true, rows };
 }
 
+/**
+ * Fills in the year level of rows that did not come with one (the database update supabase_migration_sdp_checklist_year_level.sql is not run yet, or the earlier way of loading everyone):
+ * one small read of the scholars' own record per 200 scholars. Does nothing for rows that already have it.
+ */
+export async function attachYearLevels(rows: ScholarSdpCompliance[]): Promise<void> {
+  const need = rows.filter(r => !r.yearLevel).map(r => r.scholarIdNumber);
+  const map = new Map<string, string>();
+  for (let i = 0; i < need.length; i += 200) {
+    const { data } = await supabase.from("scholars").select("scholar_id_number, year_level").in("scholar_id_number", need.slice(i, i + 200));
+    for (const r of (data ?? []) as { scholar_id_number: string; year_level: string | null }[]) map.set(r.scholar_id_number, (r.year_level ?? "").trim());
+  }
+  for (const r of rows) if (!r.yearLevel) r.yearLevel = map.get(r.scholarIdNumber) ?? "";
+}
+
 export type ChecklistFilter = "all" | "complied" | "not_complied";
-export type ChecklistSortKey = "scholarIdNumber" | "name" | "communityService" | "communityVolunteerism" | "formationProgram" | "result";
+export type ChecklistSortKey = "scholarIdNumber" | "name" | "year" | "communityService" | "communityVolunteerism" | "formationProgram" | "result";
 export interface ChecklistPageQuery {
   schoolYear: string; semester: string; search: string; filter: ChecklistFilter;
+  /** One year level ("3rd Year") or "" for every year level. */
+  yearLevel?: string;
   sortKey: ChecklistSortKey | null; sortDir: "asc" | "desc"; page: number; pageSize: number;
 }
 const CHECKLIST_SORT_NAMES: Record<ChecklistSortKey, string> = {
-  scholarIdNumber: "id", name: "name", communityService: "community_service", communityVolunteerism: "community_volunteerism", formationProgram: "formation_program", result: "result",
+  scholarIdNumber: "id", name: "name", year: "year", communityService: "community_service", communityVolunteerism: "community_volunteerism", formationProgram: "formation_program", result: "result",
 };
 const isMissingFunction = (error: { code?: string; message?: string }) => error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "");
 
@@ -448,28 +467,28 @@ const isMissingFunction = (error: { code?: string; message?: string }) => error.
  * so the screen falls back to loading everyone (fetchScholarsSdpCompliance), as before.
  */
 export async function fetchSdpChecklistPage(q: ChecklistPageQuery): Promise<{ ok: true; rows: ScholarSdpCompliance[]; total: number } | { ok: false; error: string; missing: boolean }> {
+  // The year level is sent only when one is chosen, so the screen still works before the database update for it is run (the Year column is then filled in from the scholars' records).
   const { data, error } = await supabase.rpc("scholars_sdp_checklist_page", {
     p_school_year: q.schoolYear, p_semester: q.semester, p_search: q.search, p_filter: q.filter,
     p_sort: q.sortKey ? CHECKLIST_SORT_NAMES[q.sortKey] : "default", p_dir: q.sortDir, p_page: q.page, p_page_size: q.pageSize,
+    ...(q.yearLevel ? { p_year_level: q.yearLevel } : {}),
   });
   if (error) return { ok: false, error: error.message, missing: isMissingFunction(error) };
   const page = (data ?? []) as Record<string, unknown>[];
-  return {
-    ok: true,
-    total: page.length > 0 ? Number(page[0].total_count ?? 0) : 0,
-    rows: page.map(r => ({
-      scholarIdNumber: String(r.scholar_id_number), name: String(r.name ?? ""),
-      communityService: Number(r.community_service ?? 0), communityVolunteerism: Number(r.community_volunteerism ?? 0), formationProgram: Number(r.formation_program ?? 0),
-      applicable: r.applicable !== false, complied: r.complied == null ? null : !!r.complied, missing: String(r.missing ?? ""),
-    })),
-  };
+  const rows: ScholarSdpCompliance[] = page.map(r => ({
+    scholarIdNumber: String(r.scholar_id_number), name: String(r.name ?? ""),
+    communityService: Number(r.community_service ?? 0), communityVolunteerism: Number(r.community_volunteerism ?? 0), formationProgram: Number(r.formation_program ?? 0),
+    applicable: r.applicable !== false, complied: r.complied == null ? null : !!r.complied, missing: String(r.missing ?? ""), yearLevel: String(r.year_level ?? "").trim(),
+  }));
+  if (page.length > 0 && !("year_level" in page[0])) await attachYearLevels(rows);
+  return { ok: true, total: page.length > 0 ? Number(page[0].total_count ?? 0) : 0, rows };
 }
 
 export interface ChecklistSummary { total: number; complied: number; notComplied: number; applicable: boolean }
 
 /** The three counts (everyone / complied / not complied) for one semester, from one small question that can load after the page is already showing. */
-export async function fetchSdpChecklistSummary(period: { schoolYear: string; semester: string }): Promise<{ ok: true; summary: ChecklistSummary } | { ok: false; error: string }> {
-  const { data, error } = await supabase.rpc("scholars_sdp_checklist_summary", { p_school_year: period.schoolYear, p_semester: period.semester }).maybeSingle();
+export async function fetchSdpChecklistSummary(period: { schoolYear: string; semester: string; yearLevel?: string }): Promise<{ ok: true; summary: ChecklistSummary } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("scholars_sdp_checklist_summary", { p_school_year: period.schoolYear, p_semester: period.semester, ...(period.yearLevel ? { p_year_level: period.yearLevel } : {}) }).maybeSingle();
   if (error || !data) return { ok: false, error: error?.message ?? "No answer" };
   const r = data as Record<string, unknown>;
   return { ok: true, summary: { total: Number(r.total ?? 0), complied: Number(r.complied ?? 0), notComplied: Number(r.not_complied ?? 0), applicable: r.applicable !== false } };
