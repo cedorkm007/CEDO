@@ -5,7 +5,7 @@ import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
   fetchAttendanceForActivity, fetchCreditHistory, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, creditScholarForDay, removeAttendance, moveCreditSemester, type CreditPeriod, type AttendedWithoutCredit, type CreditHistoryEntry,
-  attachYearLevels, fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpAdvanced, fetchSdpChecklistRenewalPeriod, fetchSdpChecklistSummary, fetchSdpOwed, type SdpRenewalPeriod,
+  attachYearLevels, fetchSdpReconsidered, fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpAdvanced, fetchSdpChecklistRenewalPeriod, fetchSdpChecklistSummary, fetchSdpOwed, type SdpRenewalPeriod,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
   isSubCategorySupported, isDayLabelsSupported, type ChecklistSummary, type ChecklistSortKey, type SDPActivity, type SDPCategory, type SDPSubCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
@@ -23,6 +23,7 @@ import { normalizeTerm, periodKey, periodOptions, termLabel, type AcademicPeriod
 import { useUrlState } from "@/app/useUrlState";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
 import { shortYear } from "@/lib/renewalTableView";
+import { compliedByReconsideration, RECONSIDERED_HINT, RECONSIDERED_NOTE } from "@/lib/sdpChecklistNote";
 import { ExportButton } from "@/app/components/ExportButtons";
 import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
 import { MonitorsSection } from "../components/MonitorsSection";
@@ -1454,6 +1455,11 @@ function ComplianceBadge({ row }: { row: ScholarSdpCompliance }) {
   return <span className={`${base} border-red-300 bg-red-50 text-red-800`}><XCircle size={13} aria-hidden="true" /> Not complied</span>;
 }
 
+/** The small note under the Complied chip of such a row. */
+function ReconsideredNote() {
+  return <span className="mt-0.5 block text-[12px] font-medium leading-4 text-slate-600" title={RECONSIDERED_HINT}>{RECONSIDERED_NOTE}</span>;
+}
+
 const CHECKLIST_PAGE_SIZE = 50;
 const CHK_TH = "whitespace-nowrap px-2.5 py-2.5 text-left text-[13px] font-medium text-slate-600";
 const CHK_TD = "px-2.5 py-2.5 align-middle";
@@ -1618,9 +1624,19 @@ function ChecklistSection() {
   const paged = serverPaging ? rows : clientSorted.slice((safePage - 1) * CHECKLIST_PAGE_SIZE, safePage * CHECKLIST_PAGE_SIZE);
   useEffect(() => { setPage(1); }, [search, filter, yearLevel, effectiveKey, sortState.key, sortState.direction]);
 
+  // Who on this page counts as Complied because of an approved SDP reconsideration (a small note is written under their chip)
+  const [reconsidered, setReconsidered] = useState<ReadonlySet<string>>(() => new Set());
+  const pagedIds = useMemo(() => paged.map(s => s.scholarIdNumber), [paged]);
+  useEffect(() => {
+    if (!chosen || pagedIds.length === 0) { setReconsidered(new Set()); return; }
+    let cancelled = false;
+    void fetchSdpReconsidered(chosen.schoolYear, chosen.term, pagedIds).then(set => { if (!cancelled) setReconsidered(set); });
+    return () => { cancelled = true; };
+  }, [chosen, pagedIds]);
+
   return (
     <div>
-      <p className="text-sm text-slate-600 mb-4">Each scholar's SDP credits and whether they <strong>complied</strong> in the chosen semester: at least 3 credits in each of the 3 categories, counting credit carried over from earlier semesters. Summer has no SDP requirement.</p>
+      <p className="text-sm text-slate-600 mb-4">Each scholar's SDP credits and whether they <strong>complied</strong> in the chosen semester: at least 3 credits in each of the 3 categories, counting credit carried over from earlier semesters. Summer has no SDP requirement. A scholar whose <strong>SDP reconsideration was approved</strong> also counts as complied (marked “Reconsideration approved”), even with fewer credits; the credits that were lacking are added to the next semester.</p>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mb-4">
         <PeriodSelect label="Semester" options={options} value={effectiveKey} onChange={setViewKey} />
@@ -1748,6 +1764,7 @@ function ChecklistSection() {
                   {!legacy && (
                     <td className={CHK_TD}>
                       <ComplianceBadge row={s} />
+                      {compliedByReconsideration(s, reconsidered, owed) && <ReconsideredNote />}
                     </td>
                   )}
                   <td className={`${CHK_TD} text-center`}>
@@ -1786,7 +1803,7 @@ function ChecklistSection() {
               ))}
             </dl>
             <div className="mt-2.5 flex items-center justify-between gap-3">
-              {!legacy ? <ComplianceBadge row={s} /> : <span />}
+              {!legacy ? <div><ComplianceBadge row={s} />{compliedByReconsideration(s, reconsidered, owed) && <ReconsideredNote />}</div> : <span />}
               <HistoryButton name={s.name} onClick={() => setViewingScholar({ scholarIdNumber: s.scholarIdNumber, name: s.name })} />
             </div>
           </li>
