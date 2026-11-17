@@ -69,17 +69,19 @@ export function useSort<T>(
  * header" ask, rather than a separate sort control/toolbar.
  */
 export function SortableTh({
-  label, sortKey, sortState, onSort, className,
+  label, sortKey, sortState, onSort, className, rowSpan,
 }: {
   label: React.ReactNode;
   sortKey: string;
   sortState: SortState;
   onSort: (key: string) => void;
   className?: string;
+  /** For a two-row header: the cell spans both rows. */
+  rowSpan?: number;
 }) {
   const active = sortState.key === sortKey;
   return (
-    <th className={className}>
+    <th className={className} rowSpan={rowSpan}>
       <button type="button" onClick={() => onSort(sortKey)} className="inline-flex items-center gap-1 hover:text-current">
         <span>{label}</span>
         {active ? (

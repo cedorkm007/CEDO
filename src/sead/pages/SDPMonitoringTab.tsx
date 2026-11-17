@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { X, ClipboardList, Plus, Search, CheckCircle2, XCircle, UserCheck, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon, Camera } from "lucide-react";
+import { X, ClipboardList, Plus, Search, Check, CheckCircle2, XCircle, History, UserCheck, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon, Camera } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
   fetchAttendanceForActivity, fetchCreditHistory, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, creditScholarForDay, removeAttendance, moveCreditSemester, type CreditPeriod, type AttendedWithoutCredit, type CreditHistoryEntry,
-  fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpAdvanced, fetchSdpChecklistRenewalPeriod, fetchSdpChecklistSummary, fetchSdpOwed, type SdpRenewalPeriod,
+  attachYearLevels, fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpAdvanced, fetchSdpChecklistRenewalPeriod, fetchSdpChecklistSummary, fetchSdpOwed, type SdpRenewalPeriod,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
   isSubCategorySupported, isDayLabelsSupported, type ChecklistSummary, type ChecklistSortKey, type SDPActivity, type SDPCategory, type SDPSubCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
@@ -22,6 +22,7 @@ import { fetchCurrentGradingPeriod, type GradingPeriod } from "../scholarsGrades
 import { normalizeTerm, periodKey, periodOptions, termLabel, type AcademicPeriod } from "@/lib/academicPeriods";
 import { useUrlState } from "@/app/useUrlState";
 import { useSort, SortableTh } from "@/app/components/SortableTable";
+import { shortYear } from "@/lib/renewalTableView";
 import { ExportButton } from "@/app/components/ExportButtons";
 import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
 import { MonitorsSection } from "../components/MonitorsSection";
@@ -1433,25 +1434,40 @@ function CreditCell({ credits, owed = 0 }: { credits: number; owed?: number }) {
   // owed = extra credits this scholar owes for the semester (an approved SDP reconsideration of the semester before): the requirement is 3 + owed
   const goal = SDP_CATEGORY_CREDIT_GOAL + owed;
   const complete = credits >= goal;
-  return (
-    <span className={`inline-flex items-center gap-1 text-[11px] font-bold whitespace-nowrap ${complete ? "text-green-700" : "text-slate-600"}`}>
-      {complete ? <CheckCircle2 size={13} /> : null}
-      {credits} / {goal}
-    </span>
-  );
+  // below the goal: quiet gray "0/3"; at or above it: bold green "✓ 3/3" (also "✓ 6/3")
+  return complete
+    ? <span className="inline-flex items-center justify-center gap-1 whitespace-nowrap text-[13.5px] font-bold tabular-nums text-green-700"><Check size={14} strokeWidth={3} aria-hidden="true" /><span className="sr-only">Complete: </span>{credits}/{goal}</span>
+    : <span className="whitespace-nowrap text-[13.5px] font-medium tabular-nums text-slate-500">{credits}/{goal}</span>;
 }
 
 type ComplianceFilter = "all" | "complied" | "not_complied";
+/** The year levels a scholar can be in (as saved on the scholar's record) for the Year level choice. */
+const CHECKLIST_YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"] as const;
+/** "3rd Year" -> 3 (for sorting; no year level goes last). */
+const yearNumber = (y: string): number => { const m = /d+/.exec(y); return m ? Number(m[0]) : 99; };
 
 /** Complied / Not complied for the chosen semester. Words and an icon, never colour alone; Summer has no requirement. */
 function ComplianceBadge({ row }: { row: ScholarSdpCompliance }) {
-  const base = "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[11.5px] font-bold";
-  if (!row.applicable) return <span className="text-[11.5px] font-semibold text-slate-700">Not required (Summer)</span>;
+  const base = "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[12.5px] font-bold";
+  if (!row.applicable) return <span className="whitespace-nowrap text-[12.5px] font-semibold text-slate-700">Not required (Summer)</span>;
   if (row.complied) return <span className={`${base} border-green-300 bg-green-50 text-green-800`}><CheckCircle2 size={13} aria-hidden="true" /> Complied</span>;
   return <span className={`${base} border-red-300 bg-red-50 text-red-800`}><XCircle size={13} aria-hidden="true" /> Not complied</span>;
 }
 
 const CHECKLIST_PAGE_SIZE = 50;
+const CHK_TH = "whitespace-nowrap px-2.5 py-2.5 text-left text-[13px] font-medium text-slate-600";
+const CHK_TD = "px-2.5 py-2.5 align-middle";
+const CHK_MONO = { fontFamily: "'DM Mono', ui-monospace, monospace" } as const;
+
+/** The small icon button of a row that opens the scholar's SDP history window. */
+function HistoryButton({ name, onClick }: { name: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} title="View SDP history" aria-label={`View SDP history of ${name}`}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#0077b6] hover:bg-[#e8f3fa] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0077b6]">
+      <History size={17} aria-hidden="true" />
+    </button>
+  );
+}
 const EMPTY_ROWS: ScholarSdpCompliance[] = [];
 
 function ChecklistSection() {
@@ -1467,6 +1483,7 @@ function ChecklistSection() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ComplianceFilter>("all");
+  const [yearLevel, setYearLevel] = useState("");      // "" = every year level; the counts and the list follow it
   const [viewingScholar, setViewingScholar] = useState<{ scholarIdNumber: string; name: string } | null>(null);
   const [periods, setPeriods] = useState<AcademicPeriod[]>([]);
   const [current, setCurrent] = useState<GradingPeriod>({ schoolYear: "", semester: "" });
@@ -1512,15 +1529,17 @@ function ChecklistSection() {
   // Sorting: the header arrows. In the earlier way the rows are sorted here; with the database update the choice is sent to the database.
   const [fallbackRows, setFallbackRows] = useState<ScholarSdpCompliance[]>([]);
   const clientFiltered = useMemo(() => fallbackRows.filter(s => {
+    if (yearLevel && s.yearLevel.trim().toLowerCase() !== yearLevel.toLowerCase()) return false;
     if (filter === "complied" && s.complied !== true) return false;
     if (filter === "not_complied" && s.complied !== false) return false;
     if (!search.trim()) return true;
     const q = search.trim().toLowerCase();
     return s.name.toLowerCase().includes(q) || s.scholarIdNumber.toLowerCase().includes(q);
-  }), [fallbackRows, filter, search]);
+  }), [fallbackRows, filter, search, yearLevel]);
   const { sorted: clientSorted, sortState, toggleSort } = useSort<ScholarSdpCompliance>(serverPaging ? EMPTY_ROWS : clientFiltered, {
     scholarIdNumber: s => s.scholarIdNumber,
     name: s => s.name,
+    year: s => yearNumber(s.yearLevel),
     communityService: s => s.communityService,
     communityVolunteerism: s => s.communityVolunteerism,
     formationProgram: s => s.formationProgram,
@@ -1534,13 +1553,13 @@ function ChecklistSection() {
     setLoading(true);
     setError("");
     const result = await fetchSdpChecklistPage({
-      schoolYear: chosen.schoolYear, semester: chosen.term, search, filter, sortKey: sortState.key as ChecklistSortKey | null, sortDir: sortState.direction, page, pageSize: CHECKLIST_PAGE_SIZE,
+      schoolYear: chosen.schoolYear, semester: chosen.term, search, filter, sortKey: sortState.key as ChecklistSortKey | null, sortDir: sortState.direction, page, pageSize: CHECKLIST_PAGE_SIZE, yearLevel,
     });
     if (id !== requestId.current) return;   // a newer question was asked meanwhile
     if (result.ok) { setLegacy(false); setRows(result.rows); setTotal(result.total); setLoading(false); return; }
     if (result.missing) { setServerPaging(false); return; }   // the database update has not been run yet: use the earlier way
     setError(result.error); setRows([]); setTotal(0); setLoading(false);
-  }, [chosen, current.schoolYear, search, filter, sortState.key, sortState.direction, page]);
+  }, [chosen, current.schoolYear, search, filter, yearLevel, sortState.key, sortState.direction, page]);
   useEffect(() => { if (serverPaging) void loadPage(); }, [serverPaging, loadPage]);
 
   // Who owes extra credits for the chosen semester (usually nobody, or a few): the credit columns then show "3 / 5".
@@ -1560,9 +1579,9 @@ function ChecklistSection() {
     if (!serverPaging || !chosen) return;
     let cancelled = false;
     setSummary(null);
-    void fetchSdpChecklistSummary({ schoolYear: chosen.schoolYear, semester: chosen.term }).then(r => { if (!cancelled && r.ok) setSummary(r.summary); });
+    void fetchSdpChecklistSummary({ schoolYear: chosen.schoolYear, semester: chosen.term, yearLevel }).then(r => { if (!cancelled && r.ok) setSummary(r.summary); });
     return () => { cancelled = true; };
-  }, [serverPaging, chosen]);
+  }, [serverPaging, chosen, yearLevel]);
 
   // The earlier way (before the database update): everyone at once.
   const loadAll = useCallback(async () => {
@@ -1578,7 +1597,9 @@ function ChecklistSection() {
       setLegacy(true);
       setError(result.error);
       const old = await fetchAllScholarsSDPChecklist();
-      setFallbackRows(old.map(o => ({ scholarIdNumber: o.scholarIdNumber, name: o.name, communityService: o.communityService, communityVolunteerism: o.communityVolunteerism, formationProgram: o.formationProgram, applicable: true, complied: null, missing: "" })));
+      const oldRows: ScholarSdpCompliance[] = old.map(o => ({ scholarIdNumber: o.scholarIdNumber, name: o.name, communityService: o.communityService, communityVolunteerism: o.communityVolunteerism, formationProgram: o.formationProgram, applicable: true, complied: null, missing: "", yearLevel: "" }));
+      await attachYearLevels(oldRows);
+      setFallbackRows(oldRows);
     }
     setLoading(false);
   }, [chosen, current.schoolYear]);
@@ -1586,8 +1607,8 @@ function ChecklistSection() {
 
   const counts = useMemo(() => serverPaging
     ? { all: summary?.total ?? null, complied: summary?.complied ?? null, notComplied: summary?.notComplied ?? null }
-    : { all: fallbackRows.length, complied: fallbackRows.filter(r => r.applicable && r.complied === true).length, notComplied: fallbackRows.filter(r => r.applicable && r.complied === false).length },
-  [serverPaging, summary, fallbackRows]);
+    : (() => { const ys = yearLevel ? fallbackRows.filter(r => r.yearLevel.trim().toLowerCase() === yearLevel.toLowerCase()) : fallbackRows; return { all: ys.length, complied: ys.filter(r => r.applicable && r.complied === true).length, notComplied: ys.filter(r => r.applicable && r.complied === false).length }; })(),
+  [serverPaging, summary, fallbackRows, yearLevel]);
   const shown = (n: number | null) => (n === null ? "…" : n.toLocaleString());
   const summer = serverPaging ? /summer/i.test(chosen?.term ?? "") : fallbackRows.length > 0 && fallbackRows.every(r => !r.applicable);
 
@@ -1595,7 +1616,7 @@ function ChecklistSection() {
   const totalPages = Math.max(1, Math.ceil(matchCount / CHECKLIST_PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const paged = serverPaging ? rows : clientSorted.slice((safePage - 1) * CHECKLIST_PAGE_SIZE, safePage * CHECKLIST_PAGE_SIZE);
-  useEffect(() => { setPage(1); }, [search, filter, effectiveKey, sortState.key, sortState.direction]);
+  useEffect(() => { setPage(1); }, [search, filter, yearLevel, effectiveKey, sortState.key, sortState.direction]);
 
   return (
     <div>
@@ -1636,7 +1657,8 @@ function ChecklistSection() {
       )}
 
       {!summer && !legacy && (
-        <div role="group" aria-label="Filter by SDP result" className="flex items-center gap-1 bg-[#f8fafd] border border-[#e6ecf5] rounded-lg p-1 mb-4 w-fit max-w-full flex-wrap">
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div role="group" aria-label="Filter by SDP result" className="flex items-center gap-1 bg-[#f8fafd] border border-[#e6ecf5] rounded-lg p-1 w-fit max-w-full flex-wrap">
           {([
             ["all", `All (${shown(counts.all)})`],
             ["complied", `Complied (${shown(counts.complied)})`],
@@ -1648,6 +1670,14 @@ function ChecklistSection() {
             </button>
           ))}
         </div>
+        <label className="flex items-center gap-2 text-[13px] font-semibold text-slate-700">
+          Year level
+          <select value={yearLevel} onChange={e => setYearLevel(e.target.value)} aria-label="Filter by year level" className="rounded-lg border border-[#e6ecf5] bg-white px-2.5 py-1.5 text-[13px] font-normal text-[#062444]">
+            <option value="">All</option>
+            {CHECKLIST_YEAR_LEVELS.map(y => <option key={y} value={y}>{shortYear(y)}</option>)}
+          </select>
+        </label>
+        </div>
       )}
       {legacy && (
         <p role="status" className="text-[13.5px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
@@ -1655,58 +1685,113 @@ function ChecklistSection() {
         </p>
       )}
 
-      <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden overflow-x-auto">
-        <table className="w-full text-[12px]" aria-busy={loading}>
+      {/* The room the list has (the container's width, not the screen's): a table from a medium width up (the Scholar ID joins it when there is room for it), one card per scholar below that. */}
+      <div className="@container">
+      <div className="hidden @min-[800px]:block rounded-2xl border border-[#e6ecf5] bg-white overflow-hidden">
+        <table className="w-full table-fixed border-collapse text-left text-[13.5px] text-slate-900" aria-busy={loading}>
           <caption className="sr-only">Scholars' SDP credits and result for the chosen semester</caption>
+          <colgroup>
+            <col className="hidden @min-[940px]:table-column" style={{ width: 112 }} />
+            <col />
+            <col style={{ width: 76 }} />
+            <col style={{ width: 118 }} />
+            <col style={{ width: 118 }} />
+            <col style={{ width: 118 }} />
+            {!legacy && <col style={{ width: 150 }} />}
+            <col style={{ width: 72 }} />
+          </colgroup>
           <thead>
-            <tr className="bg-[#f8fafd] text-left text-[10px] uppercase tracking-wide text-[#00709f]">
-              <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-2.5 py-2.5" />
-              <SortableTh label="Scholar Name" sortKey="name" sortState={sortState} onSort={toggleSort} className="px-2.5 py-2.5" />
-              <SortableTh label={<>Institutional<br />Volunteerism</>} sortKey="communityService" sortState={sortState} onSort={toggleSort} className="px-2.5 py-2.5 text-center" />
-              <SortableTh label={<>Community<br />Volunteerism</>} sortKey="communityVolunteerism" sortState={sortState} onSort={toggleSort} className="px-2.5 py-2.5 text-center" />
-              <SortableTh label={<>Formation<br />Program</>} sortKey="formationProgram" sortState={sortState} onSort={toggleSort} className="px-2.5 py-2.5 text-center" />
-              {!legacy && <SortableTh label="SDP Result" sortKey="result" sortState={sortState} onSort={toggleSort} className="px-2.5 py-2.5" />}
-              <th className="px-2.5 py-2.5 text-center">SDP History</th>
+            <tr className="bg-[#f8fafd] align-bottom">
+              <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className={`${CHK_TH} hidden @min-[940px]:table-cell`} rowSpan={2} />
+              <SortableTh label="Scholar name" sortKey="name" sortState={sortState} onSort={toggleSort} className={CHK_TH} rowSpan={2} />
+              <SortableTh label="Year" sortKey="year" sortState={sortState} onSort={toggleSort} className={CHK_TH} rowSpan={2} />
+              <th scope="colgroup" colSpan={3} className="px-2.5 pt-2.5 pb-0 text-center text-[11.5px] font-semibold uppercase tracking-wide text-slate-500">
+                <span className="block whitespace-nowrap border-b border-slate-300 pb-1">SDP credits · 3 needed each</span>
+              </th>
+              {!legacy && <SortableTh label="SDP result" sortKey="result" sortState={sortState} onSort={toggleSort} className={CHK_TH} rowSpan={2} />}
+              <th scope="col" rowSpan={2} className={`${CHK_TH} text-center`}>History</th>
+            </tr>
+            <tr className="bg-[#f8fafd]">
+              <SortableTh label={<span title="Institutional Volunteerism">Institutional</span>} sortKey="communityService" sortState={sortState} onSort={toggleSort} className={`${CHK_TH} text-center`} />
+              <SortableTh label={<span title="Community Volunteerism">Community</span>} sortKey="communityVolunteerism" sortState={sortState} onSort={toggleSort} className={`${CHK_TH} text-center`} />
+              <SortableTh label={<span title="Formation Program">Formation</span>} sortKey="formationProgram" sortState={sortState} onSort={toggleSort} className={`${CHK_TH} text-center`} />
             </tr>
           </thead>
           <tbody>
             {loading ? (
               Array.from({ length: 8 }, (_, i) => (
                 <tr key={i} className="border-t border-[#f0f3f8]" aria-hidden="true">
-                  {Array.from({ length: 7 }, (_, j) => <td key={j} className="px-2.5 py-2.5"><div className="h-4 rounded bg-slate-200 animate-pulse" style={{ width: j === 1 ? "9rem" : "4rem" }} /></td>)}
+                  {Array.from({ length: 8 }, (_, j) => <td key={j} className={`${CHK_TD} ${j === 0 ? "hidden @min-[940px]:table-cell" : ""}`}><div className="h-4 rounded bg-slate-200 animate-pulse" style={{ width: j === 1 ? "9rem" : "3.5rem" }} /></td>)}
                 </tr>
               ))
             ) : error && serverPaging ? (
-              <tr><td colSpan={7} role="alert" className="px-3 py-10 text-center text-red-700">Could not load the checklist: {error}</td></tr>
+              <tr><td colSpan={8} role="alert" className="px-3 py-10 text-center text-red-700">Could not load the checklist: {error}</td></tr>
             ) : matchCount === 0 ? (
-              <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-600">No scholars found.</td></tr>
+              <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-600">No scholars found.</td></tr>
             ) : (
               paged.map(s => (
-                <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f8fafd]">
-                  <td className="px-2.5 py-2.5 text-slate-600 whitespace-nowrap">{s.scholarIdNumber}</td>
-                  <td className="px-2.5 py-2.5 font-medium text-[#062444] break-words">{s.name}
+                <tr key={s.scholarIdNumber} className="border-t border-[#f0f3f8] hover:bg-[#f4f7fb]">
+                  <td className={`${CHK_TD} hidden @min-[940px]:table-cell whitespace-nowrap text-[13px] tabular-nums text-slate-700`} style={CHK_MONO}>{s.scholarIdNumber}</td>
+                  <td className={`${CHK_TD} font-medium text-[#062444]`}>
+                    <span className="block truncate" title={s.name}>{s.name}</span>
+                    <span className="@min-[940px]:hidden block truncate text-[12px] font-normal tabular-nums text-slate-500" style={CHK_MONO}>{s.scholarIdNumber}</span>
                     {advanced.has(s.scholarIdNumber) && (
-                      <span className="mt-0.5 block text-[11.5px] font-semibold text-[#0077b6]" title="This scholar is renewed, so the credits shown are for the next semester: 3 per category were used, credits above that carry on, and lacking credits are added to the requirement.">
+                      <span className="mt-0.5 block truncate text-[12px] font-semibold text-[#0077b6]" title="This scholar is renewed, so the credits shown are for the next semester: 3 per category were used, credits above that carry on, and lacking credits are added to the requirement.">
                         Renewed — showing {termLabel(advanced.get(s.scholarIdNumber)!.semester)} {advanced.get(s.scholarIdNumber)!.schoolYear}
                       </span>
                     )}
                   </td>
-                  <td className="px-2.5 py-2.5 text-center"><CreditCell credits={s.communityService} owed={owed.get(s.scholarIdNumber)?.communityService} /></td>
-                  <td className="px-2.5 py-2.5 text-center"><CreditCell credits={s.communityVolunteerism} owed={owed.get(s.scholarIdNumber)?.communityVolunteerism} /></td>
-                  <td className="px-2.5 py-2.5 text-center"><CreditCell credits={s.formationProgram} owed={owed.get(s.scholarIdNumber)?.formationProgram} /></td>
+                  <td className={`${CHK_TD} whitespace-nowrap text-slate-800`} title={s.yearLevel || undefined}>{shortYear(s.yearLevel)}</td>
+                  <td className={`${CHK_TD} text-center`}><CreditCell credits={s.communityService} owed={owed.get(s.scholarIdNumber)?.communityService} /></td>
+                  <td className={`${CHK_TD} text-center`}><CreditCell credits={s.communityVolunteerism} owed={owed.get(s.scholarIdNumber)?.communityVolunteerism} /></td>
+                  <td className={`${CHK_TD} text-center`}><CreditCell credits={s.formationProgram} owed={owed.get(s.scholarIdNumber)?.formationProgram} /></td>
                   {!legacy && (
-                    <td className="px-2.5 py-2.5">
+                    <td className={CHK_TD}>
                       <ComplianceBadge row={s} />
                     </td>
                   )}
-                  <td className="px-2.5 py-2.5 text-center">
-                    <button onClick={() => setViewingScholar({ scholarIdNumber: s.scholarIdNumber, name: s.name })} className="text-[12px] font-semibold text-[#0077b6] hover:underline">View</button>
+                  <td className={`${CHK_TD} text-center`}>
+                    <HistoryButton name={s.name} onClick={() => setViewingScholar({ scholarIdNumber: s.scholarIdNumber, name: s.name })} />
                   </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* a narrow screen: one card per scholar (name, ID and year on top; the three credits; the result and the history button) */}
+      <ul className="@min-[800px]:hidden space-y-2.5" aria-busy={loading}>
+        {loading && Array.from({ length: 3 }, (_, i) => <li key={i} aria-hidden="true" className="h-32 animate-pulse rounded-xl border border-[#e6ecf5] bg-white" />)}
+        {!loading && error && serverPaging && <li role="alert" className="rounded-xl border border-red-200 bg-white px-4 py-8 text-center text-[14px] text-red-700">Could not load the checklist: {error}</li>}
+        {!loading && !(error && serverPaging) && matchCount === 0 && <li className="rounded-xl border border-dashed border-[#e6ecf5] bg-white px-4 py-8 text-center text-[14px] text-slate-600">No scholars found.</li>}
+        {!loading && !(error && serverPaging) && paged.map(s => (
+          <li key={s.scholarIdNumber} className="rounded-xl border border-[#e6ecf5] bg-white px-3.5 py-3 text-[14px]">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="break-words font-bold text-[#062444]">{s.name}</p>
+                <p className="text-[13px] tabular-nums text-slate-600" style={CHK_MONO}>{s.scholarIdNumber}</p>
+              </div>
+              <span className="shrink-0 whitespace-nowrap text-[13px] font-medium text-slate-700" title={s.yearLevel || undefined}>{shortYear(s.yearLevel)}</span>
+            </div>
+            {advanced.has(s.scholarIdNumber) && (
+              <p className="mt-1 text-[12.5px] font-semibold text-[#0077b6]">Renewed — showing {termLabel(advanced.get(s.scholarIdNumber)!.semester)} {advanced.get(s.scholarIdNumber)!.schoolYear}</p>
+            )}
+            <dl className="mt-2.5 grid grid-cols-3 gap-2 rounded-lg bg-[#f8fafd] px-2 py-2 text-center">
+              {([["Institutional", "Institutional Volunteerism", s.communityService, owed.get(s.scholarIdNumber)?.communityService], ["Community", "Community Volunteerism", s.communityVolunteerism, owed.get(s.scholarIdNumber)?.communityVolunteerism], ["Formation", "Formation Program", s.formationProgram, owed.get(s.scholarIdNumber)?.formationProgram]] as const).map(([short, full, credits, extra]) => (
+                <div key={short}>
+                  <dt className="text-[12px] font-medium text-slate-600" title={full}>{short}</dt>
+                  <dd><CreditCell credits={credits} owed={extra} /></dd>
+                </div>
+              ))}
+            </dl>
+            <div className="mt-2.5 flex items-center justify-between gap-3">
+              {!legacy ? <ComplianceBadge row={s} /> : <span />}
+              <HistoryButton name={s.name} onClick={() => setViewingScholar({ scholarIdNumber: s.scholarIdNumber, name: s.name })} />
+            </div>
+          </li>
+        ))}
+      </ul>
       </div>
       <ListPagination page={safePage} totalPages={totalPages} onPageChange={setPage} filteredCount={matchCount} pageSize={CHECKLIST_PAGE_SIZE} />
 

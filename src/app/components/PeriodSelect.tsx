@@ -18,11 +18,11 @@ export function PeriodSelect({
 }) {
   const id = useId();
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
+    <div className={`flex max-w-full items-center gap-2 ${className}`}>
       <label htmlFor={id} className="text-[12.5px] font-bold text-[#062444] shrink-0">{label}</label>
       <select
         id={id} value={value} onChange={e => onChange(e.target.value)} disabled={disabled || options.length === 0}
-        className="min-w-0 border border-[#062444]/20 rounded-lg bg-white px-2.5 py-1.5 text-[13px] text-[#062444] outline-none focus:border-[#0088cc] disabled:opacity-60"
+        className="min-w-0 max-w-full border-[#062444]/20 rounded-lg bg-white px-2.5 py-1.5 text-[13px] text-[#062444] outline-none focus:border-[#0088cc] disabled:opacity-60"
       >
         {options.length === 0 && <option value="">No periods yet</option>}
         {options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
