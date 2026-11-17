@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { creditDay, dayLabel, type SDPActivity, type SDPCategory, type SDPSubCategory, type SDPActivityType, type RecurringOccurrence } from "@/scholar/sdpApi";
+import { creditSession, dayLabel, type SDPActivity, type SDPCategory, type SDPSubCategory, type SDPActivityType, type RecurringOccurrence } from "@/scholar/sdpApi";
 
 // Re-export so consumers of this module don't also need to import from
 // src/scholar/sdpApi directly — same underlying `sdp_activities` table,
@@ -21,7 +21,7 @@ const mentionsSubCategory = (message: string | undefined) => /sub_category/i.tes
  */
 let dayColumnsPresent = true;
 export function isDayLabelsSupported(): boolean { return dayColumnsPresent; }
-const mentionsDayColumn = (message: string | undefined) => /sub_name|day_date|activity_day/i.test(message ?? "");
+const mentionsDayColumn = (message: string | undefined) => /sub_name|day_date|activity_day|session_sid|activity_sid|main_sid/i.test(message ?? "");
 
 function rowToActivity(r: Record<string, unknown>): SDPActivity {
   return {
@@ -53,6 +53,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     pubmatPath: (r.pubmat_path as string | null) ?? null,
     activityType: (r.activity_type as SDPActivityType | null) ?? "one_time",
     recurringDates: (r.recurring_dates as RecurringOccurrence[] | null) ?? [],
+    mainSid: String(r.main_sid ?? ""),
     credits: Number(r.credits ?? 1),
     yearLevels: (r.target_year_levels as string[]) ?? [],
     allYearLevels: Boolean(r.all_year_levels),
@@ -73,7 +74,7 @@ export async function fetchAllSDPActivities(): Promise<SDPActivity[]> {
 
 export async function updateSDPActivity(
   id: string, fields: {
-    projectHead?: string; headCluster?: string; category?: SDPCategory | null; subCategory?: SDPSubCategory | null; subName?: string; recurringDates?: RecurringOccurrence[]; credits?: number;
+    projectHead?: string; headCluster?: string; category?: SDPCategory | null; subCategory?: SDPSubCategory | null; subName?: string; recurringDates?: RecurringOccurrence[]; /** The session id of the first row (it moves with the row when the rows are reordered). */ mainSid?: string; credits?: number;
     name?: string; organization?: string; venue?: string; dateTime?: string | null; endTime?: string | null;
     yearLevels?: string[]; allYearLevels?: boolean;
     /** Only sent when provided -- callers pass these only if the restriction actually changed. */
@@ -88,6 +89,7 @@ export async function updateSDPActivity(
     ...(fields.subCategory !== undefined && subCategoryColumnPresent ? { sub_category: fields.subCategory } : {}),
     ...(fields.subName !== undefined && dayColumnsPresent ? { sub_name: fields.subName.trim() || null } : {}),
     ...(fields.recurringDates ? { recurring_dates: fields.recurringDates } : {}),
+    ...(fields.mainSid !== undefined && dayColumnsPresent ? { main_sid: fields.mainSid || null } : {}),
     ...(fields.credits !== undefined ? { credits: fields.credits } : {}),
     ...(fields.name !== undefined ? { name: fields.name } : {}),
     ...(fields.organization !== undefined ? { organization: fields.organization } : {}),
@@ -109,9 +111,9 @@ export async function updateSDPActivity(
     delete payload.sub_category;
     ({ error } = await supabase.from("sdp_activities").update(payload).eq("id", id));
   }
-  if (error && "sub_name" in payload && mentionsDayColumn(error.message)) {
+  if (error && ("sub_name" in payload || "main_sid" in payload) && mentionsDayColumn(error.message)) {
     dayColumnsPresent = false;
-    delete payload.sub_name;
+    delete payload.sub_name; delete payload.main_sid;
     ({ error } = await supabase.from("sdp_activities").update(payload).eq("id", id));
   }
   return error ? { ok: false, error: error.message } : { ok: true };
@@ -199,6 +201,8 @@ export interface AttendanceEntry {
   attendedDate: string;
   /** The day of the activity this credit is for ("2026-10-21"), or null when it is not tied to a day. */
   activityDay: string | null;
+  /** The session of the activity this credit is for (one of several sessions of the same day), or null (made before sessions had ids: the first session of its day). */
+  activitySid?: string | null;
   /** The school year and semester this credit counts in (null on very old credits that were never stamped). */
   schoolYear: string | null;
   semester: string | null;
@@ -208,10 +212,11 @@ export interface AttendanceEntry {
 export async function fetchAttendanceForActivity(activityId: string): Promise<AttendanceEntry[]> {
   // With the day of each credit when the database has it (supabase_migration_sdp_update_p4_day_labels.sql); without it exactly as before.
   const select = (cols: string) => supabase.from("sdp_attendance").select(cols).eq("activity_id", activityId).order("attended_date", { ascending: false }) as unknown as PromiseLike<{ data: Record<string, unknown>[] | null; error: unknown }>;
-  let { data: rawRows, error } = await select("id, scholar_id_number, attended_date, activity_day, school_year, semester");
+  let { data: rawRows, error } = await select("id, scholar_id_number, attended_date, activity_day, activity_sid, school_year, semester");
+  if (error) ({ data: rawRows, error } = await select("id, scholar_id_number, attended_date, activity_day, school_year, semester"));
   if (error) ({ data: rawRows, error } = await select("id, scholar_id_number, attended_date, school_year, semester"));
   if (error) ({ data: rawRows, error } = await select("id, scholar_id_number, attended_date"));
-  const rows = (rawRows ?? []) as { id: string; scholar_id_number: string; attended_date: string; activity_day?: string | null; school_year?: string | null; semester?: string | null }[];
+  const rows = (rawRows ?? []) as { id: string; scholar_id_number: string; attended_date: string; activity_day?: string | null; activity_sid?: string | null; school_year?: string | null; semester?: string | null }[];
   if (error || rows.length === 0) return [];
 
   const scholarIds = [...new Set(rows.map(r => r.scholar_id_number))];
@@ -223,6 +228,7 @@ export async function fetchAttendanceForActivity(activityId: string): Promise<At
     scholarName: nameByScholarId.get(r.scholar_id_number) ?? r.scholar_id_number,
     attendedDate: r.attended_date,
     activityDay: r.activity_day ?? null,
+    activitySid: r.activity_sid ?? null,
     schoolYear: r.school_year ?? null,
     semester: r.semester ?? null,
   }));
@@ -357,12 +363,17 @@ export async function creditAttendance(
  * scholar, only a real day of the activity, and never more credits than the activity has days.
  */
 export async function creditScholarForDay(
-  activityId: string, scholarIdNumber: string, day: string, period: CreditPeriod | null = null
+  activityId: string, scholarIdNumber: string, day: string, period: CreditPeriod | null = null, sessionSid: string | null = null
 ): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.rpc("credit_scholar_for_day", {
+  let { error } = await supabase.rpc("credit_scholar_for_day", {
     p_activity_id: activityId, p_scholar_id_number: scholarIdNumber, p_day: day,
     p_school_year: period?.schoolYear ?? null, p_semester: period?.semester ?? null,
+    ...(sessionSid ? { p_session_sid: sessionSid } : {}),
   });
+  // Before the sessions database update the function has no session: only the day is sent (a day with several sessions is then credited as one day, as before).
+  if (error && sessionSid && /p_session_sid|could not find the function/i.test(error.message ?? "")) {
+    ({ error } = await supabase.rpc("credit_scholar_for_day", { p_activity_id: activityId, p_scholar_id_number: scholarIdNumber, p_day: day, p_school_year: period?.schoolYear ?? null, p_semester: period?.semester ?? null }));
+  }
   if (!error) return { ok: true };
   const missing = error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "");
   return { ok: false, error: missing ? "Crediting a scholar for another day needs the latest database update. Please ask the IT admin to run it." : error.message };
@@ -533,10 +544,11 @@ export interface SDPHistoryRow {
 /** Attended (credited) vs. Available (not yet attended) activities for one scholar. */
 export async function fetchScholarSDPHistory(scholarIdNumber: string): Promise<{ attended: SDPHistoryRow[]; available: SDPHistoryRow[] }> {
   // The most the database offers first (sub-category, the days' sub-names, the day of each credit); fewer columns when the database update for them has not been run yet.
-  type ActRow = { name?: string; category?: SDPCategory | null; sub_category?: SDPSubCategory | null; sub_name?: string | null; date_time?: string | null; end_time?: string | null; venue?: string | null; recurring_dates?: RecurringOccurrence[] | null };
+  type ActRow = { name?: string; category?: SDPCategory | null; sub_category?: SDPSubCategory | null; sub_name?: string | null; main_sid?: string | null; date_time?: string | null; end_time?: string | null; venue?: string | null; recurring_dates?: RecurringOccurrence[] | null };
   type OpenRow = ActRow & { id: string };
   type Result<T> = { data: T[] | null; error: unknown };
   const tiers: { attended: string; activities: string }[] = [
+    { attended: "activity_id, attended_date, activity_day, activity_sid, sdp_activities(name, category, sub_category, sub_name, main_sid, date_time, end_time, venue, recurring_dates)", activities: "id, name, category, sub_category, sub_name, main_sid, date_time, end_time, venue, recurring_dates" },
     { attended: "activity_id, attended_date, activity_day, sdp_activities(name, category, sub_category, sub_name, date_time, end_time, venue, recurring_dates)", activities: "id, name, category, sub_category, sub_name, date_time, end_time, venue, recurring_dates" },
     { attended: "activity_id, attended_date, sdp_activities(name, category, sub_category)", activities: "id, name, category, sub_category, date_time" },
     { attended: "activity_id, attended_date, sdp_activities(name, category)", activities: "id, name, category, date_time" },
@@ -552,12 +564,13 @@ export async function fetchScholarSDPHistory(scholarIdNumber: string): Promise<{
 
   const attended: SDPHistoryRow[] = (attendanceRows ?? []).map((r: Record<string, unknown>, i) => {
     const act = (r.sdp_activities ?? null) as ActRow | null;
-    const schedule = { name: String(act?.name ?? "—"), dateTime: act?.date_time ?? "", endTime: act?.end_time ?? "", venue: act?.venue ?? "", subName: String(act?.sub_name ?? ""), recurringDates: act?.recurring_dates ?? [] };
-    const day = creditDay(schedule, (r.activity_day as string | null | undefined) ?? null, (r.attended_date as string | null | undefined) ?? null);
+    const schedule = { name: String(act?.name ?? "—"), dateTime: act?.date_time ?? "", endTime: act?.end_time ?? "", venue: act?.venue ?? "", subName: String(act?.sub_name ?? ""), recurringDates: act?.recurring_dates ?? [], mainSid: String(act?.main_sid ?? "") };
+    const session = creditSession(schedule, (r.activity_day as string | null | undefined) ?? null, (r.activity_sid as string | null | undefined) ?? null, (r.attended_date as string | null | undefined) ?? null);
+    const day = session?.day ?? null;
     return {
       rowKey: `${r.activity_id}-${r.attended_date}-${i}`,
       activityId: String(r.activity_id),
-      activityName: dayLabel(schedule, day),
+      activityName: dayLabel(schedule, day, session?.sid || null),
       category: act?.category ?? null,
       subCategory: act?.sub_category ?? null,
       date: String(r.attended_date ?? ""),
@@ -594,6 +607,8 @@ export interface AttendanceCode {
   batchNumber: number;
   /** The day of a recurring activity this code is for ("2026-10-21"), or null (any day). */
   dayDate?: string | null;
+  /** The session of the activity this code is for (one of several sessions of the same day), or null (an older code, made for a day). */
+  sessionSid?: string | null;
   redeemedByScholarId: string | null;
   redeemedAt: string | null;
 }
@@ -606,8 +621,8 @@ function randomCode(): string {
   return out;
 }
 
-type AttendanceCodeInsert = { session_id: string; code: string; kind: string; batch_number: number; day_date?: string | null };
-type AttendanceCodeRow = { id: string; code: string; kind: "time_in" | "time_out" | "voucher"; batch_number: number | null; redeemed_by_scholar_id: string | null; redeemed_at: string | null; day_date?: string | null };
+type AttendanceCodeInsert = { session_id: string; code: string; kind: string; batch_number: number; day_date?: string | null; session_sid?: string | null };
+type AttendanceCodeRow = { id: string; code: string; kind: "time_in" | "time_out" | "voucher"; batch_number: number | null; redeemed_by_scholar_id: string | null; redeemed_at: string | null; session_sid?: string | null; day_date?: string | null };
 const ATTENDANCE_CODE_PAGE_SIZE = 500;
 
 /** Supabase limits a single REST response, so read every code page before rendering/exporting QR batches. */
@@ -628,6 +643,10 @@ async function insertAttendanceCodes(codes: AttendanceCodeInsert[]): Promise<str
   for (let from = 0; from < codes.length; from += ATTENDANCE_CODE_PAGE_SIZE) {
     const part = codes.slice(from, from + ATTENDANCE_CODE_PAGE_SIZE);
     let { error } = await supabase.from("attendance_codes").insert(part);
+    if (error && part.some(c => "session_sid" in c) && /session_sid/i.test(error.message)) {
+      // The sessions database update has not been run yet: the codes are made for the day only, as before.
+      ({ error } = await supabase.from("attendance_codes").insert(part.map(({ session_sid: _sid, ...rest }) => rest)));
+    }
     if (error && part.some(c => "day_date" in c) && /day_date/i.test(error.message)) {
       // The database update for the days has not been run yet: the codes are made without a day, as before.
       ({ error } = await supabase.from("attendance_codes").insert(part.map(({ day_date: _day, ...rest }) => rest)));
@@ -650,7 +669,7 @@ export async function fetchAttendanceSession(activityId: string): Promise<{ sess
     },
     codes: (codeRows ?? []).map(c => ({
       id: c.id, code: c.code, kind: c.kind,
-      batchNumber: Number(c.batch_number ?? 1), dayDate: c.day_date ?? null, redeemedByScholarId: c.redeemed_by_scholar_id, redeemedAt: c.redeemed_at,
+      batchNumber: Number(c.batch_number ?? 1), dayDate: c.day_date ?? null, sessionSid: c.session_sid ?? null, redeemedByScholarId: c.redeemed_by_scholar_id, redeemedAt: c.redeemed_at,
     })),
   };
 }
@@ -665,7 +684,7 @@ export async function fetchAttendanceSession(activityId: string): Promise<{ sess
  *     each worth 1 hour.
  */
 export async function enableAttendanceForActivity(
-  activityId: string, type: AttendanceType, participantCount: number, voucherHours = 1, day: string | null = null
+  activityId: string, type: AttendanceType, participantCount: number, voucherHours = 1, day: string | null = null, sessionSid: string | null = null
 ): Promise<{ ok: boolean; error?: string; sessionId?: string }> {
   if (participantCount < 1) return { ok: false, error: "Enter a number greater than 0." };
   if (type === "voucher" && ![1, 2, 4, 8].includes(voucherHours)) return { ok: false, error: "Choose a valid voucher hour equivalent." };
@@ -682,10 +701,10 @@ export async function enableAttendanceForActivity(
 
   const codes: AttendanceCodeInsert[] = [];
   if (type === "time_in_time_out") {
-    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_in", batch_number: 1, ...(day ? { day_date: day } : {}) });
-    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_out", batch_number: 1, ...(day ? { day_date: day } : {}) });
+    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_in", batch_number: 1, ...(day ? { day_date: day } : {}), ...(sessionSid ? { session_sid: sessionSid } : {}) });
+    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "time_out", batch_number: 1, ...(day ? { day_date: day } : {}), ...(sessionSid ? { session_sid: sessionSid } : {}) });
   } else {
-    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "voucher", batch_number: 1, ...(day ? { day_date: day } : {}) });
+    for (let i = 0; i < participantCount; i++) codes.push({ session_id: session.id, code: randomCode(), kind: "voucher", batch_number: 1, ...(day ? { day_date: day } : {}), ...(sessionSid ? { session_sid: sessionSid } : {}) });
   }
 
   const codesError = await insertAttendanceCodes(codes);
@@ -697,13 +716,13 @@ export async function enableAttendanceForActivity(
  * Generates additional single-use codes when attendance exceeds the original estimate, or when a recurring activity needs a fresh code for each
  * day: vouchers for a Voucher session, and one time-in plus one time-out code per person for a Time-in / Time-out session.
  */
-export async function addAttendanceVouchers(sessionId: string, participantCount: number, day: string | null = null): Promise<{ ok: boolean; error?: string }> {
+export async function addAttendanceVouchers(sessionId: string, participantCount: number, day: string | null = null, sessionSid: string | null = null): Promise<{ ok: boolean; error?: string }> {
   if (participantCount < 1) return { ok: false, error: "Enter a number greater than 0." };
   const { data: sessionInfo } = await supabase.from("attendance_sessions").select("type").eq("id", sessionId).maybeSingle();
   const { data: latestBatch } = await supabase.from("attendance_codes").select("batch_number").eq("session_id", sessionId).order("batch_number", { ascending: false }).limit(1).maybeSingle();
   const batchNumber = Number(latestBatch?.batch_number ?? 0) + 1;
   const kinds = sessionInfo?.type === "time_in_time_out" ? ["time_in", "time_out"] : ["voucher"];
-  const codes = kinds.flatMap(kind => Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind, batch_number: batchNumber, ...(day ? { day_date: day } : {}) })));
+  const codes = kinds.flatMap(kind => Array.from({ length: participantCount }, () => ({ session_id: sessionId, code: randomCode(), kind, batch_number: batchNumber, ...(day ? { day_date: day } : {}), ...(sessionSid ? { session_sid: sessionSid } : {}) })));
   const error = await insertAttendanceCodes(codes);
   if (error) return { ok: false, error };
   const { data: session, error: sessionError } = await supabase.from("attendance_sessions")

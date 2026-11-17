@@ -5,7 +5,7 @@ import { isNetworkErrorMessage, networkProblemText, retryOnNetworkError } from "
 export type SDPCategory = "community_service" | "community_volunteerism" | "formation_program";
 export type SDPActivityType = "one_time" | "recurring";
 /** endTime is optional — occurrences added before this field existed only have a start `date`. */
-export interface RecurringOccurrence { date: string; endTime?: string; venue: string; /** Optional label of this day, e.g. "Day 2 – Bonbon Shoreline". Only a label: it never changes how days or credits are counted. */ subName?: string; }
+export interface RecurringOccurrence { /** The id of this session (a row of "Dates and venues"); the database gives one to every row, and it stays with the row. */ sid?: string; date: string; endTime?: string; venue: string; /** Optional label of this day, e.g. "Day 2 – Bonbon Shoreline". Only a label: it never changes how days or credits are counted. */ subName?: string; }
 
 export const SDP_CATEGORIES: { key: SDPCategory; label: string }[] = [
   { key: "community_service", label: "Institutional Volunteerism" },
@@ -32,24 +32,38 @@ export function manilaDay(iso: string | null | undefined): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : manilaDayFormat.format(d);
 }
-export interface ScheduleDay { day: string; subName: string; venue: string; startIso: string; endIso: string }
-type ScheduleSource = Pick<SDPActivity, "dateTime" | "endTime" | "venue" | "subName" | "recurringDates">;
+/** One SESSION of an activity: a row of "Dates and venues". Several sessions can be on the same day; `sid` tells them apart ("" for an activity saved before sessions had ids). */
+export interface ScheduleDay { day: string; subName: string; venue: string; startIso: string; endIso: string; sid: string }
+type ScheduleSource = Pick<SDPActivity, "dateTime" | "endTime" | "venue" | "subName" | "recurringDates"> & { mainSid?: string };
 /** Every day of an activity, its own date first and then each extra date, as Philippine calendar days. */
 export function scheduleDays(a: ScheduleSource): ScheduleDay[] {
   const out: ScheduleDay[] = [];
-  if (a.dateTime) out.push({ day: manilaDay(a.dateTime), subName: (a.subName ?? "").trim(), venue: a.venue, startIso: a.dateTime, endIso: a.endTime });
-  for (const o of a.recurringDates ?? []) if (o.date) out.push({ day: manilaDay(o.date), subName: (o.subName ?? "").trim(), venue: o.venue, startIso: o.date, endIso: o.endTime ?? "" });
+  if (a.dateTime) out.push({ day: manilaDay(a.dateTime), subName: (a.subName ?? "").trim(), venue: a.venue, startIso: a.dateTime, endIso: a.endTime, sid: a.mainSid ?? "" });
+  for (const o of a.recurringDates ?? []) if (o.date) out.push({ day: manilaDay(o.date), subName: (o.subName ?? "").trim(), venue: o.venue, startIso: o.date, endIso: o.endTime ?? "", sid: o.sid ?? "" });
   return out;
 }
-/** The sub-name of one day ("" if that day has none, or is not a day of the activity). */
-export function daySubName(a: ScheduleSource, day: string | null | undefined): string {
+/** The sub-name of one day ("" if that day has none, or is not a day of the activity). With a session id: the sub-name of THAT session (several sessions can share a day). */
+export function daySubName(a: ScheduleSource, day: string | null | undefined, sid?: string | null): string {
+  if (sid) { const s = scheduleDays(a).find(d => d.sid === sid); if (s) return s.subName; }
   if (!day) return "";
   return scheduleDays(a).find(d => d.day === day && d.subName)?.subName ?? "";
 }
-/** "Main name – Sub-name", or just the main name when the day has no sub-name. */
-export function dayLabel(a: ScheduleSource & { name: string }, day: string | null | undefined): string {
-  const sub = daySubName(a, day);
+/** "Main name – Sub-name", or just the main name when the day (or session) has no sub-name. */
+export function dayLabel(a: ScheduleSource & { name: string }, day: string | null | undefined, sid?: string | null): string {
+  const sub = daySubName(a, day, sid);
   return sub ? `${a.name} – ${sub}` : a.name;
+}
+/** What identifies a session in a list or a choice: its id, or (an activity saved before sessions had ids) its day. */
+export const sessionKey = (d: { sid: string; day: string }): string => d.sid || d.day;
+/**
+ * The session a credit or a code is for: the one with the saved session id; or, for something made before sessions existed, the FIRST session of its day
+ * (the day saved on it, or the day it was scanned on).
+ */
+export function creditSession(a: ScheduleSource, activityDay: string | null | undefined, activitySid: string | null | undefined, attendedDate: string | null | undefined): ScheduleDay | null {
+  const all = scheduleDays(a);
+  if (activitySid) { const s = all.find(d => d.sid === activitySid); if (s) return s; }
+  const day = creditDay(a, activityDay, attendedDate);
+  return day ? all.find(d => d.day === day) ?? null : null;
 }
 /** The day a credit is for: the day saved on it, or else the day it was scanned if that is one of the activity's days. */
 export function creditDay(a: ScheduleSource, activityDay: string | null | undefined, attendedDate: string | null | undefined): string | null {
@@ -94,6 +108,8 @@ export interface SDPActivity {
   pubmatPath: string | null;
   activityType: SDPActivityType;
   recurringDates: RecurringOccurrence[];
+  /** The id of the activity's own (first) session; the other sessions carry theirs in recurringDates. */
+  mainSid: string;
   credits: number;
   yearLevels: string[];
   allYearLevels: boolean;
@@ -133,6 +149,7 @@ function rowToActivity(r: Record<string, unknown>): SDPActivity {
     pubmatPath: (r.pubmat_path as string | null) ?? null,
     activityType: (r.activity_type as SDPActivityType | null) ?? "one_time",
     recurringDates: (r.recurring_dates as RecurringOccurrence[] | null) ?? [],
+    mainSid: String(r.main_sid ?? ""),
     credits: Number(r.credits ?? 1),
     yearLevels: (r.target_year_levels as string[]) ?? [],
     allYearLevels: Boolean(r.all_year_levels),

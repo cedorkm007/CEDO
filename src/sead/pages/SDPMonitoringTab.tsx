@@ -10,7 +10,7 @@ import {
   isSubCategorySupported, isDayLabelsSupported, type ChecklistSummary, type ChecklistSortKey, type SDPActivity, type SDPCategory, type SDPSubCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
 } from "../sdpMonitorApi";
-import { SDP_CATEGORIES, SDP_SUBCATEGORIES, subCategoryLabel, scheduleDays, daySubName, creditDay, manilaDay } from "@/scholar/sdpApi";
+import { SDP_CATEGORIES, SDP_SUBCATEGORIES, subCategoryLabel, scheduleDays, daySubName, creditSession, sessionKey, manilaDay, type ScheduleDay } from "@/scholar/sdpApi";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { uploadPubmat, pubmatUrl } from "../pubmatApi";
 import { ScholarSearchField, type ScholarSearchResult } from "../components/ScholarSearchField";
@@ -43,10 +43,27 @@ function shortDay(day: string): string {
   return Number.isNaN(d.getTime()) ? day : d.toLocaleDateString("en-PH", { month: "short", day: "numeric", timeZone: "Asia/Manila" });
 }
 /** A day as shown next to a code or credit: "Oct 21 – Day 2 – Bonbon Shoreline", or just "Oct 21" when the day has no sub-name. */
-function dayText(activity: SDPActivity, day: string | null | undefined): string {
+function dayText(activity: SDPActivity, day: string | null | undefined, sid?: string | null): string {
   if (!day) return "";
-  const sub = daySubName(activity, day);
+  const sub = daySubName(activity, day, sid);
   return sub ? `${shortDay(day)} – ${sub}` : shortDay(day);
+}
+const clock = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }); };
+/**
+ * One SESSION (a row of "Dates and venues") as shown in a choice or on a printed code: "Nov 17 – Kita-Kita". When another session is on the same day, its time is added
+ * ("Nov 17 – Kita-Kita · 9:00 AM – 5:00 PM") so two sessions of one day can always be told apart, even when a session has no sub-name.
+ */
+function sessionText(activity: SDPActivity, s: ScheduleDay): string {
+  const sameDay = scheduleDays(activity).filter(x => x.day === s.day).length > 1;
+  const base = s.subName ? `${shortDay(s.day)} – ${s.subName}` : shortDay(s.day);
+  const when = sameDay && s.startIso ? ` · ${clock(s.startIso)}${s.endIso ? ` – ${clock(s.endIso)}` : ""}` : "";
+  return base + when;
+}
+/** The label of a code or credit: its session when it has a session id (or, made for a day, the first session of that day). */
+function sessionLabel(activity: SDPActivity, day: string | null | undefined, sid: string | null | undefined): string {
+  if (!day && !sid) return "";
+  const s = creditSession(activity, day, sid, null);
+  return s ? sessionText(activity, s) : dayText(activity, day, sid);
 }
 function csvCell(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -440,24 +457,26 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
 
   // A recurring activity can credit a scholar once for EACH of its days: the day being credited is chosen, and days the scholar already has are not offered.
   const isRecurring = activity.activityType === "recurring";
-  const days = useMemo(() => { const seen = new Set<string>(); return scheduleDays(activity).filter(d => d.day && !seen.has(d.day) && seen.add(d.day)); }, [activity]);
+  // Every SESSION (row of "Dates and venues") is its own credit: two sessions on the same day are two choices.
+  const days = useMemo(() => scheduleDays(activity).filter(d => d.day), [activity]);
   const typedId = (selected?.scholarIdNumber ?? query).trim().toLowerCase();
   const scholarCredits = typedId ? attendees.filter(a => a.scholarIdNumber.toLowerCase() === typedId) : [];
-  const creditedDays = new Set(scholarCredits.map(a => creditDay(activity, a.activityDay, a.attendedDate)).filter((d): d is string => !!d));
+  const creditedDays = new Set(scholarCredits.map(a => creditSession(activity, a.activityDay, a.activitySid, a.attendedDate)).filter((d): d is ScheduleDay => !!d).map(sessionKey));
   const [dayChoice, setDayChoice] = useState("");
   const today = manilaDay(new Date().toISOString());
-  const defaultDay = days.find(d => d.day === today && !creditedDays.has(d.day)) ?? days.find(d => !creditedDays.has(d.day));
-  const effectiveDay = dayChoice && days.some(d => d.day === dayChoice) && !creditedDays.has(dayChoice) ? dayChoice : defaultDay?.day ?? "";
+  const defaultDay = days.find(d => d.day === today && !creditedDays.has(sessionKey(d))) ?? days.find(d => !creditedDays.has(sessionKey(d)));
+  const effectiveDay = dayChoice && days.some(d => sessionKey(d) === dayChoice) && !creditedDays.has(dayChoice) ? dayChoice : defaultDay ? sessionKey(defaultDay) : "";
+  const chosenSession = days.find(d => sessionKey(d) === effectiveDay);
   const useDayChoice = isRecurring && days.length > 0;
 
   async function handleAdd() {
     setError("");
     const scholarIdNumber = selected?.scholarIdNumber ?? query.trim();
     if (!scholarIdNumber) { setError("Enter or pick a scholar."); return; }
-    if (useDayChoice && !effectiveDay) { setError(`This scholar already has a credit for every day of this activity (${days.length} of ${days.length}).`); return; }
+    if (useDayChoice && !effectiveDay) { setError(`This scholar already has a credit for every session of this activity (${days.length} of ${days.length}).`); return; }
     setBusy(true);
     const result = useDayChoice
-      ? await creditScholarForDay(activity.id, scholarIdNumber, effectiveDay, chosenPeriod())
+      ? await creditScholarForDay(activity.id, scholarIdNumber, chosenSession?.day ?? effectiveDay, chosenPeriod(), chosenSession?.sid || null)
       : await creditAttendance(activity.id, scholarIdNumber, newDate, chosenPeriod());
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to credit — check the Scholar ID exists."); return; }
@@ -515,10 +534,10 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
         </div>
         {useDayChoice ? (
           <div>
-            <label htmlFor="credit-day" className="block text-[10.5px] font-semibold text-slate-400 mb-1">Day being credited</label>
+            <label htmlFor="credit-day" className="block text-[10.5px] font-semibold text-slate-400 mb-1">Session being credited</label>
             <select id="credit-day" value={effectiveDay} onChange={e => setDayChoice(e.target.value)}
               className="border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc] max-w-[260px]">
-              {days.map(d => <option key={d.day} value={d.day} disabled={creditedDays.has(d.day)}>{dayText(activity, d.day)}{creditedDays.has(d.day) ? " (already credited)" : ""}</option>)}
+              {days.map(d => <option key={sessionKey(d)} value={sessionKey(d)} disabled={creditedDays.has(sessionKey(d))}>{sessionText(activity, d)}{creditedDays.has(sessionKey(d)) ? " (already credited)" : ""}</option>)}
             </select>
           </div>
         ) : (
@@ -536,7 +555,7 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
       </div>
       {useDayChoice && (
         <p className="text-[11px] text-slate-400 -mt-2 mb-3">
-          A scholar can be credited once for each day of this recurring activity ({days.length} day{days.length === 1 ? "" : "s"}).
+          A scholar can be credited once for each session of this recurring activity ({days.length} session{days.length === 1 ? "" : "s"}; several sessions can be on the same day).
           {scholarCredits.length > 0 && <> This scholar has <strong>{scholarCredits.length} of {days.length}</strong>.</>}
         </p>
       )}
@@ -552,7 +571,7 @@ function AttendanceSection({ activity }: { activity: SDPActivity }) {
             <div key={a.id} className="flex flex-wrap items-center justify-between gap-y-1 bg-[#f8fafd] rounded-lg px-3 py-2 text-[12.5px]">
               <span className="text-[#062444] font-medium">{a.scholarName} <span className="text-slate-400">({a.scholarIdNumber})</span></span>
               <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-                {activity.activityType === "recurring" && (() => { const sub = daySubName(activity, creditDay(activity, a.activityDay, a.attendedDate)); return sub ? <span className="text-[12px] font-semibold text-[#0077b6]">{activity.name} – {sub}</span> : null; })()}
+                {activity.activityType === "recurring" && (() => { const sub = creditSession(activity, a.activityDay, a.activitySid, a.attendedDate)?.subName; return sub ? <span className="text-[12px] font-semibold text-[#0077b6]">{activity.name} – {sub}</span> : null; })()}
                 <span className="text-slate-600">{a.attendedDate ? new Date(a.attendedDate).toLocaleDateString() : "—"}</span>
                 <span className="rounded-full bg-white border border-[#e6ecf5] px-2 py-0.5 text-[11.5px] font-semibold text-[#062444]">{a.schoolYear && a.semester ? `${a.schoolYear} · ${termLabel(a.semester)}` : "No semester"}</span>
                 <button type="button" onClick={() => setMoving(m => (m?.id === a.id ? null : { id: a.id, key: effectiveCreditKey }))} className="text-[12px] font-semibold text-[#0077b6] hover:underline">Change semester</button>
@@ -618,20 +637,19 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
   const [progressOn, setProgressOn] = useState(false);       // progress monitoring (attendance by picture) is attached: QR attendance cannot be
   useEffect(() => { void fetchProgressEnabled(activity.id).then(v => setProgressOn(!!v)); }, [activity.id]);
   // Recurring activities: codes are made for ONE day, so each printed code says which day it is for.
-  const dayOptions = useMemo(() => {
-    const seen = new Set<string>();
-    return scheduleDays(activity).filter(d => d.day && !seen.has(d.day) && seen.add(d.day));
-  }, [activity]);
+  // Every SESSION (row of "Dates and venues") has its own codes, even when several sessions are on the same day.
+  const dayOptions = useMemo(() => scheduleDays(activity).filter(d => d.day), [activity]);
   const showDays = activity.activityType === "recurring" && isDayLabelsSupported() && dayOptions.length > 0;
   const todayDay = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-  const [dayChoice, setDayChoice] = useState(() => (dayOptions.find(d => d.day === todayDay) ?? dayOptions[0])?.day ?? "");
+  const [dayChoice, setDayChoice] = useState(() => { const d = dayOptions.find(x => x.day === todayDay) ?? dayOptions[0]; return d ? sessionKey(d) : ""; });
+  const chosenSession = dayOptions.find(d => sessionKey(d) === dayChoice) ?? dayOptions[0];
   const dayChooser = (id: string) => (
     <div>
-      <label htmlFor={id} className="block text-[10.5px] font-semibold text-slate-500 mb-1">Codes for which day</label>
+      <label htmlFor={id} className="block text-[10.5px] font-semibold text-slate-500 mb-1">Codes for which session</label>
       <select id={id} value={dayChoice} onChange={e => setDayChoice(e.target.value)} className="w-full border border-[#062444]/15 rounded-lg px-3 py-2 text-[12.5px] outline-none focus:border-[#0088cc]">
-        {dayOptions.map(d => <option key={d.day} value={d.day}>{dayText(activity, d.day)}</option>)}
+        {dayOptions.map(d => <option key={sessionKey(d)} value={sessionKey(d)}>{sessionText(activity, d)}</option>)}
       </select>
-      <p className="mt-1 text-[11px] text-slate-500">Each code is printed with this day, and a scholar can use only one code of the same day.</p>
+      <p className="mt-1 text-[11px] text-slate-500">Each code is printed with this session, and a scholar can use only one code of the same session. Sessions on the same day each have their own codes.</p>
     </div>
   );
 
@@ -658,7 +676,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
     const n = Number(count);
     if (!count.trim() || n < 1) { setError("Enter the expected number of participants."); return; }
     setBusy(true);
-    const result = await enableAttendanceForActivity(activity.id, type, n, voucherHours, showDays ? dayChoice : null);
+    const result = await enableAttendanceForActivity(activity.id, type, n, voucherHours, showDays ? chosenSession?.day ?? null : null, showDays ? chosenSession?.sid || null : null);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to enable attendance."); return; }
     setEnabling(false);
@@ -669,7 +687,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
     const n = Number(extraVoucherCount);
     if (!extraVoucherCount.trim() || n < 1 || !session) { setError("Enter how many additional vouchers to generate."); return; }
     setBusy(true);
-    const result = await addAttendanceVouchers(session.id, n, showDays ? dayChoice : null);
+    const result = await addAttendanceVouchers(session.id, n, showDays ? chosenSession?.day ?? null : null, showDays ? chosenSession?.sid || null : null);
     setBusy(false);
     if (!result.ok) { setError(result.error || "Failed to generate additional vouchers."); return; }
     setExtraVoucherCount("");
@@ -679,7 +697,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
   function downloadCodesCSV() {
     // The third column says which day a code is for ("Oct 21 – Day 2 – Bonbon Shoreline"), so printed codes of different days are easy to tell apart.
     const lines = ["kind,code,day"];
-    for (const c of codes) lines.push(`${c.kind},${c.code},${csvCell(dayText(activity, c.dayDate))}`);
+    for (const c of codes) lines.push(`${c.kind},${c.code},${csvCell(sessionLabel(activity, c.dayDate, c.sessionSid))}`);
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -721,7 +739,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
           pdf.setTextColor(6, 36, 68);
           const activityLines = pdf.splitTextToSize(activity.name, cellWidth - 5).slice(0, 2);
           pdf.text(activityLines, x + cellWidth / 2, y + 4, { align: "center", baseline: "top" });
-          const dayLine = dayText(activity, code.dayDate);
+          const dayLine = sessionLabel(activity, code.dayDate, code.sessionSid);
           if (dayLine) {
             pdf.setFontSize(6);
             pdf.setTextColor(0, 112, 159);
@@ -841,7 +859,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
             <div key={r.scholarIdNumber} className="flex items-center justify-between bg-[#f8fafd] rounded-lg px-3 py-1.5 text-[12px]">
               <span className="text-[#062444] font-medium">{r.scholarName} <span className="text-slate-400">({r.scholarIdNumber})</span>
                 {activity.activityType === "recurring" && (() => {
-                  const labels = credits.filter(c => c.scholarIdNumber === r.scholarIdNumber).map(c => dayText(activity, creditDay(activity, c.activityDay, c.attendedDate))).filter(Boolean).sort();
+                  const labels = credits.filter(c => c.scholarIdNumber === r.scholarIdNumber).map(c => { const s = creditSession(activity, c.activityDay, c.activitySid, c.attendedDate); return s ? sessionText(activity, s) : ""; }).filter(Boolean).sort();
                   return labels.length > 0 ? <span className="block text-[11px] font-normal text-slate-600">{labels.join(" · ")}</span> : null;
                 })()}
               </span>
@@ -868,12 +886,12 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
 
       {showCodes && (
         <div className="mt-3 max-h-72 space-y-4 overflow-y-auto p-1">
-          {batches.map(batch => <div key={batch.number}><p className="mb-2 text-[11px] font-bold uppercase text-slate-500">Batch {batch.number}{batch.codes[0]?.dayDate ? ` · ${dayText(activity, batch.codes[0].dayDate)}` : ""}</p><div className="grid grid-cols-3 gap-2">{batch.codes.map(c => (
+          {batches.map(batch => <div key={batch.number}><p className="mb-2 text-[11px] font-bold uppercase text-slate-500">Batch {batch.number}{batch.codes[0]?.dayDate ? ` · ${sessionLabel(activity, batch.codes[0].dayDate, batch.codes[0].sessionSid)}` : ""}</p><div className="grid grid-cols-3 gap-2">{batch.codes.map(c => (
             <div key={c.id} className={`border rounded-lg p-2 text-center ${c.redeemedByScholarId ? "border-green-300 bg-green-50" : "border-[#e6ecf5]"}`}>
               <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(c.code)}`} alt={c.code} className="mx-auto mb-1" width={80} height={80} />
               <p className="text-[11px] font-mono font-bold text-[#062444]">{c.code}</p>
               <p className="text-[9.5px] text-slate-400 uppercase">{c.kind.replace("_", " ")}</p>
-              {c.dayDate && <p className="text-[9.5px] font-semibold text-[#0077b6]">{dayText(activity, c.dayDate)}</p>}
+              {c.dayDate && <p className="text-[9.5px] font-semibold text-[#0077b6]">{sessionLabel(activity, c.dayDate, c.sessionSid)}</p>}
               {c.redeemedByScholarId && <p className="text-[9px] text-green-600 font-semibold mt-0.5">Redeemed</p>}
             </div>
           ))}</div></div>)}
@@ -883,7 +901,7 @@ function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
   );
 }
 
-interface OccurrenceRow { date: string; startTime: string; endTime: string; venue: string; subName: string; }
+interface OccurrenceRow { date: string; startTime: string; endTime: string; venue: string; subName: string; /** The session id of an existing row (kept when the row is saved again); a new row has none and the database gives it one. */ sid?: string; }
 
 function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; onClose: () => void; onChanged: () => void }) {
   const isRecurring = activity.activityType === "recurring";
@@ -919,6 +937,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
       endTime: activity.endTime ? localTimePart(activity.endTime) : "",
       venue: activity.venue,
       subName: activity.subName,
+      sid: activity.mainSid || undefined,
     };
     const extra: OccurrenceRow[] = activity.recurringDates.map(occ => ({
       date: localDatePart(occ.date),
@@ -926,6 +945,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
       endTime: occ.endTime ? localTimePart(occ.endTime) : "",
       venue: occ.venue,
       subName: occ.subName ?? "",
+      sid: occ.sid,
     }));
     return [base, ...extra];
   });
@@ -977,6 +997,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
     let venueToSave = venue.trim();
     let recurringDatesToSave = activity.recurringDates;
     let firstSubName = activity.subName;
+    let firstSid: string | undefined;
 
     if (isRecurring) {
       const rows = occurrences.filter(o => o.date || o.startTime || o.endTime || o.venue.trim());
@@ -1001,7 +1022,9 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
         endTime: new Date(`${r.date}T${r.endTime}`).toISOString(),
         venue: r.venue.trim(),
         ...(r.subName.trim() ? { subName: r.subName.trim() } : {}),
+        ...(r.sid ? { sid: r.sid } : {}),
       }));
+      firstSid = first.sid ?? "";
     } else {
       if ((date || startTime || endTime) && (!date || !startTime || !endTime)) {
         setError("Enter the date, From time, and To time together, or leave all three blank.");
@@ -1018,7 +1041,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
 
     setBusy(true);
     const result = await updateSDPActivity(activity.id, {
-      projectHead, headCluster, category, ...(subSupported ? { subCategory } : {}), ...(isRecurring && isDayLabelsSupported() ? { subName: firstSubName } : {}), recurringDates: recurringDatesToSave, credits: creditsValue,
+      projectHead, headCluster, category, ...(subSupported ? { subCategory } : {}), ...(isRecurring && isDayLabelsSupported() ? { subName: firstSubName } : {}), recurringDates: recurringDatesToSave, ...(isRecurring && isDayLabelsSupported() ? { mainSid: firstSid ?? "" } : {}), credits: creditsValue,
       name: name.trim(), organization: organization.trim(), venue: venueToSave,
       dateTime: dateTimeIso || null,
       endTime: endTimeIso || null,
