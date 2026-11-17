@@ -172,6 +172,30 @@ export async function fetchProbationRenewalInfo(): Promise<{ ok: true; byScholar
   return { ok: true, byScholar: map };
 }
 
+/** About the scholar of a booked appointment, for the pop-up (supabase_migration_consultation_booking_details.sql). Empty values are null. */
+export interface SlotScholarInfo {
+  course: string | null; yearLevel: string | null; barangay: string | null; school: string | null;
+  /** The GWA of the semester the renewal looks at, on the school's own scale; null when there are no grades (or the school has no grading setup). */
+  gwa: number | null; gwaYear: string | null; gwaTerm: string | null;
+  scale: { min: number; max: number; direction: "lower_is_better" | "higher_is_better"; kind: string } | null;
+}
+
+/** `missing: true` = the database update has not been run yet (the pop-up then simply leaves these lines out). */
+export async function fetchSlotScholarInfo(slotId: string): Promise<{ ok: true; info: SlotScholarInfo } | { ok: false; error: string; missing: boolean }> {
+  const { data, error } = await supabase.rpc("counseling_slot_scholar_info", { p_slot_id: slotId });
+  if (error || !data) return { ok: false, error: error?.message ?? "Couldn't load the scholar's information.", missing: !!error && (error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "")) };
+  const d = data as Row;
+  const numOrNull = (v: unknown) => (v == null ? null : Number(v));
+  return {
+    ok: true,
+    info: {
+      course: strOrNull(d.course), yearLevel: strOrNull(d.year_level), barangay: strOrNull(d.barangay), school: strOrNull(d.school),
+      gwa: numOrNull(d.gwa), gwaYear: strOrNull(d.gwa_year), gwaTerm: strOrNull(d.gwa_term),
+      scale: d.scale_min != null && d.scale_max != null ? { min: Number(d.scale_min), max: Number(d.scale_max), direction: str(d.scale_direction) === "higher_is_better" ? "higher_is_better" : "lower_is_better", kind: str(d.scale_kind) } : null,
+    },
+  };
+}
+
 /** The pre-filled Daily Record of an appointment already marked Attended (for when the form was closed before it was saved). */
 export async function fetchSlotPrefill(slotId: string): Promise<{ ok: true; prefill: AttendedPrefill } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("counseling_slot_prefill", { p_slot_id: slotId });

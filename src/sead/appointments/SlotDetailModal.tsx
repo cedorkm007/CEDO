@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, UserX } from "lucide-react";
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
 import { formatSlot } from "@/lib/renewal";
-import { fetchSlotPrefill, markSlot, setHardCopyReceived, type AttendedPrefill, type CalendarSlot } from "../appointmentsApi";
+import { fetchSlotPrefill, fetchSlotScholarInfo, markSlot, setHardCopyReceived, type AttendedPrefill, type CalendarSlot, type SlotScholarInfo } from "../appointmentsApi";
+import { gwaLine, infoText } from "@/lib/bookingInfo";
 import { ModalShell } from "../components/SeadUiShell";
 import { AddDailyRecordModal } from "../components/AddDailyRecordModal";
 
@@ -12,6 +13,16 @@ export function SlotDetailModal({ slot, onClose, onChanged }: { slot: CalendarSl
   const [error, setError] = useState("");
   const [prefill, setPrefill] = useState<AttendedPrefill | null>(null);
   const started = new Date(slot.startsAt).getTime() <= Date.now();
+  // about the scholar: course, year level, barangay, school and GWA (read when the pop-up opens; the pop-up works without it)
+  const [info, setInfo] = useState<SlotScholarInfo | null>(null);
+  const [infoState, setInfoState] = useState<"loading" | "ok" | "missing" | "error">("loading");
+  useEffect(() => {
+    let off = false;
+    setInfo(null); setInfoState("loading");
+    void fetchSlotScholarInfo(slot.slotId).then(r => { if (off) return; if (r.ok) { setInfo(r.info); setInfoState("ok"); } else setInfoState(r.missing ? "missing" : "error"); });
+    return () => { off = true; };
+  }, [slot.slotId]);
+  const gwa = info ? gwaLine(info.gwa, info.scale, info.gwaYear, info.gwaTerm) : null;
 
   async function mark(outcome: "attended" | "no_show") {
     if (outcome === "no_show" && !window.confirm(`Mark ${slot.scholarName} as a no-show? They will be told to book a new time.`)) return;
@@ -50,6 +61,21 @@ export function SlotDetailModal({ slot, onClose, onChanged }: { slot: CalendarSl
         <p>{slot.typeLabel ?? "Consultation"} · {slot.minutes ?? 10} minutes</p>
         <p>{slot.termLabel ? `Renewal for ${slot.termLabel}` : !slot.recordId ? "Referred for a consultation" : ""}{slot.caseSummary ? ` · ${slot.caseSummary}` : ""}</p>
         {slot.stage && <div className="pt-1"><RenewalStageBadge stage={slot.stage} full /></div>}
+        {infoState !== "missing" && (
+          <dl aria-label="About the scholar" aria-busy={infoState === "loading"} className="mt-2 grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1.5 rounded-lg bg-[#f7f9fc] px-3 py-2.5 text-[14px]">
+            {([["Course", info ? infoText(info.course) : null], ["Year level", info ? infoText(info.yearLevel) : null], ["Barangay", info ? infoText(info.barangay) : null], ["School", info ? infoText(info.school) : null]] as const).map(([label, value]) => (
+              <div key={label} className="contents">
+                <dt className="text-slate-600">{label}</dt>
+                <dd className="font-medium text-slate-900 break-words">{value ?? (infoState === "error" ? "—" : <span className="inline-block h-4 w-32 animate-pulse rounded bg-slate-200 align-middle" aria-hidden="true" />)}</dd>
+              </div>
+            ))}
+            <dt className="text-slate-600">GWA</dt>
+            <dd className="text-slate-900">
+              {gwa ? <><span className="font-bold">{gwa.value}</span>{gwa.note && <span className="block text-[13px] font-normal text-slate-700">{gwa.note}</span>}</> : infoState === "error" ? "—" : <span className="inline-block h-4 w-20 animate-pulse rounded bg-slate-200 align-middle" aria-hidden="true" />}
+            </dd>
+            {infoState === "error" && <div role="status" className="col-span-2 text-[13px] text-amber-900">Couldn't load the scholar's information. The appointment still works.</div>}
+          </dl>
+        )}
         {slot.noShowCount > 0 && <p className="text-red-800 font-semibold">Missed {slot.noShowCount} earlier consultation{slot.noShowCount === 1 ? "" : "s"} for this renewal.</p>}
         {slot.isSummer && <p>Summer renewal: the prospectus hard copy should be brought. Hard copy received: <strong>{slot.hardCopy ? "yes" : "not yet"}</strong>.</p>}
       </div>
