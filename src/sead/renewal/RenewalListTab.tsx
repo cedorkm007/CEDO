@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveReload } from "@/lib/liveUpdates";
-import { RefreshCw, Search } from "lucide-react";
+import { Download, RefreshCw, Search } from "lucide-react";
 import { ListPagination } from "@/app/components/PaginatedList";
 import { formatDateTime, termLabelOf } from "@/lib/renewal";
 import { canReferForConsultation, NO_ROLES, type NeededAction, neededActions, REFER_BOOKING_ACTION, type ScholarActionFacts, type ViewerRoles } from "@/lib/renewalActions";
@@ -16,7 +16,9 @@ import { ReferralFormModal } from "../components/ReferralFormModal";
 import { ReferralFormPanel } from "../components/ReferralFormPanel";
 import { fetchScholarInformationByIdNumber, type ScholarInformationRow } from "../seadApi";
 import { MultiSelect, SdpCreditsModal } from "./RenewalScholarListTab";
-import { RenewalListTable } from "./RenewalListTable";
+import { RenewalListTable, type EnrollmentColumn } from "./RenewalListTable";
+import { RenewalEnrollmentExportDialog } from "./RenewalEnrollmentExportDialog";
+import { fetchEnrollmentStatus, setEnrollmentConfirmed, type EnrollmentState } from "../renewalEnrollmentApi";
 import { RenewalEnteredGradesTab } from "./RenewalEnteredGradesTab";
 import { RenewalSdpReconsiderationTab } from "./RenewalSdpReconsiderationTab";
 import { RenewalIncTab } from "./RenewalIncTab";
@@ -25,7 +27,7 @@ import { RenewalReferConsultationModal } from "./RenewalReferConsultationModal";
 
 const INTRO: Record<RenewalListTab, string> = {
   applications: "The scholars who applied and are not renewed yet, by the grades of the semester the renewal looks at (worst case first: a scholar is in one sub-tab only). Late and returned applications are here too.",
-  renewed: "The scholars whose renewal was confirmed, by the status they are renewed with. The status column shows where the scholar came from and where the scholar is now.",
+  renewed: "The scholars whose renewal was confirmed, by the status they are renewed with. The status column shows where the scholar came from and where the scholar is now. Tick Enrollment confirmation when the scholar's enrollment is confirmed; Export confirmed enrolled lists the ticked ones renewed in the dates you choose.",
   not_applied: "The scholars who can renew in this term and have not applied, by the grades of the semester the renewal looks at (worst case first). The grades and the SDP are those of the last check (Refresh).",
 };
 const EMPTY: Record<RenewalListTab, string> = { applications: "Nobody here.", renewed: "Nobody here.", not_applied: "Nobody here." };
@@ -63,12 +65,18 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
   const [marking, setMarking] = useState<RenewalListRow | null>(null);
   const [referBooking, setReferBooking] = useState<{ row: RenewalListRow; facts: ScholarActionFacts } | null>(null);
   const [actionError, setActionError] = useState("");
+  // Renewed list: the "Enrollment confirmation" tick box of each scholar on the page, and the export window
+  const [enroll, setEnroll] = useState<Record<string, EnrollmentState> | null>(null);
+  const [enrollMissing, setEnrollMissing] = useState(false);
+  const [enrollError, setEnrollError] = useState("");
+  const [enrollSaving, setEnrollSaving] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
   const autoTried = useRef("");
   const picked = useRef(false);        // the person chose a sub-tab: the list stops moving to a sub-tab by itself
   const hasActions = tab !== "renewed";
 
   // a new list or a new term starts from the first sub-tab with no filter
-  useEffect(() => { picked.current = false; setSub(FIRST_SUBTAB[tab]); setFilters(EMPTY_RENEWAL_LIST_FILTERS); setTyped(""); setPage(1); setRows(null); setCounts(null); }, [tab, schoolYear, term]);
+  useEffect(() => { picked.current = false; setSub(FIRST_SUBTAB[tab]); setFilters(EMPTY_RENEWAL_LIST_FILTERS); setTyped(""); setPage(1); setRows(null); setCounts(null); setEnroll(null); setEnrollError(""); }, [tab, schoolYear, term]);
   // the search waits for a pause in typing, then starts again from page 1
   useEffect(() => { const t = setTimeout(() => { setFilters(f => (f.query === typed ? f : { ...f, query: typed })); setPage(1); }, 350); return () => clearTimeout(t); }, [typed]);
   const change = (patch: Partial<RenewalListFilters>) => { setFilters(f => ({ ...f, ...patch })); setPage(1); };
@@ -84,6 +92,10 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
     if (!l.ok) { if (l.missing) setMissing(true); else setError(l.error); return; }
     setRows(l.rows); setTotal(l.total); setError("");
     if (c.ok) setCounts(c.counts);
+    if (tab === "renewed") {
+      const e = await fetchEnrollmentStatus(schoolYear, term, l.rows.map(x => x.scholarIdNumber));
+      if (e.ok) { setEnroll(e.states); setEnrollMissing(false); } else if (e.missing) { setEnrollMissing(true); setEnroll({}); } else { setEnroll({}); setEnrollError(e.error); }
+    }
     if (hasActions) {
       const a = await fetchScholarActions(schoolYear, term, l.rows.map(x => x.scholarIdNumber));
       if (a.ok) { setFacts(a.facts); setActionsMissing(false); } else if (a.missing) { setActionsMissing(true); setFacts({}); } else setFacts({});
@@ -141,6 +153,19 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
   }
   const afterAct = () => { setActing(null); setReferring(null); onChanged?.(); void loadList(); };
 
+  /** Ticks or unticks one scholar's Enrollment confirmation (the box changes at once; if the database refuses, it goes back and says why). */
+  const toggleEnrollment = useCallback(async (scholarIdNumber: string, next: boolean) => {
+    const before = enroll?.[scholarIdNumber];
+    if (!before) return;
+    setEnrollError(""); setEnrollSaving(s => new Set(s).add(scholarIdNumber));
+    setEnroll(m => (m ? { ...m, [scholarIdNumber]: { ...before, confirmed: next } } : m));
+    const r = await setEnrollmentConfirmed(before.recordId, next);
+    setEnrollSaving(s => { const n = new Set(s); n.delete(scholarIdNumber); return n; });
+    if (r.ok) setEnroll(m => (m ? { ...m, [scholarIdNumber]: { ...before, confirmed: r.confirmed, confirmedAt: r.confirmedAt, confirmedBy: r.confirmedBy } } : m));
+    else { setEnroll(m => (m ? { ...m, [scholarIdNumber]: before } : m)); setEnrollError(r.error); }
+  }, [enroll]);
+  const enrollment: EnrollmentColumn | null = tab === "renewed" ? { states: enroll, saving: enrollSaving, missing: enrollMissing, error: enrollError, onToggle: (id, next) => void toggleEnrollment(id, next) } : null;
+
   /** The actions of a row: what waits on staff, and (Not applied) the evaluator's "Mark not required". */
   const actionsOf = useCallback((r: ScholarListRow, f: ScholarActionFacts | null): NeededAction[] => {
     const list = neededActions(r, f);
@@ -172,11 +197,16 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
         {viewer.evaluator && <button onClick={() => void refresh()} disabled={!!refreshing || !options} className="inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/25 bg-white px-3 py-1.5 font-semibold text-[#062444] hover:bg-[#f7f9fc] disabled:opacity-60">
           <RefreshCw size={14} aria-hidden="true" className={refreshing ? "animate-spin" : ""} /> {refreshing ? "Checking…" : "Refresh"}
         </button>}
+        {tab === "renewed" && !enrollMissing && <button onClick={() => setExporting(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/25 bg-white px-3 py-1.5 font-semibold text-[#062444] hover:bg-[#f7f9fc]">
+          <Download size={14} aria-hidden="true" /> Export confirmed enrolled
+        </button>}
         {refreshing && <span role="status" className="text-slate-800">{refreshing.total > 0 ? `Checked ${refreshing.done} of ${refreshing.total} scholars…` : "Starting…"}</span>}
       </div>
       {refreshing && refreshing.total > 0 && <div className="mb-3 h-2 w-full max-w-md overflow-hidden rounded-full bg-[#e6ecf5]" aria-hidden="true"><div className="h-full bg-[#00709f] transition-all" style={{ width: `${Math.round((refreshing.done / refreshing.total) * 100)}%` }} /></div>}
       {refreshError && <p role="alert" className="mb-3 text-[14px] text-red-700">{refreshError}</p>}
       {actionError && <p role="alert" className="mb-3 text-[14px] text-red-700">{actionError}</p>}
+      {tab === "renewed" && enrollError && <p role="alert" className="mb-3 text-[14px] text-red-700">{enrollError}</p>}
+      {tab === "renewed" && enrollMissing && <p role="status" className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[14px] text-amber-950">The Enrollment confirmation column needs the latest database update (supabase_migration_renewal_enrollment_confirmation.sql). Until it is run, the column stays empty.</p>}
       {hasActions && actionsMissing && <p role="status" className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[14px] text-amber-950">The Actions column needs the latest database update (supabase_migration_renewal_actions_needed.sql). Until it is run it stays empty.</p>}
 
       {/* filters: tick several in each; all kinds apply together */}
@@ -216,7 +246,7 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
 
       <RenewalListTable
         tab={tab} rows={rows} facts={facts} ready={ready} hasActions={hasActions} viewer={viewer} busy={referBusy}
-        hideSchool={filters.schoolIds.length === 1} emptyText={emptyText}
+        hideSchool={filters.schoolIds.length === 1} emptyText={emptyText} enrollment={enrollment}
         onOpenRecord={onOpenRecord} onViewSdp={x => setViewing(x)} onAct={(a, row, f) => void act(a, row as RenewalListRow, f)} actionsFor={actionsOf as never}
       />
       {rows && rows.length > 0 && (
@@ -225,6 +255,7 @@ export function RenewalListTab({ tab, schoolYear, term, refreshKey, viewer = NO_
         </div>
       )}
 
+      {exporting && <RenewalEnrollmentExportDialog schoolYear={schoolYear} term={term} onClose={() => setExporting(false)} />}
       {viewing && <SdpCreditsModal scholar={viewing} schoolYear={schoolYear} term={term} onClose={() => setViewing(null)} />}
       {acting?.key === "approve_grades" && (
         <ModalShell title={`Entered grades of ${acting.row.name}`} onClose={() => setActing(null)} extraWide>

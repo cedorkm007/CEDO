@@ -186,6 +186,33 @@ interface TableProps {
   hideSchool: boolean; emptyText: string;
   onOpenRecord: (recordId: string) => void; onViewSdp: (r: RenewalListRow) => void;
   onAct: ActionProps["onAct"]; actionsFor: ActionProps["actionsFor"];
+  /** Renewed list only: the "Enrollment confirmation" tick box of each scholar (null = the column is not shown). */
+  enrollment?: EnrollmentColumn | null;
+}
+
+/** What the Enrollment confirmation column needs: how each scholar's box stands, whether this person may change it, and what to do when it is pressed. */
+export interface EnrollmentColumn {
+  states: Record<string, { recordId: string; confirmed: boolean; confirmedAt: string | null; confirmedBy: string | null }> | null;      // null = not loaded yet
+  saving: Set<string>;                      // Scholar IDs whose change is being saved
+  missing: boolean;                         // the database update is not run yet
+  error: string;
+  onToggle: (scholarIdNumber: string, next: boolean) => void;
+}
+
+/** The tick box of one scholar (a real checkbox with a text label, so it is clear to a screen reader and not only by colour). */
+function EnrollmentBox({ r, col }: { r: RenewalListRow; col: EnrollmentColumn }) {
+  const st = col.states?.[r.scholarIdNumber];
+  if (col.missing) return <span className="text-[13px] text-slate-600">—</span>;
+  if (!st) return <span className="inline-block h-5 w-5 animate-pulse rounded bg-slate-100" aria-hidden="true" />;
+  const saving = col.saving.has(r.scholarIdNumber);
+  const when = st.confirmedAt ? new Date(st.confirmedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }) : "";
+  return (
+    <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-slate-800" title={st.confirmed ? `Confirmed${st.confirmedBy ? ` by ${st.confirmedBy}` : ""}${when ? ` on ${when}` : ""}` : "Not confirmed yet"}>
+      <input type="checkbox" checked={st.confirmed} disabled={saving} onChange={e => col.onToggle(r.scholarIdNumber, e.target.checked)} aria-label={`Enrollment confirmed for ${r.name}`}
+        className="h-5 w-5 shrink-0 cursor-pointer accent-[#062444] disabled:cursor-wait" />
+      <span className={st.confirmed ? "font-semibold text-green-900" : "text-slate-700"}>{saving ? "Saving…" : st.confirmed ? "Confirmed" : "Not yet"}</span>
+    </label>
+  );
 }
 
 function NameCell({ r, onOpenRecord }: { r: RenewalListRow; onOpenRecord: (id: string) => void }) {
@@ -204,6 +231,8 @@ function NameCell({ r, onOpenRecord }: { r: RenewalListRow; onOpenRecord: (id: s
 const TH = "sticky top-0 z-20 whitespace-nowrap bg-white px-2.5 py-2.5 text-left text-[13px] font-medium text-slate-600 border-b border-[#e6ecf5]";
 /** The width the columns need at full size (px); a narrower room shrinks the table's text and spacing in proportion. */
 const NATURAL_WIDTH = 980;
+/** The Enrollment confirmation column (Renewed list). It is NOT added to NATURAL_WIDTH: the Name column (the only one that stretches) gives up the room, so the table still fits the usual 990 px page without being shrunk. */
+const ENROLLMENT_WIDTH = 156;
 const MONO = { fontFamily: "'DM Mono', ui-monospace, monospace" } as const;
 
 export function RenewalListTable(t: TableProps) {
@@ -230,7 +259,7 @@ export function RenewalListTable(t: TableProps) {
   }, []);
   const pad = "py-3";
   const toggle = (id: string) => setOpen(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const cols = 6 + (t.hideSchool ? 0 : 1) + (t.hasActions ? 1 : 0) + 1;
+  const cols = 6 + (t.hideSchool ? 0 : 1) + (t.hasActions ? 1 : 0) + (t.enrollment ? 1 : 0) + 1;
   const ap = (r: RenewalListRow): ActionProps => ({ r, facts: t.facts?.[r.scholarIdNumber] ?? null, ready: t.ready, viewer: t.viewer, busy: t.busy, onAct: t.onAct, actionsFor: t.actionsFor });
   const skeleton = t.rows === null;
 
@@ -250,6 +279,7 @@ export function RenewalListTable(t: TableProps) {
               <col style={{ width: 122 }} />
               <col style={{ width: 146 }} />
               <col style={{ width: 158 }} />
+              {t.enrollment && <col style={{ width: ENROLLMENT_WIDTH }} />}
               {t.hasActions && <col style={{ width: 276 }} />}
             </colgroup>
             <thead>
@@ -262,6 +292,7 @@ export function RenewalListTable(t: TableProps) {
                 <th scope="col" className={TH}>Status</th>
                 <th scope="col" className={TH}>SDP</th>
                 <th scope="col" className={TH}>Grades</th>
+                {t.enrollment && <th scope="col" className={`${TH} !whitespace-normal leading-tight`}>Enrollment confirmation</th>}
                 {t.hasActions && <th scope="col" className={`${TH} !text-center`}>Actions</th>}
               </tr>
             </thead>
@@ -290,6 +321,7 @@ export function RenewalListTable(t: TableProps) {
                       <td className={cell}><StatusCell r={r} tab={t.tab} /></td>
                       <td className={cell}><SdpCell r={r} onView={t.onViewSdp} /></td>
                       <td className={cell}><GradesCell r={r} enteredStatus={t.facts?.[r.scholarIdNumber]?.gradesStatus ?? null} /></td>
+                      {t.enrollment && <td className={cell}><EnrollmentBox r={r} col={t.enrollment} /></td>}
                       {t.hasActions && <td className={`${cell} !px-2`}><ActionSlots {...ap(r)} /></td>}
                     </tr>
                     {expanded && (
@@ -333,6 +365,7 @@ export function RenewalListTable(t: TableProps) {
                 <div><p className="text-[13px] text-slate-600">SDP</p><SdpCell r={r} onView={t.onViewSdp} /></div>
                 <div><p className="text-[13px] text-slate-600">Grades</p><GradesCell r={r} enteredStatus={t.facts?.[r.scholarIdNumber]?.gradesStatus ?? null} /></div>
               </div>
+              {t.enrollment && <div className="mt-2 border-t border-[#eef3fb] pt-2"><p className="text-[13px] text-slate-600">Enrollment confirmation</p><EnrollmentBox r={r} col={t.enrollment} /></div>}
               {t.hasActions && <CardActions {...ap(r)} />}
             </li>
           );
