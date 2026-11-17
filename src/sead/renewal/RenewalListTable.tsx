@@ -231,14 +231,13 @@ function NameCell({ r, onOpenRecord }: { r: RenewalListRow; onOpenRecord: (id: s
 const TH = "sticky top-0 z-20 whitespace-nowrap bg-white px-2.5 py-2.5 text-left text-[13px] font-medium text-slate-600 border-b border-[#e6ecf5]";
 /** The width the columns need at full size (px); a narrower room shrinks the table's text and spacing in proportion. */
 const NATURAL_WIDTH = 980;
-const ENROLLMENT_WIDTH = 158;
+/** The Enrollment confirmation column (Renewed list). It is NOT added to NATURAL_WIDTH: the Name column (the only one that stretches) gives up the room, so the table still fits the usual 990 px page without being shrunk. */
+const ENROLLMENT_WIDTH = 156;
 const MONO = { fontFamily: "'DM Mono', ui-monospace, monospace" } as const;
 
 export function RenewalListTable(t: TableProps) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const outer = useRef<HTMLDivElement>(null);
-  const hasEnrollment = useRef(false);
-  hasEnrollment.current = !!t.enrollment;
   const [wide, setWide] = useState<number | null>(null);
   const [scale, setScale] = useState(1);
   // On a wide screen the page column (about 1090px) is narrower than the room that is free to its right: the table takes that room so School and Program fit as columns.
@@ -250,14 +249,14 @@ export function RenewalListTable(t: TableProps) {
       const w = free >= 1300 && free > r.width + 120 ? Math.round(Math.min(1480, free)) : free < r.width ? Math.max(280, Math.floor(free)) : null;
       setWide(w);
       // Never overflow: when the room is narrower than the table needs (NATURAL_WIDTH), everything in the table (text too) shrinks to fit instead of scrolling sideways.
-      setScale(Math.min(1, Math.floor(((w ?? r.width) - 2) / (NATURAL_WIDTH + (hasEnrollment.current ? ENROLLMENT_WIDTH : 0)) * 1000) / 1000));
+      setScale(Math.min(1, Math.floor(((w ?? r.width) - 2) / NATURAL_WIDTH * 1000) / 1000));
     };
     measure();
     window.addEventListener("resize", measure);
     const ro = typeof ResizeObserver !== "undefined" && outer.current?.parentElement ? new ResizeObserver(measure) : null;
     if (ro && outer.current?.parentElement) ro.observe(outer.current.parentElement);
     return () => { window.removeEventListener("resize", measure); ro?.disconnect(); };
-  }, [!!t.enrollment]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
   const pad = "py-3";
   const toggle = (id: string) => setOpen(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const cols = 6 + (t.hideSchool ? 0 : 1) + (t.hasActions ? 1 : 0) + (t.enrollment ? 1 : 0) + 1;
@@ -293,7 +292,7 @@ export function RenewalListTable(t: TableProps) {
                 <th scope="col" className={TH}>Status</th>
                 <th scope="col" className={TH}>SDP</th>
                 <th scope="col" className={TH}>Grades</th>
-                {t.enrollment && <th scope="col" className={TH}>Enrollment confirmation</th>}
+                {t.enrollment && <th scope="col" className={`${TH} !whitespace-normal leading-tight`}>Enrollment confirmation</th>}
                 {t.hasActions && <th scope="col" className={`${TH} !text-center`}>Actions</th>}
               </tr>
             </thead>
