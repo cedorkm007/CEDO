@@ -789,6 +789,19 @@ export async function fetchSdpChecklistRenewalPeriod(): Promise<SdpRenewalPeriod
 }
 
 /** Scholars who owe EXTRA credits for a semester (an approved SDP reconsideration of the semester before): only those who do. Empty before the SDP reconsideration database update. */
+/**
+ * Which of these scholars (the page of the Checklist) have an APPROVED SDP reconsideration for the semester being viewed: they count as Complied for it even with fewer than 3 credits
+ * (scholars_sdp_reconsidered, supabase_migration_sdp_checklist_reconsideration_note.sql). Before that database update is run the answer is simply "nobody" (no note is shown).
+ */
+export async function fetchSdpReconsidered(schoolYear: string, semester: string, ids: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (ids.length === 0) return out;
+  const { data, error } = await supabase.rpc("scholars_sdp_reconsidered", { p_school_year: schoolYear, p_semester: semester, p_ids: ids });
+  if (error || !Array.isArray(data)) return out;
+  for (const r of data as { scholar_id_number: string }[]) out.add(String(r.scholar_id_number));
+  return out;
+}
+
 export async function fetchSdpOwed(schoolYear: string, semester: string): Promise<Map<string, { communityService: number; communityVolunteerism: number; formationProgram: number }>> {
   const out = new Map<string, { communityService: number; communityVolunteerism: number; formationProgram: number }>();
   const { data, error } = await supabase.rpc("scholars_sdp_extra_required", { p_school_year: schoolYear, p_semester: semester });
