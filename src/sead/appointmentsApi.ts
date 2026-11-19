@@ -172,6 +172,21 @@ export async function fetchProbationRenewalInfo(): Promise<{ ok: true; byScholar
   return { ok: true, byScholar: map };
 }
 
+function rowToProbationRenewalInfo(r: Row): ProbationRenewalInfo {
+  return {
+    scholarIdNumber: str(r.scholar_id_number), recordId: str(r.record_id), termLabel: str(r.term_label), stage: r.stage as RenewalStage, temporaryInc: !!r.temp_probation || !!r.temporary_inc,
+    incItems: ((r.inc_items ?? []) as Row[]).map(i => ({ itemId: str(i.item_id), subject: str(i.subject), deadline: strOrNull(i.deadline), daysLeft: i.days_left == null ? null : Number(i.days_left) })),
+    studyPlans: ((r.study_plans ?? []) as Row[]).map(d => ({ fileName: str(d.file_name), storagePath: str(d.storage_path), uploadedAt: str(d.uploaded_at) })),
+  };
+}
+
+/** The INC items and uploaded study plans of ONE probationary scholar (current and previous term), read only when that scholar's row is opened. */
+export async function fetchProbationRenewalDetail(scholarIdNumber: string): Promise<{ ok: true; infos: ProbationRenewalInfo[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("scholar_probation_renewal_detail", { p_scholar_id: scholarIdNumber });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, infos: ((data ?? []) as Row[]).map(rowToProbationRenewalInfo) };
+}
+
 /** About the scholar of a booked appointment, for the pop-up (supabase_migration_consultation_booking_details.sql). Empty values are null. */
 export interface SlotScholarInfo {
   course: string | null; yearLevel: string | null; barangay: string | null; school: string | null;

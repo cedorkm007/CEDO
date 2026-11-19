@@ -192,6 +192,28 @@ export async function fetchProbationMonitoringList(search: string = ""): Promise
   return (data as Record<string, unknown>[]).map(rowToProbationRow);
 }
 
+export interface ProbationPageRow extends ProbationRow {
+  temporary: boolean; nextDeadline: string | null; openIncCount: number; passedIncCount: number; hasStudyPlan: boolean;
+}
+export interface ProbationPageFilters { search: string; attention: string[]; kind: string }
+
+/** ONE PAGE of the probationary scholars with the TRUE total (a summary of the current and previous term only; the documents come when a row is opened). `missing: true` = the database update has not been run yet. */
+export async function fetchProbationMonitoringPage(f: ProbationPageFilters, sort: { key: "name" | "deadline"; dir: "asc" | "desc" }, page: number, pageSize = 50): Promise<{ ok: true; rows: ProbationPageRow[]; total: number } | PageFailed> {
+  const { data, error } = await supabase.rpc("scholar_probation_monitoring_page", {
+    p_search: f.search.trim(), p_attention: f.attention.length ? f.attention : null, p_kind: f.kind || null,
+    p_sort: sort.key, p_dir: sort.dir, p_limit: pageSize, p_offset: (Math.max(1, page) - 1) * pageSize,
+  });
+  if (error) return { ok: false, error: error.message, missing: isMissingFn(error) };
+  const rows = (data ?? []) as Record<string, unknown>[];
+  return {
+    ok: true, total: rows.length ? Number(rows[0].total_count ?? 0) : 0,
+    rows: rows.map(r => ({
+      ...rowToProbationRow(r), temporary: !!r.temporary, nextDeadline: r.next_deadline == null ? null : String(r.next_deadline).slice(0, 10),
+      openIncCount: Number(r.open_inc_count ?? 0), passedIncCount: Number(r.passed_inc_count ?? 0), hasStudyPlan: !!r.has_study_plan,
+    })),
+  };
+}
+
 /** Upserts one scholar's Study Plan / Academic Contract Update — current value only, no history (see the migration's header comment). */
 export async function saveProbationNotes(
   scholarIdNumber: string, studyPlan: string, academicContractUpdate: string,
