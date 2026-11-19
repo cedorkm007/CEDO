@@ -254,6 +254,57 @@ export async function fetchDashboardSummary(): Promise<DashboardSummary | null> 
   };
 }
 
+// ── The Main Dashboard of the Consultation Tool: counts that match the tabs, and the two lists that grow in pages (supabase_migration_consultation_dashboard_paging.sql) ──
+const isMissingFn = (e: { code?: string; message?: string }) => e.code === "PGRST202" || /could not find the function|does not exist/i.test(e.message ?? "");
+export const DASHBOARD_PAGE_SIZE = 20;
+
+export interface DashboardCounts extends DashboardSummary {
+  /** The signed-in staff member's approved referrals (the total of "Approved Referrals"); null before the database update. */
+  approvedCount: number | null;
+  /** The signed-in staff member (for the link to their own visits in Daily Records). */
+  me: string | null;
+}
+/** The dashboard numbers. Before the database update the older counts are used instead, so the dashboard still works (`updated: false`). */
+export async function fetchDashboardCounts(): Promise<{ counts: DashboardCounts | null; updated: boolean }> {
+  const { data, error } = await supabase.rpc("scholar_counseling_dashboard_counts").maybeSingle();
+  if (!error && data) {
+    const r = data as Record<string, unknown>;
+    return {
+      updated: true,
+      counts: {
+        ksbClientCount: Number(r.ksb_client_count ?? 0), homeVisitedCount: Number(r.home_visited_count ?? 0), probationaryCount: Number(r.probationary_count ?? 0), onLeaveCount: Number(r.on_leave_count ?? 0),
+        reconsideredCount: Number(r.reconsidered_count ?? 0), removedCount: Number(r.removed_count ?? 0), pendingCount: Number(r.pending_count ?? 0), reconsiderationCount: Number(r.reconsideration_count ?? 0),
+        monthLabel: String(r.month_label ?? ""), clientsServedThisMonth: Number(r.clients_served_this_month ?? 0), approvedCount: Number(r.approved_count ?? 0), me: r.me ? String(r.me) : null,
+      },
+    };
+  }
+  if (error && !isMissingFn(error)) return { counts: null, updated: true };
+  const old = await fetchDashboardSummary();
+  return { counts: old ? { ...old, approvedCount: null, me: null } : null, updated: false };
+}
+
+export type ListPage = { rows: QueuedReferral[]; total: number; paged: boolean };
+/** ONE PAGE of the signed-in staff member's queue ("Scholars to be Consulted"), oldest first, with the true total. Before the database update: the whole list, as before (`paged: false`). */
+export async function fetchQueuePage(page: number, pageSize = DASHBOARD_PAGE_SIZE): Promise<ListPage> {
+  const { data, error } = await supabase.rpc("scholar_counseling_queue_page", { p_limit: pageSize, p_offset: (Math.max(1, page) - 1) * pageSize });
+  if (!error && data) {
+    const rows = data as Record<string, unknown>[];
+    return { rows: rows.map(rowToQueuedReferral), total: rows.length ? Number(rows[0].total_count ?? 0) : 0, paged: true };
+  }
+  const all = await fetchReferralQueue();
+  return { rows: all, total: all.length, paged: false };
+}
+/** ONE PAGE of the signed-in staff member's approved referrals, newest first, with the true total (and a search by name or Scholar ID). Before the database update: the whole list, as before. */
+export async function fetchApprovedPage(search: string, page: number, pageSize = DASHBOARD_PAGE_SIZE): Promise<ListPage> {
+  const { data, error } = await supabase.rpc("scholar_counseling_approved_page", { p_search: search.trim(), p_limit: pageSize, p_offset: (Math.max(1, page) - 1) * pageSize });
+  if (!error && data) {
+    const rows = data as Record<string, unknown>[];
+    return { rows: rows.map(rowToQueuedReferral), total: rows.length ? Number(rows[0].total_count ?? 0) : 0, paged: true };
+  }
+  const all = await fetchApprovedReferrals();
+  return { rows: all, total: all.length, paged: false };
+}
+
 /** The signed-in staff member's own display name — for the read-only "Refer by" field. */
 export async function fetchMyStaffName(): Promise<string> {
   const { data: auth } = await supabase.auth.getUser();

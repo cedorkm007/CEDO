@@ -7,6 +7,7 @@ import { ScholarCounselingDashboardTab } from "./pages/ScholarCounselingDashboar
 import { AppointmentsTab } from "./appointments/AppointmentsTab";
 import { ScholarCounselingRenewalCasesTab } from "./pages/ScholarCounselingRenewalCasesTab";
 import { KeepAlivePane, TAB_STALE_MS } from "@/lib/keepAlive";
+import type { DashboardTarget } from "@/lib/dashboardLinks";
 
 type ScholarCounselingSubtab = "main-dashboard" | "daily-records" | "probation-monitoring" | "appointments" | "renewal-cases";
 
@@ -32,18 +33,27 @@ function ScholarCounselingToolPageInner() {
     { key: "probation-monitoring", label: "Probationary Monitoring", icon: <AlertTriangle size={14} /> },
   ];
   const [tab, setTab] = useState<ScholarCounselingSubtab>("main-dashboard");
+  // a number on the Main Dashboard opens the tab that lists what it counts: the tab's remembered page / filters are set first and the tab is started again so it reads them
+  const [dailyKey, setDailyKey] = useState(0), [probationKey, setProbationKey] = useState(0);
+  function openTarget(t: DashboardTarget) {
+    try { window.sessionStorage.setItem(t.storageKey, t.value); } catch { /* private window: the tab then opens as it was */ }
+    if (t.tab === "daily-records") setDailyKey(k => k + 1); else setProbationKey(k => k + 1);
+    setTab(t.tab);
+  }
 
   return (
     <div>
       <h1 className="text-xl font-bold text-foreground mb-1">Scholar Consultation Tool</h1>
       <p className="text-sm text-muted-foreground mb-5">Monitor scholars' scholarship status and log consultation visits.</p>
 
-      <div className="flex w-full gap-1 border-b border-border mb-5">
+      {/* every tab name stays on ONE line: the tabs share the width, and on a narrow screen the bar scrolls sideways instead of wrapping a name onto a second line */}
+      <div className="flex w-full gap-1 overflow-x-auto border-b border-border mb-5" role="tablist" aria-label="Consultation Tool">
         {TABS.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
+            role="tab" aria-selected={tab === t.key}
+            className={`flex-1 shrink-0 whitespace-nowrap flex items-center justify-center gap-2 px-3 py-2.5 text-[13.5px] font-bold border-b-2 transition-colors ${
               tab === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -52,12 +62,12 @@ function ScholarCounselingToolPageInner() {
         ))}
       </div>
 
-      <KeepAlivePane active={tab === "main-dashboard"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarCounselingDashboardTab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "main-dashboard"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarCounselingDashboardTab onOpenTarget={openTarget} />}</KeepAlivePane>
       {/* these two follow the live updates, so they stay alive while another tab is open: coming back shows them at once and they read again only if something changed meanwhile */}
       <KeepAlivePane active={tab === "appointments"}>{() => <AppointmentsTab />}</KeepAlivePane>
       <KeepAlivePane active={tab === "renewal-cases"}>{() => <ScholarCounselingRenewalCasesTab />}</KeepAlivePane>
-      <KeepAlivePane active={tab === "daily-records"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarCounselingTab />}</KeepAlivePane>
-      <KeepAlivePane active={tab === "probation-monitoring"} staleAfterMs={TAB_STALE_MS}>{() => <ProbationMonitoringTab />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "daily-records"} staleAfterMs={TAB_STALE_MS}>{() => <ScholarCounselingTab key={dailyKey} />}</KeepAlivePane>
+      <KeepAlivePane active={tab === "probation-monitoring"} staleAfterMs={TAB_STALE_MS}>{() => <ProbationMonitoringTab key={probationKey} />}</KeepAlivePane>
     </div>
   );
 }
