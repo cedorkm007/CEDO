@@ -199,25 +199,27 @@ test("the staff, school and scholar grade screens all use the ONE shared outcome
 const R = await bundle("renewal", "src/lib/renewal.ts");
 console.log("Renewal wording and helpers (Phase 2)");
 test("every stage the database allows has a title, a tone and a short label (and nothing extra)", () => {
-  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p2_application.sql"), "utf8");
-  const block = /stage\s+text not null check \(stage in \(([\s\S]*?)\)\),/.exec(sql)[1];
+  // the newest list of stages: the academic-status file replaces the one of the Phase 2 file (after the consultation-endorse file it adds needs_gwa_consultation)
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_academic_status.sql"), "utf8");
+  const block = /add constraint renewal_records_stage_check check \(stage in \(([\s\S]*?)\)\);/.exec(sql)[1];
   const dbStages = [...block.matchAll(/'([a-z_]+)'/g)].map(m => m[1]).sort();
   assert.deepEqual([...R.RENEWAL_STAGES].sort(), dbStages);
   for (const s of R.RENEWAL_STAGES) { assert.ok(R.STAGE_INFO[s].title && R.STAGE_INFO[s].short && R.STAGE_INFO[s].tone, s); assert.equal(R.stageTitle(s), R.STAGE_INFO[s].title); }
 });
 test("the stage titles in the database's own wording function match the website's", () => {
-  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p2_application.sql"), "utf8");
+  // the newest wording function is in the academic-status file ('' is how SQL writes one apostrophe)
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_academic_status.sql"), "utf8");
   for (const s of R.RENEWAL_STAGES) {
-    const m = new RegExp("when '" + s + "' then '([^']+)'").exec(sql);
+    const m = new RegExp("when '" + s + "' then '((?:[^']|'')+)'").exec(sql);
     assert.ok(m, "no database title for " + s);
-    assert.equal(m[1], R.STAGE_INFO[s].title, s);
+    assert.equal(m[1].split("''").join("'"), R.STAGE_INFO[s].title, s);
   }
 });
 test("every stage sits in exactly one board group, so every application is counted once", () => {
   for (const s of R.RENEWAL_STAGES) assert.equal(R.BOARD_GROUPS.filter(g => g.stages.includes(s)).length, 1, s);
 });
 test("active and closed stages do not overlap, and match the database's active list", () => {
-  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p2_application.sql"), "utf8");
+  const sql = fs.readFileSync(path.join(root, "supabase_migration_academic_status.sql"), "utf8");      // the newest active list
   const block = /select p_stage in \(([\s\S]*?)\);/.exec(sql)[1];
   const dbActive = [...block.matchAll(/'([a-z_]+)'/g)].map(m => m[1]).sort();
   assert.deepEqual([...R.ACTIVE_STAGES].sort(), dbActive);
@@ -404,9 +406,9 @@ test("a study plan that is not approved yet: the scholar is told to wait, and th
   const plan = approved => [{ kind: "study_plan", label: "Study plan", satisfied: true, approved }];
   const base = { sdp: { applicable: true, complied: true, missing: null }, grades: { reason: "" } };
   const pending = R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: plan(false) }, { consultState: "study_plan_pending" });
-  assert.deepEqual(pending, ["Wait for the evaluator to approve your study plan. Then you can book your consultation."]);
+  assert.deepEqual(pending, ["Your study plan is waiting for the consultation staff to approve it. You can book your consultation now."]);
   const missing = R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: [{ kind: "study_plan", label: "Study plan", satisfied: false, approved: false }] }, { consultState: "study_plan_missing" });
-  assert.match(missing[0], /Upload your study plan/); assert.match(missing[1], /After the evaluator approves your study plan, you can book your consultation/);
+  assert.match(missing[0], /Upload your study plan/); assert.match(missing[1], /the consultation staff approve it\. You can book your consultation now/);
   const ok = R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: plan(true) }, { consultState: "ok" });
   assert.match(ok.join(" "), /Book your consultation/);
   const booked = R.scholarNextSteps("needs_study_plan_consultation", { ...base, required_documents: plan(true) }, { consultState: "ok", booking: { startsAt: "2026-10-20T01:10:00Z", staffName: "Ms. Cruz" } });
@@ -419,9 +421,9 @@ test("the INC letter needs approval too: the same waiting messages, worded for t
   assert.equal(R.consultBlockedBy("study_plan_missing"), "study plan");
   assert.equal(R.consultBlockedBy("ok"), null);
   const pend = R.scholarNextSteps("needs_inc_letter_consultation", ev, { consultState: "inc_letter_pending" });
-  assert.equal(pend[0], "Wait for the evaluator to approve your letter from your dean. Then you can book your consultation.");
+  assert.equal(pend[0], "Your letter from your dean is waiting for the consultation staff to approve it. You can book your consultation now.");
   const missing = R.scholarNextSteps("needs_inc_letter_consultation", { ...ev, required_documents: [{ kind: "inc_letter", label: "INC letter from your dean", satisfied: false }] }, { consultState: "inc_letter_missing" });
-  assert.match(missing.join(" "), /Upload the letter from your dean/); assert.match(missing.join(" "), /After the evaluator approves your letter from your dean, you can book/);
+  assert.match(missing.join(" "), /Upload the letter from your dean/); assert.match(missing.join(" "), /the consultation staff approve it\. You can book your consultation now/);
 });
 test("the website's consultation states are the ones the database returns", () => {
   const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p3_appointments.sql"), "utf8");
@@ -957,7 +959,8 @@ test("the appointment screens only ask the database (no direct writes to slots, 
 test("the Appointments subtab sits inside the existing Consultation Tool (same tag), and every function the website calls exists in the migration", () => {
   const page = fs.readFileSync(path.join(root, "src/sead/ScholarCounselingToolPage.tsx"), "utf8");
   assert.match(page, /key: "appointments"/);
-  const sql = [...["p2_application", "p3_appointments", "p4_tracker", "p8b_test_windows"].map(n => "supabase_migration_renewal_" + n + ".sql"), "supabase_migration_consultation_types_b_booking.sql", "supabase_migration_consultation_open_and_choose_staff.sql"].map(n => fs.readFileSync(path.join(root, n), "utf8")).join("\n");
+  const sql = [...["p2_application", "p3_appointments", "p4_tracker", "p8b_test_windows"].map(n => "supabase_migration_renewal_" + n + ".sql"), "supabase_migration_consultation_types_b_booking.sql", "supabase_migration_consultation_open_and_choose_staff.sql",
+    "supabase_migration_consultation_calendar_paging.sql", "supabase_migration_consultation_probation_paging.sql", "supabase_migration_consultation_booking_details.sql", "supabase_migration_renewal_revert_application.sql"].map(n => fs.readFileSync(path.join(root, n), "utf8")).join("\n");
   const called = new Set();
   for (const p of ["src/sead/appointmentsApi.ts", "src/scholar/renewalApi.ts", "src/sead/renewalApi.ts"]) for (const m of fs.readFileSync(path.join(root, p), "utf8").matchAll(/rpc\("([a-z_]+)"/g)) called.add(m[1]);
   const missing = [...called].filter(fn => !new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql + fs.readFileSync(path.join(root, "supabase_migration_renewal_not_applied_columns.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_entered_grades_c_functions.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_referral_reason_c_functions.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_renewal_window_schools_b_functions.sql"), "utf8") + fs.readFileSync(path.join(root, "supabase_migration_sdp_after_renewal.sql"), "utf8")));
@@ -1091,10 +1094,10 @@ test("who may open the Certificate tab: the evaluator and the IT admin; the IT a
   assert.equal(AC.canSeeScholarRenewal({ ...acc, username: "someone" }), false); assert.equal(AC.canSeeScholarRenewal(acc), false);
 });
 test("the certificate screens only ask the database and the csr-issue function; every function they call exists in the Phase 8 file", () => {
-  const sql = fs.readFileSync(path.join(root, "supabase_migration_renewal_p8_csr.sql"), "utf8");
+  const sql = ["supabase_migration_renewal_p8_csr.sql", "supabase_migration_renewal_csr_testing_b_functions.sql", "supabase_migration_renewal_csr_testing_c_separate.sql"].map(n => fs.readFileSync(path.join(root, n), "utf8")).join("\n");      // the testing switch has its own files
   const api = fs.readFileSync(path.join(root, "src/lib/csrApi.ts"), "utf8");
   const called = new Set([...api.matchAll(/rpc\("([a-z_]+)"/g)].map(m => m[1]));
-  assert.deepEqual([...called].sort(), ["csr_for_record", "csr_settings_get", "csr_settings_save"]);
+  assert.deepEqual([...called].sort(), ["csr_for_record", "csr_settings_get", "csr_settings_save", "csr_testing_switch"]);
   for (const fn of called) assert.ok(new RegExp(`create (or replace )?function public\\.${fn}\\(`).test(sql), fn);
   assert.match(api, /functions\.invoke\("csr-issue"/);
   assert.equal(/\.from\("csr_(settings|issued|counters)"\)\s*\.(insert|update|delete|upsert)/.test(api), false);
@@ -1255,7 +1258,7 @@ test("the window form offers all schools or checkboxes for the schools, says how
   assert.match(tab, /Which schools can renew in this window/);
   assert.match(tab, /All schools/);
   assert.match(tab, /Only the schools I tick/);
-  assert.match(tab, /type="checkbox" checked=\{pickedSchools\.has/, "one checkbox per school");
+  assert.match(tab, /type="checkbox"[^>]*checked=\{pickedSchools\.has/, "one checkbox per school");
   assert.match(tab, /Tick all/);
   assert.match(tab, /no school set/, "scholars with no school cannot be matched, and the form says so");
   assert.match(tab, /Tick at least one school/, "an empty choice is refused");

@@ -6,6 +6,7 @@
 // `authenticated` role.  Run:  node tests/renewal/db/run_p5_tests.mjs
 import { buildDb } from "../../../localdemo/build.mjs";
 import { seedDb, seedId } from "../../../localdemo/seed.mjs";
+import { legacyDivisionHeadCases } from "../../legacy_division_head_cases.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 
@@ -14,6 +15,7 @@ const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok 
 
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+await legacyDivisionHeadCases(db, { all: true });      // the demo has no Division Head cases of its own any more: three are put on the old route
 
 const num = n => `TEST-${String(n).padStart(4, "0")}`;
 const scholarUid = n => seedId(`scholar:${n}`);
@@ -59,14 +61,18 @@ async function mkScholar(n, grades, status = "Regular") {
 const SIG = "demo-signature.png";
 
 // ─────────────────────────────────────────────────────────────
-console.log("\nA 2-or-more-failed case goes to the Division Head once its consultation is attended");
+console.log("\nA 2-or-more-failed case follows the consultation-staff route; the evaluator can still send it to the Division Head (the old route)");
 const rec4 = await apply(4);
 const r4 = await recordOf(4);
-check("it waits for the consultation first: no referral yet", r4.stage === "needs_consultation_division_head" && (await referralOf(rec4)).length === 0);
+check("a 2-or-more-failed case now waits for the study plan and the consultation, and NO referral to the Division Head is made by itself", r4.stage === "needs_study_plan_consultation" && (await referralOf(rec4)).length === 0);
 await consultDone(rec4);
+check("when the consultation is attended it still goes to the consultation staff (not to the Division Head by itself): no referral", (await referralOf(rec4)).length === 0 && (await recordOf(4)).stage !== "needs_consultation_division_head");
+// the case is put on the old route (as it stood before the consultation-staff route), and the evaluator sends it to the Division Head
+await q("update renewal_records set stage = 'needs_consultation_division_head' where id = $1", [rec4]);
+await rpc(EVAL, "select public.renewal_send_to_division_head($1, 'Consultation attended; two or more failed subjects')", [rec4]);
 const ref4 = (await referralOf(rec4));
-check("when the consultation is attended a referral is created, already forwarded to the Division Head, linked to the renewal", ref4.length === 1 && ref4[0].status === "forwarded_to_division_head" && ref4[0].endorsed_for === "Removal" && ref4[0].renewal_record_id === rec4);
-check("the referral form is filled from the case: failed subject, previous status, a remark with the rule and the consultation", ref4[0].failed_subjects.length === 2 && ref4[0].failed_subjects[0].subjectCode && ref4[0].previous_semester_status === "Retained" && /rule C2/.test(ref4[0].remarks) && /Consultation attended/.test(ref4[0].remarks), JSON.stringify(ref4[0]));
+check("the evaluator sends it: a referral is created, forwarded to the Division Head, linked to the renewal", ref4.length === 1 && ref4[0].status === "forwarded_to_division_head" && ref4[0].endorsed_for === "Removal" && ref4[0].renewal_record_id === rec4, JSON.stringify(ref4));
+check("the referral form is filled from the case: failed subject and previous status", ref4[0].failed_subjects.length === 2 && ref4[0].failed_subjects[0].subjectCode && ref4[0].previous_semester_status === "Retained", JSON.stringify(ref4[0]));
 check("the referring person is a real staff member (the evaluator) and the Division Head is told through the usual notification", (await q("select 1 from staff_account_tags where staff_id = $1 and tag_key = 'scholar_renewal_evaluator'", [ref4[0].referred_by])).length === 1
   && (await q("select 1 from notifications where user_id = $1 and type = 'referral_approval' and reference_id = $2", [DH, ref4[0].id])).length === 1);
 await consultDone(rec4);
@@ -83,9 +89,9 @@ console.log("\nThe demo data stands at each point of the decisions");
 const demoState = async n => { const r = await recordOf(n); return { r, refs: await referralOf(r.id) }; };
 {
   const d41 = await demoState(41), d42 = await demoState(42), d43 = await demoState(43), d44 = await demoState(44), d45 = await demoState(45);
-  check("TEST-0041 (2 failed, consultation done): with the Division Head", d41.r.stage === "needs_consultation_division_head" && d41.refs.length === 1 && d41.refs[0].status === "forwarded_to_division_head");
-  check("TEST-0042 (1 failed, plan approved, consultation done): ready for the evaluator to endorse", d42.r.stage === "ready_to_endorse" && d42.refs.length === 0);
-  check("TEST-0043 (1 failed): endorsed, with the Division Head", d43.r.stage === "endorsed_division_head" && d43.refs.length === 1 && d43.refs[0].endorsed_for === "On Probation Status");
+  check("TEST-0041 (2 failed, consultation done): on the old Division Head route", d41.r.stage === "needs_consultation_division_head");
+  check("TEST-0042 (1 failed, plan approved, consultation done): endorsed to the Division Head (old route)", d42.r.stage === "endorsed_division_head");
+  check("TEST-0043 (1 failed): endorsed, with the Division Head (old route)", d43.r.stage === "endorsed_division_head");
   check("TEST-0044 (2 failed, no consultation): waiting, nothing sent (the evaluator can send it)", d44.r.stage === "needs_consultation_division_head" && d44.refs.length === 0);
   check("TEST-0045: reconsidered by the Division Head, waiting for the evaluator", d45.r.stage === "reconsidered" && (await statusOf(45)).status === "Reconsidered" && d45.refs[0].status === "approved");
 }
@@ -141,7 +147,9 @@ check("the scholar is told it is confirmed", (await q("select 1 from scholar_not
 console.log("\nThe Division Head's decision: Removed (the proper Removed flow)");
 // scholar 5: one failed subject after earlier probation -> treated like 2+ failed. The evaluator sends it by hand (no consultation yet).
 const rec5 = await apply(5);
-check("a 1-failed case after earlier probation also waits for the Division Head", (await recordOf(5)).stage === "needs_consultation_division_head" && (await referralOf(rec5)).length === 0);
+// the case is put on the old route (the consultation-staff route no longer sends it to the Division Head by itself)
+await q("update renewal_records set stage = 'needs_consultation_division_head' where id = $1", [rec5]);
+check("a 1-failed case after earlier probation can wait for the Division Head (old route): nothing is sent by itself", (await recordOf(5)).stage === "needs_consultation_division_head" && (await referralOf(rec5)).length === 0);
 // a future booking the removal must release
 const slotStart = new Date(Date.now() + 40 * 3600 * 1000);
 const av = (await q("insert into counseling_availability (staff_id, starts_at, ends_at) values ($1,$2,$3) returning id", [COUNSELOR, slotStart.toISOString(), new Date(slotStart.getTime() + 600000).toISOString()]))[0].id;
@@ -160,44 +168,19 @@ check("a line is written to the scholar account log", (await q("select 1 from se
 check("the future consultation booking was released", (await q("select state from counseling_slots where availability_id = $1", [av]))[0].state === "open");
 check("the printed name defaults to the Division Head's own name when left empty", /Division Head/.test((await q("select signatory_name from scholar_counseling_referrals where id = $1", [ref5[0].id]))[0].signatory_name));
 
-console.log("\nThe Division Head's decision: an endorsed 1-failed case (Probationary)");
-await acceptedPlan(3, rec3);
-await consultDone(rec3);
-await q("select public._renewal_recheck($1)", [rec3]);
-check("study plan approved + consultation done: ready for the evaluator to endorse (no referral yet)", (await recordOf(3)).stage === "ready_to_endorse" && (await referralOf(rec3)).length === 0);
-await rpc(EVAL, "select public.renewal_endorse($1, 'Plan looks good')", [rec3]);
-const ref3 = (await referralOf(rec3));
-check("endorsing creates the referral at once (endorsed for Probationary), referred by the evaluator", ref3.length === 1 && ref3[0].status === "forwarded_to_division_head" && ref3[0].endorsed_for === "On Probation Status" && ref3[0].referred_by === EVAL && /Plan looks good/.test(ref3[0].remarks));
-const info3 = (await rpc(DH, "select public.renewal_referral_info($1) i", [ref3[0].id]))[0].i;
-check("its options are Approve Probationary or send back", info3.case_type === "probationary_approval" && JSON.stringify(info3.options) === '["approve_probationary","return"]');
-check("Removed or Reconsidered are refused for an endorsed 1-failed case", await fails(DH, "select public.renewal_division_head_decide($1, 'removed', $2, 'X')", [rec3, SIG], /approved for Probationary or sent back/) && await fails(DH, "select public.renewal_division_head_decide($1, 'reconsidered', $2, 'X')", [rec3, SIG], /approved for Probationary or sent back/));
-check("sending back needs a reason, and only the Division Head can", await fails(DH, "select public.renewal_division_head_return($1, 'no')", [rec3], /reason/) && await fails(EVAL, "select public.renewal_division_head_return($1, 'Please add the counselor notes')", [rec3], /Only the Division Head/));
-await rpc(DH, "select public.renewal_division_head_return($1, 'Please add the counselor notes')", [rec3]);
-const back3 = await recordOf(3);
-check("sent back: the case returns to the evaluator (ready to endorse again) with the reason, the referral is marked 'sent back', the status is untouched", back3.stage === "ready_to_endorse" && /counselor notes/.test(back3.evaluator_comment) && (await referralOf(rec3))[0].status === "reconsideration_requested" && (await statusOf(3)).status === "Regular");
-check("the Division Head's list shows it as sent back; the case information carries the reason", (await rpc(DH, "select public.renewal_division_head_queue() q"))[0].q.some(x => x.record_id === rec3 && x.state === "sent_back"));
-await rpc(EVAL, "select public.renewal_endorse($1, 'Notes added')", [rec3]);
-const ref3b = await referralOf(rec3);
-check("the evaluator endorses again: the SAME referral is forwarded again (one referral, not two)", ref3b.length === 1 && ref3b[0].status === "forwarded_to_division_head" && ref3b[0].id === ref3[0].id);
-await rpc(DH, "select public.renewal_division_head_decide($1, 'approve_probationary', $2, 'Dr. Printed Name')", [rec3, SIG]);
-await finalize(rec3);
-const ok3 = await recordOf(3);
-check("Approve Probationary: the scholar is Probationary, but the renewal is NOT Renewed yet - it waits for the evaluator", (await statusOf(3)).status === "Probationary" && ok3.stage === "division_head_approved" && ok3.result === null && ok3.confirmed_by === null && ok3.division_head_decision === "approved_probationary");
-check("the scholar is told it waits for the evaluator", (await q("select 1 from scholar_notifications where scholar_id_number = $1 and title = 'The Division Head approved your Probationary status'", [num(3)])).length === 1);
-check("it is not an active stage: an automatic re-check leaves it alone", await (async () => { await q("select public._renewal_recheck($1)", [rec3]); return (await recordOf(3)).stage === "division_head_approved"; })());
-check("the evaluator cannot return or endorse it again, and the Division Head cannot decide it twice", await fails(DH, "select public.renewal_division_head_decide($1, 'approve_probationary', $2, 'X')", [rec3, SIG], /not waiting for the Division Head/) && await fails(EVAL, "select public.renewal_confirm($1)", [rec3], /not ready for confirmation/));
-await rpc(EVAL, "select public.renewal_confirm_decision($1, 'Confirmed as Probationary')", [rec3]);
-const conf3 = await recordOf(3);
-check("the evaluator confirms: only now is it Renewed as Probationary (confirmed by the evaluator); the status stays Probationary", conf3.stage === "renewed" && conf3.result === "renewed_probationary" && conf3.confirmed_by === EVAL && (await statusOf(3)).status === "Probationary");
-check("the scholar is told it is confirmed; the history records every step", (await q("select 1 from scholar_notifications where scholar_id_number = $1 and kind = 'renewal_confirmed'", [num(3)])).length === 1
-  && (await rpc(EVAL, "select public.renewal_record_detail($1) d", [rec3]))[0].d.history.filter(h => /Division Head|confirmed/.test(h.note)).length >= 4);
+// RETIRED (the consultation-staff route): the evaluator used to endorse a 1-failed case to the Division Head (renewal_endorse), who approved it for Probationary or sent it back.
+// A 1-failed case now goes to the consultation staff, who endorse the new status; the evaluator approves it (tests/renewal-consult-endorse). The Division Head's decisions on an endorsed case
+// (approve for Probationary, send back, confirm by the evaluator) are still checked on the old route in the Phase 6, 7 and 8 suites.
 
 console.log("\nSending a 2+ failed case back");
 await mkScholar(51, ["5.0", "5.0", "1.5"]);
 const rec51 = await apply(51, fixtureUids[51]);
 await consultDone(rec51);
+// the case is put on the old route and the evaluator sends it (a 2+ failed case no longer goes to the Division Head by itself)
+await q("update renewal_records set stage = 'needs_consultation_division_head' where id = $1", [rec51]);
+await rpc(EVAL, "select public.renewal_send_to_division_head($1, 'Consultation attended; two or more failed subjects')", [rec51]);
 const ref51 = await referralOf(rec51);
-check("(a second 2+ failed case reaches the Division Head the same way)", ref51.length === 1 && ref51[0].status === "forwarded_to_division_head");
+check("(a second 2+ failed case reaches the Division Head the same way: the evaluator sends it)", ref51.length === 1 && ref51[0].status === "forwarded_to_division_head");
 await rpc(DH, "select public.renewal_division_head_return($1, 'Interview the scholar again')", [rec51]);
 check("sent back: the case stays with the evaluator, the referral is marked 'sent back'", (await recordOf(51)).stage === "needs_consultation_division_head" && (await referralOf(rec51))[0].status === "reconsideration_requested");
 await q("select public._renewal_recheck($1)", [rec51]);
