@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
 import type { RenewalStage } from "@/lib/renewal";
+import type { Half, SummaryRow } from "@/lib/calendarDayView";
 
 export type Done = { ok: true } | { ok: false; error: string };
 type Row = Record<string, unknown>;
@@ -76,6 +77,43 @@ export async function fetchCalendarSlots(fromIso: string, toIso: string, staffId
       staffId: str(r.staff_id), staffName: str(r.staff_name),
     })),
   };
+}
+
+type CalFailed = { ok: false; error: string; missing: boolean };
+const isMissingFn = (e: { code?: string; message?: string }) => e.code === "PGRST202" || /could not find the function|does not exist/i.test(e.message ?? "");
+
+/** Only the NUMBERS of each morning and afternoon (booked / attended / no-show / minutes used), for the all-staff calendar. `missing: true` = the database update has not been run yet. */
+export async function fetchCalendarSummary(fromIso: string, toIso: string, staffId: string | null): Promise<{ ok: true; rows: SummaryRow[] } | CalFailed> {
+  const { data, error } = await supabase.rpc("renewal_calendar_summary", { p_from: fromIso, p_to: toIso, p_staff: staffId });
+  if (error) return { ok: false, error: error.message, missing: isMissingFn(error) };
+  return {
+    ok: true,
+    rows: ((data ?? []) as Row[]).map(r => ({ day: str(r.day).slice(0, 10), half: (str(r.half) === "PM" ? "PM" : "AM") as Half, total: num(r.total), booked: num(r.booked), attended: num(r.attended), noShow: num(r.no_show), usedMinutes: num(r.used_minutes) })),
+  };
+}
+export const CALENDAR_BOOKINGS_PAGE_SIZE = 50;
+/** ONE PAGE of the booking list of one morning or afternoon, with the true total. */
+export async function fetchCalendarBookingsPage(day: string, half: Half, staffId: string | null, page: number, pageSize = CALENDAR_BOOKINGS_PAGE_SIZE): Promise<{ ok: true; rows: CalendarSlot[]; total: number } | CalFailed> {
+  const { data, error } = await supabase.rpc("renewal_calendar_bookings_page", { p_day: day, p_half: half, p_staff: staffId, p_limit: pageSize, p_offset: (Math.max(1, page) - 1) * pageSize });
+  if (error) return { ok: false, error: error.message, missing: isMissingFn(error) };
+  const rows = (data ?? []) as Row[];
+  return {
+    ok: true, total: rows.length ? num(rows[0].total_count) : 0,
+    rows: rows.map(r => ({
+      slotId: str(r.slot_id), availabilityId: str(r.availability_id), startsAt: str(r.starts_at), endsAt: str(r.ends_at), state: r.state as SlotState,
+      scholarIdNumber: strOrNull(r.scholar_id_number), scholarName: strOrNull(r.scholar_name), recordId: strOrNull(r.record_id), termLabel: strOrNull(r.term_label),
+      stage: (r.stage ?? null) as RenewalStage | null, caseSummary: strOrNull(r.case_summary), noShowCount: num(r.no_show_count), isSummer: false, hardCopy: false, dailyRecordId: null,
+      typeLabel: strOrNull(r.type_label), minutes: r.minutes == null ? null : num(r.minutes),
+      staffId: str(r.staff_id), staffName: str(r.staff_name),
+    })),
+  };
+}
+/** The availability ranges of the all-staff calendar (at most `limit`), with the true total so the screen can say when some are not shown. */
+export async function fetchCalendarRanges(fromIso: string, toIso: string, staffId: string | null, limit = 300): Promise<{ ok: true; rows: AvailabilityRange[]; total: number } | CalFailed> {
+  const { data, error } = await supabase.rpc("renewal_calendar_ranges", { p_from: fromIso, p_to: toIso, p_staff: staffId, p_limit: limit });
+  if (error) return { ok: false, error: error.message, missing: isMissingFn(error) };
+  const rows = (data ?? []) as Row[];
+  return { ok: true, rows: rows.map(rangeFrom), total: rows.length ? num(rows[0].total_count) : 0 };
 }
 
 export interface AffectedBooking { slotId: string; startsAt: string; scholarIdNumber: string; name: string }
