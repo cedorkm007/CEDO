@@ -1,27 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { CalendarPlus, ChevronLeft, ChevronRight, Loader2, Pencil, Trash2 } from "lucide-react";
 import { consultHalf, formatSlot, formatTimeOnly, manilaDay, manilaInstant, manilaToday, rangeMinutesIn, slotCount, type ConsultHalf } from "@/lib/renewal";
 import {
-  deleteAvailability, fetchCalendarAvailability, fetchCalendarSlots, fetchCalendarStaff, fetchMyAvailability, fetchMySlots, saveAvailability,
+  deleteAvailability, fetchCalendarRanges, fetchCalendarStaff, fetchCalendarSummary, fetchMyAvailability, fetchMySlots, saveAvailability,
   type AffectedBooking, type AvailabilityRange, type CalendarSlot, type CalendarStaff, type SaveRangeResult,
 } from "../appointmentsApi";
+import { addDays, CALENDAR_REMEMBER_KEY, EMPTY_HALF, halfKey, indexSummary, isDay, rangesNote, readRememberedCalendar, weekStart, type CalendarView, type HalfCount } from "@/lib/calendarDayView";
 import { ModalShell } from "../components/SeadUiShell";
 import { SlotDetailModal } from "./SlotDetailModal";
-import { BookingListModal } from "./BookingListModal";
+import { BookingListModal, PagedBookingListModal } from "./BookingListModal";
 
-type View = "week" | "day";
-
-/** Adds days to a YYYY-MM-DD date (calendar arithmetic only, so no time-zone surprises). */
-function addDays(ymd: string, n: number): string {
-  const d = new Date(`${ymd}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-/** The Monday of the week containing a date. */
-function weekStart(ymd: string): string {
-  const dow = new Date(`${ymd}T00:00:00Z`).getUTCDay();   // 0 = Sunday
-  return addDays(ymd, dow === 0 ? -6 : 1 - dow);
+type View = CalendarView;
+function readStored(): ReturnType<typeof readRememberedCalendar> {
+  try { return readRememberedCalendar(window.sessionStorage.getItem(CALENDAR_REMEMBER_KEY)); } catch { return null; }
 }
 const dayLabel = (ymd: string) => new Date(`${ymd}T00:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 
@@ -29,14 +21,22 @@ const dayLabel = (ymd: string) => new Date(`${ymd}T00:00:00Z`).toLocaleDateStrin
  * "Appointments": consultation staff set the time ranges they are available. Scholars book a TYPE of consultation (each with its own minutes) for a
  * morning (AM) or an afternoon (PM); the minutes of the ranges decide how many fit. The calendar shows, for each morning and afternoon, the minutes booked
  * and who booked what; each booked appointment is marked Attended or No-show. Marking Attended opens the pre-filled Daily Record.
+ *
+ * The all-staff (read-only) calendar of the evaluator reads only the NUMBERS of each morning and afternoon (so a busy day or week is never cut off) and the booking list of one morning or afternoon
+ * PAGE BY PAGE when it is opened; it has a date picker, Previous / Next and Today, and remembers the view, the day and the staff member. A staff member's own calendar reads their own bookings, as before.
  */
 export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?: boolean; onOpenRecord?: (recordId: string) => void } = {}) {
-  const [view, setView] = useState<View>("week");
+  const stored = useMemo(() => (readOnly ? readStored() : null), [readOnly]);
+  const [view, setView] = useState<View>(stored?.view ?? "week");
   const [staffList, setStaffList] = useState<CalendarStaff[]>([]);
-  const [staffFilter, setStaffFilter] = useState<string>("");
-  const [anchor, setAnchor] = useState(manilaToday());
+  const [staffFilter, setStaffFilter] = useState<string>(stored?.staff ?? "");
+  const [anchor, setAnchor] = useState(stored?.anchor ?? manilaToday());
   const [ranges, setRanges] = useState<AvailabilityRange[]>([]);
-  const [slots, setSlots] = useState<CalendarSlot[]>([]);
+  const [rangesTotal, setRangesTotal] = useState(0);
+  const [slots, setSlots] = useState<CalendarSlot[]>([]);      // the staff member's own bookings (own calendar only)
+  const [summary, setSummary] = useState<Map<string, HalfCount>>(new Map());      // the numbers of each morning and afternoon (all-staff calendar only)
+  const [missing, setMissing] = useState(false);
+  const request = useRef(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<AvailabilityRange | "new" | null>(null);
@@ -49,14 +49,29 @@ export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?:
     return Array.from({ length: view === "week" ? 7 : 1 }, (_, i) => addDays(first, i));
   }, [view, anchor]);
 
+  // remember the view, the day and the staff member of the all-staff calendar (also after another tool or a reload)
+  useEffect(() => {
+    if (!readOnly) return;
+    try { window.sessionStorage.setItem(CALENDAR_REMEMBER_KEY, JSON.stringify({ view, anchor, staff: staffFilter })); } catch { /* private window: it just is not remembered */ }
+  }, [readOnly, view, anchor, staffFilter]);
+
   const load = useCallback(async () => {
+    const mine = ++request.current;
     const from = new Date(`${days[0]}T00:00:00+08:00`).toISOString();
     const to = new Date(`${addDays(days[days.length - 1], 1)}T00:00:00+08:00`).toISOString();
-    const [a, s] = readOnly
-      ? await Promise.all([fetchCalendarAvailability(from, to, staffFilter || null), fetchCalendarSlots(from, to, staffFilter || null)])
-      : await Promise.all([fetchMyAvailability(from, to), fetchMySlots(from, to)]);
-    if (!a.ok) setError(a.error); else if (!s.ok) setError(s.error);
-    else { setRanges(a.rows); setSlots(s.rows); setError(""); }
+    if (readOnly) {
+      const [a, s] = await Promise.all([fetchCalendarRanges(from, to, staffFilter || null), fetchCalendarSummary(from, to, staffFilter || null)]);
+      if (mine !== request.current) return;      // another day was asked meanwhile
+      if (!a.ok || !s.ok) {
+        const f = !a.ok ? a : (s as { ok: false; error: string; missing: boolean });
+        if (f.missing) setMissing(true); else setError(f.error);
+      } else { setRanges(a.rows); setRangesTotal(a.total); setSummary(indexSummary(s.rows)); setMissing(false); setError(""); }
+    } else {
+      const [a, s] = await Promise.all([fetchMyAvailability(from, to), fetchMySlots(from, to)]);
+      if (mine !== request.current) return;
+      if (!a.ok) setError(a.error); else if (!s.ok) setError(s.error);
+      else { setRanges(a.rows); setRangesTotal(a.rows.length); setSlots(s.rows); setError(""); }
+    }
     setLoading(false);
   }, [days, readOnly, staffFilter]);
   useEffect(() => { setLoading(true); void load(); }, [load]);
@@ -86,6 +101,7 @@ export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?:
         <button onClick={() => setAnchor(addDays(anchor, -step))} aria-label="Previous" className="rounded-lg border border-[#062444]/25 p-2 text-[#062444] hover:bg-[#f7f9fc]"><ChevronLeft size={16} aria-hidden="true" /></button>
         <button onClick={() => setAnchor(today)} className="rounded-lg border border-[#062444]/25 px-3 py-2 text-[14px] font-semibold text-[#062444] hover:bg-[#f7f9fc]">Today</button>
         <button onClick={() => setAnchor(addDays(anchor, step))} aria-label="Next" className="rounded-lg border border-[#062444]/25 p-2 text-[#062444] hover:bg-[#f7f9fc]"><ChevronRight size={16} aria-hidden="true" /></button>
+        {readOnly && <input type="date" value={anchor} onChange={e => { if (isDay(e.target.value)) setAnchor(e.target.value); }} aria-label="Go to a day" className="rounded-lg border border-[#062444]/25 bg-white px-2.5 py-2 text-[14px] text-slate-900" />}
         <h2 className="text-[15px] font-bold text-[#062444] mx-2">{view === "week" ? `${dayLabel(days[0])} – ${dayLabel(days[6])}` : dayLabel(days[0])}</h2>
         <div className="flex rounded-lg border border-[#062444]/25 overflow-hidden" role="group" aria-label="Calendar view">
           {(["day", "week"] as View[]).map(v => (
@@ -104,10 +120,17 @@ export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?:
         )}
       </div>
 
+      {missing && <p role="status" className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[14px] text-amber-950">The calendar needs the latest database update (supabase_migration_consultation_calendar_paging.sql). Ask the IT admin to run it.</p>}
       {error && <p role="alert" className="mb-3 text-[14px] text-red-700">{error}</p>}
-      {loading && <p className="text-[14px] text-slate-700 flex items-center gap-2 mb-3"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading…</p>}
+      {readOnly && !loading && rangesNote(ranges.length, rangesTotal) && <p role="status" className="mb-3 text-[14px] text-slate-800">{rangesNote(ranges.length, rangesTotal)}</p>}
+      {loading && !readOnly && <p className="text-[14px] text-slate-700 flex items-center gap-2 mb-3"><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading…</p>}
+      {loading && readOnly && (
+        <div className={view === "week" ? "grid gap-3 grid-cols-1 lg:grid-cols-2 xl:grid-cols-4" : "grid gap-3 grid-cols-1"} aria-busy="true" aria-label="Loading the calendar">
+          {days.map(d => <div key={d} className="rounded-xl border border-[#e6ecf5] bg-white p-3"><div className="h-4 w-28 animate-pulse rounded bg-slate-200" /><div className="mt-3 h-10 animate-pulse rounded bg-slate-200" /><div className="mt-2 h-10 animate-pulse rounded bg-slate-200" /></div>)}
+        </div>
+      )}
 
-      <div className={view === "week" ? "grid gap-3 grid-cols-1 lg:grid-cols-2 xl:grid-cols-4" : "grid gap-3 grid-cols-1"}>
+      <div className={`${view === "week" ? "grid gap-3 grid-cols-1 lg:grid-cols-2 xl:grid-cols-4" : "grid gap-3 grid-cols-1"} ${readOnly && loading ? "hidden" : ""}`}>
         {days.map(day => {
           const dayRanges = ranges.filter(r => manilaDay(r.startsAt) === day);
           return (
@@ -131,17 +154,21 @@ export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?:
                 })}
                 {(["AM", "PM"] as ConsultHalf[]).map(half => {
                   const capacity = dayRanges.reduce((sum, r) => sum + rangeMinutesIn(r.startsAt, r.endsAt, day, half), 0);
-                  const bookings = slots.filter(s => s.state !== "open" && manilaDay(s.startsAt) === day && consultHalf(s.startsAt) === half);
-                  if (capacity === 0 && bookings.length === 0) return null;
-                  const used = bookings.reduce((sum, s) => sum + (s.minutes ?? 10), 0);
+                  const bookings = readOnly ? [] : slots.filter(s => s.state !== "open" && manilaDay(s.startsAt) === day && consultHalf(s.startsAt) === half);
+                  const info: HalfCount = readOnly ? (summary.get(halfKey(day, half)) ?? EMPTY_HALF) : {
+                    total: bookings.length, booked: bookings.filter(b => b.state === "booked").length, attended: bookings.filter(b => b.state === "attended").length,
+                    noShow: bookings.filter(b => b.state === "no_show").length, usedMinutes: bookings.reduce((sum, b) => sum + (b.minutes ?? 10), 0),
+                  };
+                  if (capacity === 0 && info.total === 0) return null;
+                  const used = info.usedMinutes;
                   return (
                     <div key={half} className="rounded-lg border border-[#e6ecf5]">
                       <p className="px-2.5 py-1.5 text-[14px] font-bold text-[#062444] bg-[#f7f9fc] rounded-t-lg">{half === "AM" ? "Morning (AM)" : "Afternoon (PM)"} <span className="font-normal text-slate-700">· {used} of {capacity} minutes booked</span></p>
                       <div className="p-2">
-                        {bookings.length === 0 ? <p className="text-[14px] text-slate-700 px-1">No bookings yet.</p> : (
+                        {info.total === 0 ? <p className="text-[14px] text-slate-700 px-1">No bookings yet.</p> : (
                           <button type="button" onClick={() => setListFor({ day, half })} className="w-full rounded-md border border-[#062444]/40 bg-white px-3 py-2 text-left text-[14px] font-bold text-[#062444] hover:bg-[#f7f9fc]">
-                            Booking list ({bookings.length})
-                            <span className="block text-[13px] font-normal text-slate-700">{bookings.filter(b => b.state === "booked").length} booked · {bookings.filter(b => b.state === "attended").length} attended · {bookings.filter(b => b.state === "no_show").length} no-show</span>
+                            Booking list ({info.total})
+                            <span className="block text-[13px] font-normal text-slate-700">{info.booked} booked · {info.attended} attended · {info.noShow} no-show</span>
                           </button>
                         )}
                       </div>
@@ -155,7 +182,11 @@ export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?:
       </div>
 
       {editing && !readOnly && <RangeForm initial={editing === "new" ? null : editing} defaultDay={anchor} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await load(); }} />}
-      {listFor && (
+      {listFor && readOnly && (
+        <PagedBookingListModal title={`Booking list · ${dayLabel(listFor.day)} · ${listFor.half === "AM" ? "Morning (AM)" : "Afternoon (PM)"}`} day={listFor.day} half={listFor.half} staffId={staffFilter || null}
+          counts={summary.get(halfKey(listFor.day, listFor.half)) ?? EMPTY_HALF} onOpen={s => { setListFor(null); if (s.recordId) onOpenRecord?.(s.recordId); }} onClose={() => setListFor(null)} />
+      )}
+      {listFor && !readOnly && (
         <BookingListModal title={`Booking list · ${dayLabel(listFor.day)} · ${listFor.half === "AM" ? "Morning (AM)" : "Afternoon (PM)"}`}
           slots={slots.filter(s => s.state !== "open" && manilaDay(s.startsAt) === listFor.day && consultHalf(s.startsAt) === listFor.half)} showStaff={readOnly}
           openable={s => (readOnly ? !!s.recordId : true)}
