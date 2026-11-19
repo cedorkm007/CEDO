@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Search, ClipboardPlus } from "lucide-react";
+import { Search, ClipboardPlus, FileSpreadsheet } from "lucide-react";
 import { fetchDailyRecords, type DailyRecord } from "../scholarCounselingApi";
 import { fetchScholarInformationByIdNumber, type ScholarInformationRow } from "../seadApi";
 import type { ScholarshipStatus } from "../types";
 import { AddDailyRecordModal } from "../components/AddDailyRecordModal";
+import { BulkDailyRecordsModal } from "../components/BulkDailyRecordsModal";
 import { ScholarProfilePreviewModal } from "../components/ScholarProfilePreviewModal";
 
 const STATUS_BADGE_CLASSES: Record<ScholarshipStatus, string> = {
@@ -30,6 +31,7 @@ export function ScholarCounselingTab() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
   const [viewingScholar, setViewingScholar] = useState<ScholarInformationRow | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
 
@@ -61,10 +63,16 @@ export function ScholarCounselingTab() {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or Scholar ID…"
             className="w-full text-sm outline-none" />
         </div>
-        <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 bg-gradient-to-br from-[#062444] to-[#0a3a6b] text-white text-[13px] font-semibold rounded-lg px-4 py-2.5">
-          <ClipboardPlus size={15} className="text-[#F3BC00]" /> Add Daily Record
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setShowBulk(true)}
+            className="flex items-center gap-2 bg-white border border-[#062444]/25 text-[#062444] text-[13px] font-semibold rounded-lg px-4 py-2.5 hover:bg-[#f7f9fc]">
+            <FileSpreadsheet size={15} aria-hidden="true" /> Bulk Add Records
+          </button>
+          <button onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 bg-gradient-to-br from-[#062444] to-[#0a3a6b] text-white text-[13px] font-semibold rounded-lg px-4 py-2.5">
+            <ClipboardPlus size={15} className="text-[#F3BC00]" /> Add Daily Record
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-[#e6ecf5] overflow-hidden overflow-x-auto">
@@ -120,6 +128,7 @@ export function ScholarCounselingTab() {
       </div>
 
       {showAdd && <AddDailyRecordModal onClose={() => setShowAdd(false)} onCreated={load} />}
+      {showBulk && <BulkDailyRecordsModal onClose={() => setShowBulk(false)} onDone={load} />}
       {viewingScholar && <ScholarProfilePreviewModal scholar={viewingScholar} onClose={() => setViewingScholar(null)} />}
     </div>
   );
