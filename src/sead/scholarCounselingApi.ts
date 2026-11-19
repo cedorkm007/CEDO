@@ -14,6 +14,7 @@ export interface DailyRecord {
   school: string;
   status: ScholarshipStatus;
   dateVisited: string; // ISO date
+  consultedById: string | null;
   consultedByName: string;
   failedSubjects: string;
   findings: string;
@@ -32,6 +33,7 @@ function rowToDailyRecord(r: Record<string, unknown>): DailyRecord {
     school: String(r.school ?? ""),
     status: r.status as ScholarshipStatus,
     dateVisited: String(r.date_visited ?? ""),
+    consultedById: r.consulted_by_id == null ? null : String(r.consulted_by_id),
     consultedByName: String(r.consulted_by_name ?? ""),
     failedSubjects: String(r.failed_subjects ?? ""),
     findings: String(r.findings ?? ""),
@@ -46,6 +48,58 @@ export async function fetchDailyRecords(search: string = ""): Promise<DailyRecor
   const { data, error } = await supabase.rpc("scholar_counseling_daily_records", { p_search: search.trim() });
   if (error || !data) return [];
   return (data as Record<string, unknown>[]).map(rowToDailyRecord);
+}
+
+/** What the Daily Records list is narrowed by (all sent to the database: supabase_migration_consultation_daily_records_paging.sql). */
+export interface DailyRecordFilters {
+  search: string;
+  /** YYYY-MM-DD, "" = no limit */ from: string; to: string;
+  visitTypes: string[]; statuses: string[]; consultantIds: string[];
+}
+export interface DailyRecordSort { key: "date" | "name"; dir: "asc" | "desc" }
+export const DAILY_RECORDS_PAGE_SIZE = 50;
+
+type PageFailed = { ok: false; error: string; missing: boolean };
+const isMissingFn = (e: { code?: string; message?: string }) => e.code === "PGRST202" || /could not find the function|does not exist/i.test(e.message ?? "");
+function pageArgs(f: DailyRecordFilters, sort: DailyRecordSort, limit: number, offset: number, logExport: boolean) {
+  return {
+    p_search: f.search.trim(), p_from: f.from || null, p_to: f.to || null,
+    p_visit_types: f.visitTypes.length ? f.visitTypes : null, p_statuses: f.statuses.length ? f.statuses : null, p_consultants: f.consultantIds.length ? f.consultantIds : null,
+    p_sort: sort.key, p_dir: sort.dir, p_limit: limit, p_offset: offset, p_log_export: logExport,
+  };
+}
+
+/** ONE PAGE of the Daily Records with the TRUE total (never cut off at 1,000). `missing: true` = the database update has not been run yet. */
+export async function fetchDailyRecordsPage(f: DailyRecordFilters, sort: DailyRecordSort, page: number, pageSize = DAILY_RECORDS_PAGE_SIZE): Promise<{ ok: true; rows: DailyRecord[]; total: number } | PageFailed> {
+  const { data, error } = await supabase.rpc("scholar_counseling_daily_records_page", pageArgs(f, sort, pageSize, (Math.max(1, page) - 1) * pageSize, false));
+  if (error) return { ok: false, error: error.message, missing: isMissingFn(error) };
+  const rows = (data ?? []) as Record<string, unknown>[];
+  return { ok: true, rows: rows.map(rowToDailyRecord), total: rows.length ? Number(rows[0].total_count ?? 0) : 0 };
+}
+
+/** EVERY record that matches the filters, read page after page (500 at a time) for the Export; the export is written to the export log when it starts. */
+export async function fetchAllDailyRecordsForExport(f: DailyRecordFilters, sort: DailyRecordSort, onProgress?: (done: number, total: number) => void): Promise<{ ok: true; rows: DailyRecord[] } | PageFailed> {
+  const PAGE = 500;
+  const all: DailyRecord[] = [];
+  let total = 0;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase.rpc("scholar_counseling_daily_records_page", pageArgs(f, sort, PAGE, offset, offset === 0));
+    if (error) return { ok: false, error: error.message, missing: isMissingFn(error) };
+    const rows = (data ?? []) as Record<string, unknown>[];
+    if (rows.length === 0) break;
+    total = Number(rows[0].total_count ?? total);
+    all.push(...rows.map(rowToDailyRecord));
+    onProgress?.(all.length, total);
+    if (rows.length < PAGE || all.length >= total) break;
+  }
+  return { ok: true, rows: all };
+}
+
+/** The staff who have logged visits, for the Consultant filter. */
+export async function fetchDailyRecordConsultants(): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await supabase.rpc("scholar_counseling_consultants");
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(r => ({ id: String(r.id), name: String(r.name ?? "") }));
 }
 
 export interface NewDailyRecordInput {
