@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import type { ScholarshipStatus } from "./types";
+import type { BulkRowInput, BulkRowResult } from "@/lib/bulkDailyRecords";
 
 export type VisitType = "Office" | "KSB Client" | "Home Visit";
 export const VISIT_TYPES: VisitType[] = ["Office", "KSB Client", "Home Visit"];
@@ -70,6 +71,35 @@ export async function createDailyRecord(input: NewDailyRecordInput): Promise<{ o
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+/**
+ * Bulk Add of past Daily Records (supabase_migration_consultation_bulk_records.sql). The rows are sent 200 at a time. With `dryRun` nothing is saved: the answer says, row by row, what the database would do
+ * (add it, skip it as already recorded, or refuse it and why). `missing: true` = the database update has not been run yet. The key of the result is the row number of the spreadsheet.
+ */
+export async function checkOrAddBulkRecords(
+  items: { rowNumber: number; input: BulkRowInput }[], dryRun: boolean, onProgress?: (done: number, total: number) => void,
+): Promise<{ ok: true; results: Map<number, BulkRowResult> } | { ok: false; error: string; missing: boolean }> {
+  const results = new Map<number, BulkRowResult>();
+  const CHUNK = 200;
+  for (let from = 0; from < items.length; from += CHUNK) {
+    const part = items.slice(from, from + CHUNK);
+    const { data, error } = await supabase.rpc("counseling_bulk_records", { p_rows: part.map(p => p.input), p_dry_run: dryRun });
+    if (error) {
+      const missing = error.code === "PGRST202" || /could not find the function|does not exist/i.test(error.message ?? "");
+      return { ok: false, error: missing ? "Bulk adding needs the latest database update. Please ask the IT admin to run it." : error.message, missing };
+    }
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      const target = part[Number(r.i) - 1];
+      if (!target) continue;
+      results.set(target.rowNumber, {
+        i: Number(r.i), ok: !!r.ok, duplicate: !!r.duplicate, error: r.error == null ? null : String(r.error), scholarId: r.scholar_id == null ? null : String(r.scholar_id),
+        name: r.name == null ? null : String(r.name), status: r.status == null ? null : String(r.status), visitType: r.visit_type == null ? null : String(r.visit_type), date: r.date == null ? null : String(r.date).slice(0, 10),
+      });
+    }
+    onProgress?.(Math.min(from + CHUNK, items.length), items.length);
+  }
+  return { ok: true, results };
 }
 
 /** Every Daily Record ever logged for one scholar — the "Counseling History" summary — reuses the same RPC as the Daily Records list, since scholar_id_number is an exact match against p_search. */
