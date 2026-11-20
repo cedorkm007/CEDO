@@ -5,6 +5,7 @@
 // `authenticated` role (and `service_role` for the push sender).  Run:  node tests/renewal/db/run_p6_tests.mjs
 import { buildDb } from "../../../localdemo/build.mjs";
 import { seedDb, seedId } from "../../../localdemo/seed.mjs";
+import { legacyDivisionHeadCases } from "../../legacy_division_head_cases.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { useLegacySlots } from "./legacy_slots.mjs";
@@ -14,6 +15,7 @@ const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok 
 
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+await legacyDivisionHeadCases(db, { all: true });      // the demo has no Division Head cases of its own any more: three are put on the old route
 await useLegacySlots(db);   // these tests cover the original 10-minute-slot booking model (see legacy_slots.mjs)
 
 const num = n => `TEST-${String(n).padStart(4, "0")}`;

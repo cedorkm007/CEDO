@@ -5,6 +5,7 @@
 // `authenticated` role.  Run:  node tests/renewal/db/run_p7_tests.mjs
 import { buildDb } from "../../../localdemo/build.mjs";
 import { seedDb, seedId } from "../../../localdemo/seed.mjs";
+import { legacyDivisionHeadCases } from "../../legacy_division_head_cases.mjs";
 import { useEarlierInc } from "./earlier_inc.mjs";
 import fs from "node:fs";
 
@@ -13,6 +14,7 @@ const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok 
 
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+await legacyDivisionHeadCases(db, { all: true });      // the demo has no Division Head cases of its own any more: three are put on the old route
 await useEarlierInc(db);      // these tests cover the INC process before the INC documents update (see earlier_inc.mjs)
 
 const num = n => `TEST-${String(n).padStart(4, "0")}`;
@@ -77,7 +79,7 @@ check("INC numbers match the INC items of the term", await (async () => {
 check("consultation numbers match the slots", d.consultations.booked_upcoming === await count("select count(*) n from counseling_slots x join renewal_records r on r.id = x.record_id where x.state = 'booked' and x.starts_at > now() and r.school_year = $1 and r.term = $2", [SY, TERM])
   && d.consultations.required === applied.filter(r => r.consultation_required && !["late_declined"].includes(r.stage)).length && d.consultations.done === recs.filter(r => r.consultation_done_at).length);
 check("documents waiting for review, and the Division Head's queue", d.documents.waiting_review === await count("select count(*) n from renewal_documents d join renewal_records r on r.id = d.record_id where d.status = 'submitted' and d.kind in ('study_plan','inc_letter') and r.school_year = $1 and r.term = $2", [SY, TERM])
-  && d.division_head.waiting === 2 && d.division_head.reconsidered === 1);
+  && d.division_head.waiting === 3 && d.division_head.reconsidered === 1, JSON.stringify(d.division_head));      // waiting: scholars 41, 42 and 43 on the old Division Head route (tests/legacy_division_head_cases.mjs)
 check("applications per day: today's count is right", (() => { const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10); const t = d.per_day.find(x => x.day === today); return !!t && t.applied === applied.filter(r => r.applied_at && new Date(new Date(r.applied_at).getTime() + 8 * 3600000).toISOString().slice(0, 10) === today).length; })());
 
 console.log("\nThe numbers move when the work moves");

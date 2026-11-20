@@ -5,6 +5,7 @@
 // `authenticated` role (and `service_role` for the function's own call).  Run:  node tests/renewal/db/run_p8_tests.mjs
 import { buildDb } from "../../../localdemo/build.mjs";
 import { seedDb, seedId } from "../../../localdemo/seed.mjs";
+import { legacyDivisionHeadCases } from "../../legacy_division_head_cases.mjs";
 import { useEarlierInc } from "./earlier_inc.mjs";
 import fs from "node:fs";
 
@@ -13,6 +14,7 @@ const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok 
 
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+await legacyDivisionHeadCases(db, { all: true });      // the demo has no Division Head cases of its own any more: three are put on the old route
 await useEarlierInc(db);      // these tests cover the INC process before the INC documents update (see earlier_inc.mjs)
 
 const num = n => `TEST-${String(n).padStart(4, "0")}`;

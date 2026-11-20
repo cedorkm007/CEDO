@@ -120,7 +120,8 @@ console.log("\nINC scenarios (10-14)");
   await q("update scholar_subjects_grades set grade = '5.0' where scholar_id_number = $1 and subject_code = 'TST100' and school_year = '2025-2026' and semester = '2nd Semester'", [num(27)]);
   const a13 = await recordOf(27, T, S1);
   check("13 INC failed: counts as 1 failed, study plan requested", a13.stage === "needs_study_plan_consultation" && a13.rule_code === "B" && kinds(a13) === "study_plan", `${a13.stage}/${a13.rule_code}/${kinds(a13)}`);
-  check("13 the scholar was told a new document is needed", (await q("select count(*)::int n from scholar_notifications where scholar_id_number = $1 and kind = 'document_required'", [num(27)]))[0].n === 1);
+  // the scholar books the consultation first (the consultation staff approve the study plan, they are not waited for): the notice is now "A consultation is needed", sent again for the new case
+  { const kindsNow = await q("select kind, title from scholar_notifications where scholar_id_number = $1 order by created_at, id", [num(27)]); check("13 the scholar was told what is needed now (a consultation, then the study plan and the clearance come with it)", kindsNow.length > 0 && kindsNow[kindsNow.length - 1].kind === "consultation_needed" && kindsNow.filter(x => x.kind === "consultation_needed").length >= 1, JSON.stringify(kindsNow)); }
 
   // 14 deadline passed
   const r14 = await recordOf(28, T, S1);
