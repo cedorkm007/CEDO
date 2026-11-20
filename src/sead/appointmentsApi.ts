@@ -249,6 +249,17 @@ export async function fetchSlotScholarInfo(slotId: string): Promise<{ ok: true; 
   };
 }
 
+/**
+ * Who referred the scholar for this appointment (the Scholar Renewal evaluator or Scholar Management staff refer a scholar for a consultation; the scholar then books the time).
+ * `referredBy` is null for an appointment the scholar booked for their own renewal. Before the database update (supabase_migration_consultation_booking_referred_by.sql) the answer is simply "nobody": the pop-up shows no line.
+ */
+export async function fetchSlotReferrer(slotId: string): Promise<{ referredBy: string | null }> {
+  const { data, error } = await supabase.rpc("counseling_slot_referrer", { p_slot_id: slotId });
+  if (error || !data) return { referredBy: null };
+  const name = strOrNull((data as Row).referred_by);
+  return { referredBy: name && name.trim() ? name.trim() : null };
+}
+
 /** The pre-filled Daily Record of an appointment already marked Attended (for when the form was closed before it was saved). */
 export async function fetchSlotPrefill(slotId: string): Promise<{ ok: true; prefill: AttendedPrefill } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("counseling_slot_prefill", { p_slot_id: slotId });
