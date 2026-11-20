@@ -305,6 +305,19 @@ export async function fetchApprovedPage(search: string, page: number, pageSize =
   return { rows: all, total: all.length, paged: false };
 }
 
+export type StatusListKind = "On leave" | "Reconsidered" | "Removed";
+export interface StatusScholar { scholarIdNumber: string; name: string; course: string; yearLevel: string; school: string; status: string }
+/** ONE PAGE of the scholars who have a scholarship status now (On leave, Reconsidered or Removed), with the true total, searched by name or Scholar ID. `missing: true` = the database update has not been run yet. */
+export async function fetchStatusScholarsPage(status: StatusListKind, search: string, page: number, pageSize = DASHBOARD_PAGE_SIZE): Promise<{ ok: true; rows: StatusScholar[]; total: number } | { ok: false; error: string; missing: boolean }> {
+  const { data, error } = await supabase.rpc("scholar_counseling_status_scholars_page", { p_status: status, p_search: search.trim(), p_limit: pageSize, p_offset: (Math.max(1, page) - 1) * pageSize });
+  if (error) return { ok: false, error: error.message, missing: isMissingFn(error) };
+  const rows = (data ?? []) as Record<string, unknown>[];
+  return {
+    ok: true, total: rows.length ? Number(rows[0].total_count ?? 0) : 0,
+    rows: rows.map(r => ({ scholarIdNumber: String(r.scholar_id_number), name: String(r.name ?? ""), course: String(r.course ?? ""), yearLevel: String(r.year_level ?? ""), school: String(r.school ?? ""), status: String(r.status ?? "") })),
+  };
+}
+
 /** The signed-in staff member's own display name — for the read-only "Refer by" field. */
 export async function fetchMyStaffName(): Promise<string> {
   const { data: auth } = await supabase.auth.getUser();

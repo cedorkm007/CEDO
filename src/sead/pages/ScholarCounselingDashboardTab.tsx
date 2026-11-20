@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Users, Home, AlertTriangle, Clock, CalendarDays, ChevronRight, CheckCircle2, Printer, Search } from "lucide-react";
 import { downloadRemovalForm, fetchConsultRemovalForms, type RemovalFormItem } from "@/lib/removalFormApi";
 import { TerminationFormsModal } from "../components/TerminationFormsModal";
-import { DASHBOARD_PAGE_SIZE, fetchApprovedPage, fetchDashboardCounts, fetchFinalDecisions, fetchQueuePage, finalizeDecision, type DashboardCounts, type FinalDecisionItem, type ListPage, type QueuedReferral } from "../referralApi";
+import { DASHBOARD_PAGE_SIZE, fetchApprovedPage, fetchDashboardCounts, fetchFinalDecisions, fetchQueuePage, finalizeDecision, type DashboardCounts, type FinalDecisionItem, type ListPage, type QueuedReferral, type StatusListKind } from "../referralApi";
+import { ScholarStatusListModal } from "../components/ScholarStatusListModal";
 import { ReferralFormModal } from "../components/ReferralFormModal";
 import { printApprovedReferral } from "../referralPrint";
 import { ServerPagination } from "@/app/components/ServerPagination";
@@ -65,6 +66,7 @@ export function ScholarCounselingDashboardTab({ onOpenTarget }: { onOpenTarget?:
   const [formBusy, setFormBusy] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
   const [formsOpen, setFormsOpen] = useState(false);      // the pop-up with the list of the termination forms
+  const [statusList, setStatusList] = useState<StatusListKind | null>(null);      // the pop-up with the scholars of one scholarship status (On Leave, Reconsidered, Removed)
   const queueRef = useRef<HTMLDivElement>(null);
   const reqQueue = useRef(0), reqApproved = useRef(0);
 
@@ -158,12 +160,12 @@ export function ScholarCounselingDashboardTab({ onOpenTarget }: { onOpenTarget?:
           </div>
         </SummaryCard>
 
-        <SummaryCard icon={<Users size={14} />} title="Scholarship Status" note="Scholars with this status now. Press Probationary to see them.">
+        <SummaryCard icon={<Users size={14} />} title="Scholarship Status" note="Scholars with this status now. Press a number to see them.">
           <div className="grid grid-cols-2 gap-x-3 gap-y-2">
             <Stat label="Probationary" value={num(c?.probationaryCount)} onOpen={open("probationary")} hint="Open the Probationary Monitoring tab" />
-            <Stat label="On Leave" value={num(c?.onLeaveCount)} />
-            <Stat label="Reconsidered" value={num(c?.reconsideredCount)} />
-            <Stat label="Removed" value={num(c?.removedCount)} />
+            <Stat label="On Leave" value={num(c?.onLeaveCount)} onOpen={() => setStatusList("On leave")} hint="See the scholars on leave" />
+            <Stat label="Reconsidered" value={num(c?.reconsideredCount)} onOpen={() => setStatusList("Reconsidered")} hint="See the reconsidered scholars" />
+            <Stat label="Removed" value={num(c?.removedCount)} onOpen={() => setStatusList("Removed")} hint="See the removed scholars" />
           </div>
         </SummaryCard>
 
@@ -174,8 +176,8 @@ export function ScholarCounselingDashboardTab({ onOpenTarget }: { onOpenTarget?:
           </div>
         </SummaryCard>
 
-        <SummaryCard icon={<CalendarDays size={14} />} title={c?.monthLabel || "This Month"} note="Your visits from the 1st of the month to today. Press the number to see them in Daily Records.">
-          <Stat label="Clients Served" value={num(c?.clientsServedThisMonth)} onOpen={open("served")} hint="Open your visits this month in Daily Records" />
+        <SummaryCard icon={<CalendarDays size={14} />} title={c?.monthLabel || "This Month"} note="The visits of every consultant, from the 1st of the month to today. Press the number to see them in Daily Records.">
+          <Stat label="Clients Served" value={num(c?.clientsServedThisMonth)} onOpen={open("served")} hint="Open this month's visits in Daily Records" />
         </SummaryCard>
       </div>
 
@@ -285,6 +287,8 @@ export function ScholarCounselingDashboardTab({ onOpenTarget }: { onOpenTarget?:
         )}
         {approved.paged && approved.total > DASHBOARD_PAGE_SIZE && <div className="border-t border-[#f0f3f8] px-4"><ServerPagination page={approvedPage} pageSize={DASHBOARD_PAGE_SIZE} total={approved.total} onPageChange={p => setApprovedPage(Math.max(1, p))} noun="referrals" disabled={approvedLoading} /></div>}
       </div>
+
+      {statusList && <ScholarStatusListModal status={statusList} expected={statusList === "On leave" ? c?.onLeaveCount ?? null : statusList === "Reconsidered" ? c?.reconsideredCount ?? null : c?.removedCount ?? null} onClose={() => setStatusList(null)} />}
 
       {working && (
         <ReferralFormModal mode="counsel" referralId={working.id}
