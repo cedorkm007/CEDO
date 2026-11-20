@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, UserX } from "lucide-react";
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
 import { formatSlot } from "@/lib/renewal";
-import { fetchSlotPrefill, fetchSlotScholarInfo, markSlot, setHardCopyReceived, type AttendedPrefill, type CalendarSlot, type SlotScholarInfo } from "../appointmentsApi";
+import { fetchSlotPrefill, fetchSlotReferrer, fetchSlotScholarInfo, markSlot, setHardCopyReceived, type AttendedPrefill, type CalendarSlot, type SlotScholarInfo } from "../appointmentsApi";
 import { gwaLine, infoText } from "@/lib/bookingInfo";
 import { ModalShell } from "../components/SeadUiShell";
 import { AddDailyRecordModal } from "../components/AddDailyRecordModal";
@@ -20,6 +20,14 @@ export function SlotDetailModal({ slot, onClose, onChanged }: { slot: CalendarSl
     let off = false;
     setInfo(null); setInfoState("loading");
     void fetchSlotScholarInfo(slot.slotId).then(r => { if (off) return; if (r.ok) { setInfo(r.info); setInfoState("ok"); } else setInfoState(r.missing ? "missing" : "error"); });
+    return () => { off = true; };
+  }, [slot.slotId]);
+  // who referred the scholar for this appointment (only an appointment that came from a referral has one)
+  const [referrer, setReferrer] = useState<string | null>(null);
+  useEffect(() => {
+    let off = false;
+    setReferrer(null);
+    void fetchSlotReferrer(slot.slotId).then(r => { if (!off) setReferrer(r.referredBy); });
     return () => { off = true; };
   }, [slot.slotId]);
   const gwa = info ? gwaLine(info.gwa, info.scale, info.gwaYear, info.gwaTerm) : null;
@@ -60,6 +68,7 @@ export function SlotDetailModal({ slot, onClose, onChanged }: { slot: CalendarSl
         <p>{slot.scholarIdNumber} · {formatSlot(slot.startsAt)}</p>
         <p>{slot.typeLabel ?? "Consultation"} · {slot.minutes ?? 10} minutes</p>
         <p>{slot.termLabel ? `Renewal for ${slot.termLabel}` : !slot.recordId ? "Referred for a consultation" : ""}{slot.caseSummary ? ` · ${slot.caseSummary}` : ""}</p>
+        {referrer && <p>Referred by: <strong className="text-slate-900">{referrer}</strong></p>}
         {slot.stage && <div className="pt-1"><RenewalStageBadge stage={slot.stage} full /></div>}
         {infoState !== "missing" && (
           <dl aria-label="About the scholar" aria-busy={infoState === "loading"} className="mt-2 grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1.5 rounded-lg bg-[#f7f9fc] px-3 py-2.5 text-[14px]">
