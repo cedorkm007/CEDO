@@ -82,7 +82,7 @@ type DocsState = { state: "loading" } | { state: "error"; message: string } | { 
  * (Regular, Probationary, Reconsidered or Removed). The Scholar Renewal evaluator then approves the endorsement. The database checks every step again.
  *
  * The cases are read PAGE BY PAGE from the database (25 a page, with the true total), for ONE term at a time (the current term first; the selector reaches the older terms and "All terms").
- * A case shows a summary; its documents are read only when the case is opened. When someone else changes something, only the cases that changed are replaced (a case that came or went
+ * A case shows a summary; its documents are read when the case is opened: a case with documents waiting for you opens on its own, the others when you press "Show the documents". When someone else changes something, only the cases that changed are replaced (a case that came or went
  * is offered as "Refresh" instead of moving the list under your hand). The page, the term, the group and the search are remembered.
  */
 export function ScholarCounselingRenewalCasesTab() {
@@ -134,6 +134,14 @@ export function ScholarCounselingRenewalCasesTab() {
     if (r.ok) setCounts({ ready: r.ready, work: r.work, sent: r.sent });
   }, [query.schoolYear, query.term, query.search]);
 
+  /** The cases with documents WAITING FOR YOU open on their own (their documents are read now, for those cases only); the other cases open when you press "Show the documents". */
+  function autoOpen(list: ConsultCase[]) {
+    const toOpen = list.filter(c => c.docsSubmitted > 0 && !open.has(c.recordId));
+    if (toOpen.length === 0) return;
+    setOpen(prev => { const n = new Set(prev); for (const c of toOpen) n.add(c.recordId); return n; });
+    for (const c of toOpen) void loadDocs(c.recordId);
+  }
+
   /** Reads the page. `quiet` (a live update): nothing is cleared; the cases that changed are replaced and a case that came or went is offered as "Refresh". */
   const load = useCallback(async (quiet = false) => {
     if (!terms) return;      // the term is known once the terms have arrived
@@ -151,9 +159,11 @@ export function ScholarCounselingRenewalCasesTab() {
       if (m.listChanged > 0) { setNewUpdates(m.listChanged); return; }
       setRows(m.rows); setTotal(r.total);
       for (const id of m.changedIds) if (open.has(id)) void loadDocs(id);      // a case that is open: its documents are read again too
+      autoOpen(m.rows.filter(c => m.changedIds.includes(c.recordId)));      // a case that now has documents waiting opens on its own
       return;
     }
     setRows(r.rows); setTotal(r.total);
+    autoOpen(r.rows);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terms, query, page, rows, open]);
   useEffect(() => { if (!terms || missing) return; void load(); void loadCounts(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [terms, query, page, missing]);
