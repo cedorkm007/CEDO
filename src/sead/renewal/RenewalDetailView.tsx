@@ -64,7 +64,7 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
     ...(g?.inc_subjects ?? []).map(x => ({ ...x, tag: x.state === "counted_failed" ? "INC (counted as failed)" : x.state === "decided" ? "INC (decided)" : "INC" })),
     ...(g?.review_subjects ?? []).map(x => ({ ...x, tag: "Needs review" })),
   ];
-  const active = !["renewed", "removed", "reconsidered", "division_head_approved", "late_declined", "not_required", "returned", "late_pending", "endorsed_division_head", "endorsed_for_approval"].includes(r.stage);
+  const active = !["renewed", "removed", "reconsidered", "division_head_approved", "late_declined", "not_required", "returned", "late_pending", "endorsed_division_head", "endorsed_for_approval", "awaiting_documents"].includes(r.stage);
   const sentBack = dh?.status === "reconsideration_requested";
   const withDivisionHead = dh?.status === "forwarded_to_division_head";
   const awaitingFinal = dh?.status === "division_head_approved";      // approved and signed; the consulting staff member makes the final decision
@@ -127,11 +127,12 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
           <p className="text-[13.5px] text-slate-600 mt-1">{r.stage === "renewed" ? (r.tempProbation ? "The scholar is renewed as Probationary (temporary). The INC / missing grade is followed up automatically: passed = back to Regular; failed or not complied in time = stays Probationary." : "The follow-up is finished (see the history).") : "No documents and no consultation are needed. Confirming the renewal puts the scholar on temporary probation and starts the days."}</p>
         </Section>
       )}
-      {(r.stage === "endorsed_for_approval" || r.stage === "ready_for_endorsement" || r.endorsedStatus) && (
+      {(r.stage === "endorsed_for_approval" || r.stage === "ready_for_endorsement" || r.stage === "awaiting_documents" || r.endorsedStatus) && (
         <Section title="Consultation staff's endorsement">
           {r.stage === "endorsed_for_approval"
-            ? <p><strong className="text-sky-900">Endorsed: {(r.endorsedStatus ?? "")}.</strong> The consultation staff endorsed this status after the consultation and the approved documents. Approve it to renew the scholar, or send it back.</p>
-            : r.stage === "ready_for_endorsement" ? <p>The consultation is done and the three documents are approved. The consultation staff will endorse the new scholarship status; you approve it afterwards.</p>
+            ? <p><strong className="text-sky-900">Endorsed: {(r.endorsedStatus ?? "")}.</strong> The consultation staff endorsed this status after the consultation. Approve it, or send it back. Regular renews the scholar and Removed ends the scholarship at once; for Probationary or Reconsidered the scholar then sends the study plan and the clearance (and the letter from the dean when there is an INC), and is renewed when the consultation staff approve them.</p>
+            : r.stage === "awaiting_documents" ? <p><strong className="text-sky-900">Approved: {(r.endorsedStatus ?? "")}.</strong> The scholar is sending the documents (see “Documents” below). When the consultation staff have approved them, the scholar is renewed with this status automatically.</p>
+            : r.stage === "ready_for_endorsement" ? <p>The consultation is done. The consultation staff will endorse the new scholarship status; you approve it afterwards. No document is asked for before that.</p>
             : <p>Endorsed by the consultation staff: <strong>{(r.endorsedStatus ?? "")}</strong>.</p>}
         </Section>
       )}

@@ -15,7 +15,7 @@ export const RENEWAL_STAGES = [
   "ready_to_endorse", "endorsed_division_head", "needs_study_plan_consultation", "needs_consultation_division_head", "needs_inc_letter_consultation",
   "inc_waiting_compliance", "inc_deadline_passed", "summer_requirements",
   "returned", "renewed", "removed", "reconsidered", "division_head_approved", "not_required",
-  "ready_for_endorsement", "endorsed_for_approval", "needs_gwa_consultation",
+  "ready_for_endorsement", "endorsed_for_approval", "needs_gwa_consultation", "awaiting_documents",
 ] as const;
 export type RenewalStage = (typeof RENEWAL_STAGES)[number];
 
@@ -46,6 +46,7 @@ export const STAGE_INFO: Record<RenewalStage, { title: string; tone: StageTone; 
   ready_for_endorsement: { title: "Ready for the consultation staff to endorse", tone: "success", short: "Ready to endorse" },
   endorsed_for_approval: { title: "Endorsed — waiting for the evaluator's approval", tone: "info", short: "Endorsed — to approve" },
   needs_gwa_consultation: { title: "Needs a consultation (GWA below the passing GWA)", tone: "info", short: "Consultation (GWA)" },
+  awaiting_documents: { title: "Approved — waiting for the study plan and the clearance", tone: "info", short: "Waiting for documents" },
 };
 
 export function stageTitle(stage: string): string {
@@ -66,7 +67,7 @@ export const BOARD_GROUPS: { key: string; label: string; stages: readonly Renewa
   { key: "to_confirm", label: "Ready for the evaluator", stages: ["ready_for_confirmation", "endorsed_for_approval", "ready_to_endorse", "reconsidered", "division_head_approved"] },
   { key: "late", label: "Late — needs acceptance", stages: ["late_pending"] },
   { key: "on_hold", label: "On hold / waiting", stages: ["sdp_on_hold", "waiting_grades", "review_needed"] },
-  { key: "consult", label: "Needs documents + consultation", stages: ["needs_study_plan_consultation", "needs_gwa_consultation", "ready_for_endorsement", "needs_inc_letter_consultation", "summer_requirements", "submitted"] },
+  { key: "consult", label: "Needs documents + consultation", stages: ["needs_study_plan_consultation", "needs_gwa_consultation", "ready_for_endorsement", "awaiting_documents", "needs_inc_letter_consultation", "summer_requirements", "submitted"] },
   { key: "dh", label: "Division Head decision", stages: ["needs_consultation_division_head", "endorsed_division_head"] },
   { key: "inc", label: "INC", stages: ["inc_waiting_compliance", "inc_deadline_passed"] },
   { key: "returned", label: "Returned", stages: ["returned"] },
@@ -404,11 +405,16 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
       consult();
       if (consultNeeded) steps.push("After your consultation, the evaluator confirms your renewal.");
       break;
-    case "ready_for_endorsement": steps.push("Your consultation is done and your documents are approved. The consultation staff will now endorse your new scholarship status."); steps.push("Nothing to do right now."); break;
+    case "ready_for_endorsement": steps.push("Your consultation is done. The consultation staff will now endorse your new scholarship status, and the evaluator will approve it. You do not need to send any document yet."); steps.push("Nothing to do right now."); break;
+    case "awaiting_documents":
+      steps.push("Your new scholarship status was approved. To complete your renewal, send the documents below; the consultation staff approve them, and then you are renewed.");
+      upload();
+      if ((ev?.required_documents ?? []).some(d => d.satisfied && !d.approved)) steps.push("The consultation staff will approve the documents you sent.");
+      break;
     case "endorsed_for_approval": steps.push("The consultation staff endorsed your new scholarship status. The Scholar Renewal evaluator will approve it, and then you are renewed. We will tell you the result."); steps.push("Nothing to do right now."); break;
     case "endorsed_division_head": steps.push("The evaluator sent your case to the Division Head for approval. We will tell you the result."); steps.push("Nothing to do right now."); break;
     case "needs_study_plan_consultation":
-      if (ev?.consult_route) { consult(); upload(); if ((ev?.required_documents ?? []).some(d => d.satisfied && !d.approved)) steps.push("The consultation staff will approve the documents you sent."); } else { upload(); consult(); }
+      if (ev?.consult_route) { consult(); upload(); if ((ev?.required_documents ?? []).some(d => d.satisfied && !d.approved)) steps.push("The consultation staff will approve the documents you sent."); if ((ev?.required_documents ?? []).length === 0) steps.push("No document is needed now. If you are approved as Reconsidered or Probationary, you will be asked for the study plan and the clearance."); } else { upload(); consult(); }
       break;
     case "needs_consultation_division_head":
       if (consultNeeded) { consult(); steps.push("After your consultation, the Division Head will decide your case."); } else steps.push("Your consultation is done. The Division Head will decide your case.");
@@ -467,7 +473,7 @@ export function renewalProgress(stage: RenewalStage, ev: RenewalEvaluation | nul
     : done("checked", "SDP and grades checked"));
 
   const decisionIsDivisionHead = stage === "needs_consultation_division_head" || stage === "endorsed_division_head" || stage === "reconsidered" || stage === "division_head_approved" || stage === "removed" || ev?.rule_code?.startsWith("C") === true || ev?.rule_code?.startsWith("B") === true;
-  const consultRoute = ev?.consult_route === true || stage === "ready_for_endorsement" || stage === "endorsed_for_approval";
+  const consultRoute = ev?.consult_route === true || stage === "ready_for_endorsement" || stage === "endorsed_for_approval" || stage === "awaiting_documents";
   const decisionLabel = consultRoute ? "Endorsement and approval" : decisionIsDivisionHead ? "Division Head decision" : "Evaluator confirmation";
   const terminal = stage === "renewed";
   const consultDoneEarly = !!ev?.consultation_done;
@@ -489,6 +495,12 @@ export function renewalProgress(stage: RenewalStage, ev: RenewalEvaluation | nul
     return steps;
   }
 
+  // Approved as Probationary / Reconsidered: the consultation and the decision are done; the documents are the one thing left.
+  if (stage === "awaiting_documents") {
+    const needed = ev?.required_documents ?? [];
+    return [done("applied", "Applied"), done("checked", "SDP and grades checked"), done("consultation", "Consultation"), done("decision", "Endorsement and approval"),
+      { key: "documents", label: "Upload your documents", state: "current", note: needed.some(d => d.satisfied && !d.approved) ? "Waiting for approval" : undefined }, { key: "renewed", label: "Renewed", state: "todo" }];
+  }
   // The case is known: the steps it needs, in order. A step is done when its work is complete.
   const docs = ev?.required_documents ?? [];
   const needsApproval = (k: string) => k === "study_plan" || k === "inc_letter" || k === "clearance";

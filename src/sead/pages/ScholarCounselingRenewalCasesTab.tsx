@@ -334,7 +334,8 @@ export function ScholarCounselingRenewalCasesTab() {
                     <strong>Endorsed: {c.endorsedStatus}</strong>{c.endorsedBy ? ` by ${c.endorsedBy}` : ""}{c.endorsedAt ? ` on ${formatDay(c.endorsedAt)}` : ""}{c.endorsedNote ? ` — ${c.endorsedNote}` : ""}
                   </p>
                 )}
-                {!c.canEndorse && c.stage === "needs_study_plan_consultation" && <p className="mt-2 text-[13.5px] text-slate-600">You can endorse the status after the consultation is attended and all three documents are approved.</p>}
+                {!c.canEndorse && c.stage === "needs_study_plan_consultation" && <p className="mt-2 text-[13.5px] text-slate-600">You can endorse the status after the consultation is attended. No document is needed before that.</p>}
+                {c.stage === "awaiting_documents" && <p className="mt-2 rounded-md border border-sky-300 bg-sky-50 px-2.5 py-2 text-sky-950"><strong>Approved by the evaluator: {c.endorsedStatus}.</strong> Waiting for the scholar's documents (the study plan and the clearance, and the letter from the dean when there is an INC). Approve each one when it arrives; the scholar is renewed when the last one is approved.</p>}
                 {c.legacy && <p className="mt-2 text-[13.5px] text-amber-900">This case was already sent to the Division Head, so it follows the Division Head route.</p>}
               </article>
             );
