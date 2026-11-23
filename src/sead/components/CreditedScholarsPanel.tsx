@@ -466,7 +466,7 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
               </label>}
             </>
           )}
-          {filterAnyActive && <button type="button" onClick={() => { setTyped(""); setSearch(""); setSemChoice(""); onFiltersChange({}); resetView(); }} className="text-[13px] font-semibold text-[#00709f] hover:underline">Clear all</button>}
+          {(search.trim() !== "" || semChoice !== "" || typed !== "") && <button type="button" onClick={() => { setTyped(""); setSearch(""); setSemChoice(""); resetView(); }} className="text-[13px] font-semibold text-[#00709f] hover:underline">Clear search</button>}
         </div>
 
         {chips.length > 0 && !filtersMissing && (
