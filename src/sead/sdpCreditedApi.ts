@@ -34,6 +34,8 @@ export async function fetchCreditedSummary(activityId: string): Promise<{ ok: tr
 
 export interface CreditedRow {
   id: string; scholarIdNumber: string; firstName: string; lastName: string; attendedDate: string; activityDay: string | null; activitySid: string | null; schoolYear: string | null; semester: string | null;
+  /** Only in the filtered list: how the credit was made (scan, manual, credit_attended, import, picture) and who made it. */
+  how?: string; creditedBy?: string;
 }
 export interface CreditedQuery { activityId: string; search: string; sort: CreditedSort; schoolYear: string | null; semester: string | null; noSemester: boolean; page: number; pageSize: number }
 /** ONE PAGE of the credits of an activity with the TRUE total. */

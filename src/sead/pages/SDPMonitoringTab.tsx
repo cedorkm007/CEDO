@@ -14,6 +14,7 @@ import { SDP_CATEGORIES, SDP_SUBCATEGORIES, subCategoryLabel, scheduleDays, dayS
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { uploadPubmat, pubmatUrl } from "../pubmatApi";
 import { CreditedScholarsPanel } from "../components/CreditedScholarsPanel";
+import type { CreditedFilters } from "@/lib/sdpCreditedFilters";
 import type { CreditedSide, NotCreditedFilter } from "@/lib/sdpCreditedView";
 import { SDPHistoryModal } from "../components/SDPHistoryModal";
 import { ListPagination } from "@/app/components/PaginatedList";
@@ -80,6 +81,7 @@ const HISTORY_SOURCE_LABELS: Record<string, string> = {
   monitor_scan: "a monitor scanned the scholar's ID card",
   manual: "added by hand",
   credit_attended: "“Credit these scholars”",
+  import: "imported from a file",
   progress_picture: "a picture was approved (Progress Monitoring)",
   removed: "removed by staff",
   category_edit: "category edited",
@@ -693,6 +695,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   // Credited Scholars: which side was last open (kept while the pop-up is open), and the bar at the bottom where the paging controls are shown
   const [creditedSide, setCreditedSide] = useState<CreditedSide>("credited");
   const [notCreditedFilter, setNotCreditedFilter] = useState<NotCreditedFilter>("attended");
+  const [creditedFilters, setCreditedFilters] = useState<CreditedFilters>({});      // the filters that combine: kept while this pop-up is open, gone when it is closed
   const [pagerSlot, setPagerSlot] = useState<HTMLElement | null>(null);
   // the page behind the pop-up does not scroll while it is open
   useEffect(() => {
@@ -1059,7 +1062,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
           {error && <p className="text-[13px] text-red-600">{error}</p>}
           </>}
           {tab === "credited" && (
-            <CreditedScholarsPanel activity={activity} side={creditedSide} onSideChange={setCreditedSide} notFilter={notCreditedFilter} onNotFilterChange={setNotCreditedFilter} footerSlot={pagerSlot} categoryLabelText={categoryLabel(activity.category)}
+            <CreditedScholarsPanel activity={activity} side={creditedSide} onSideChange={setCreditedSide} notFilter={notCreditedFilter} onNotFilterChange={setNotCreditedFilter} filters={creditedFilters} onFiltersChange={setCreditedFilters} footerSlot={pagerSlot} categoryLabelText={categoryLabel(activity.category)}
               sessionLabelOf={d => sessionText(activity, d)} renderHistory={key => <CreditHistorySection activity={activity} refreshKey={key} />} />
           )}
           {tab === "qr" && <QRAttendanceSection activity={activity} />}

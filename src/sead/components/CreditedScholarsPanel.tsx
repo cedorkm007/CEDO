@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { CalendarDays, MoreVertical, Search, UserCheck } from "lucide-react";
+import { CalendarDays, Download, Filter, MoreVertical, Search, Upload, UserCheck, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ScholarSearchField, type ScholarSearchResult } from "./ScholarSearchField";
 import { PeriodSelect } from "@/app/components/PeriodSelect";
@@ -12,6 +12,12 @@ import {
   type CreditedRow, type CreditedSummary, type EligibleRow, type EligibleSummary, type NotCreditedRow,
 } from "../sdpCreditedApi";
 import { useSdpPeriods } from "../useSdpPeriods";
+import { fetchFilteredCredits, fetchFilteredNotCredited, fetchFilteredSummary, probeFiltersUpdate, type FilteredSummary } from "../sdpCreditedFiltersApi";
+import { exportList } from "../creditedExport";
+import { CreditedFiltersPanel } from "./CreditedFiltersPanel";
+import { CreditedImportModal } from "./CreditedImportModal";
+import { FILTERS_SQL, clearDim, filterChips, filterCount, howText, listKind, toFilterParam, type CreditedFilters, type ExportFormat } from "@/lib/sdpCreditedFilters";
+import { subCategoryLabel } from "@/scholar/sdpApi";
 import { scheduleDays, creditSession, sessionKey, manilaDay, type ScheduleDay } from "@/scholar/sdpApi";
 import {
   allOnPageSelected, confirmCreditText, creditSemesterLabel, creditingNote, DEFAULT_PAGE_SIZE, formatCreditDate, fullName, PAGE_SIZE_CHOICES, pickPageSize, reasonText, semesterChip,
@@ -44,6 +50,9 @@ interface Props {
   onNotFilterChange: (f: NotCreditedFilter) => void;
   /** The bar at the bottom of the pop-up: the paging controls are shown there. */
   footerSlot: HTMLElement | null;
+  /** The filters that can be combined (kept while the pop-up is open, so they stay when the tab or the side is changed). */
+  filters: CreditedFilters;
+  onFiltersChange: (f: CreditedFilters) => void;
   categoryLabelText: string;
   sessionLabelOf: (d: ScheduleDay) => string;
   /** The activity's credit history (kept where it was); reads again when `refreshKey` changes. */
@@ -56,7 +65,7 @@ interface Props {
  * removing or changing a semester the page stays where it is and only the affected rows and the numbers change. The tab is only read when it is opened.
  * Who may credit or remove, how credits are counted and the credit history are the database's and are not changed here.
  */
-export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter, onNotFilterChange, footerSlot, categoryLabelText, sessionLabelOf, renderHistory }: Props) {
+export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter, onNotFilterChange, footerSlot, filters, onFiltersChange, categoryLabelText, sessionLabelOf, renderHistory }: Props) {
   const periods = useSdpPeriods();
   const [creditKey, setCreditKey] = useState<string | null>(null);
   const effectiveCreditKey = creditKey && periods.options.some(o => o.key === creditKey) ? creditKey : periods.currentKey;
@@ -76,6 +85,9 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
     if (e.ok) { setEligibleSummary(e.summary); setEligibleMissing(false); } else if (e.missing) setEligibleMissing(true);
   }, [activity.id]);
   useEffect(() => { void loadSummary(); }, [loadSummary]);
+  // the filters / export / import database update: when it is not there the tab works as before and says so
+  const [filtersMissing, setFiltersMissing] = useState(false);
+  useEffect(() => { let live = true; void probeFiltersUpdate(activity.id).then(ok => { if (live) setFiltersMissing(!ok); }); return () => { live = false; }; }, [activity.id]);
 
   // ── the list: search, sort, semester filter, page, rows per page ──
   const [typed, setTyped] = useState("");
@@ -93,6 +105,14 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const request = useRef(0);
   const [historyKey, setHistoryKey] = useState(0);
+  const isRecurring = activity.activityType === "recurring";
+  const kind = listKind(side, notFilter);
+  const filterParam = useMemo(() => toFilterParam(filters, kind, isRecurring), [filters, kind, isRecurring]);
+  const filterKey = JSON.stringify(filterParam);
+  const filtered = !filtersMissing && Object.keys(filterParam).length > 0;
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [fsummary, setFsummary] = useState<FilteredSummary | null>(null);
 
   useEffect(() => {      // the search waits until the person stops typing (300 ms)
     if (typed === search) return;
@@ -103,6 +123,28 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
   const loadPage = useCallback(async () => {
     const mine = ++request.current;
     setLoading(true);
+    if (filtered) {      // the filters that combine: the database matches, counts and pages
+      const p = JSON.parse(filterKey) as Record<string, unknown>;
+      if (side === "credited") {
+        const r = await fetchFilteredCredits(activity.id, p, search, sort, page, pageSize);
+        if (mine !== request.current) return;
+        setLoading(false);
+        if (!r.ok) { if (r.missing) setFiltersMissing(true); else setListError(r.error); setCredited([]); return; }
+        setListError("");
+        if (r.total > 0 && r.rows.length === 0 && page > 1) { setPage(pageCount(r.total, pageSize)); return; }
+        setCredited(r.rows); setTotal(r.total);
+      } else {
+        const r = await fetchFilteredNotCredited(activity.id, notFilter, p, search, page, pageSize);
+        if (mine !== request.current) return;
+        setLoading(false);
+        if (!r.ok) { if (r.missing) setFiltersMissing(true); else setListError(r.error); if (notFilter === "eligible") setEligible([]); else setNotCredited([]); setTotal(0); return; }
+        setListError("");
+        if (r.total > 0 && r.rows.length === 0 && page > 1) { setPage(pageCount(r.total, pageSize)); return; }
+        if (notFilter === "eligible") setEligible(r.rows); else setNotCredited(r.rows);
+        setTotal(r.total);
+      }
+      return;
+    }
     if (side === "credited") {
       const f = semesterFilterParams(semChoice);
       const r = await fetchCreditedPage({ activityId: activity.id, search, sort, schoolYear: f.schoolYear, semester: f.semester, noSemester: f.noSemester, page, pageSize });
@@ -129,8 +171,21 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
       if (r.total > 0 && r.rows.length === 0 && page > 1) { setPage(pageCount(r.total, pageSize)); return; }
       setNotCredited(r.rows); setTotal(r.total);
     }
-  }, [activity.id, side, notFilter, search, sort, semChoice, page, pageSize]);
+  }, [activity.id, side, notFilter, search, sort, semChoice, page, pageSize, filtered, filterKey]);
   useEffect(() => { void loadPage(); }, [loadPage]);
+
+  // the numbers on the buttons follow the filters and the search (the database counts them)
+  const [summaryKey, setSummaryKey] = useState(0);
+  useEffect(() => {
+    if (!filtered) { setFsummary(null); return; }
+    let live = true;
+    const t = window.setTimeout(async () => {
+      const r = await fetchFilteredSummary(activity.id, JSON.parse(filterKey) as Record<string, unknown>, search);
+      if (live && r.ok) setFsummary(r.summary);
+    }, 150);
+    return () => { live = false; window.clearTimeout(t); };
+  }, [activity.id, filtered, filterKey, search, summaryKey]);
+  const applyFilters = (f: CreditedFilters) => { onFiltersChange(f); setPage(1); setSelected(new Set()); setMoving(null); setMenu(null); setBulkMove(null); };
 
   const resetView = (patch?: { side?: CreditedSide }) => { setPage(1); setSelected(new Set()); setMoving(null); setMenu(null); setBulkMove(null); if (patch?.side) onSideChange(patch.side); };
 
@@ -142,7 +197,6 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const isRecurring = activity.activityType === "recurring";
   const days = useMemo(() => scheduleDays(activity).filter(d => d.day), [activity]);
   const useDayChoice = isRecurring && days.length > 0;
   const typedId = (picked?.scholarIdNumber ?? query).trim();
@@ -160,7 +214,7 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
   const effectiveDay = dayChoice && days.some(d => sessionKey(d) === dayChoice) && !creditedDays.has(dayChoice) ? dayChoice : defaultDay ? sessionKey(defaultDay) : "";
   const chosenSession = days.find(d => sessionKey(d) === effectiveDay);
 
-  const afterChange = () => { setHistoryKey(k => k + 1); void loadSummary(); };
+  const afterChange = () => { setHistoryKey(k => k + 1); setSummaryKey(k => k + 1); void loadSummary(); };
 
   async function handleAdd() {
     setError(""); setMessage("");
@@ -280,12 +334,36 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
 
   const eligibleRows = eligible ?? [];
   const onEligible = side === "not_credited" && notFilter === "eligible";
-  const filterAnyActive = search.trim() !== "" || semChoice !== "";
+  const filterAnyActive = search.trim() !== "" || semChoice !== "" || filtered;
   const skeleton = loading && (side === "credited" ? credited === null || credited.length === 0 : onEligible ? eligible === null || eligible.length === 0 : notCredited === null || notCredited.length === 0);
   const rowsOnPage = side === "credited" ? creditedRows.length : onEligible ? eligibleRows.length : notCreditedRows.length;
   const pageIds = side === "credited" ? creditedRows.map(r => r.id) : onEligible ? [] : creditableOnPage;
   const semesterOptions = semesterFilterOptions(summary?.semesters ?? []);
   const countText = (n: number | undefined) => (n === undefined ? "…" : n.toLocaleString("en-US"));
+
+  const counts = filtered && fsummary
+    ? { credited: fsummary.credited, notCredited: fsummary.notCredited, eligible: fsummary.eligibleApplicable ? fsummary.eligible : 0, creditable: fsummary.creditable }
+    : { credited: summary?.credited, notCredited: summary?.notCredited, eligible: eligibleSummary?.applicable === false ? 0 : eligibleSummary?.count, creditable: summary?.creditable ?? 0 };
+
+  // ── Export: every row that matches the list, the filters and the search (not only this page) ──
+  const [exportMenu, setExportMenu] = useState(false);
+  const [exporting, setExporting] = useState<{ done: number; total: number } | null>(null);
+  const cancelExport = useRef(false);
+  async function runExport(format: ExportFormat) {
+    setExportMenu(false); setError(""); setMessage("");
+    cancelExport.current = false; setExporting({ done: 0, total: total });
+    const r = await exportList({
+      activityId: activity.id, kind, filters: JSON.parse(filterKey) as Record<string, unknown>, search, sort, format,
+      activity: { name: activity.name, categoryLabel: categoryLabelText, subCategoryLabel: activity.subCategory ? subCategoryLabel(activity.subCategory) : "", credits: activity.credits },
+      sessionNameOf: (day, sid, date) => (isRecurring ? creditSession(activity, day, sid, date)?.subName ?? "" : ""),
+      onProgress: (done, tot) => setExporting({ done, total: tot }), isCancelled: () => cancelExport.current,
+    });
+    setExporting(null);
+    if (r.ok) setMessage(`Exported ${r.rows.toLocaleString("en-US")} row${r.rows === 1 ? "" : "s"} to ${r.fileName}.`);
+    else if (!r.cancelled) setError(r.error);
+  }
+  const dayLabelOf = (v: string) => { const [d, sid] = v.split("|"); const hit = days.find(x => x.day === d && (x.sid || "") === (sid || "")) ?? days.find(x => x.day === d); return hit ? sessionLabelOf(hit) : formatCreditDate(d); };
+  const chips = filterChips(filters, kind, isRecurring, dayLabelOf, formatCreditDate);
 
   if (missing) {
     return <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[14px] text-amber-950">This tab needs the latest database update ({SDP_CREDITED_SQL}). Ask the IT admin to run it.</p>;
@@ -345,7 +423,7 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
         {/* Credited / Not credited, with the numbers */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
           <div role="group" aria-label="Show" className="inline-flex overflow-hidden rounded-lg border border-[#062444]/25">
-            {([["credited", "Credited", summary?.credited], ["not_credited", "Not credited", summary?.notCredited]] as const).map(([key, label, n]) => (
+            {([["credited", "Credited", counts.credited], ["not_credited", "Not credited", counts.notCredited]] as const).map(([key, label, n]) => (
               <button key={key} type="button" onClick={() => { if (side !== key) { resetView({ side: key }); setSearch(""); setTyped(""); } }} aria-pressed={side === key}
                 className={`px-3.5 py-2 text-[13.5px] font-bold ${side === key ? "bg-[#062444] text-white" : "bg-white text-[#062444] hover:bg-[#f7f9fc]"}`}>
                 {label} <span className={side === key ? "text-[#F3BC00]" : "text-[#006aa3]"}>({countText(n)})</span>
@@ -356,26 +434,69 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden="true" />
             <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Search name or Scholar ID…" aria-label="Search this list" className={`${FIELD} w-full py-2 pl-8`} />
           </div>
+          {!filtersMissing && (
+            <button type="button" onClick={() => setFiltersOpen(true)} aria-haspopup="dialog" className="inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/30 bg-white px-3 py-2 text-[13px] font-bold text-[#062444] hover:bg-[#f7f9fc]">
+              <Filter size={14} aria-hidden="true" /> Filters{filterCount(filters, kind, isRecurring) > 0 && <span className="rounded-full bg-[#062444] px-1.5 text-[11.5px] text-white">{filterCount(filters, kind, isRecurring)}</span>}
+            </button>
+          )}
+          {!filtersMissing && (
+            <span className="relative">
+              <button type="button" onClick={() => setExportMenu(m => !m)} disabled={!!exporting || total === 0} aria-haspopup="menu" aria-expanded={exportMenu} className="inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/30 bg-white px-3 py-2 text-[13px] font-bold text-[#062444] hover:bg-[#f7f9fc] disabled:opacity-40"><Download size={14} aria-hidden="true" /> Export</button>
+              {exportMenu && (
+                <div role="menu" aria-label="Export format" className="absolute left-0 top-full z-[120] mt-1 w-56 overflow-hidden rounded-lg border border-[#e6ecf5] bg-white py-1 text-[13.5px] shadow-lg">
+                  <p className="px-3 py-1.5 text-[12px] text-slate-600">All {total.toLocaleString("en-US")} {side === "credited" ? "credit" : "scholar"}{total === 1 ? "" : "s"} that match, not just this page.</p>
+                  <button role="menuitem" type="button" onClick={() => void runExport("xlsx")} className="block w-full px-3 py-2 text-left text-[#062444] hover:bg-[#f7f9fc]">Excel (.xlsx)</button>
+                  <button role="menuitem" type="button" onClick={() => void runExport("csv")} className="block w-full px-3 py-2 text-left text-[#062444] hover:bg-[#f7f9fc]">CSV (.csv)</button>
+                </div>
+              )}
+            </span>
+          )}
+          {!filtersMissing && (
+            <button type="button" onClick={() => setImportOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/30 bg-white px-3 py-2 text-[13px] font-bold text-[#062444] hover:bg-[#f7f9fc]"><Upload size={14} aria-hidden="true" /> Import</button>
+          )}
           {side === "credited" && (
             <>
               <label className="flex items-center gap-2 text-[13px] text-slate-700">Sort
                 <select value={sort} onChange={e => { setSort(e.target.value as CreditedSort); resetView(); }} aria-label="Sort" className={FIELD}>{SORT_CHOICES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}</select>
               </label>
-              <label className="flex items-center gap-2 text-[13px] text-slate-700">Semester
+              {filtersMissing && <label className="flex items-center gap-2 text-[13px] text-slate-700">Semester
                 <select value={semChoice} onChange={e => { setSemChoice(e.target.value); resetView(); }} aria-label="Semester filter" className={`${FIELD} max-w-[15rem]`}>
                   <option value="">All semesters</option>{semesterOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
-              </label>
+              </label>}
             </>
           )}
-          {filterAnyActive && <button type="button" onClick={() => { setTyped(""); setSearch(""); setSemChoice(""); resetView(); }} className="text-[13px] font-semibold text-[#00709f] hover:underline">Clear</button>}
+          {filterAnyActive && <button type="button" onClick={() => { setTyped(""); setSearch(""); setSemChoice(""); onFiltersChange({}); resetView(); }} className="text-[13px] font-semibold text-[#00709f] hover:underline">Clear all</button>}
         </div>
+
+        {chips.length > 0 && !filtersMissing && (
+          <ul className="flex flex-wrap items-center gap-1.5" aria-label="Active filters">
+            {chips.map(c => (
+              <li key={c.key}>
+                <button type="button" onClick={() => applyFilters(clearDim(filters, c.dim))} aria-label={`Remove filter ${c.text}`} className="inline-flex max-w-full items-center gap-1 rounded-full border border-[#0088cc]/40 bg-[#eef6fc] px-2.5 py-1 text-[12.5px] font-semibold text-[#06456b] hover:bg-[#dff0fb]">
+                  <span className="truncate">{c.text}</span><X size={12} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+            <li><button type="button" onClick={() => applyFilters({})} className="px-1 text-[12.5px] font-semibold text-[#00709f] hover:underline">Clear all filters</button></li>
+          </ul>
+        )}
+        {filtersMissing && (
+          <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-950">Filters, Export and Import need the latest database update ({FILTERS_SQL}). Ask the IT admin to run it; the rest of the tab works as before.</p>
+        )}
+        {exporting && (
+          <p role="status" className="flex flex-wrap items-center gap-2 rounded-lg bg-[#f7f9fc] px-3 py-2 text-[13px] text-slate-800">
+            Exporting {exporting.done.toLocaleString("en-US")} of {exporting.total.toLocaleString("en-US")}…
+            <span className="h-2 w-40 overflow-hidden rounded-full bg-slate-200" aria-hidden="true"><span className="block h-full bg-[#0088cc]" style={{ width: `${exporting.total ? Math.min(100, Math.round((exporting.done / exporting.total) * 100)) : 0}%` }} /></span>
+            <button type="button" onClick={() => { cancelExport.current = true; }} className="font-semibold text-[#00709f] hover:underline">Cancel</button>
+          </p>
+        )}
 
         {side === "not_credited" && (
           <div className="flex flex-wrap items-center gap-2 text-[13px]" role="group" aria-label="Which scholars">
-            {([["attended", "Attended, not credited", summary?.notCredited], ["eligible", "Eligible, did not attend", eligibleSummary?.applicable === false ? 0 : eligibleSummary?.count]] as const).map(([key, label, n]) => (
+            {([["attended", "Attended, not credited", summary?.notCredited], ["eligible", "Eligible, did not attend", counts.eligible]] as const).map(([key, label, n]) => (
               <button key={key} type="button" aria-pressed={notFilter === key} disabled={key === "eligible" && eligibleSummary?.applicable === false}
-                onClick={() => { if (notFilter !== key) { onNotFilterChange(key); resetView(); setSearch(""); setTyped(""); } }}
+                onClick={() => { if (notFilter !== key) { onNotFilterChange(key); onFiltersChange({ ...filters, reason: [] }); resetView(); setSearch(""); setTyped(""); } }}
                 className={`rounded-full border px-3.5 py-1.5 font-semibold disabled:opacity-50 ${notFilter === key ? "border-[#062444] bg-[#062444] text-white" : "border-[#062444]/25 bg-white text-[#062444] hover:bg-[#f7f9fc]"}`}>
                 {label} <span className={notFilter === key ? "text-[#F3BC00]" : "text-[#006aa3]"}>({countText(n)})</span>
               </button>
@@ -409,7 +530,7 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
         {side === "not_credited" && !onEligible && (summary?.creditable ?? 0) > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-[13px]">
             <button type="button" onClick={() => void creditTicked()} disabled={crediting || selected.size === 0} className="rounded-lg bg-[#062444] px-3.5 py-2 font-bold text-white disabled:opacity-50">{crediting ? "Crediting…" : `Credit selected (${selected.size})`}</button>
-            <button type="button" onClick={() => void creditEveryone()} disabled={crediting} className="rounded-lg border border-[#062444]/40 bg-white px-3.5 py-2 font-bold text-[#062444] hover:bg-[#f7f9fc] disabled:opacity-50">{`Credit these scholars (${summary?.creditable ?? 0})`}</button>
+            {!filtered && <button type="button" onClick={() => void creditEveryone()} disabled={crediting} className="rounded-lg border border-[#062444]/40 bg-white px-3.5 py-2 font-bold text-[#062444] hover:bg-[#f7f9fc] disabled:opacity-50">{`Credit these scholars (${summary?.creditable ?? 0})`}</button>}
             <span className="text-slate-600">Counted in {creditPeriodLabel} (change it at “Counts in”).</span>
           </div>
         )}
@@ -472,7 +593,7 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
                         <span className="mt-0.5 block text-[12.5px] text-slate-600 sm:hidden">{r.scholarIdNumber} · {formatCreditDate(r.attendedDate)}{chip.show && <span className="ml-1.5 inline-block rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[11.5px] font-bold text-amber-900">{chip.label}</span>}</span>
                       </td>
                       <td className="hidden px-3 py-2.5 tabular-nums text-slate-800 sm:table-cell">{r.scholarIdNumber}</td>
-                      <td className="hidden px-3 py-2.5 md:table-cell"><span className="whitespace-nowrap text-slate-800">{formatCreditDate(r.attendedDate)}</span>{sub && <span className="block truncate text-[12px] font-semibold text-[#0077b6]" title={`${activity.name} – ${sub}`}>{sub}</span>}</td>
+                      <td className="hidden px-3 py-2.5 md:table-cell"><span className="whitespace-nowrap text-slate-800">{formatCreditDate(r.attendedDate)}</span>{sub && <span className="block truncate text-[12px] font-semibold text-[#0077b6]" title={`${activity.name} – ${sub}`}>{sub}</span>}{r.how && <span className="block truncate text-[12px] text-slate-500" title={r.creditedBy ? `${howText(r.how)} · ${r.creditedBy}` : howText(r.how)}>{howText(r.how)}</span>}</td>
                       <td className="hidden px-3 py-2.5 md:table-cell">
                         {chip.show
                           ? <span className="inline-block max-w-full truncate rounded-full border border-amber-400 bg-amber-50 px-2.5 py-0.5 text-[12px] font-bold text-amber-900" title={`Counts in ${chip.label}, not in ${creditPeriodLabel}`}>{chip.label}</span>
@@ -546,6 +667,12 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter,
         );
       })()}
 
+      {filtersOpen && (
+        <CreditedFiltersPanel activityId={activity.id} kind={kind} recurring={isRecurring} search={search} filters={filters} onApply={applyFilters} onClose={() => setFiltersOpen(false)} dayLabel={dayLabelOf} />
+      )}
+      {importOpen && (
+        <CreditedImportModal activity={activity} period={chosenPeriod()} defaultSchoolYear={periods.toPeriod(effectiveCreditKey)?.schoolYear ?? null} periodLabel={creditPeriodLabel} onClose={() => setImportOpen(false)} onDone={() => { afterChange(); void loadPage(); }} />
+      )}
       {footerSlot && createPortal(pager, footerSlot)}
     </div>
   );
