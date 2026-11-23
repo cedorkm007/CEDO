@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ChevronDown, ChevronRight, Clock, Loader2, Paperclip, RotateCcw, Search } from "lucide-react";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { DOC_LABEL, formatDateTime, formatDay, formatSlot } from "@/lib/renewal";
-import { getStaffRenewalDocumentUrl, reviewDocument } from "../renewalApi";
+import { reviewDocument } from "../renewalApi";
 import {
   ENDORSE_STATUSES, ENDORSE_STATUS_INFO, allowResubmission, endorseStatus, fetchConsultCaseCounts, fetchConsultCaseDocs, fetchConsultCaseOne, fetchConsultCasesPage, fetchConsultCaseTerms,
   type ConsultCase, type ConsultCaseDocs, type ConsultCaseDocument, type EndorseStatus,
 } from "../consultRenewalApi";
 import { ReasonDialog } from "../renewal/ReasonDialog";
+import { RenewalDocumentViewer } from "../renewal/RenewalDocumentViewer";
 import { ModalShell } from "../components/SeadUiShell";
 import { ServerPagination } from "@/app/components/ServerPagination";
 import { pageCount } from "@/lib/dailyRecordsView";
@@ -101,6 +102,7 @@ export function ScholarCounselingRenewalCasesTab() {
   const [reviewing, setReviewing] = useState<{ doc: ConsultCaseDocument; approve: boolean; recordId: string } | null>(null);
   const [endorsing, setEndorsing] = useState<ConsultCase | null>(null);
   const [busyDoc, setBusyDoc] = useState("");
+  const [viewer, setViewer] = useState<{ doc: ConsultCaseDocument; recordId: string; name: string } | null>(null);      // a document opened in the pop-up
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [docs, setDocs] = useState<Record<string, DocsState>>({});
   const [newUpdates, setNewUpdates] = useState(0);
@@ -193,11 +195,6 @@ export function ScholarCounselingRenewalCasesTab() {
     if (open.has(id)) await loadDocs(id);
   }
 
-  async function openFile(d: ConsultCaseDocument) {
-    setFileError("");
-    const r = await getStaffRenewalDocumentUrl(d.storagePath);
-    if (r.ok) window.open(r.url, "_blank", "noopener"); else setFileError(r.error);
-  }
   async function reopen(recordId: string, d: ConsultCaseDocument) {
     if (!window.confirm(`Allow the scholar to send a new ${DOC_LABEL[d.kind].toLowerCase()}? This approved document will count as NOT approved until the new one is approved. When the scholar uploads the new file, the old one is deleted.`)) return;
     setBusyDoc(d.id); setFileError("");
@@ -317,7 +314,7 @@ export function ScholarCounselingRenewalCasesTab() {
                               <span className="min-w-[8.5rem] font-semibold text-slate-900">{DOC_LABEL[k]}</span>
                               {!current ? <span className="text-slate-700">Not uploaded yet</span> : (
                                 <>
-                                  <button onClick={() => void openFile(current)} className="inline-flex items-center gap-1 font-semibold text-[#00709f] hover:underline"><Paperclip size={14} aria-hidden="true" /> {current.fileName}</button>
+                                  <button onClick={() => setViewer({ doc: current, recordId: c.recordId, name: c.name })} className="inline-flex items-center gap-1 font-semibold text-[#00709f] hover:underline"><Paperclip size={14} aria-hidden="true" /> {current.fileName}</button>
                                   <DocChip status={current.status} />
                                   <span className="text-[13px] text-slate-600">sent {formatDateTime(current.uploadedAt)}</span>
                                   {current.status === "returned" && current.comment && <span className="text-[13.5px] text-slate-800">“{current.comment}”</span>}
@@ -355,6 +352,12 @@ export function ScholarCounselingRenewalCasesTab() {
       )}
       <ServerPagination page={page} pageSize={CASES_PAGE_SIZE} total={total} onPageChange={p => setPage(Math.max(1, p))} noun="cases" disabled={loading} />
 
+      {viewer && (
+        <RenewalDocumentViewer doc={viewer.doc} scholarName={viewer.name} onClose={() => setViewer(null)}
+          onApprove={async () => { const r = await reviewDocument(viewer.doc.id, true, ""); if (!r.ok) return r.error; const id = viewer.recordId; setViewer(null); await refreshCase(id); return null; }}
+          onReject={async reason => { const r = await reviewDocument(viewer.doc.id, false, reason); if (!r.ok) return r.error; const id = viewer.recordId; setViewer(null); await refreshCase(id); return null; }}
+          onAllowResubmission={async () => { const r = await allowResubmission(viewer.doc.id); if (!r.ok) return r.error; const id = viewer.recordId; setViewer(null); await refreshCase(id); return null; }} />
+      )}
       {reviewing && (
         <ReasonDialog title={`Return the ${DOC_LABEL[reviewing.doc.kind].toLowerCase()}`} intro={<>Tell the scholar what to fix. The scholar uploads a new one; the consultation is not affected.</>} label="What should the scholar fix?" confirmLabel="Return it" minLength={5} danger
           onCancel={() => setReviewing(null)}
