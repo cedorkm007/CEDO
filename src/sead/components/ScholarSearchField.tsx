@@ -16,13 +16,15 @@ export type { ScholarSearchResult };
  * so both use one implementation instead of duplicating it.
  */
 export function ScholarSearchField({
-  query, setQuery, selected, onSelect, onClear, filter,
+  query, setQuery, selected, onSelect, onClear, filter, fetcher,
 }: {
   query: string; setQuery: (v: string) => void;
   selected: ScholarSearchResult | null;
   onSelect: (r: ScholarSearchResult) => void;
   onClear: () => void;
   filter?: ScholarSearchFilter;
+  /** Another way to look scholars up (the SDP credit form uses a fast, indexed search with 10 matches). Returns null when it is not available: the usual search is used instead. */
+  fetcher?: (query: string) => Promise<ScholarSearchResult[] | null>;
 }) {
   const [results, setResults] = useState<ScholarSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -41,7 +43,8 @@ export function ScholarSearchField({
     if (selected || !query.trim()) { setResults([]); return; }
     const t = setTimeout(async () => {
       setSearching(true);
-      setResults(await searchScholars(query, filter));
+      const own = fetcher ? await fetcher(query) : null;
+      setResults(own ?? await searchScholars(query, filter));
       setSearching(false);
     }, 250);
     return () => clearTimeout(t);

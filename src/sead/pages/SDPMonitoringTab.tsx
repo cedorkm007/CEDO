@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { X, ClipboardList, Plus, Search, Check, CheckCircle2, XCircle, History, UserCheck, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon, Camera } from "lucide-react";
+import { X, ClipboardList, Plus, Search, Check, CheckCircle2, XCircle, History, Trash2, QrCode, Download, ImagePlus, Image as ImageIcon, Camera } from "lucide-react";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import {
   fetchAllSDPActivities, updateSDPActivity, deleteSDPActivity, createApprovedActivity,
-  fetchAttendanceForActivity, fetchCreditHistory, fetchAttendedWithoutCredit, creditAttendedScholars, creditAttendance, creditScholarForDay, removeAttendance, moveCreditSemester, type CreditPeriod, type AttendedWithoutCredit, type CreditHistoryEntry,
+  fetchAttendanceForActivity, fetchCreditHistory, type CreditHistoryEntry,
   attachYearLevels, fetchSdpReconsidered, fetchAllScholarsSDPChecklist, fetchScholarsSdpCompliance, fetchSdpChecklistPage, fetchSdpAdvanced, fetchSdpChecklistRenewalPeriod, fetchSdpChecklistSummary, fetchSdpOwed, type SdpRenewalPeriod,
   fetchAttendanceSession, enableAttendanceForActivity, addAttendanceVouchers, fetchAttendanceRoster,
   isSubCategorySupported, isDayLabelsSupported, type ChecklistSummary, type ChecklistSortKey, type SDPActivity, type SDPCategory, type SDPSubCategory, type SDPActivityType, type AttendanceEntry, type ScholarSdpCompliance,
   type AttendanceType, type AttendanceSession, type AttendanceCode, type AttendanceRosterEntry,
 } from "../sdpMonitorApi";
-import { SDP_CATEGORIES, SDP_SUBCATEGORIES, subCategoryLabel, scheduleDays, daySubName, creditSession, sessionKey, manilaDay, type ScheduleDay } from "@/scholar/sdpApi";
+import { SDP_CATEGORIES, SDP_SUBCATEGORIES, subCategoryLabel, scheduleDays, daySubName, creditSession, sessionKey, type ScheduleDay } from "@/scholar/sdpApi";
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { uploadPubmat, pubmatUrl } from "../pubmatApi";
-import { ScholarSearchField, type ScholarSearchResult } from "../components/ScholarSearchField";
+import { CreditedScholarsPanel } from "../components/CreditedScholarsPanel";
+import type { CreditedSide } from "@/lib/sdpCreditedView";
 import { SDPHistoryModal } from "../components/SDPHistoryModal";
 import { ListPagination } from "@/app/components/PaginatedList";
 import { PeriodSelect } from "@/app/components/PeriodSelect";
@@ -70,29 +71,6 @@ function csvCell(value: string): string {
 }
 
 /** The semesters on record plus the current grading period, as dropdown options (newest first, the current one marked). */
-function useSdpPeriods() {
-  const [periods, setPeriods] = useState<AcademicPeriod[]>([]);
-  const [current, setCurrent] = useState<GradingPeriod>({ schoolYear: "", semester: "" });
-  useEffect(() => {
-    void Promise.all([fetchAcademicPeriods(), fetchCurrentGradingPeriod()]).then(([p, cur]) => {
-      if (p.ok) setPeriods(p.periods);
-      setCurrent(cur);
-    });
-  }, []);
-  const all = useMemo(() => {
-    const list = [...periods];
-    const term = normalizeTerm(current.semester);
-    if (current.schoolYear && term && !list.some(x => periodKey(x.schoolYear, x.term) === periodKey(current.schoolYear, term))) {
-      list.push({ id: periodKey(current.schoolYear, term), schoolYear: current.schoolYear, term, status: "open", deadline: null });
-    }
-    return list;
-  }, [periods, current]);
-  const options = useMemo(() => periodOptions(all, current), [all, current]);
-  const currentKey = current.schoolYear ? periodKey(current.schoolYear, current.semester) : "";
-  const toPeriod = (key: string): CreditPeriod | null => { const p = all.find(x => periodKey(x.schoolYear, x.term) === key); return p ? { schoolYear: p.schoolYear, semester: p.term } : null; };
-  return { options, currentKey, toPeriod };
-}
-
 function categoryLabel(category: SDPCategory | null): string {
   return SDP_CATEGORIES.find(c => c.key === category)?.label ?? "No category set";
 }
@@ -423,200 +401,6 @@ function NewActivityModal({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
-function AttendanceSection({ activity }: { activity: SDPActivity }) {
-  const [attendees, setAttendees] = useState<AttendanceEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<ScholarSearchResult | null>(null);
-  const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  const [notCredited, setNotCredited] = useState<AttendedWithoutCredit[]>([]);
-  const [crediting, setCrediting] = useState(false);
-  const [creditMessage, setCreditMessage] = useState("");
-  const [historyKey, setHistoryKey] = useState(0);
-  // The semester new credits count in (the current grading period unless another is chosen), and the credit whose semester is being changed.
-  const sdpPeriods = useSdpPeriods();
-  const [creditKey, setCreditKey] = useState<string | null>(null);
-  const effectiveCreditKey = creditKey && sdpPeriods.options.some(o => o.key === creditKey) ? creditKey : sdpPeriods.currentKey;
-  const creditPeriodLabel = sdpPeriods.options.find(o => o.key === effectiveCreditKey)?.label.replace(" (current)", "") ?? "the current semester";
-  const [moving, setMoving] = useState<{ id: string; key: string } | null>(null);
-  // The current semester is the default, so it is sent as "no choice": that way crediting works exactly as before even if the database update for the semester choice has not been run.
-  const chosenPeriod = (): CreditPeriod | null => (effectiveCreditKey === sdpPeriods.currentKey ? null : sdpPeriods.toPeriod(effectiveCreditKey));
-
-  async function load() {
-    setLoading(true);
-    setHistoryKey(k => k + 1);
-    const credited = await fetchAttendanceForActivity(activity.id);
-    setAttendees(credited);
-    setNotCredited(await fetchAttendedWithoutCredit(activity.id, activity.category, credited));
-    setLoading(false);
-  }
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activity.id]);
-
-  // A recurring activity can credit a scholar once for EACH of its days: the day being credited is chosen, and days the scholar already has are not offered.
-  const isRecurring = activity.activityType === "recurring";
-  // Every SESSION (row of "Dates and venues") is its own credit: two sessions on the same day are two choices.
-  const days = useMemo(() => scheduleDays(activity).filter(d => d.day), [activity]);
-  const typedId = (selected?.scholarIdNumber ?? query).trim().toLowerCase();
-  const scholarCredits = typedId ? attendees.filter(a => a.scholarIdNumber.toLowerCase() === typedId) : [];
-  const creditedDays = new Set(scholarCredits.map(a => creditSession(activity, a.activityDay, a.activitySid, a.attendedDate)).filter((d): d is ScheduleDay => !!d).map(sessionKey));
-  const [dayChoice, setDayChoice] = useState("");
-  const today = manilaDay(new Date().toISOString());
-  const defaultDay = days.find(d => d.day === today && !creditedDays.has(sessionKey(d))) ?? days.find(d => !creditedDays.has(sessionKey(d)));
-  const effectiveDay = dayChoice && days.some(d => sessionKey(d) === dayChoice) && !creditedDays.has(dayChoice) ? dayChoice : defaultDay ? sessionKey(defaultDay) : "";
-  const chosenSession = days.find(d => sessionKey(d) === effectiveDay);
-  const useDayChoice = isRecurring && days.length > 0;
-
-  async function handleAdd() {
-    setError("");
-    const scholarIdNumber = selected?.scholarIdNumber ?? query.trim();
-    if (!scholarIdNumber) { setError("Enter or pick a scholar."); return; }
-    if (useDayChoice && !effectiveDay) { setError(`This scholar already has a credit for every session of this activity (${days.length} of ${days.length}).`); return; }
-    setBusy(true);
-    const result = useDayChoice
-      ? await creditScholarForDay(activity.id, scholarIdNumber, chosenSession?.day ?? effectiveDay, chosenPeriod(), chosenSession?.sid || null)
-      : await creditAttendance(activity.id, scholarIdNumber, newDate, chosenPeriod());
-    setBusy(false);
-    if (!result.ok) { setError(result.error || "Failed to credit — check the Scholar ID exists."); return; }
-    setQuery("");
-    setSelected(null);
-    load();
-  }
-
-  async function handleCreditAttended() {
-    const n = notCredited.filter(x => x.canCredit).length;
-    if (!window.confirm(`Credit ${n} scholar${n === 1 ? "" : "s"} who attended “${activity.name}” but have no credit? Their credit is counted in ${creditPeriodLabel}.`)) return;
-    setCrediting(true); setError(""); setCreditMessage("");
-    const r = await creditAttendedScholars(activity.id, chosenPeriod());
-    setCrediting(false);
-    if (!r.ok) { setError(r.error); return; }
-    setCreditMessage(`${r.count} scholar${r.count === 1 ? " was" : "s were"} credited.`);
-    load();
-  }
-
-  async function handleRemove(id: string) {
-    await removeAttendance(id);
-    load();
-  }
-
-  async function handleMove(entry: AttendanceEntry) {
-    if (!moving) return;
-    const target = sdpPeriods.toPeriod(moving.key);
-    const targetLabel = sdpPeriods.options.find(o => o.key === moving.key)?.label.replace(" (current)", "") ?? "";
-    const fromLabel = entry.schoolYear && entry.semester ? `${entry.schoolYear} · ${termLabel(entry.semester)}` : "no semester";
-    if (!target) { setError("Choose a semester."); return; }
-    if (!window.confirm(`Move ${entry.scholarName}'s credit for “${activity.name}” from ${fromLabel} to ${targetLabel}? It then counts in ${targetLabel} instead. Nothing is added or removed, and the change is written to the history.`)) return;
-    setError("");
-    const r = await moveCreditSemester(entry.id, target);
-    if (!r.ok) { setError(r.error || "Could not move the credit."); return; }
-    setMoving(null);
-    load();
-  }
-
-  return (
-    <div>
-      <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2 flex items-center gap-1.5"><UserCheck size={13} /> Credited Scholars</p>
-      {activity.category ? (
-        <p className="text-[11px] text-slate-400 mb-3">Crediting a scholar here marks "{categoryLabel(activity.category)}" complete for them.</p>
-      ) : (
-        <p role="status" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-950">
-          This activity has <strong>no SDP category</strong>. Scans and credits are recorded here, but they are not counted in any category of the SDP Checklist. Choose a category in “Activity Details” if they should count.
-        </p>
-      )}
-
-      <div className="flex items-end gap-2 flex-wrap mb-4">
-        <div>
-          <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Scholar</label>
-          <ScholarSearchField query={query} setQuery={setQuery} selected={selected}
-            onSelect={setSelected} onClear={() => setSelected(null)} />
-        </div>
-        {useDayChoice ? (
-          <div>
-            <label htmlFor="credit-day" className="block text-[10.5px] font-semibold text-slate-400 mb-1">Session being credited</label>
-            <select id="credit-day" value={effectiveDay} onChange={e => setDayChoice(e.target.value)}
-              className="border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc] max-w-[260px]">
-              {days.map(d => <option key={sessionKey(d)} value={sessionKey(d)} disabled={creditedDays.has(sessionKey(d))}>{sessionText(activity, d)}{creditedDays.has(sessionKey(d)) ? " (already credited)" : ""}</option>)}
-            </select>
-          </div>
-        ) : (
-          <div>
-            <label className="block text-[10.5px] font-semibold text-slate-400 mb-1">Date</label>
-            <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)}
-              className="border border-[#062444]/15 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#0088cc]" />
-          </div>
-        )}
-        <PeriodSelect label="Counts in" options={sdpPeriods.options} value={effectiveCreditKey} onChange={setCreditKey} />
-        <button onClick={handleAdd} disabled={busy}
-          className="bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-3 py-1.5 disabled:opacity-50">
-          {busy ? "…" : "Credit"}
-        </button>
-      </div>
-      {useDayChoice && (
-        <p className="text-[11px] text-slate-400 -mt-2 mb-3">
-          A scholar can be credited once for each session of this recurring activity ({days.length} session{days.length === 1 ? "" : "s"}; several sessions can be on the same day).
-          {scholarCredits.length > 0 && <> This scholar has <strong>{scholarCredits.length} of {days.length}</strong>.</>}
-        </p>
-      )}
-      {error && <p className="text-[12px] text-red-600 mb-3">{error}</p>}
-
-      {loading ? (
-        <p className="text-[12.5px] text-slate-400">Loading…</p>
-      ) : attendees.length === 0 ? (
-        <p className="text-[12.5px] text-slate-400 italic">No scholars credited yet.</p>
-      ) : (
-        <div className="space-y-1.5">
-          {attendees.map(a => (
-            <div key={a.id} className="flex flex-wrap items-center justify-between gap-y-1 bg-[#f8fafd] rounded-lg px-3 py-2 text-[12.5px]">
-              <span className="text-[#062444] font-medium">{a.scholarName} <span className="text-slate-400">({a.scholarIdNumber})</span></span>
-              <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-                {activity.activityType === "recurring" && (() => { const sub = creditSession(activity, a.activityDay, a.activitySid, a.attendedDate)?.subName; return sub ? <span className="text-[12px] font-semibold text-[#0077b6]">{activity.name} – {sub}</span> : null; })()}
-                <span className="text-slate-600">{a.attendedDate ? new Date(a.attendedDate).toLocaleDateString() : "—"}</span>
-                <span className="rounded-full bg-white border border-[#e6ecf5] px-2 py-0.5 text-[11.5px] font-semibold text-[#062444]">{a.schoolYear && a.semester ? `${a.schoolYear} · ${termLabel(a.semester)}` : "No semester"}</span>
-                <button type="button" onClick={() => setMoving(m => (m?.id === a.id ? null : { id: a.id, key: effectiveCreditKey }))} className="text-[12px] font-semibold text-[#0077b6] hover:underline">Change semester</button>
-                <button onClick={() => handleRemove(a.id)} aria-label={`Remove ${a.scholarName}'s credit`} className="text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
-              </span>
-              {moving?.id === a.id && (
-                <div className="basis-full mt-2 flex flex-wrap items-center gap-2 border-t border-[#e6ecf5] pt-2">
-                  <PeriodSelect label="Move to" options={sdpPeriods.options} value={moving.key} onChange={key => setMoving({ id: a.id, key })} />
-                  <button type="button" onClick={() => void handleMove(a)} className="rounded-lg bg-[#062444] px-3 py-1.5 text-[12px] font-bold text-white">Move</button>
-                  <button type="button" onClick={() => setMoving(null)} className="text-[12px] font-semibold text-slate-600">Cancel</button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {creditMessage && <p role="status" className="mb-3 rounded-lg bg-green-50 px-3 py-2 text-[13px] text-green-900">{creditMessage}</p>}
-      {!loading && notCredited.length > 0 && (
-        <div className="mt-5">
-          <p className="text-[12px] font-bold uppercase text-slate-700 mb-1">Scanned the QR code but not credited ({notCredited.length})</p>
-          <p className="text-[12.5px] text-slate-700 mb-2">These scholars attended, but no credit was added to this activity. The reason is shown for each one.</p>
-          {notCredited.some(x => x.canCredit) && (
-            <div className="mb-2 flex flex-wrap items-center gap-3">
-              <PeriodSelect label="Count them in" options={sdpPeriods.options} value={effectiveCreditKey} onChange={setCreditKey} />
-            </div>
-          )}
-          {notCredited.some(x => x.canCredit) && (
-            <button onClick={() => void handleCreditAttended()} disabled={crediting} className="mb-2 rounded-lg bg-[#062444] px-3.5 py-2 text-[13px] font-bold text-white disabled:opacity-60">{crediting ? "Crediting…" : `Credit these scholars (${notCredited.filter(x => x.canCredit).length})`}</button>
-          )}
-          <div className="space-y-1.5">
-            {notCredited.map(n => (
-              <div key={n.scholarIdNumber} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px]">
-                <p className="font-medium text-[#062444]">{n.scholarName} <span className="text-slate-700">({n.scholarIdNumber})</span></p>
-                <p className="text-amber-950">{n.reason}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      <CreditHistorySection activity={activity} refreshKey={historyKey} />
-    </div>
-  );
-}
-
 function QRAttendanceSection({ activity }: { activity: SDPActivity }) {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<AttendanceSession | null>(null);
@@ -906,6 +690,15 @@ interface OccurrenceRow { date: string; startTime: string; endTime: string; venu
 function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; onClose: () => void; onChanged: () => void }) {
   const isRecurring = activity.activityType === "recurring";
   const [tab, setTab] = useState<"details" | "credited" | "qr" | "progress">("details");
+  // Credited Scholars: which side was last open (kept while the pop-up is open), and the bar at the bottom where the paging controls are shown
+  const [creditedSide, setCreditedSide] = useState<CreditedSide>("credited");
+  const [pagerSlot, setPagerSlot] = useState<HTMLElement | null>(null);
+  // the page behind the pop-up does not scroll while it is open
+  useEffect(() => {
+    const before = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = before; };
+  }, []);
   const [name, setName] = useState(activity.name);
   const [organization, setOrganization] = useState(activity.organization);
   // One-time activities only — recurring activities use `occurrences` below instead.
@@ -1074,33 +867,31 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
   }
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
-      <div className="w-full max-w-[64rem] bg-white rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-5 rounded-t-2xl">
-          <div>
-            <p className="text-[#F3BC00] text-[11px] font-bold uppercase tracking-wide mb-1">SDP Activity</p>
-            <h3 className="text-white font-bold text-lg leading-tight">{name}</h3>
-            <p className="text-white/80 text-[12px] mt-1">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-0 sm:p-3 lg:p-0" onClick={onClose}>
+      <div className="flex h-[100dvh] w-screen flex-col overflow-hidden bg-white shadow-2xl sm:h-[calc(100dvh-1.5rem)] sm:w-[calc(100vw-1.5rem)] sm:rounded-2xl lg:h-[92dvh] lg:w-[min(92vw,1400px)]" onClick={e => e.stopPropagation()}>
+        <div className="flex shrink-0 items-start justify-between gap-3 bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-4 py-2.5 sm:px-6">
+          <div className="min-w-0">
+            <p className="text-[#F3BC00] text-[10.5px] font-bold uppercase tracking-wide">SDP Activity</p>
+            <h3 className="truncate text-white font-bold text-base leading-tight sm:text-lg" title={name}>{name}</h3>
+            <p className="truncate text-white/80 text-[12px]">
               {activity.category ? categoryLabel(activity.category) : "No category"}
               {subSupported ? ` · ${activity.category ? subCategoryLabel(activity.subCategory) : "No sub-category"}` : ""}
-            </p>
-            <p className="text-white/50 text-[11px] mt-1">
-              {activity.submittedByScholarId ? `Submitted by Scholar ID ${activity.submittedByScholarId}` : "Staff-created (open to all)"}
+              <span className="text-white/50">{` · ${activity.submittedByScholarId ? `Submitted by Scholar ID ${activity.submittedByScholarId}` : "Staff-created (open to all)"}`}</span>
             </p>
           </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white shrink-0"><X size={18} /></button>
+          <button onClick={onClose} aria-label="Close" className="shrink-0 rounded-lg p-1 text-white/80 hover:bg-white/10 hover:text-white"><X size={20} /></button>
         </div>
 
-        <div className="px-6 pt-4">
-          <div className="flex gap-1 border-b border-[#e6ecf5]">
-            <button type="button" onClick={() => setTab("details")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "details" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Activity Details</button>
-            <button type="button" onClick={() => setTab("credited")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "credited" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Credited Scholars</button>
-            <button type="button" onClick={() => setTab("qr")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "qr" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>QR Attendance</button>
-            <button type="button" onClick={() => setTab("progress")} className={`px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "progress" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Progress Monitoring</button>
+        <div className="shrink-0 px-4 pt-2 sm:px-6">
+          <div className="flex gap-1 overflow-x-auto border-b border-[#e6ecf5] whitespace-nowrap">
+            <button type="button" onClick={() => setTab("details")} className={`shrink-0 px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "details" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Activity Details</button>
+            <button type="button" onClick={() => setTab("credited")} className={`shrink-0 px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "credited" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Credited Scholars</button>
+            <button type="button" onClick={() => setTab("qr")} className={`shrink-0 px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "qr" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>QR Attendance</button>
+            <button type="button" onClick={() => setTab("progress")} className={`shrink-0 px-3 py-2 text-[12.5px] font-bold border-b-2 ${tab === "progress" ? "border-[#062444] text-[#062444]" : "border-transparent text-slate-400 hover:text-slate-600"}`}>Progress Monitoring</button>
           </div>
         </div>
 
-        <div className="p-6 space-y-4 h-[70vh] overflow-y-auto">
+        <div className={`min-h-0 flex-1 px-4 py-4 sm:px-6 ${tab === "credited" ? "flex flex-col overflow-y-auto md:overflow-hidden" : "space-y-4 overflow-y-auto"}`}>
           {tab === "details" && <>
           <div className="space-y-3">
             <div>
@@ -1266,15 +1057,20 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
 
           {error && <p className="text-[13px] text-red-600">{error}</p>}
           </>}
-          {tab === "credited" && <AttendanceSection activity={activity} />}
+          {tab === "credited" && (
+            <CreditedScholarsPanel activity={activity} side={creditedSide} onSideChange={setCreditedSide} footerSlot={pagerSlot} categoryLabelText={categoryLabel(activity.category)}
+              sessionLabelOf={d => sessionText(activity, d)} renderHistory={key => <CreditHistorySection activity={activity} refreshKey={key} />} />
+          )}
           {tab === "qr" && <QRAttendanceSection activity={activity} />}
           {tab === "progress" && <ProgressAttachSection activity={activity} />}
         </div>
 
-        <div className="flex items-center justify-between gap-3 px-6 pb-5">
-          {tab === "details" ? <button onClick={handleDelete} disabled={busy} className="text-[13px] font-semibold text-red-600 hover:text-red-700 disabled:opacity-50">Delete Activity</button> : <span />}
-          <div className="flex justify-end gap-3">
-          <button onClick={onClose} className="text-[13px] font-semibold text-slate-500">Cancel</button>
+        {/* the bar at the bottom stays in place: the paging controls of the Credited Scholars list (or Delete Activity) on the left, Close / Save on the right; nothing sits on top of the list */}
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-[#e6ecf5] bg-white px-4 py-2 sm:px-6">
+          {tab === "details" ? <button onClick={handleDelete} disabled={busy} className="text-[13px] font-semibold text-red-600 hover:text-red-700 disabled:opacity-50">Delete Activity</button> : null}
+          <div ref={setPagerSlot} className={tab === "credited" ? "min-w-0 flex-1" : "hidden"} />
+          <div className="ml-auto flex shrink-0 justify-end gap-3">
+          <button onClick={onClose} className="rounded-lg px-2 py-1.5 text-[13px] font-semibold text-slate-600 hover:bg-[#f7f9fc]">{tab === "details" ? "Cancel" : "Close"}</button>
           {tab === "details" && <button onClick={handleSave} disabled={busy}
             className="bg-[#062444] text-white text-sm font-semibold rounded-lg px-5 py-2.5 disabled:opacity-50">
             {busy ? "Saving…" : "Save Changes"}
