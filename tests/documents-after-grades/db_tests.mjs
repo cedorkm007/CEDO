@@ -43,8 +43,8 @@ check("2 right after applying, with the grades waiting for the Grades Approver, 
 const sub = (await q("select id from renewal_self_grade_submissions where record_id = $1 and status = 'pending'", [(await rec(A)).id]))[0].id;
 await q("select public._eg_decide_core($1, true, 'ok', 'Test approver', null)", [sub]);
 const up = await attempt(uidOf(A), "insert into renewal_documents (record_id, scholar_id_number, kind, storage_path, file_name, mime_type, size_bytes) values ($1, $2, 'study_plan', $3, 'plan.pdf', 'application/pdf', 10) returning id", [(await rec(A)).id, A, `${A}/${(await rec(A)).id}/study_plan/plan.pdf`]);
-check("3 once the grades are approved the documents are required (one failed subject: the study plan and the clearance, no letter), the scholar is told, and the scholar can upload them from the Renewal tile",
-  (await kinds(A)) === "clearance,study_plan" && Number((await q("select count(*) n from scholar_notifications where scholar_id_number = $1 and kind = 'document_required'", [A]))[0].n) >= 1 && up.ok, `${await kinds(A)} ${up.msg}`);
+check("3 once the grades are approved a scholar with a failed subject is asked for NO document yet (update \"documents after the approval\": the study plan and the clearance come after the evaluator approves Probationary or Reconsidered), so an upload now is refused",
+  (await kinds(A)) === "" && !up.ok && /not needed/i.test(up.msg ?? ""), `${await kinds(A)} ${up.msg}`);
 const clean = "TEST-0001";      // everything passed in the school's own grades, no INC
 const b1 = await attempt(uidOf(clean), "select public.renewal_apply($1, 'School', 'Program', '2nd Year', '', false, '[]'::jsonb, '[]'::jsonb, false, $2::jsonb) id", [win.id, JSON.stringify(["inc_letter"].map(k => ({ kind: k, path: `${clean}/${win.id}/inc-docs/${k}/x.pdf`, name: "x.pdf", mime: "application/pdf", size: 10 })))]);
 check("4 documents sent by a scholar who has no INC and no failed subject are still refused", !b1.ok && /No INC or failed subject was found/.test(b1.msg), b1.msg);

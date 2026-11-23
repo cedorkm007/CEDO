@@ -336,8 +336,12 @@ export async function seedDb(db) {
     const path = `${sidNum(n)}/${rec}/${kind}/seed-${kind}.pdf`;
     await db.query("insert into storage.buckets (id, name, public) values ('renewal-documents','renewal-documents', false) on conflict (id) do nothing");
     await db.query("insert into storage.objects (bucket_id, name, metadata) values ('renewal-documents', $1, $2::jsonb)", [path, JSON.stringify({ mimetype: "application/pdf", size: 24, base64: Buffer.from("%PDF-1.4 demo " + kind).toString("base64") })]);
-    await db.query("insert into renewal_documents (record_id, scholar_id_number, kind, storage_path, file_name, mime_type, size_bytes, status) values ($1,$2,$3,$4,$5,'application/pdf',24,$6)",
-      [rec, sidNum(n), kind, path, `${kind.replace("_", "-")}.pdf`, status]);
+    // since the update "documents after the approval" a scholar with a failed subject sends no document before the decision, so the database refuses these; the demo's seed data is put in on purpose (the same switch the application form uses)
+    await db.query("select set_config('cedo.apply_docs_ok', 'on', false)");
+    try {
+      await db.query("insert into renewal_documents (record_id, scholar_id_number, kind, storage_path, file_name, mime_type, size_bytes, status) values ($1,$2,$3,$4,$5,'application/pdf',24,$6)",
+        [rec, sidNum(n), kind, path, `${kind.replace("_", "-")}.pdf`, status]);
+    } finally { await db.query("select set_config('cedo.apply_docs_ok', '', false)"); }
   }
   for (const s of SCHOLARS.filter(x => x.renewal?.letter)) {
     const rec = (await db.query("select id from renewal_records where scholar_id_number = $1 order by created_at desc limit 1", [sidNum(s.n)])).rows[0].id;

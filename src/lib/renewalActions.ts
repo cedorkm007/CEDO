@@ -113,6 +113,6 @@ export function canReferForConsultation(row: Pick<ActionRowInput, "failed" | "dr
   if (!(row.failed > 0 || row.drp > 0 || row.inc > 0 || facts.stage === "needs_gwa_consultation")) return false;
   if (facts.nextConsultation) return false;      // a consultation is already booked
   if (facts.consultationDoneAt) return false;      // the consultation staff already marked the scholar as attended
-  return !["renewed", "removed", "late_declined", "late_pending", "returned", "ready_for_endorsement", "endorsed_for_approval"].includes(facts.stage ?? "");
+  return !["renewed", "removed", "late_declined", "late_pending", "returned", "ready_for_endorsement", "endorsed_for_approval", "awaiting_documents"].includes(facts.stage ?? "");
 }
 export const REFER_BOOKING_ACTION: NeededAction = { key: "refer_booking", role: "evaluator", label: "Refer for Consultation" };
