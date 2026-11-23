@@ -87,6 +87,27 @@ export async function removeCredits(creditIds: string[]): Promise<{ ok: boolean;
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+export interface EligibleSummary { applicable: boolean; count: number }
+/** Is the "Eligible, did not attend" list available for this activity, and how many eligible scholars did not attend (the number on its button). */
+export async function fetchEligibleSummary(activityId: string): Promise<{ ok: true; summary: EligibleSummary } | Failed> {
+  const { data, error } = await supabase.rpc("sdp_eligible_summary", { p_activity_id: activityId }).maybeSingle();
+  if (error) return failed(error);
+  const r = (data ?? {}) as Row;
+  return { ok: true, summary: { applicable: !!r.applicable, count: num(r.eligible_count) } };
+}
+
+export interface EligibleRow { scholarIdNumber: string; firstName: string; lastName: string; yearLevel: string; barangay: string; school: string; attendanceStatus: string }
+/** ONE PAGE of the eligible scholars who did not attend, with the TRUE total. */
+export async function fetchEligiblePage(activityId: string, search: string, page: number, pageSize: number): Promise<{ ok: true; rows: EligibleRow[]; total: number } | Failed> {
+  const { data, error } = await supabase.rpc("sdp_eligible_did_not_attend_page", { p_activity_id: activityId, p_search: search.trim(), p_limit: pageSize, p_offset: (Math.max(1, page) - 1) * pageSize });
+  if (error) return failed(error);
+  const rows = (data ?? []) as Row[];
+  return {
+    ok: true, total: rows.length ? num(rows[0].total_count) : 0,
+    rows: rows.map(r => ({ scholarIdNumber: str(r.scholar_id_number), firstName: str(r.first_name), lastName: str(r.last_name), yearLevel: str(r.year_level), barangay: str(r.barangay), school: str(r.school), attendanceStatus: str(r.attendance_status) })),
+  };
+}
+
 export interface ScholarMatch { scholarIdNumber: string; name: string; school: string }
 /** The scholar search of the credit form: an indexed match on the Scholar ID and the name (either order), the first 10. Falls back to the older search before the database update. */
 export async function searchScholarsForCredit(query: string, activityId: string): Promise<ScholarMatch[] | null> {
