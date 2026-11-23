@@ -329,6 +329,9 @@ export async function uploadRenewalDocument(args: { file: File; scholarIdNumber:
   if (!readableDoc) return { ok: false, error: unreadablePictureText(args.file.name) };
   const file = RENAMED_DOC_LABEL[args.kind] ? renamedFile(readableDoc, args.kind, await myNameForFiles(), args.scholarIdNumber, args.existingOfKind + 1) : readableDoc;
   const path = renewalDocumentPath(args.scholarIdNumber, args.recordId, args.kind, file.name, crypto.randomUUID());
+  // a document the consultation staff opened for resubmission is deleted when its replacement is saved: its stored file is removed here after that (the database deletes its record)
+  const replaced = await supabase.from("renewal_documents").select("storage_path").eq("record_id", args.recordId).eq("kind", args.kind).not("resubmission_allowed_at", "is", null);
+  const oldPaths = ((replaced.data ?? []) as { storage_path: string }[]).map(r => r.storage_path);
   const up = await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).upload(path, file, { contentType: file.type, upsert: false });
   if (up.error) return { ok: false, error: uploadProblemText(up.error.message, file.name) };
   const { error } = await supabase.from("renewal_documents").insert({
@@ -339,6 +342,7 @@ export async function uploadRenewalDocument(args: { file: File; scholarIdNumber:
     await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).remove([path]);
     return { ok: false, error: error.message };
   }
+  if (oldPaths.length > 0) await supabase.storage.from(RENEWAL_DOCUMENT_BUCKET).remove(oldPaths);
   return { ok: true };
 }
 

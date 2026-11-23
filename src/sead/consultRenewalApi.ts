@@ -81,6 +81,13 @@ export async function fetchConsultCaseDocs(recordId: string): Promise<{ ok: true
     },
   };
 }
+export const ALLOW_RESUBMISSION_SQL = "supabase_migration_renewal_allow_resubmission.sql";
+/** "Allow resubmission" on an APPROVED document: it counts as not approved and the scholar can upload a new file (the old one is deleted when they do). Consultation staff only. */
+export async function allowResubmission(documentId: string): Promise<Done> {
+  const { error } = await supabase.rpc("renewal_allow_resubmission", { p_document_id: documentId });
+  if (error) return { ok: false, error: isMissingFn(error) ? `This needs the latest database update (${ALLOW_RESUBMISSION_SQL}). Ask the IT admin to run it.` : error.message };
+  return { ok: true };
+}
 /** The terms that have open cases (newest first) and which one is the current term. */
 export async function fetchConsultCaseTerms(): Promise<{ ok: true; terms: { schoolYear: string; term: string; label: string; openCount: number; isCurrent: boolean }[] } | CasesFailed> {
   const { data, error } = await supabase.rpc("renewal_consult_case_terms");

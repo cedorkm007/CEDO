@@ -4,7 +4,7 @@ import { useLiveReload } from "@/lib/liveUpdates";
 import { DOC_LABEL, formatDateTime, formatDay, formatSlot } from "@/lib/renewal";
 import { getStaffRenewalDocumentUrl, reviewDocument } from "../renewalApi";
 import {
-  ENDORSE_STATUSES, ENDORSE_STATUS_INFO, endorseStatus, fetchConsultCaseCounts, fetchConsultCaseDocs, fetchConsultCaseOne, fetchConsultCasesPage, fetchConsultCaseTerms,
+  ENDORSE_STATUSES, ENDORSE_STATUS_INFO, allowResubmission, endorseStatus, fetchConsultCaseCounts, fetchConsultCaseDocs, fetchConsultCaseOne, fetchConsultCasesPage, fetchConsultCaseTerms,
   type ConsultCase, type ConsultCaseDocs, type ConsultCaseDocument, type EndorseStatus,
 } from "../consultRenewalApi";
 import { ReasonDialog } from "../renewal/ReasonDialog";
@@ -198,6 +198,14 @@ export function ScholarCounselingRenewalCasesTab() {
     const r = await getStaffRenewalDocumentUrl(d.storagePath);
     if (r.ok) window.open(r.url, "_blank", "noopener"); else setFileError(r.error);
   }
+  async function reopen(recordId: string, d: ConsultCaseDocument) {
+    if (!window.confirm(`Allow the scholar to send a new ${DOC_LABEL[d.kind].toLowerCase()}? This approved document will count as NOT approved until the new one is approved. When the scholar uploads the new file, the old one is deleted.`)) return;
+    setBusyDoc(d.id); setFileError("");
+    const r = await allowResubmission(d.id);
+    setBusyDoc("");
+    if (!r.ok) setFileError(r.error);
+    await refreshCase(recordId);
+  }
   async function approve(recordId: string, d: ConsultCaseDocument) {
     setBusyDoc(d.id); setFileError("");
     const r = await reviewDocument(d.id, true, "");
@@ -313,6 +321,9 @@ export function ScholarCounselingRenewalCasesTab() {
                                   <DocChip status={current.status} />
                                   <span className="text-[13px] text-slate-600">sent {formatDateTime(current.uploadedAt)}</span>
                                   {current.status === "returned" && current.comment && <span className="text-[13.5px] text-slate-800">“{current.comment}”</span>}
+                                  {current.status === "accepted" && (
+                                    <button type="button" onClick={() => void reopen(c.recordId, current)} disabled={busyDoc === current.id} className="rounded-md border border-[#062444]/40 bg-white px-2.5 py-1 text-[13px] font-bold text-[#062444] hover:bg-[#f7f9fc] disabled:opacity-60">Allow resubmission</button>
+                                  )}
                                   {current.status === "submitted" && (
                                     <span className="flex gap-2">
                                       <button onClick={() => void approve(c.recordId, current)} disabled={busyDoc === current.id} className="rounded-md bg-green-800 px-2.5 py-1 text-[13px] font-bold text-white hover:bg-green-900 disabled:opacity-60">Approve</button>
