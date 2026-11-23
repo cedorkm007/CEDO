@@ -59,6 +59,18 @@ export function reasonText(code: string): string {
   }
 }
 
+/** Inside "Not credited": scholars who attended without a credit, or eligible scholars who did not attend. */
+export type NotCreditedFilter = "attended" | "eligible";
+export const ELIGIBLE_SQL = "supabase_migration_sdp_eligible_did_not_attend.sql";
+/** What the "Eligible, did not attend" list is, in one sentence (under the buttons). */
+export const ELIGIBLE_NOTE = "Scholars this activity is open to (by year level and barangay or cluster) who have no credit and did not scan the QR code. They can still be credited by hand with the form above.";
+export const ELIGIBLE_NOT_APPLICABLE = "This activity was submitted by a scholar, so it is not open to other scholars: there is no eligible list.";
+/** The line under an eligible scholar: nothing for someone who never scanned, a note for someone who scanned once and never finished. */
+export function eligibleStatusText(attendanceStatus: string): string {
+  return attendanceStatus === "incomplete" ? "Scanned once, did not finish" : "Did not attend";
+}
+export const placeText = (yearLevel: string | null | undefined, barangay: string | null | undefined): string => [yearLevel, barangay].map(x => (x ?? "").trim()).filter(Boolean).join(" · ") || "—";
+
 export type CreditedSort = "date_desc" | "date_asc" | "name_asc" | "name_desc";
 export const SORT_CHOICES: { value: CreditedSort; label: string }[] = [
   { value: "date_desc", label: "Date: newest first" }, { value: "date_asc", label: "Date: oldest first" }, { value: "name_asc", label: "Name: A–Z" }, { value: "name_desc", label: "Name: Z–A" },

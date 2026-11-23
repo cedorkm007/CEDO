@@ -8,14 +8,14 @@ import { ServerPagination } from "@/app/components/ServerPagination";
 import { pageCount } from "@/lib/dailyRecordsView";
 import { creditAttendance, creditScholarForDay, creditAttendedScholars, moveCreditSemester, removeAttendance, type SDPActivity } from "../sdpMonitorApi";
 import {
-  SDP_CREDITED_SQL, creditSelectedScholars, fetchCreditedPage, fetchCreditedSummary, fetchNotCreditedPage, moveCreditsSemester, removeCredits, searchScholarsForCredit,
-  type CreditedRow, type CreditedSummary, type NotCreditedRow,
+  SDP_CREDITED_SQL, creditSelectedScholars, fetchCreditedPage, fetchCreditedSummary, fetchEligiblePage, fetchEligibleSummary, fetchNotCreditedPage, moveCreditsSemester, removeCredits, searchScholarsForCredit,
+  type CreditedRow, type CreditedSummary, type EligibleRow, type EligibleSummary, type NotCreditedRow,
 } from "../sdpCreditedApi";
 import { useSdpPeriods } from "../useSdpPeriods";
 import { scheduleDays, creditSession, sessionKey, manilaDay, type ScheduleDay } from "@/scholar/sdpApi";
 import {
   allOnPageSelected, confirmCreditText, creditSemesterLabel, creditingNote, DEFAULT_PAGE_SIZE, formatCreditDate, fullName, PAGE_SIZE_CHOICES, pickPageSize, reasonText, semesterChip,
-  semesterFilterOptions, semesterFilterParams, SORT_CHOICES, toggleAllOnPage, type CreditedSide, type CreditedSort,
+  semesterFilterOptions, semesterFilterParams, SORT_CHOICES, toggleAllOnPage, ELIGIBLE_NOT_APPLICABLE, ELIGIBLE_NOTE, ELIGIBLE_SQL, eligibleStatusText, placeText, type CreditedSide, type CreditedSort, type NotCreditedFilter,
 } from "@/lib/sdpCreditedView";
 
 const FIELD = "rounded-lg border border-[#062444]/15 bg-white px-2.5 py-1.5 text-[13px] text-[#062444] outline-none focus:border-[#0088cc]";
@@ -39,6 +39,9 @@ interface Props {
   activity: SDPActivity;
   side: CreditedSide;
   onSideChange: (s: CreditedSide) => void;
+  /** Inside "Not credited": which list was last open (kept while the pop-up is open). */
+  notFilter: NotCreditedFilter;
+  onNotFilterChange: (f: NotCreditedFilter) => void;
   /** The bar at the bottom of the pop-up: the paging controls are shown there. */
   footerSlot: HTMLElement | null;
   categoryLabelText: string;
@@ -53,7 +56,7 @@ interface Props {
  * removing or changing a semester the page stays where it is and only the affected rows and the numbers change. The tab is only read when it is opened.
  * Who may credit or remove, how credits are counted and the credit history are the database's and are not changed here.
  */
-export function CreditedScholarsPanel({ activity, side, onSideChange, footerSlot, categoryLabelText, sessionLabelOf, renderHistory }: Props) {
+export function CreditedScholarsPanel({ activity, side, onSideChange, notFilter, onNotFilterChange, footerSlot, categoryLabelText, sessionLabelOf, renderHistory }: Props) {
   const periods = useSdpPeriods();
   const [creditKey, setCreditKey] = useState<string | null>(null);
   const effectiveCreditKey = creditKey && periods.options.some(o => o.key === creditKey) ? creditKey : periods.currentKey;
@@ -64,10 +67,13 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, footerSlot
   // ── the numbers on the two buttons, and the semesters of the credits ──
   const [summary, setSummary] = useState<CreditedSummary | null>(null);
   const [missing, setMissing] = useState(false);
+  const [eligibleSummary, setEligibleSummary] = useState<EligibleSummary | null>(null);
+  const [eligibleMissing, setEligibleMissing] = useState(false);      // the "Eligible, did not attend" database update has not been run: the rest of the tab still works
   const loadSummary = useCallback(async () => {
-    const r = await fetchCreditedSummary(activity.id);
+    const [r, e] = await Promise.all([fetchCreditedSummary(activity.id), fetchEligibleSummary(activity.id)]);
     if (!r.ok) { if (r.missing) setMissing(true); return; }
     setSummary(r.summary);
+    if (e.ok) { setEligibleSummary(e.summary); setEligibleMissing(false); } else if (e.missing) setEligibleMissing(true);
   }, [activity.id]);
   useEffect(() => { void loadSummary(); }, [loadSummary]);
 
@@ -80,6 +86,7 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, footerSlot
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [credited, setCredited] = useState<CreditedRow[] | null>(null);
   const [notCredited, setNotCredited] = useState<NotCreditedRow[] | null>(null);
+  const [eligible, setEligible] = useState<EligibleRow[] | null>(null);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
@@ -105,6 +112,14 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, footerSlot
       setListError("");
       if (r.total > 0 && r.rows.length === 0 && page > 1) { setPage(pageCount(r.total, pageSize)); return; }      // fewer pages now: go to the last one
       setCredited(r.rows); setTotal(r.total);
+    } else if (notFilter === "eligible") {
+      const r = await fetchEligiblePage(activity.id, search, page, pageSize);
+      if (mine !== request.current) return;
+      setLoading(false);
+      if (!r.ok) { if (r.missing) setEligibleMissing(true); else setListError(r.error); setEligible([]); setTotal(0); return; }
+      setListError("");
+      if (r.total > 0 && r.rows.length === 0 && page > 1) { setPage(pageCount(r.total, pageSize)); return; }
+      setEligible(r.rows); setTotal(r.total);
     } else {
       const r = await fetchNotCreditedPage(activity.id, search, page, pageSize);
       if (mine !== request.current) return;
@@ -114,7 +129,7 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, footerSlot
       if (r.total > 0 && r.rows.length === 0 && page > 1) { setPage(pageCount(r.total, pageSize)); return; }
       setNotCredited(r.rows); setTotal(r.total);
     }
-  }, [activity.id, side, search, sort, semChoice, page, pageSize]);
+  }, [activity.id, side, notFilter, search, sort, semChoice, page, pageSize]);
   useEffect(() => { void loadPage(); }, [loadPage]);
 
   const resetView = (patch?: { side?: CreditedSide }) => { setPage(1); setSelected(new Set()); setMoving(null); setMenu(null); setBulkMove(null); if (patch?.side) onSideChange(patch.side); };
@@ -263,10 +278,12 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, footerSlot
     setSelected(new Set()); afterChange(); void loadPage();
   }
 
+  const eligibleRows = eligible ?? [];
+  const onEligible = side === "not_credited" && notFilter === "eligible";
   const filterAnyActive = search.trim() !== "" || semChoice !== "";
-  const skeleton = loading && (side === "credited" ? credited === null || credited.length === 0 : notCredited === null || notCredited.length === 0);
-  const rowsOnPage = side === "credited" ? creditedRows.length : notCreditedRows.length;
-  const pageIds = side === "credited" ? creditedRows.map(r => r.id) : creditableOnPage;
+  const skeleton = loading && (side === "credited" ? credited === null || credited.length === 0 : onEligible ? eligible === null || eligible.length === 0 : notCredited === null || notCredited.length === 0);
+  const rowsOnPage = side === "credited" ? creditedRows.length : onEligible ? eligibleRows.length : notCreditedRows.length;
+  const pageIds = side === "credited" ? creditedRows.map(r => r.id) : onEligible ? [] : creditableOnPage;
   const semesterOptions = semesterFilterOptions(summary?.semesters ?? []);
   const countText = (n: number | undefined) => (n === undefined ? "…" : n.toLocaleString("en-US"));
 
@@ -354,6 +371,22 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, footerSlot
           {filterAnyActive && <button type="button" onClick={() => { setTyped(""); setSearch(""); setSemChoice(""); resetView(); }} className="text-[13px] font-semibold text-[#00709f] hover:underline">Clear</button>}
         </div>
 
+        {side === "not_credited" && (
+          <div className="flex flex-wrap items-center gap-2 text-[13px]" role="group" aria-label="Which scholars">
+            {([["attended", "Attended, not credited", summary?.notCredited], ["eligible", "Eligible, did not attend", eligibleSummary?.applicable === false ? 0 : eligibleSummary?.count]] as const).map(([key, label, n]) => (
+              <button key={key} type="button" aria-pressed={notFilter === key} disabled={key === "eligible" && eligibleSummary?.applicable === false}
+                onClick={() => { if (notFilter !== key) { onNotFilterChange(key); resetView(); setSearch(""); setTyped(""); } }}
+                className={`rounded-full border px-3.5 py-1.5 font-semibold disabled:opacity-50 ${notFilter === key ? "border-[#062444] bg-[#062444] text-white" : "border-[#062444]/25 bg-white text-[#062444] hover:bg-[#f7f9fc]"}`}>
+                {label} <span className={notFilter === key ? "text-[#F3BC00]" : "text-[#006aa3]"}>({countText(n)})</span>
+              </button>
+            ))}
+            {onEligible && <span className="min-w-0 flex-1 text-slate-600">{eligibleSummary?.applicable === false ? ELIGIBLE_NOT_APPLICABLE : ELIGIBLE_NOTE}</span>}
+          </div>
+        )}
+        {onEligible && eligibleMissing && (
+          <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13.5px] text-amber-950">This list needs the latest database update ({ELIGIBLE_SQL}). Ask the IT admin to run it.</p>
+        )}
+
         {/* what can be done with the ticked rows */}
         {side === "credited" && selected.size > 0 && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#062444]/20 bg-[#f7f9fc] px-3 py-2 text-[13px]">
@@ -373,7 +406,7 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, footerSlot
             )}
           </div>
         )}
-        {side === "not_credited" && (summary?.creditable ?? 0) > 0 && (
+        {side === "not_credited" && !onEligible && (summary?.creditable ?? 0) > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-[13px]">
             <button type="button" onClick={() => void creditTicked()} disabled={crediting || selected.size === 0} className="rounded-lg bg-[#062444] px-3.5 py-2 font-bold text-white disabled:opacity-50">{crediting ? "Crediting…" : `Credit selected (${selected.size})`}</button>
             <button type="button" onClick={() => void creditEveryone()} disabled={crediting} className="rounded-lg border border-[#062444]/40 bg-white px-3.5 py-2 font-bold text-[#062444] hover:bg-[#f7f9fc] disabled:opacity-50">{`Credit these scholars (${summary?.creditable ?? 0})`}</button>
@@ -392,12 +425,12 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, footerSlot
               <col style={{ width: 36 }} />
               <col />
               <col className="hidden sm:table-column" style={{ width: 130 }} />
-              {side === "credited" ? <><col className="hidden md:table-column" style={{ width: 130 }} /><col className="hidden md:table-column" style={{ width: 235 }} /><col style={{ width: 48 }} /></> : <col className="hidden md:table-column" style={{ width: 160 }} />}
+              {side === "credited" ? <><col className="hidden md:table-column" style={{ width: 130 }} /><col className="hidden md:table-column" style={{ width: 235 }} /><col style={{ width: 48 }} /></> : onEligible ? <><col className="hidden md:table-column" style={{ width: 150 }} /><col className="hidden lg:table-column" style={{ width: 190 }} /></> : <col className="hidden md:table-column" style={{ width: 160 }} />}
             </colgroup>
             <thead>
               <tr>
                 <th scope="col" className={TH}>
-                  <input type="checkbox" aria-label="Select all on this page" disabled={pageIds.length === 0} checked={allOnPageSelected(selected, pageIds)} onChange={e => setSelected(s => toggleAllOnPage(s, pageIds, e.target.checked))} />
+                  <input type="checkbox" aria-label="Select all on this page" disabled={pageIds.length === 0} className={onEligible ? "invisible" : undefined} checked={allOnPageSelected(selected, pageIds)} onChange={e => setSelected(s => toggleAllOnPage(s, pageIds, e.target.checked))} />
                 </th>
                 <th scope="col" className={TH}>Scholar</th>
                 <th scope="col" className={`${TH} hidden sm:table-cell`}>Scholar ID</th>
@@ -407,16 +440,22 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, footerSlot
                     <th scope="col" className={`${TH} hidden md:table-cell`}>Semester</th>
                     <th scope="col" className={`${TH} text-center`}><span className="sr-only">Actions</span></th>
                   </>
+                ) : onEligible ? (
+                  <>
+                    <th scope="col" className={`${TH} hidden md:table-cell`}>Year level</th>
+                    <th scope="col" className={`${TH} hidden lg:table-cell`}>Barangay</th>
+                  </>
                 ) : <th scope="col" className={`${TH} hidden md:table-cell`}>Attendance</th>}
               </tr>
             </thead>
             <tbody>
               {skeleton ? (
-                Array.from({ length: 6 }, (_, i) => <tr key={i} className="border-t border-[#f0f3f8]" aria-hidden="true">{Array.from({ length: side === "credited" ? 6 : 4 }, (_, j) => <td key={j} className={`px-3 py-3 ${j === 2 ? "hidden sm:table-cell" : j === 3 || (j === 4 && side === "credited") ? "hidden md:table-cell" : ""}`}><div className="h-4 animate-pulse rounded bg-slate-200" style={{ width: `${45 + ((i * 9 + j * 13) % 45)}%` }} /></td>)}</tr>)
+                Array.from({ length: 6 }, (_, i) => <tr key={i} className="border-t border-[#f0f3f8]" aria-hidden="true">{Array.from({ length: side === "credited" ? 6 : onEligible ? 5 : 4 }, (_, j) => <td key={j} className={`px-3 py-3 ${j === 2 ? "hidden sm:table-cell" : j === 3 || (j === 4 && side === "credited") ? "hidden md:table-cell" : ""}`}><div className="h-4 animate-pulse rounded bg-slate-200" style={{ width: `${45 + ((i * 9 + j * 13) % 45)}%` }} /></td>)}</tr>)
               ) : rowsOnPage === 0 ? (
-                <tr><td colSpan={side === "credited" ? 6 : 4} className="px-4 py-10 text-center text-slate-700">
+                <tr><td colSpan={side === "credited" ? 6 : onEligible ? 5 : 4} className="px-4 py-10 text-center text-slate-700">
                   {side === "credited"
                     ? (filterAnyActive ? "No credit matches this search or filter." : "No scholars credited yet.")
+                    : onEligible ? (filterAnyActive ? "No eligible scholar matches this search." : "Every eligible scholar attended or has a credit.")
                     : (filterAnyActive ? "No scholar matches this search." : "Everyone who attended has been credited.")}
                 </td></tr>
               ) : side === "credited" ? creditedRows.map(r => {
@@ -457,6 +496,21 @@ export function CreditedScholarsPanel({ activity, side, onSideChange, footerSlot
                       </tr>
                     )}
                   </FragmentRow>
+                );
+              }) : onEligible ? eligibleRows.map(e => {
+                const name = fullName(e.firstName, e.lastName) || e.scholarIdNumber;
+                return (
+                  <tr key={e.scholarIdNumber} className={`border-t border-[#f0f3f8] align-top hover:bg-[#f8fafd] ${loading ? "opacity-60" : ""}`}>
+                    <td className="px-3 py-2.5" />
+                    <td className="px-3 py-2.5">
+                      <span className="block truncate font-medium text-[#062444]" title={name}>{name}</span>
+                      <span className={`block text-[12.5px] ${e.attendanceStatus === "incomplete" ? "text-amber-950" : "text-slate-600"}`}>{eligibleStatusText(e.attendanceStatus)}</span>
+                      <span className="mt-0.5 block text-[12.5px] text-slate-600 sm:hidden">{e.scholarIdNumber} · {placeText(e.yearLevel, e.barangay)}</span>
+                    </td>
+                    <td className="hidden px-3 py-2.5 tabular-nums text-slate-800 sm:table-cell">{e.scholarIdNumber}</td>
+                    <td className="hidden px-3 py-2.5 text-slate-800 md:table-cell">{e.yearLevel || "—"}</td>
+                    <td className="hidden px-3 py-2.5 text-slate-800 lg:table-cell"><span className="block truncate" title={e.barangay || undefined}>{e.barangay || "—"}</span></td>
+                  </tr>
                 );
               }) : notCreditedRows.map(n => {
                 const name = fullName(n.firstName, n.lastName) || n.scholarIdNumber;
