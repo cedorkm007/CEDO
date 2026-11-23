@@ -20,6 +20,7 @@ async function as(uid, fn, role = "authenticated") {
 }
 const attempt = async (uid, sql, params = []) => { try { return { ok: true, rows: await as(uid, async tx => (await tx.query(sql, params)).rows) }; } catch (e) { return { ok: false, msg: String(e.message) }; } };
 await db.exec(read(NEW)); await db.exec(read(NEW));      // twice: safe
+await db.exec("drop function if exists public.renewal_approve_endorsement(uuid, text, text)");      // the later layer (one failure documents) is built into the demo database; this test is about its own layer
 const EVAL = seedId("staff:demo.evaluator"), COUNSELOR = seedId("staff:demo.counselor");
 const uidOf = s => seedId(`scholar:${Number(s.split("-")[1])}`);
 const win = (await q(`select w.* from renewal_windows w order by (select count(*) from renewal_records r where r.window_id = w.id) desc limit 1`))[0];
