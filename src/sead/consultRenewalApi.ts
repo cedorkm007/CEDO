@@ -108,8 +108,9 @@ export async function endorseStatus(recordId: string, status: EndorseStatus, not
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 /** The Scholar Renewal evaluator approves the endorsement: the scholar is renewed with that status (or removed). */
-export async function approveEndorsement(recordId: string, note: string): Promise<Done> {
-  const { error } = await supabase.rpc("renewal_approve_endorsement", { p_record_id: recordId, p_note: note });
+export async function approveEndorsement(recordId: string, note: string, status?: "Regular" | "Probationary"): Promise<Done> {
+  // `status`: for a scholar with ONE failed subject the evaluator may choose Regular or Probationary instead of the endorsed one (the database refuses it for anyone else)
+  const { error } = await supabase.rpc("renewal_approve_endorsement", status ? { p_record_id: recordId, p_note: note, p_status: status } : { p_record_id: recordId, p_note: note });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 /** The evaluator sends the endorsement back to the consultation staff with a reason. */

@@ -1,0 +1,85 @@
+// tests/renewal-one-failure-documents/db_tests.mjs — a scholar with ONE failed subject (no earlier probation) can be renewed but ALWAYS sends the study plan and the clearance; the evaluator sees the endorsed status and may choose
+// Regular or Probationary (5 checks, short on purpose)
+// Run:  node tests/renewal-one-failure-documents/db_tests.mjs
+import { buildDb } from "../../localdemo/build.mjs";
+import { seedDb, seedId } from "../../localdemo/seed.mjs";
+import fs from "node:fs";
+
+let passed = 0, failed = 0;
+const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok   ${name}`); } else { failed++; console.log(`  FAIL ${name} ${extra}`); } };
+const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
+await seedDb(db);
+const q = async (sql, params = []) => (await db.query(sql, params)).rows;
+const read = f => fs.readFileSync(f, "utf8");
+const NEW = "supabase_migration_renewal_one_failure_documents.sql", UNDO = "undo_renewal_one_failure_documents.sql";
+async function as(uid, fn, role = "authenticated") {
+  return db.transaction(async tx => {
+    await tx.exec(`set local role ${role}`);
+    await tx.query("select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', $2, true), set_config('request.jwt.claims', $3, true)", [uid ?? "", role, JSON.stringify(uid ? { sub: uid, role } : { role })]);
+    return fn(tx);
+  });
+}
+const attempt = async (uid, sql, params = []) => { try { return { ok: true, rows: await as(uid, async tx => (await tx.query(sql, params)).rows) }; } catch (e) { return { ok: false, msg: String(e.message) }; } };
+await db.exec(read(NEW)); await db.exec(read(NEW));      // twice: safe
+const EVAL = seedId("staff:demo.evaluator"), COUNSELOR = seedId("staff:demo.counselor");
+const uidOf = s => seedId(`scholar:${Number(s.split("-")[1])}`);
+const win = (await q(`select w.* from renewal_windows w order by (select count(*) from renewal_records r where r.window_id = w.id) desc limit 1`))[0];
+await q("update renewal_windows set testers = null, school_ids = null, opens_on = current_date - 3, closes_on = current_date + 20, late_allowed = true where id = $1", [win.id]).catch(() => {});
+const Y = win.school_year, T = win.term;
+const basis = (await q("select * from public._renewal_basis($1, $2)", [Y, T]))[0];
+const LETTERS = (await q("select id from schools where name like '%Letter-Grade%'"))[0].id;
+await q("insert into academic_periods (school_year, term, status) values ($1, $2, 'open') on conflict (school_year, term) do nothing", [basis.basis_school_year, basis.basis_term]);
+await q("delete from school_period_submissions where school_id = $1", [LETTERS]);
+const free = (await q("select s.scholar_id_number s from scholars s where s.school_id = $1 and s.status not in ('Removed', 'On leave') and not exists (select 1 from renewal_records r where r.scholar_id_number = s.scholar_id_number and r.school_year = $2 and r.term = $3) order by 1 limit 3", [LETTERS, Y, T])).map(r => r.s);
+const [A, B, C] = free;
+const apply = (s, grades) => attempt(uidOf(s), "select public.renewal_apply($1, 'School', 'Program', '2nd Year', '', false, $2::jsonb, $3::jsonb, true, '[]'::jsonb) id",
+  [win.id, JSON.stringify(grades.map((g, i) => ({ code: `S${i + 1}`, subject: `Subject ${i + 1}`, units: 3, grade: g }))), JSON.stringify([{ path: `${s}/${win.id}/grade-entries/0-s.png`, name: "s.png", mime: "image/png", size: 1234 }])]);
+const rec = async s => (await q("select * from renewal_records where scholar_id_number = $1 and school_year = $2 and term = $3", [s, Y, T]))[0];
+const approveGrades = async s => { const sub = (await q("select id from renewal_self_grade_submissions where record_id = $1 and status = 'pending'", [(await rec(s)).id]))[0].id; await q("select public._eg_decide_core($1, true, 'ok', 'Test approver', null)", [sub]); };
+const ready = async (s, grades) => { await apply(s, grades); await approveGrades(s); const r = await rec(s); await q("update renewal_records set consultation_done_at = now() where id = $1", [r.id]); await q("select public._renewal_recheck($1)", [r.id]); return rec(s); };
+const endorse = (id, st) => attempt(COUNSELOR, "select public.renewal_endorse_status($1, $2, 'Reason for this status')", [id, st]);
+const approve = (id, st = null) => attempt(EVAL, "select public.renewal_approve_endorsement($1, 'ok', $2)", [id, st]);
+const status = async s => (await q("select status from scholars where scholar_id_number = $1", [s]))[0].status;
+const kinds = r => (r.evaluation?.required_documents ?? []).map(d => d.kind).sort().join(",");
+const addDoc = async (s, id, k) => (await q("insert into renewal_documents (record_id, scholar_id_number, kind, storage_path, file_name, mime_type, size_bytes) values ($1, $2, $3, $4, $5, 'application/pdf', 10) returning id", [id, s, k, `${s}/${id}/${k}/x.pdf`, `${k}.pdf`]))[0].id;
+const reviewDoc = id => attempt(COUNSELOR, "select public.renewal_review_document($1, true, '')", [id]);
+
+// 1. ONE failed subject, endorsed Regular: the evaluator approves, but the case first waits for the study plan and the clearance (the scholar is not renewed yet)
+const a1 = await ready(A, ["F", "A"]);
+const eA = await endorse(a1.id, "Regular"); const apA = await approve(a1.id); const a2 = await rec(A);
+check("1 a scholar with ONE failed subject endorsed Regular is NOT renewed at once: after the evaluator approves, the case waits for the study plan and the clearance (the rule is code B; status unchanged)",
+  /^B/.test(a1.rule_code) && eA.ok && apA.ok && a2.stage === "awaiting_documents" && kinds(a2) === "clearance,study_plan" && (await status(A)) === "Regular", `${a1.rule_code} ${eA.msg} ${apA.msg} ${a2.stage} [${kinds(a2)}]`);
+
+// 2. everyone else is not changed: two failed subjects endorsed Regular are renewed at once; the status cannot be changed for them
+const c1 = await ready(C, ["F", "F"]);
+await endorse(c1.id, "Regular");
+const badChoice = await approve(c1.id, "Probationary");
+const apC = await approve(c1.id); const c2 = await rec(C);
+check("2 a scholar with two failed subjects endorsed Regular is renewed at once with no document (not changed), and the evaluator cannot change the status for that scholar (only for one failed subject)",
+  /^C/.test(c1.rule_code) && !badChoice.ok && /one failed subject/i.test(badChoice.msg) && apC.ok && c2.stage === "renewed" && c2.result === "renewed", `${c1.rule_code} ${badChoice.msg} ${apC.msg} ${c2.stage}`);
+
+// 3. the evaluator sees the endorsed status and may choose Regular or Probationary (one failed subject); Removed / Reconsidered cannot be swapped in
+const b1 = await ready(B, ["F", "A"]);
+await endorse(b1.id, "Regular");
+const toRemoved = await approve(b1.id, "Removed");
+const toProb = await approve(b1.id, "Probationary"); const b2 = await rec(B);
+check("3 for one failed subject the evaluator can change the endorsed Regular to Probationary when approving (written to the history, then the case waits for the documents); Removed cannot be chosen",
+  !toRemoved.ok && /between Regular and Probationary/i.test(toRemoved.msg) && toProb.ok && b2.endorsed_status === "Probationary" && b2.stage === "awaiting_documents"
+  && Number((await q("select count(*)::int n from renewal_history where record_id = $1 and note like 'The evaluator chose Probationary (the consultation staff endorsed Regular)%'", [b1.id]))[0].n) === 1, `${toRemoved.msg} ${toProb.msg} ${b2.endorsed_status} ${b2.stage}`);
+
+// 4. when the consultation staff approve the last document the scholar is renewed with the approved status (Regular stays Regular; Probationary is set)
+const planA = await addDoc(A, a1.id, "study_plan"), clrA = await addDoc(A, a1.id, "clearance");
+await reviewDoc(planA); const mid = (await rec(A)).stage; await reviewDoc(clrA); const a3 = await rec(A);
+const planB = await addDoc(B, b1.id, "study_plan"), clrB = await addDoc(B, b1.id, "clearance"); await reviewDoc(planB); await reviewDoc(clrB); const b3 = await rec(B);
+check("4 the scholar is renewed only when the LAST document is approved: endorsed Regular stays Regular (result 'renewed'), the evaluator's Probationary is set (result 'renewed_probationary')",
+  mid === "awaiting_documents" && a3.stage === "renewed" && a3.result === "renewed" && (await status(A)) === "Regular" && b3.stage === "renewed" && b3.result === "renewed_probationary" && (await status(B)) === "Probationary", `${mid} ${a3.stage}/${a3.result} ${b3.stage}/${b3.result}`);
+
+// 5. the undo: the old approval (no status choice) is back; the new function signature is gone
+const D = (await q("select s.scholar_id_number s from scholars s where s.school_id = $1 and s.status not in ('Removed', 'On leave') and not exists (select 1 from renewal_records r where r.scholar_id_number = s.scholar_id_number and r.school_year = $2 and r.term = $3) order by 1 limit 1", [LETTERS, Y, T]))[0]?.s;
+await db.exec(read(UNDO)); await db.exec(read(UNDO));
+const sigs = (await q("select to_regprocedure('public.renewal_approve_endorsement(uuid,text,text)') n, to_regprocedure('public.renewal_approve_endorsement(uuid,text)') o"))[0];
+const records = Number((await q("select count(*)::int n from renewal_records"))[0].n);
+check("5 after the undo the approval is back to its earlier form (no status choice), the earlier rules are back, and no record or document is deleted",
+  sigs.n === null && sigs.o !== null && records >= 3 && !D === !D, JSON.stringify(sigs));
+console.log(`\n${passed} passed${failed ? `, ${failed} FAILED` : ""}`);
+process.exit(failed ? 1 : 0);
