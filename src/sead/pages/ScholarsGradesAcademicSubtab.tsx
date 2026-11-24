@@ -4,6 +4,7 @@ import { PASSING_GWA_EXPLANATION, describeScale, formatPassingGwa, parsePassingG
 import { AcademicBulkPanel } from "../components/AcademicBulkPanel";
 import { AcademicNotSetPanel } from "../components/AcademicNotSetPanel";
 import { AcademicSchoolScreen } from "../components/AcademicSchoolScreen";
+import { AcademicRecheckBar } from "../components/AcademicRecheckBar";
 import { fetchAcademicSettings, saveAcademicPassingGwa, type AcademicSchoolRow, type AcademicSettings } from "../academicStatusApi";
 
 /**
@@ -21,6 +22,7 @@ export function ScholarsGradesAcademicSubtab() {
   const [gwaMsg, setGwaMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [schoolQuery, setSchoolQuery] = useState("");
+  const [recheckNonce, setRecheckNonce] = useState(0);      // goes up after every save: the re-check bar looks again at what is waiting
   const latest = useRef(0);
 
   const load = useCallback(async (id: string | null) => {
@@ -52,11 +54,12 @@ export function ScholarsGradesAcademicSubtab() {
     setBusy(true); setGwaMsg(null);
     const r = await saveAcademicPassingGwa(school.id, parsePassingGwa(ac), parsePassingGwa(nonAc));
     setBusy(false);
-    if (r.ok) { setGwaMsg({ ok: true, text: "Saved. The open renewals are checked again in the background within a few minutes." }); await load(school.id); } else setGwaMsg({ ok: false, text: r.error });
+    if (r.ok) { setGwaMsg({ ok: true, text: "Saved. Only the open renewals of this school's scholars whose passing GWA changed are checked again: the count is at the top of the page." }); setRecheckNonce(x => x + 1); await load(school.id); } else setGwaMsg({ ok: false, text: r.error });
   }
 
   return (
     <div className="space-y-6">
+      <AcademicRecheckBar nonce={recheckNonce} />
       <AcademicNotSetPanel />
       <section className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-4" aria-label="School">
         <h2 className="text-[16px] font-bold text-[#062444]">School</h2>
@@ -97,9 +100,9 @@ export function ScholarsGradesAcademicSubtab() {
         </section>
       )}
 
-      {school && <AcademicSchoolScreen schoolId={school.id} schoolName={school.name} scale={scale} />}
+      {school && <AcademicSchoolScreen schoolId={school.id} schoolName={school.name} scale={scale} onChanged={() => setRecheckNonce(x => x + 1)} />}
 
-      <AcademicBulkPanel />
+      <AcademicBulkPanel onSaved={() => setRecheckNonce(x => x + 1)} />
     </div>
   );
 }

@@ -16,11 +16,11 @@ await build({ entryPoints: [path.join(root, "src/lib/academicScreen.ts")], bundl
 const A = await import(pathToFileURL(f).href);
 
 const filt = { ...A.EMPTY_FILTER, search: " juan ", status: "not_set", programs: ["bsit"], custom: true };
-const impact = { total: 120, willChange: 100, same: 20, fromNotSet: 90, fromAcademic: 10, fromNonAcademic: 0, customSet: 0, customCleared: 3, openRenewals: 7, ruleOn: true, academicPassingGwa: 2, nonAcademicPassingGwa: 3 };
+const impact = { total: 120, willChange: 100, same: 20, fromNotSet: 90, fromAcademic: 10, fromNonAcademic: 0, customSet: 0, customCleared: 3, openRenewals: 7, recheckRenewals: 5, ruleOn: true, academicPassingGwa: 2, nonAcademicPassingGwa: 3 };
 const lines = A.impactLines(impact, "non_academic");
-check("1 the filter is sent as only what is set (search trimmed, status, program, custom); an empty filter is empty; the impact is read as plain sentences (100 change to Non-academic, 20 already have it, from where, 3 lose a custom GWA, 7 open renewals, the school's two numbers) and says so when the school's GWA rule is off",
+check("1 the filter is sent as only what is set (search trimmed, status, program, custom); an empty filter is empty; the impact is read as plain sentences (100 change to Non-academic, 20 already have it, from where, 3 lose a custom GWA, 7 open renewals of which 5 need a new check, the school's two numbers) and says so when the school's GWA rule is off",
   JSON.stringify(A.filterToJson(filt)) === JSON.stringify({ search: "juan", status: "not_set", programs: ["bsit"], custom: true }) && A.filterIsEmpty(A.EMPTY_FILTER) && !A.filterIsEmpty(filt)
-  && /^100 scholars change to Non-academic; 20 already have it and are left alone\.$/.test(lines[0]) && /90 from Not set, 10 from Academic/.test(lines[1]) && lines.some(l => /3 scholars lose their custom passing GWA/.test(l)) && lines.some(l => /7 of them have a renewal that is still open/.test(l)) && lines.some(l => /Academic 2\.00 and Non-academic 3\.00/.test(l))
+  && /^100 scholars change to Non-academic; 20 already have it and are left alone\.$/.test(lines[0]) && /90 from Not set, 10 from Academic/.test(lines[1]) && lines.some(l => /3 scholars lose their custom passing GWA/.test(l)) && lines.some(l => /5 open renewals will be checked again because the passing GWA used changes/.test(l)) && lines.some(l => /Academic 2\.00 and Non-academic 3\.00/.test(l))
   && A.impactLines({ ...impact, ruleOn: false }, "academic").some(l => /GWA rule is off/.test(l)) && A.impactLines({ ...impact, total: 0 }, "academic")[0] === "No scholar is chosen.");
 
 check("2 a status is written in one line for the renewal case ('Non-academic · passing GWA 2.75 · scholar GWA 2.90 is below'; 'Not set · checked as Academic'; 'no passing GWA set'), for the Information list and its export ('Non-academic (passing GWA 2.75)', 'Not set (counts as Academic)'), and a history row reads 'Not set → Non-academic (custom 2.50)'",
