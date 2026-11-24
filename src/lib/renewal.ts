@@ -418,7 +418,10 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
       consult();
       if (consultNeeded) steps.push("After your consultation, the evaluator confirms your renewal.");
       break;
-    case "ready_for_endorsement": steps.push("Your consultation is done. The consultation staff will now endorse your new scholarship status, and the evaluator will approve it. You do not need to send any document yet."); steps.push("Nothing to do right now."); break;
+    case "ready_for_endorsement":
+      steps.push("Your consultation is done. The consultation staff will now endorse your new scholarship status, and the evaluator will approve it." + (missingDocs.length > 0 ? " Please send the documents below too: you can send them now, you do not have to wait." : " You do not need to send any document yet."));
+      if (missingDocs.length > 0) upload(); else steps.push("Nothing to do right now.");
+      break;
     case "awaiting_documents":
       steps.push("Your new scholarship status was approved. To complete your renewal, send the documents below; the consultation staff approve them, and then you are renewed.");
       upload();
