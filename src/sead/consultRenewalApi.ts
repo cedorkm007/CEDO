@@ -113,9 +113,19 @@ export async function endorseStatus(recordId: string, status: EndorseStatus, not
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 /** The Scholar Renewal evaluator approves the endorsement: the scholar is renewed with that status (or removed). */
-export async function approveEndorsement(recordId: string, note: string, status?: "Regular" | "Probationary"): Promise<Done> {
+export interface TerminationSignatory { key: string; label: string; name: string; title: string }
+/** Who can sign the termination form of a removal: the Division Head, the City Education and Development Officer, and the staff tagged for the Scholar Renewal (evaluator only). */
+export async function fetchTerminationSignatories(): Promise<{ ok: true; options: TerminationSignatory[] } | { ok: false; error: string; missing: boolean }> {
+  const { data, error } = await supabase.rpc("renewal_termination_signatories");
+  if (error) return { ok: false, error: error.message, missing: isMissingFn(error) };
+  return { ok: true, options: ((data ?? []) as Row[]).map(r => ({ key: str(r.key), label: str(r.label), name: str(r.name), title: str(r.title) })) };
+}
+export async function approveEndorsement(recordId: string, note: string, status?: "Regular" | "Probationary", signatory?: string): Promise<Done> {
   // `status`: for a scholar with ONE failed subject the evaluator may choose Regular or Probationary instead of the endorsed one (the database refuses it for anyone else)
-  const { error } = await supabase.rpc("renewal_approve_endorsement", status ? { p_record_id: recordId, p_note: note, p_status: status } : { p_record_id: recordId, p_note: note });
+  const args: Record<string, unknown> = { p_record_id: recordId, p_note: note };
+  if (status) args.p_status = status;
+  if (signatory) args.p_signatory = signatory;      // a Removed endorsement: who signs the termination form
+  const { error } = await supabase.rpc("renewal_approve_endorsement", args);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 /** The evaluator sends the endorsement back to the consultation staff with a reason. */
