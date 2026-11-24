@@ -26,7 +26,7 @@ export const filterIsEmpty = (f: ScreenFilter) => Object.keys(filterToJson(f)).l
 
 export interface ScreenImpact {
   total: number; willChange: number; same: number; fromNotSet: number; fromAcademic: number; fromNonAcademic: number;
-  customSet: number; customCleared: number; openRenewals: number; ruleOn: boolean; academicPassingGwa: number | null; nonAcademicPassingGwa: number | null;
+  customSet: number; customCleared: number; openRenewals: number; recheckRenewals: number; ruleOn: boolean; academicPassingGwa: number | null; nonAcademicPassingGwa: number | null;
 }
 const n = (v: number) => v.toLocaleString("en-US");
 const plural = (v: number, one: string, many: string) => `${n(v)} ${v === 1 ? one : many}`;
@@ -41,7 +41,9 @@ export function impactLines(i: ScreenImpact, target: ScreenStatus): string[] {
     if (from.length) lines.push(`They are now: ${from.join(", ")}.`);
     if (i.customSet > 0) lines.push(`${plural(i.customSet, "scholar gets", "scholars get")} a custom passing GWA.`);
     if (i.customCleared > 0) lines.push(`${plural(i.customCleared, "scholar loses", "scholars lose")} their custom passing GWA.`);
-    lines.push(i.openRenewals > 0 ? `${plural(i.openRenewals, "of them has", "of them have")} a renewal that is still open: it is checked again in the background (within a few minutes).` : "None of them has an open renewal.");
+    lines.push(i.openRenewals === 0 ? "None of them has an open renewal."
+      : i.recheckRenewals === 0 ? `${plural(i.openRenewals, "of them has", "of them have")} an open renewal, but the passing GWA used does not change, so no renewal needs to be checked again.`
+      : `${plural(i.recheckRenewals, "open renewal", "open renewals")} will be checked again because the passing GWA used changes${i.openRenewals > i.recheckRenewals ? ` (${n(i.openRenewals - i.recheckRenewals)} other open renewal${i.openRenewals - i.recheckRenewals === 1 ? "" : "s"} ${i.openRenewals - i.recheckRenewals === 1 ? "is" : "are"} not affected)` : ""}. ${i.recheckRenewals <= 10 ? "They are checked right away." : "The count is shown on the screen while they are checked."}`);
     lines.push(i.ruleOn
       ? `The school's passing GWA is Academic ${i.academicPassingGwa?.toFixed(2) ?? "not set"} and Non-academic ${i.nonAcademicPassingGwa?.toFixed(2) ?? "not set"}: the status changes which number the renewal compares the GWA with.`
       : "This school has no passing GWA set, so the GWA rule is off for it: the status changes no renewal result for now.");
@@ -62,6 +64,12 @@ export function infoStatusText(i: { status: string; isSet: boolean; passingGwa: 
   if (!i) return "";
   const pass = i.passingGwa == null ? "" : ` (passing GWA ${Number(i.passingGwa).toFixed(2)})`;
   return i.isSet ? `${SCREEN_STATUS_LABEL[i.status as ScreenStatus] ?? "Academic"}${pass}` : `Not set (counts as Academic)${pass}`;
+}
+
+/** The progress of the re-check: "Re-checking 340 renewals… 120 done". */
+export function recheckText(total: number, left: number): string {
+  const done = Math.max(0, total - left);
+  return left > 0 ? `Re-checking ${n(left + done)} renewal${left + done === 1 ? "" : "s"}… ${n(done)} done` : `All ${n(total)} renewal${total === 1 ? "" : "s"} checked.`;
 }
 
 const HOW: Record<string, string> = { manual: "Changed one scholar", selection: "Changed chosen scholars", matching: "Changed all matching a filter", file: "Set by file", migration: "Moved from the program", upload: "Upload", undo: "Undone" };

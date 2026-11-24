@@ -62,17 +62,31 @@ export async function fetchImpact(t: ChangeTarget, w: ChangeWhat): Promise<{ ok:
     ok: true,
     impact: {
       total: Number(d.total ?? 0), willChange: Number(d.will_change ?? 0), same: Number(d.same ?? 0), fromNotSet: Number(d.from_not_set ?? 0), fromAcademic: Number(d.from_academic ?? 0), fromNonAcademic: Number(d.from_non_academic ?? 0),
-      customSet: Number(d.custom_set ?? 0), customCleared: Number(d.custom_cleared ?? 0), openRenewals: Number(d.open_renewals ?? 0), ruleOn: !!d.rule_on,
+      customSet: Number(d.custom_set ?? 0), customCleared: Number(d.custom_cleared ?? 0), openRenewals: Number(d.open_renewals ?? 0), recheckRenewals: Number(d.recheck_renewals ?? 0), ruleOn: !!d.rule_on,
       academicPassingGwa: numOrNull(d.academic_passing_gwa), nonAcademicPassingGwa: numOrNull(d.non_academic_passing_gwa),
     },
   };
 }
 
-export async function applyChange(t: ChangeTarget, w: ChangeWhat, reason: string, expected: number): Promise<{ ok: true; changed: number; same: number } | Failed> {
+export async function applyChange(t: ChangeTarget, w: ChangeWhat, reason: string, expected: number): Promise<{ ok: true; changed: number; same: number; rechecks: number; rechecked: number } | Failed> {
   const { data, error } = await supabase.rpc("academic_status_apply", { p_school: t.schoolId, p_filter: filterToJson(t.filter), p_ids: t.ids, p_status: w.status, p_custom: w.customGwa, p_clear_custom: w.clearCustom, p_reason: reason.trim() || null, p_expected: expected });
   if (error) return failed(error);
   const d = (data ?? {}) as Row;
-  return { ok: true, changed: Number(d.changed ?? 0), same: Number(d.same ?? 0) };
+  return { ok: true, changed: Number(d.changed ?? 0), same: Number(d.same ?? 0), rechecks: Number(d.rechecks ?? 0), rechecked: Number(d.rechecked_now ?? 0) };
+}
+
+/** The re-check of the open renewals (Phase 2): how many are waiting, and checking the next ones. */
+export async function fetchRecheckStatus(): Promise<{ ok: true; pending: number; failed: number } | Failed> {
+  const { data, error } = await supabase.rpc("academic_recheck_status");
+  if (error) return failed(error);
+  const d = (data ?? {}) as Row;
+  return { ok: true, pending: Number(d.pending ?? 0), failed: Number(d.failed ?? 0) };
+}
+export async function recheckStep(limit = 25): Promise<{ ok: true; processed: number; remaining: number } | Failed> {
+  const { data, error } = await supabase.rpc("academic_recheck_step", { p_limit: limit });
+  if (error) return failed(error);
+  const d = (data ?? {}) as Row;
+  return { ok: true, processed: Number(d.processed ?? 0), remaining: Number(d.remaining ?? 0) };
 }
 
 export interface HistoryRow { at: string; scholarId: string | null; name: string | null; oldStatus: string | null; newStatus: string | null; oldCustom: number | null; newCustom: number | null; how: string; reason: string | null; by: string }

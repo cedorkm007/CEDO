@@ -25,7 +25,7 @@ function Modal({ title, onClose, children, wide }: { title: string; onClose: () 
 }
 
 /** The question before any change: which status, an optional custom passing GWA, an optional reason, and what it would do (the impact) BEFORE it is saved. */
-function ChangeDialog({ target, count, label, initial, scale, onClose, onDone }: { target: ChangeTarget; count: number; label: string; initial: ScreenStatus; scale: GwaScale | null; onClose: () => void; onDone: (changed: number) => void }) {
+function ChangeDialog({ target, count, label, initial, scale, onClose, onDone }: { target: ChangeTarget; count: number; label: string; initial: ScreenStatus; scale: GwaScale | null; onClose: () => void; onDone: (changed: number, rechecks: number, rechecked: number) => void }) {
   const [status, setStatus] = useState<ScreenStatus>(initial);
   const [custom, setCustom] = useState<"keep" | "set" | "clear">("keep");
   const [gwa, setGwa] = useState("");
@@ -51,7 +51,7 @@ function ChangeDialog({ target, count, label, initial, scale, onClose, onDone }:
     setBusy(true); setError("");
     const r = await applyChange(target, what, reason, impact.willChange);
     setBusy(false);
-    if (r.ok) onDone(r.changed); else { setError(r.error); seq.current++; setImpact(null); setLoading(false); }
+    if (r.ok) onDone(r.changed, r.rechecks, r.rechecked); else { setError(r.error); seq.current++; setImpact(null); setLoading(false); }
   }
   return (
     <Modal title={`Set the academic status of ${label}`} onClose={busy ? () => undefined : onClose}>
@@ -129,7 +129,7 @@ function SortTh({ label, k, sort, dir, onSort }: { label: string; k: ScreenSort;
  * The school screen: ONE school's scholars, 50 at a time, with search, sorting and combinable filters done by the database on the whole school. The staff change one scholar (the status on the row), the scholars they ticked,
  * or ALL that match the filters ("Select all N matching"). Every change first shows what it would do (the impact), asks for an optional reason, and is written to the history.
  */
-export function AcademicSchoolScreen({ schoolId, schoolName, scale }: { schoolId: string; schoolName: string; scale: GwaScale | null }) {
+export function AcademicSchoolScreen({ schoolId, schoolName, scale, onChanged }: { schoolId: string; schoolName: string; scale: GwaScale | null; onChanged?: () => void }) {
   const [filter, setFilter] = useState<ScreenFilter>(EMPTY_FILTER);
   const [searchText, setSearchText] = useState("");
   const [sort, setSort] = useState<ScreenSort>("name");
@@ -243,7 +243,11 @@ export function AcademicSchoolScreen({ schoolId, schoolName, scale }: { schoolId
       </div>
 
       {dialog && <ChangeDialog target={dialog.target} count={dialog.count} label={dialog.label} initial={dialog.initial} scale={scale} onClose={() => setDialog(null)}
-        onDone={changed => { setDialog(null); setSelected(new Set()); setAllMatching(false); setFlash(`Saved: ${n(changed)} scholar${changed === 1 ? "" : "s"} changed. The open renewals are checked again in the background.`); void load(); }} />}
+        onDone={(changed, rechecks, rechecked) => {
+          setDialog(null); setSelected(new Set()); setAllMatching(false);
+          setFlash(`Saved: ${n(changed)} scholar${changed === 1 ? "" : "s"} changed. ${rechecks === 0 ? "No renewal needs to be checked again." : rechecked >= rechecks ? `${n(rechecks)} open renewal${rechecks === 1 ? " was" : "s were"} checked again.` : `${n(rechecks)} open renewals are being checked again: the count is at the top of the page.`}`);
+          onChanged?.(); void load();
+        }} />}
       {history && <ScholarHistory scholarId={history.id} name={history.name} onClose={() => setHistory(null)} />}
       {schoolHistory && <SchoolHistory schoolId={schoolId} schoolName={schoolName} onClose={() => setSchoolHistory(false)} />}
     </section>

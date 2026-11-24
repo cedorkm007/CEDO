@@ -29,7 +29,7 @@ async function downloadTemplate() {
  * Grades and Academic Management > "Set a scholar's academic status by file": for the scholars whose academic status is different from the one of their program. Download the template (Scholar ID, Full name, School, Program,
  * Academic status), fill it, upload it: the file is CHECKED first (nothing is saved), then saved with one button. Scholars are found by Scholar ID only; the name, school and program are only compared with the record.
  */
-export function AcademicBulkPanel() {
+export function AcademicBulkPanel({ onSaved }: { onSaved?: () => void } = {}) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [fileName, setFileName] = useState("");
@@ -83,7 +83,7 @@ export function AcademicBulkPanel() {
       set += r.set; reset += r.reset; skipped += r.skipped; errors += r.errors; results.push(...r.results);
       setSaving({ done: Math.min(at + ACADEMIC_BULK_SAVE_CHUNK, ready.length), total: ready.length });
     }
-    setSaving(null); forgetAcademicStatusMap();
+    setSaving(null); forgetAcademicStatusMap(); onSaved?.();
     const byI = new Map(fileRows.map(r => [r.i, r]));
     const report: string[][] = [];
     for (const c of checked) if (c.state === "error" || c.action === "skip") report.push([String(c.i), byI.get(c.i)?.scholar_id ?? "", c.state === "error" ? "Not changed" : "No change", c.messages.join(" ")]);
