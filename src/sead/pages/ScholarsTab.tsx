@@ -922,7 +922,7 @@ function ScholarsInformationSubtab() {
               <SortableTh label="Scholar ID" sortKey="scholarIdNumber" sortState={sortState} onSort={toggleSort} className="px-4 py-3 whitespace-nowrap" />
               <SortableTh label="Name" sortKey="lastName" sortState={sortState} onSort={toggleSort} className="px-4 py-3 whitespace-nowrap" />
               {activeColumns.map(c => (
-                <SortableTh key={c.key} label={c.label} sortKey={c.key} sortState={sortState} onSort={toggleSort} className="px-4 py-3 whitespace-nowrap" />
+                c.key === "academicStatus" ? <th key={c.key} scope="col" className="px-4 py-3 whitespace-nowrap">{c.label}</th> : <SortableTh key={c.key} label={c.label} sortKey={c.key} sortState={sortState} onSort={toggleSort} className="px-4 py-3 whitespace-nowrap" />
               ))}
             </tr>
           </thead>

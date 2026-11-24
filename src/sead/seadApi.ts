@@ -1,5 +1,5 @@
-import { academicStatusText } from "@/lib/academicStatus";
-import { fetchAcademicStatusMap } from "./academicStatusApi";
+import { infoStatusText } from "@/lib/academicScreen";
+import { fetchStatusOf } from "./academicScreenApi";
 import { supabase } from "@/lib/supabase";
 import { isValidHttpsUrl } from "@/lib/urlValidation";
 import type {
@@ -950,7 +950,7 @@ export interface ScholarInformationRow {
   middleName: string;
   yearLevel: string;
   school: string;
-  /** Academic / Non-academic / Not set (a program the staff have not placed yet), from the program. Filled in by the list and the export (src/sead/academicStatusApi.ts); empty when the scholar has no program. */
+  /** The scholar's own academic status and the passing GWA used for it ("Non-academic (passing GWA 2.75)"), or "Not set (counts as Academic)". Filled in by the list and the export (src/sead/academicScreenApi.ts). */
   academicStatus?: string;
   status: ScholarshipStatus;
   barangay: string;
@@ -1168,7 +1168,7 @@ const SCHOLAR_INFORMATION_SORT_COLUMNS: Record<ScholarInformationSortColumn, str
   status: ["status"],
   barangay: ["barangay"],
   course: ["course"],
-  academicStatus: ["course"],      // not a column of its own (it comes from the program): sorting by it groups the same programs together
+  academicStatus: ["course"],      // not a column of the scholars table: the Information list does not sort by it (its header is not clickable)
   birthday: ["birthday"],
   civilStatus: ["civil_status"],
   contactNo: ["contact_no"],
@@ -1184,10 +1184,10 @@ const SCHOLAR_INFORMATION_SORT_COLUMNS: Record<ScholarInformationSortColumn, str
 /** "Age" is displayed for the birthday column, so ascending Age (youngest first) is descending birthday (most recent date first) — the one column whose natural UI direction is inverted from its raw date direction. */
 const INVERTED_SORT_COLUMNS = new Set<ScholarInformationSortColumn>(["birthday"]);
 
-/** Adds the academic status (from the program) to the rows. Before the database update is run the status is simply "Not set". */
+/** Adds the academic status of each SCHOLAR and the passing GWA used for it to the rows (empty before the database update is run). */
 async function withAcademicStatus(rows: ScholarInformationRow[]): Promise<ScholarInformationRow[]> {
-  const map = await fetchAcademicStatusMap();
-  return rows.map(r => ({ ...r, academicStatus: academicStatusText(map, r.school, r.course) }));
+  const map = await fetchStatusOf(rows.map(r => r.scholarIdNumber));
+  return rows.map(r => ({ ...r, academicStatus: infoStatusText(map.get(r.scholarIdNumber)) }));
 }
 
 export async function fetchScholarsInformationPage(
