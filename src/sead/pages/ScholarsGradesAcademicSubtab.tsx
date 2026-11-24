@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { PASSING_GWA_EXPLANATION, describeScale, formatPassingGwa, parsePassingGwa, passingGwaProblem } from "@/lib/academicStatus";
-import { AcademicBulkPanel } from "../components/AcademicBulkPanel";
 import { AcademicNotSetPanel } from "../components/AcademicNotSetPanel";
 import { AcademicSchoolScreen } from "../components/AcademicSchoolScreen";
 import { AcademicRecheckBar } from "../components/AcademicRecheckBar";
@@ -102,7 +101,6 @@ export function ScholarsGradesAcademicSubtab() {
 
       {school && <AcademicSchoolScreen schoolId={school.id} schoolName={school.name} scale={scale} onChanged={() => setRecheckNonce(x => x + 1)} />}
 
-      <AcademicBulkPanel onSaved={() => setRecheckNonce(x => x + 1)} />
     </div>
   );
 }
