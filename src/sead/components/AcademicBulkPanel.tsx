@@ -97,7 +97,7 @@ export function AcademicBulkPanel() {
     setBusyList(false);
     if (!r.ok) { setError(r.missing ? `This needs the latest database update (${ACADEMIC_BULK_SQL}). Ask the IT admin to run it.` : r.error); return; }
     await downloadTable([ACADEMIC_BULK_HEADERS, ...r.rows.map(x => [x.scholarId, x.name, x.school, x.program, statusLabel(x.status)])], `Academic-status-current_${today()}.xlsx`, "xlsx", [28, 26, 34, 28, 18], "Academic status");
-    if (r.rows.length === 0) setError("Nobody has an own academic status yet, so the file only has the column names.");
+    if (r.rows.length === 0) setError("Nobody has a status set by hand or by file yet, so the file only has the column names.");
   }
 
   const shown = checked.filter(c => view === "all" ? true : view === "change" ? c.action === "set" || c.action === "reset" : view === "nochange" ? c.state !== "error" && c.action === "skip" : c.state === "error");
@@ -107,7 +107,7 @@ export function AcademicBulkPanel() {
     <section className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-4" aria-label="Set academic status by file">
       <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} className="flex w-full items-center justify-between text-left">
         <span><span className="block text-[16px] font-bold text-[#062444]">Set a scholar's academic status by file</span>
-          <span className="block text-[14px] text-slate-700">For the scholars whose academic status is different from the one of their program.</span></span>
+          <span className="block text-[14px] text-slate-700">Sets the academic status of each scholar (the status belongs to the scholar, not to the program).</span></span>
         <span className="text-[14px] font-semibold text-[#00709f]">{open ? "Hide" : "Open"}</span>
       </button>
       {open && (
@@ -127,7 +127,7 @@ export function AcademicBulkPanel() {
               <ol className="list-decimal space-y-1 pl-5 text-[14px] text-slate-700">
                 <li>Download the template and fill in one row for each scholar: Scholar ID, Full name, School, Program and the <strong>Academic status</strong> (Academic or Non-academic). Scholars are found by <strong>Scholar ID</strong> only.</li>
                 <li>Upload the file. It is only <strong>checked</strong>: nothing is saved yet.</li>
-                <li>Read the check, then press <strong>Save</strong>. The scholar's own status wins over the status of the program.</li>
+                <li>Read the check, then press <strong>Save</strong>. The status is saved on the scholar and used by the renewal.</li>
               </ol>
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" onClick={() => void downloadTemplate()} className={BTN}><Download size={14} /> Download template</button>
@@ -146,7 +146,7 @@ export function AcademicBulkPanel() {
                 <>
                   <p className="text-[14px] text-slate-700" role="status">
                     Checked {checked.length.toLocaleString("en-US")} rows: <strong className="text-green-800">{totals.valid} valid</strong>, <strong className="text-amber-900">{totals.warning} warning{totals.warning === 1 ? "" : "s"}</strong>, <strong className="text-red-800">{totals.error} error{totals.error === 1 ? "" : "s"}</strong>.
-                    {" "}<strong>{totals.willSet.toLocaleString("en-US")}</strong> will get their own status{totals.willReset > 0 ? `, ${totals.willReset} will follow the program again` : ""}{totals.noChange > 0 ? `, ${totals.noChange} need no change` : ""}.
+                    {" "}<strong>{totals.willSet.toLocaleString("en-US")}</strong> will get this status{totals.willReset > 0 ? `, ${totals.willReset} will follow the program again` : ""}{totals.noChange > 0 ? `, ${totals.noChange} need no change` : ""}.
                   </p>
                   <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show rows">
                     {([["all", `All (${checked.length})`], ["change", `Will change (${totals.willSet + totals.willReset})`], ["nochange", `No change (${totals.noChange})`], ["error", `Errors (${totals.error})`]] as const).map(([k, label]) => (
@@ -156,7 +156,7 @@ export function AcademicBulkPanel() {
                   <div className="max-h-[46vh] overflow-auto rounded-xl border border-[#e6ecf5]">
                     <table className="w-full min-w-[720px] border-collapse text-[13.5px]">
                       <thead><tr className="sticky top-0 bg-[#f8fafd] text-left text-[12px] font-semibold uppercase tracking-wide text-slate-600">
-                        <th className="px-3 py-2">Row</th><th className="px-3 py-2">Scholar ID</th><th className="px-3 py-2">Scholar</th><th className="px-3 py-2">Program status</th><th className="px-3 py-2">Now</th><th className="px-3 py-2">Result</th><th className="px-3 py-2">Details</th>
+                        <th className="px-3 py-2">Row</th><th className="px-3 py-2">Scholar ID</th><th className="px-3 py-2">Scholar</th><th className="px-3 py-2">Now</th><th className="px-3 py-2">Result</th><th className="px-3 py-2">Details</th>
                       </tr></thead>
                       <tbody>
                         {shown.slice(0, limit).map(c => (
@@ -164,7 +164,7 @@ export function AcademicBulkPanel() {
                             <td className="px-3 py-2 tabular-nums text-slate-600">{c.i}</td>
                             <td className="px-3 py-2 tabular-nums">{byI.get(c.i)?.scholar_id || "—"}</td>
                             <td className="px-3 py-2">{c.name || "—"}{c.program && <span className="block text-[12.5px] text-slate-600">{c.program}</span>}</td>
-                            <td className="px-3 py-2">{statusLabel(c.programStatus)}</td>
+                            
                             <td className="px-3 py-2">{statusLabel(c.currentStatus)}</td>
                             <td className="px-3 py-2"><span className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[12px] font-bold ${STATE_STYLE[c.state]}`}>{STATE_LABEL[c.state]}</span><span className="mt-0.5 block text-[12.5px] text-slate-700">{actionText(c)}</span></td>
                             <td className="px-3 py-2 text-slate-800">{c.messages.length ? c.messages.join(" ") : "—"}</td>

@@ -44,4 +44,4 @@ export const parsePassingGwa = (text: string): number | null => (text.trim() ===
 export const formatPassingGwa = (n: number | null | undefined): string => (n == null ? "not set" : n.toFixed(2));
 
 /** What the passing GWA means, in plain words (shown above the settings). */
-export const PASSING_GWA_EXPLANATION = "The passing GWA is set PER SCHOOL, on that school's own grading scale (shown below). In the renewal, a scholar whose GWA is WORSE than the passing GWA of their program's group in their school needs to book a consultation, even with no failed subject. Leave it empty to switch the rule off for that group.";
+export const PASSING_GWA_EXPLANATION = "The passing GWA is set PER SCHOOL, on that school's own grading scale (shown below). In the renewal, a scholar whose GWA is WORSE than the passing GWA for their status (Academic or Non-academic) in their school needs to book a consultation, even with no failed subject. Leave it empty to switch the rule off for that group.";

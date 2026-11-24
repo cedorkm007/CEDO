@@ -13,8 +13,8 @@ export const ACADEMIC_BULK_INSTRUCTIONS = [
   "How to fill this in",
   "Scholar ID: required. Scholars are found by Scholar ID only, never by name.",
   "Full name, School, Program: for you and for checking. If one is different from the record you get a warning (the row is still used).",
-  "Academic status: write Academic or Non-academic. This is the scholar's OWN status; it wins over the status of the program.",
-  "Writing the status the program already has changes nothing; if the scholar had an own status it is taken away.",
+  "Academic status: write Academic or Non-academic. This is the scholar's status; the renewal uses it.",
+  "Writing the status the scholar already has changes nothing.",
   "Nothing is saved until you have checked the file and pressed “Save”.",
 ];
 export type AcademicBulkAction = "set" | "reset" | "skip" | "none";
