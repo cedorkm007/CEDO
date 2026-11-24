@@ -3,6 +3,7 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 import { PASSING_GWA_EXPLANATION, describeScale, formatPassingGwa, parsePassingGwa, passingGwaProblem } from "@/lib/academicStatus";
 import { AcademicBulkPanel } from "../components/AcademicBulkPanel";
 import { AcademicNotSetPanel } from "../components/AcademicNotSetPanel";
+import { AcademicSchoolScreen } from "../components/AcademicSchoolScreen";
 import { fetchAcademicSettings, saveAcademicPassingGwa, type AcademicSchoolRow, type AcademicSettings } from "../academicStatusApi";
 
 /**
@@ -96,10 +97,7 @@ export function ScholarsGradesAcademicSubtab() {
         </section>
       )}
 
-      <section className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-4" aria-label="Academic status of the scholars">
-        <h2 className="text-[16px] font-bold text-[#062444]">Academic status of the scholars</h2>
-        <p className="mt-1 text-[14px] text-slate-700">The academic status (Academic or Non-academic) now belongs to <strong>each scholar</strong>, not to the program: the renewal uses the scholar's status and the passing GWA of the scholar's school for it. Programs no longer decide anything (what was set for them has been moved to the scholars). Set a scholar's status with the file below; the new screen to set it for a whole school is the next step.</p>
-      </section>
+      {school && <AcademicSchoolScreen schoolId={school.id} schoolName={school.name} scale={scale} />}
 
       <AcademicBulkPanel />
     </div>

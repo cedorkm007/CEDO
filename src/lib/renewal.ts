@@ -414,7 +414,7 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
     case "ready_for_confirmation": steps.push("Waiting for evaluator confirmation."); break;
     case "ready_to_endorse": steps.push("Waiting for the evaluator to review your case and send it to the Division Head for approval."); break;
     case "needs_gwa_consultation":
-      steps.push(`Your GWA${ev?.gwa != null ? ` (${Number(ev.gwa).toFixed(2)})` : ""} is below the passing GWA of your program${ev?.passing_gwa != null ? ` (${Number(ev.passing_gwa).toFixed(2)})` : ""}, so a consultation is needed. No documents are needed.`);
+      steps.push(`Your GWA${ev?.gwa != null ? ` (${Number(ev.gwa).toFixed(2)})` : ""} is below the passing GWA for your academic status${ev?.passing_gwa != null ? ` (${Number(ev.passing_gwa).toFixed(2)})` : ""}, so a consultation is needed. No documents are needed.`);
       consult();
       if (consultNeeded) steps.push("After your consultation, the evaluator confirms your renewal.");
       break;

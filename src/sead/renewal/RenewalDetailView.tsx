@@ -15,6 +15,8 @@ import { RenewalCsrSection } from "./RenewalCsrSection";
 import { confirmDivisionHeadDecision, fetchDivisionHeadStatus, sendToDivisionHead, type DivisionHeadStatus } from "../divisionHeadApi";
 import { approveEndorsement, fetchTerminationSignatories, returnEndorsement, type TerminationSignatory } from "../consultRenewalApi";
 import { downloadRenewalRemovalForm } from "@/lib/removalFormApi";
+import { statusLine } from "@/lib/academicScreen";
+import { fetchStatusOf, type ScholarStatusInfo } from "../academicScreenApi";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -33,6 +35,7 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<"confirm" | "confirmReconsidered" | "sendDivisionHead" | "endorse" | "approveEndorsement" | "returnEndorsement" | "return" | "revert" | "accept" | "decline" | null>(null);
   const [dh, setDh] = useState<DivisionHeadStatus | null>(null);
+  const [acad, setAcad] = useState<ScholarStatusInfo | null>(null);      // the scholar's academic status and the passing GWA used for it
   const [fileError, setFileError] = useState("");
   const [reviewing, setReviewing] = useState<{ doc: DetailDocument; approve: boolean } | null>(null);
   const [signatories, setSignatories] = useState<TerminationSignatory[] | null>(null);      // who can sign the termination form of a removal (the list the evaluator chooses from)
@@ -45,6 +48,7 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
     setSdpAfter(r.ok && r.detail.record.stage === "renewed" ? await fetchRenewalSdpAfter(recordId) : null);
     if (r.ok) {
       setDetail(r.detail); setError("");
+      void fetchStatusOf([r.detail.scholar.scholarIdNumber]).then(m => setAcad(m.get(r.detail.scholar.scholarIdNumber) ?? null));
       setEntered(r.detail.evaluation?.grades?.self_reported ? await fetchRecordEnteredGrades(recordId) : null);
       setDh(["endorsed_division_head", "needs_consultation_division_head", "ready_to_endorse", "reconsidered", "removed", "renewed"].includes(r.detail.record.stage) ? await fetchDivisionHeadStatus(recordId) : null);
     } else setError(r.error);
@@ -160,6 +164,7 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
 
       <Section title="The rule that was applied">
         <p><strong>{ev.rule_code ?? r.ruleCode ?? "—"}</strong> — {ev.rule_text ?? r.ruleText ?? "Not decided yet."}</p>
+        {acad && <p className="mt-1" data-testid="academic-status-line"><strong>Academic status:</strong> {statusLine(acad.status, acad.isSet, ev.passing_gwa ?? acad.passingGwa, ev.gwa, ev.low_gwa)}{ev.passing_gwa != null && acad.passingGwa != null && Number(ev.passing_gwa) !== Number(acad.passingGwa) ? " (the status or the passing GWA changed after this check: the renewal is checked again in the background)" : ""}</p>}
         <p className="text-[13.5px] text-slate-600 mt-1">Checked against {basis}. Previous (regular) probation: <strong>{ev.previous_probation ? "Yes" : "No"}</strong>.{r.consultationRequired ? " A face-to-face consultation is required." : ""}</p>
         {(r.consultationRequired || r.consultationDoneAt) && <p className="text-[13.5px] text-slate-600">Consultation done: {r.consultationDoneAt ? formatDay(r.consultationDoneAt) : "not yet"}{r.term === "Summer" ? ` · Prospectus hard copy received: ${r.hardCopyReceivedAt ? formatDay(r.hardCopyReceivedAt) : "not yet"}` : ""}{r.noShow ? " · Flagged: no-show" : ""}</p>}
       </Section>
