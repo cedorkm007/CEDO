@@ -7,7 +7,7 @@
 //
 //   Deploy:  supabase functions deploy removal-form-issue            (keeps the normal sign-in check)
 //
-// Body: { "referralId": "<referral id>" }
+// Body: { "referralId": "<referral id>" }   or   { "recordId": "<renewal record id>" } (a removal approved by the evaluator: the person who signs was chosen from a list)
 // Answer: { "fileName": "Scholarship Termination Form - 2108-00001.pdf", "pdfBase64": "..." }  or  { "error": "..." }
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
@@ -29,16 +29,16 @@ Deno.serve(async (req: Request) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json({ error: "Please sign in first." }, 401);
-    let body: { referralId?: string };
+    let body: { referralId?: string; recordId?: string };
     try { body = await req.json(); } catch { return json({ error: "Invalid request." }, 400); }
-    const referralId = String(body.referralId ?? "").trim();
-    if (!referralId) return json({ error: "Missing the case." }, 400);
+    const referralId = String(body.referralId ?? "").trim(), recordId = String(body.recordId ?? "").trim();
+    if (!referralId && !recordId) return json({ error: "Missing the case." }, 400);
 
     const url = Deno.env.get("SUPABASE_URL")!;
     const asCaller = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    const { data, error } = await asCaller.rpc("removal_form_data", { p_referral_id: referralId });
+    const { data, error } = recordId ? await asCaller.rpc("renewal_removal_form_data", { p_record_id: recordId }) : await asCaller.rpc("removal_form_data", { p_referral_id: referralId });
     if (error || !data) return json({ error: error?.message ?? "Couldn't prepare the form." }, 400);
     const d = data as Record<string, any>;
 
@@ -51,7 +51,7 @@ Deno.serve(async (req: Request) => {
       first: d.first_name ?? "", middle: d.middle_name ?? "", last: d.last_name ?? "", program: d.program ?? "", yearLevel: d.year_level ?? "", school: d.school ?? "", barangay: d.barangay ?? "",
       failed: ((d.failed ?? []) as Record<string, string>[]).map(r => ({ semesterYear: r.semester_year ?? "", yearLevel: r.year_level ?? "", code: r.code ?? "", subject: r.subject ?? "" })),
       issuedOn: String(d.issued_on ?? ""),
-      divisionHead: { name: d.division_head?.name ?? "", title: DIVISION_HEAD_TITLE, signature: await picture("staff-signatures", d.division_head?.signature_path) },
+      divisionHead: d.division_head ? { name: d.division_head.name ?? "", title: d.division_head.title || DIVISION_HEAD_TITLE, signature: await picture("staff-signatures", d.division_head.signature_path) } : null,
       officer: { name: d.officer?.name ?? "", title: d.officer?.title ?? "", signature: await picture("csr-assets", d.officer?.signature_path) },
     });
     const fileName = `Scholarship Termination Form - ${d.scholar_id_number}.pdf`.replace(/[\/:*?"<>|]+/g, " ");

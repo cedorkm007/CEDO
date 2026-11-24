@@ -12,6 +12,9 @@ const missing = (e: { code?: string; message?: string }) => e.code === "PGRST202
 
 /** state: waiting = endorsed for removal, waiting for the Division Head (no form yet); ready = approved and signed, the form can be downloaded (the final decision is still to be made); done = the final decision was made. */
 export type RemovalFormState = "waiting" | "ready" | "done";
+/** A form is made from a referral (the Division Head route) or from a renewal record (a removal approved by the evaluator). */
+export type RemovalFormKind = "referral" | "record";
+const formKinds = new Map<string, RemovalFormKind>();
 export interface RemovalFormItem { referralId: string; issuedOn: string; scholarIdNumber: string; name: string; yearLevel: string; school: string; program: string; state: RemovalFormState; finalDecisionMade: boolean }
 
 /** The scholar's own forms. Empty (and no error) before the database update has been run. */
@@ -28,13 +31,20 @@ export async function fetchConsultRemovalForms(): Promise<RemovalFormItem[]> {
   return (data as Row[]).map(r => {
     // before the list update (supabase_migration_removal_form_list.sql) the rows have no state: they are the forms that can be downloaded
     const state: RemovalFormState = r.state === "waiting" || r.state === "ready" || r.state === "done" ? r.state : r.final_decision_made ? "done" : "ready";
+    if (r.form_kind === "record") formKinds.set(str(r.referral_id), "record");
     return { referralId: str(r.referral_id), issuedOn: str(r.issued_on).slice(0, 10), scholarIdNumber: str(r.scholar_id_number), name: str(r.name), yearLevel: str(r.year_level), school: str(r.school), program: str(r.program), state, finalDecisionMade: state === "done" };
   });
 }
 
+/** Asks for the form of a renewal record (a removal the evaluator approved) and saves it. */
+export async function downloadRenewalRemovalForm(recordId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  formKinds.set(recordId, "record");
+  return downloadRemovalForm(recordId);
+}
+
 /** Asks for the form and saves it as a file on the person's computer. */
 export async function downloadRemovalForm(referralId: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { data, error } = await supabase.functions.invoke("removal-form-issue", { body: { referralId } });
+  const { data, error } = await supabase.functions.invoke("removal-form-issue", { body: formKinds.get(referralId) === "record" ? { recordId: referralId } : { referralId } });
   if (error) {
     let message = error.message;
     const context = (error as { context?: Response }).context;

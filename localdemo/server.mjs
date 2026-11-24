@@ -233,10 +233,10 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
     return removalBuilder;
   }
   async function removalFormIssue(res, who, body) {
-    const referralId = String(body.referralId ?? "").trim();
-    if (!referralId) return json(res, 400, { error: "Missing the case." });
+    const referralId = String(body.referralId ?? "").trim(), recordId = String(body.recordId ?? "").trim();
+    if (!referralId && !recordId) return json(res, 400, { error: "Missing the case." });
     let d;
-    try { d = await rest.withRole({ role: who.role, claims: who.claims }, async tx => (await tx.query("select public.removal_form_data($1) r", [referralId])).rows[0].r); }
+    try { d = await rest.withRole({ role: who.role, claims: who.claims }, async tx => (await tx.query(recordId ? "select public.renewal_removal_form_data($1) r" : "select public.removal_form_data($1) r", [recordId || referralId])).rows[0].r); }
     catch (e) { return json(res, 400, { error: String(e.message ?? e) }); }
     const M = await removalBuilderModule();
     const picture = async (bucket, path) => {
@@ -248,7 +248,7 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
       first: d.first_name ?? "", middle: d.middle_name ?? "", last: d.last_name ?? "", program: d.program ?? "", yearLevel: d.year_level ?? "", school: d.school ?? "", barangay: d.barangay ?? "",
       failed: (d.failed ?? []).map(r => ({ semesterYear: r.semester_year ?? "", yearLevel: r.year_level ?? "", code: r.code ?? "", subject: r.subject ?? "" })),
       issuedOn: String(d.issued_on ?? ""),
-      divisionHead: { name: d.division_head?.name ?? "", title: M.DIVISION_HEAD_TITLE, signature: await picture("staff-signatures", d.division_head?.signature_path) },
+      divisionHead: d.division_head ? { name: d.division_head.name ?? "", title: d.division_head.title || M.DIVISION_HEAD_TITLE, signature: await picture("staff-signatures", d.division_head.signature_path) } : null,
       officer: { name: d.officer?.name ?? "", title: d.officer?.title ?? "", signature: await picture("csr-assets", d.officer?.signature_path) },
     });
     return json(res, 200, { fileName: `Scholarship Termination Form - ${d.scholar_id_number}.pdf`, pdfBase64: Buffer.from(pdf).toString("base64") });

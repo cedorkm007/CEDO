@@ -56,7 +56,8 @@ export interface RemovalFormData {
   failed: RemovalFailedSubject[];
   /** The day the Division Head approved, "2026-10-28". */
   issuedOn: string;
-  divisionHead: RemovalSignatory; officer: RemovalSignatory;
+  /** The person who notes it (the Division Head, or the staff member chosen by the evaluator); null when the City Education and Development Officer is the one who signs: then only the Officer's block is printed. */
+  divisionHead: RemovalSignatory | null; officer: RemovalSignatory;
 }
 
 // ── Layout ──────────────────────────────────────────────────
@@ -248,10 +249,11 @@ async function render(d: RemovalFormData, compact: boolean): Promise<Uint8Array 
   centeredIn(page, "Name and Signature of Grantee", LX, BOXW, y + BOXH + 14, f.regular, SIZE);
   centeredIn(page, "Name and Signature of Parent/Guardian", RX, BOXW, y + BOXH + 14, f.regular, SIZE);
   y += BOXH + 38;
-  page.drawText("Noted by:", { x: LX, y: PAGE_H - y, size: SIZE, font: f.bold });
+  if (d.divisionHead) page.drawText("Noted by:", { x: LX, y: PAGE_H - y, size: SIZE, font: f.bold });
   page.drawText("Endorsed by:", { x: RX, y: PAGE_H - y, size: SIZE, font: f.bold });
   y += 16;
-  box(LX, y, d.divisionHead.name); box(RX, y, d.officer.name);
+  if (d.divisionHead) box(LX, y, d.divisionHead.name);
+  box(RX, y, d.officer.name);
   // the e-signatures attached at approval, drawn over the top of the names
   const sig = async (bytes: Uint8Array | null | undefined, x: number) => {
     if (!bytes) return;
@@ -261,8 +263,9 @@ async function render(d: RemovalFormData, compact: boolean): Promise<Uint8Array 
       page.drawImage(img, { x: x + (BOXW - img.width * k) / 2, y: PAGE_H - y - BOXH / 2 - img.height * k / 2 + 6, width: img.width * k, height: img.height * k });
     } catch { /* a signature picture that cannot be read is left out; the printed name stays */ }
   };
-  await sig(d.divisionHead.signature, LX); await sig(d.officer.signature, RX);
-  centeredWrapped(page, d.divisionHead.title || DIVISION_HEAD_TITLE, LX, BOXW, y + BOXH + 14, f.regular, SIZE, 12);
+  if (d.divisionHead) await sig(d.divisionHead.signature, LX);
+  await sig(d.officer.signature, RX);
+  if (d.divisionHead) centeredWrapped(page, d.divisionHead.title || DIVISION_HEAD_TITLE, LX, BOXW, y + BOXH + 14, f.regular, SIZE, 12);
   centeredWrapped(page, d.officer.title, RX, BOXW, y + BOXH + 14, f.regular, SIZE, 12);
   return await doc.save();
 }

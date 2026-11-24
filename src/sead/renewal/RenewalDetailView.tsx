@@ -13,7 +13,8 @@ import { Thumb } from "./RenewalEnteredGradesTab";
 import { fetchRecordEnteredGrades, type RecordEnteredGrades } from "../enteredGradesApi";
 import { RenewalCsrSection } from "./RenewalCsrSection";
 import { confirmDivisionHeadDecision, fetchDivisionHeadStatus, sendToDivisionHead, type DivisionHeadStatus } from "../divisionHeadApi";
-import { approveEndorsement, returnEndorsement } from "../consultRenewalApi";
+import { approveEndorsement, fetchTerminationSignatories, returnEndorsement, type TerminationSignatory } from "../consultRenewalApi";
+import { downloadRenewalRemovalForm } from "@/lib/removalFormApi";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -34,6 +35,9 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
   const [dh, setDh] = useState<DivisionHeadStatus | null>(null);
   const [fileError, setFileError] = useState("");
   const [reviewing, setReviewing] = useState<{ doc: DetailDocument; approve: boolean } | null>(null);
+  const [signatories, setSignatories] = useState<TerminationSignatory[] | null>(null);      // who can sign the termination form of a removal (the list the evaluator chooses from)
+  const [chosenSignatory, setChosenSignatory] = useState("");
+  const [formBusy, setFormBusy] = useState(false);
   const [chosenStatus, setChosenStatus] = useState<"Regular" | "Probationary" | null>(null);      // the status the evaluator picks when approving a one-failed-subject endorsement
 
   const load = useCallback(async () => {
@@ -46,6 +50,13 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
     } else setError(r.error);
   }, [recordId]);
   useEffect(() => { setDetail(null); void load(); }, [load]);
+  const endorsedRemoval = detail?.record.endorsedStatus === "Removed";
+  useEffect(() => {      // approving a Removed endorsement: read the list of who can sign the termination form
+    if (dialog !== "approveEndorsement" || !endorsedRemoval) return;
+    let live = true; setSignatories(null); setChosenSignatory("");
+    void fetchTerminationSignatories().then(x => { if (live) setSignatories(x.ok ? x.options : []); });
+    return () => { live = false; };
+  }, [dialog, endorsedRemoval]);
   useLiveReload(load);
 
   async function openFile(path: string) {
@@ -138,6 +149,13 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
         </Section>
       )}
 
+      {r.stage === "removed" && r.endorsedStatus === "Removed" && canAct && (
+        <Section title="Scholarship termination form">
+          <p className="text-[14px] text-slate-800">The termination form of this removal is ready to print. The scholar and the parent or guardian sign it, then it is handed to the CEDO office.</p>
+          <button type="button" disabled={formBusy} onClick={async () => { setFormBusy(true); setFileError(""); const x = await downloadRenewalRemovalForm(r.id); setFormBusy(false); if (!x.ok) setFileError(x.error); }}
+            className="mt-2 inline-flex items-center gap-2 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6b] disabled:opacity-60">{formBusy ? "Preparing the form…" : "Download the termination form"}</button>
+        </Section>
+      )}
       {r.stage === "renewed" && <RenewalCsrSection recordId={r.id} scholarName={s.name} canAct={canAct} />}
 
       <Section title="The rule that was applied">
@@ -305,7 +323,17 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
               : needsDocs ? <> approves the status <strong>{final}</strong>, but the scholar is <strong>not renewed yet</strong>: the scholar first sends the <strong>study plan and the clearance</strong>{(ev?.open_inc ?? 0) > 0 ? <> (and the letter from the dean)</> : null}, and is renewed with this status when the consultation staff approve them.</>
               : <> makes the scholar <strong>Renewed</strong> with the status <strong>{final}</strong>, and the scholar is notified.</>}</>}
             label="Note (kept in the history)" required={false} confirmLabel={needsDocs ? "Yes, approve" : "Yes, approve and renew"} danger={final === "Removed"} onCancel={() => setDialog(null)}
-            onConfirm={async note => { const x = await approveEndorsement(r.id, note, canChoose && chosenStatus && chosenStatus !== r.endorsedStatus ? chosenStatus : undefined); if (!x.ok) return x.error; setDialog(null); await after(); return null; }}>
+            extraValid={final !== "Removed" || !!chosenSignatory}
+            onConfirm={async note => { const x = await approveEndorsement(r.id, note, canChoose && chosenStatus && chosenStatus !== r.endorsedStatus ? chosenStatus : undefined, final === "Removed" ? chosenSignatory : undefined); if (!x.ok) return x.error; setDialog(null); await after(); return null; }}>
+            {final === "Removed" && (
+              <label className="mb-3 block text-[14px] font-semibold text-[#062444]">Who signs the scholarship termination form?
+                <select value={chosenSignatory} onChange={e => setChosenSignatory(e.target.value)} disabled={signatories === null} className="mt-1 w-full rounded-lg border border-[#062444]/25 bg-white px-3 py-2 text-[14px] font-normal text-slate-900">
+                  <option value="">{signatories === null ? "Loading the list…" : "Choose who signs…"}</option>
+                  {(signatories ?? []).map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                </select>
+                <span className="mt-1 block text-[13px] font-normal text-slate-600">The person you choose is printed on the form. The scholar's login is switched off, so the consultation staff hand the printed form to the scholar.</span>
+              </label>
+            )}
             {canChoose && (
               <fieldset className="mb-3">
                 <legend className="text-[14px] font-semibold text-[#062444]">Renew {s.name} as (one failed subject: you choose)</legend>
