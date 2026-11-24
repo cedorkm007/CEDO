@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Search } from "lucide-react";
 import { ACADEMIC_STATUS_LABEL, PASSING_GWA_EXPLANATION, describeScale, formatPassingGwa, parsePassingGwa, passingGwaProblem, type AcademicStatus, type GwaScale } from "@/lib/academicStatus";
+import { AcademicBulkPanel } from "../components/AcademicBulkPanel";
 import { fetchAcademicSettings, forgetAcademicStatusMap, saveAcademicPassingGwa, saveAcademicProgram, type AcademicProgramRow, type AcademicSchoolRow, type AcademicSettings } from "../academicStatusApi";
 
 type Filter = "all" | "not_set" | "academic" | "non_academic";
@@ -178,6 +179,8 @@ export function ScholarsGradesAcademicSubtab() {
           </table>
         </div>
       </section>
+
+      <AcademicBulkPanel />
     </div>
   );
 }
