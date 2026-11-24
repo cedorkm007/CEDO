@@ -296,6 +296,9 @@ export function ScholarCounselingRenewalCasesTab() {
                   {c.consultationDoneAt ? `attended on ${formatDay(c.consultationDoneAt)}` : c.nextConsultation ? `booked for ${formatSlot(c.nextConsultation.startsAt)} with ${c.nextConsultation.staff}` : "not booked yet"}
                 </p>
                 <p className="mt-1 text-slate-800"><strong>Documents:</strong> {docsSummary(c)}</p>
+                {c.documents.length === 0 && !c.legacy && ["ready_for_endorsement", "needs_study_plan_consultation", "endorsed_for_approval"].includes(c.stage) && (
+                  <p className="mt-1 text-[13.5px] text-slate-600">No document is needed yet. The study plan and the clearance (and the letter from the dean when there is an INC) are asked after the evaluator approves the status; the “Waiting for … upload” lines then appear here.</p>
+                )}
                 {c.documents.length > 0 && (
                   <ol className="mt-1 list-decimal space-y-0.5 pl-5" aria-label={`Documents ${c.name} must send`}>
                     {c.documents.map(d => (
