@@ -243,7 +243,7 @@ export function AcademicSchoolScreen({ schoolId, schoolName, scale, onChanged }:
         <button type="button" className={BTN} disabled={page >= pages || loading} onClick={() => setPage(p => p + 1)}>Next</button>
       </div>
 
-      <div className="mt-4"><AcademicUploadPanel schoolId={schoolId} schoolName={schoolName} onSaved={() => { onChanged?.(); void load(); }} /></div>
+      <div className="mt-4"><AcademicUploadPanel schoolId={schoolId} schoolName={schoolName} filter={filter} matching={total} onSaved={() => { onChanged?.(); void load(); }} /></div>
 
       {dialog && <ChangeDialog target={dialog.target} count={dialog.count} label={dialog.label} initial={dialog.initial} scale={scale} onClose={() => setDialog(null)}
         onDone={(changed, rechecks, rechecked) => {

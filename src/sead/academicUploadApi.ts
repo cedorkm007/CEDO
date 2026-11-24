@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
 import type { UploadChecked, UploadRow, UploadState } from "@/lib/academicUpload";
+import { filterToJson, type ScreenFilter } from "@/lib/academicScreen";
 
 type Row = Record<string, unknown>;
 const str = (v: unknown) => (v == null ? "" : String(v));
@@ -58,10 +59,11 @@ export async function undoUpload(batchId: string): Promise<{ ok: true; restored:
   return { ok: true, restored: Number(d.restored ?? 0), kept: Number(d.kept ?? 0) };
 }
 
-export async function fetchTemplateRows(schoolId: string, onProgress?: (n: number) => void): Promise<{ ok: true; rows: string[][] } | UploadFailed> {
+/** The scholars for the template: those of the school that match the filter set on the school screen (no filter = the whole school). */
+export async function fetchTemplateRows(schoolId: string, filter: ScreenFilter, onProgress?: (n: number) => void): Promise<{ ok: true; rows: string[][] } | UploadFailed> {
   const rows: string[][] = [];
   for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await supabase.rpc("academic_template_rows", { p_school: schoolId, p_offset: offset, p_limit: 1000 });
+    const { data, error } = await supabase.rpc("academic_template_rows", { p_school: schoolId, p_offset: offset, p_limit: 1000, p_filter: filterToJson(filter) });
     if (error) return failed(error);
     const page = (data ?? []) as Row[];
     for (const r of page) rows.push([str(r.scholar_id_number), str(r.name), str(r.school), str(r.program), str(r.year_level), r.academic_status == null ? "Not set" : r.academic_status === "non_academic" ? "Non-academic" : "Academic", r.custom_passing_gwa == null ? "" : Number(r.custom_passing_gwa).toFixed(2)]);

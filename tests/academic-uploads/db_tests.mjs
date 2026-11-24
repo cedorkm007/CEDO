@@ -20,6 +20,7 @@ async function as(uid, sql, params = []) {
 }
 const attempt = async (uid, sql, params = []) => { try { return { ok: true, rows: await as(uid, sql, params) }; } catch (e) { return { ok: false, msg: String(e.message) }; } };
 await db.exec(read(NEW)); await db.exec(read(NEW));      // twice: safe
+await db.exec("drop function if exists public.academic_template_rows(uuid, integer, integer, jsonb)");      // the later filter update replaced this function: only the original is tested here
 const MANAGER = seedId("staff:demo.admin"), PLAIN = seedId("staff:demo.plain");
 await q("insert into staff_account_tags (staff_id, tag_key) values ($1, 'scholar_management') on conflict do nothing", [MANAGER]);
 const LOWER = (await q("select id from schools where name like '%Lower-Is-Better%'"))[0].id;

@@ -7,6 +7,7 @@ import {
 } from "@/lib/academicUpload";
 import { applyChunk, checkChunk, fetchTemplateRows, finishUpload, listUploads, startUpload, undoUpload, type PastUpload } from "../academicUploadApi";
 import { downloadBytes, downloadTable } from "../creditedExport";
+import { filterIsEmpty, type ScreenFilter } from "@/lib/academicScreen";
 
 const BTN = "inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/30 bg-white px-3.5 py-2 text-[14px] font-semibold text-[#062444] hover:bg-[#f7f9fc] disabled:opacity-40";
 const BTN_DARK = "inline-flex items-center gap-1.5 rounded-lg bg-[#062444] px-5 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e] disabled:opacity-40";
@@ -25,7 +26,7 @@ interface Outcome { batchNo: number; batchId: string; set: number; same: number;
  * every row says what will happen, with the row number of the file; then it is SAVED in chunks of 500 as a numbered batch, with a progress count and "Retry remaining rows" if the connection breaks.
  * Rows with a problem are skipped (and listed in an error report with a "Problem" column); the rows that are fine are still saved. The upload can be undone for 30 days.
  */
-export function AcademicUploadPanel({ schoolId, schoolName, onSaved }: { schoolId: string; schoolName: string; onSaved?: () => void }) {
+export function AcademicUploadPanel({ schoolId, schoolName, filter, matching, onSaved }: { schoolId: string; schoolName: string; /** The search and filters set on the school screen: the template has only these scholars. */ filter: ScreenFilter; matching: number; onSaved?: () => void }) {
   const [open, setOpen] = useState(false);
   const [parsed, setParsed] = useState<ParsedUpload | null>(null);
   const [fileName, setFileName] = useState("");
@@ -58,10 +59,11 @@ export function AcademicUploadPanel({ schoolId, schoolName, onSaved }: { schoolI
   useEffect(() => { if (open) void loadPast(); }, [open, loadPast]);
 
   const totals = uploadTotals(checked);
+  const filtered = !filterIsEmpty(filter);
 
   async function downloadTemplate() {
     setBusy("template"); setError("");
-    const r = await fetchTemplateRows(schoolId);
+    const r = await fetchTemplateRows(schoolId, filter);
     setBusy(null);
     if (!r.ok) { setError(r.missing ? `This needs the latest database update (${UPLOAD_SQL}). Ask the IT admin to run it.` : r.error); return; }
     const ins = UPLOAD_INSTRUCTIONS;
@@ -70,8 +72,8 @@ export function AcademicUploadPanel({ schoolId, schoolName, onSaved }: { schoolI
       ...r.rows.map((x, k) => [...x, null, k + 1 < ins.length ? ins[k + 1] : null] as (string | null)[]),
     ];
     for (let k = r.rows.length + 1; k < ins.length; k++) rows.push([null, null, null, null, null, null, null, null, ins[k]] as never);
-    downloadBytes(await buildXlsx({ name: "Academic status", rows, widths: [18, 32, 34, 28, 12, 18, 18, 3, 90] }) as BlobPart, `Academic-status_${slug(schoolName)}_${today()}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    if (r.rows.length === 0) setError("This school has no scholars, so the template only has the column names.");
+    downloadBytes(await buildXlsx({ name: "Academic status", rows, widths: [18, 32, 34, 28, 12, 18, 18, 3, 90] }) as BlobPart, `Academic-status_${slug(schoolName)}${filtered ? "_filtered" : ""}_${today()}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    if (r.rows.length === 0) setError(filtered ? "No scholar matches the filters, so the template only has the column names." : "This school has no scholars, so the template only has the column names.");
   }
 
   async function handleFile(file: File) {
@@ -176,13 +178,13 @@ export function AcademicUploadPanel({ schoolId, schoolName, onSaved }: { schoolI
           ) : (
             <>
               <ol className="list-decimal space-y-1 pl-5 text-[14px] text-slate-700">
-                <li>Download the template: it already has every scholar of this school and their status today.</li>
+                <li>Download the template: it already has the scholars of this school and their status today{filtered ? <>: <strong>only the {n(matching)} that match the search and filters now set above</strong> (clear the filters to get the whole school)</> : " (the whole school, as no filter is set)"}.</li>
                 <li>In Excel change the <strong>Academic status</strong> of the scholars you want (Academic, Non-academic or Not set). Scholars are found by <strong>Scholar ID</strong>; keep that column as Text.</li>
                 <li>Upload the file. It is only <strong>checked</strong>: nothing is saved yet. Up to {n(UPLOAD_MAX_ROWS)} rows and {UPLOAD_MAX_MB} MB; .xlsx or .csv (commas or semicolons).</li>
                 <li>Read the check, then press <strong>Save</strong>. Rows with a problem are skipped and listed in the error report; the others are saved.</li>
               </ol>
               <div className="flex flex-wrap items-center gap-2">
-                <button type="button" onClick={() => void downloadTemplate()} disabled={busy === "template" || !!saving} className={BTN}>{busy === "template" ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Download the template of this school</button>
+                <button type="button" onClick={() => void downloadTemplate()} disabled={busy === "template" || !!saving} className={BTN}>{busy === "template" ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} {filtered ? `Download the template of the ${n(matching)} scholar${matching === 1 ? "" : "s"} shown` : "Download the template of this school"}</button>
                 <label className={`${BTN} cursor-pointer ${checking || saving ? "pointer-events-none opacity-40" : ""}`}><Upload size={14} /> Choose file
                   <input ref={fileInput} type="file" accept=".xlsx,.csv,.txt" className="sr-only" onChange={e => { const f = e.target.files?.[0]; if (f) void handleFile(f); }} /></label>
                 {fileName && <span className="text-[14px] text-slate-700">{fileName}</span>}
