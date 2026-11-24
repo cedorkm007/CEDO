@@ -5,7 +5,7 @@
 // (supabase_migration_renewal_consultation_endorse.sql); these calls just ask.
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
-import type { DocKind } from "@/lib/renewal";
+import type { DocIndicatorState, DocKind } from "@/lib/renewal";
 
 export type Done = { ok: true } | { ok: false; error: string };
 type Row = Record<string, unknown>;
@@ -30,6 +30,8 @@ export interface ConsultCase {
   consultationDoneAt: string | null; nextConsultation: { startsAt: string; staff: string } | null;
   docsSubmitted: number; docsAccepted: number; docsReturned: number; requiredCount: number;
   canEndorse: boolean; endorsedStatus: EndorseStatus | null; endorsedAt: string | null; endorsedNote: string | null; endorsedBy: string | null; legacy: boolean;
+  /** The documents the scholar must send and where each stands (empty before the database update, and when none is needed yet). */
+  documents: { kind: DocKind; label: string; state: DocIndicatorState }[];
 }
 /** What a case needs and what was uploaded: read only when the case is opened. */
 export interface ConsultCaseDocs { requiredDocuments: { kind: DocKind; label: string; satisfied: boolean; approved?: boolean }[]; documents: ConsultCaseDocument[] }
@@ -48,6 +50,7 @@ function rowToCase(r: Row): ConsultCase {
     docsSubmitted: Number(r.docs_submitted ?? 0), docsAccepted: Number(r.docs_accepted ?? 0), docsReturned: Number(r.docs_returned ?? 0), requiredCount: Number(r.required_count ?? 0),
     canEndorse: !!r.can_endorse, endorsedStatus: (strOrNull(r.endorsed_status) as EndorseStatus | null), endorsedAt: strOrNull(r.endorsed_at), endorsedNote: strOrNull(r.endorsed_note),
     endorsedBy: strOrNull(r.endorsed_by), legacy: !!r.legacy,
+    documents: ((r.documents ?? []) as Row[]).map(x => ({ kind: x.kind as DocKind, label: str(x.label), state: (str(x.state) || "missing") as DocIndicatorState })),
   };
 }
 

@@ -97,6 +97,19 @@ export const DIVISION_HEAD_OPTION_INFO: Record<"approve_probationary" | "removed
 };
 
 export type DocKind = "study_plan" | "inc_letter" | "prospectus" | "clearance";
+/** Where one required document stands for the staff: nothing uploaded yet, returned, waiting for approval, or approved. */
+export type DocIndicatorState = "missing" | "returned" | "submitted" | "accepted";
+const DOC_LOWER: Record<string, string> = { study_plan: "study plan", inc_letter: "letter from the dean", clearance: "clearance", prospectus: "prospectus" };
+/** The words of the indicator under a case: "Waiting for study plan upload", "Waiting for a new clearance upload", ... */
+export function docIndicatorText(kind: string, state: DocIndicatorState): string {
+  const name = DOC_LOWER[kind] ?? kind;
+  switch (state) {
+    case "missing": return `Waiting for ${name} upload`;
+    case "returned": return `Waiting for a new ${name} upload (it was returned)`;
+    case "submitted": return `${name.charAt(0).toUpperCase()}${name.slice(1)} uploaded — waiting for your approval`;
+    default: return `${name.charAt(0).toUpperCase()}${name.slice(1)} approved`;
+  }
+}
 export const DOC_LABEL: Record<DocKind, string> = {
   study_plan: "Study plan",
   inc_letter: "Letter from your dean",
