@@ -59,7 +59,7 @@ export function ScholarsGradesAcademicSubtab() {
       <AcademicNotSetPanel />
       <section className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-4" aria-label="School">
         <h2 className="text-[16px] font-bold text-[#062444]">School</h2>
-        <p className="mt-1 text-[14px] text-slate-700">Choose the school first. Its passing GWA and the academic status of its programs are set below, for that school only.</p>
+        <p className="mt-1 text-[14px] text-slate-700">Choose the school first. Its passing GWA is set below, for that school only.</p>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="text-[14px] font-semibold text-[#062444]">Find a school
             <input value={schoolQuery} onChange={e => setSchoolQuery(e.target.value)} placeholder="Type part of the name" className="mt-1 block w-56 rounded-lg border border-[#062444]/25 bg-white px-3 py-2 text-[14px] font-normal" />
@@ -92,7 +92,7 @@ export function ScholarsGradesAcademicSubtab() {
           </div>
           {(acProblem || nonProblem) && <p role="status" className="mt-2 text-[14px] text-amber-900">{acProblem ?? nonProblem}</p>}
           {gwaMsg && <p role={gwaMsg.ok ? "status" : "alert"} className={`mt-2 text-[14px] ${gwaMsg.ok ? "text-green-800" : "text-red-700"}`}>{gwaMsg.ok && <CheckCircle2 size={14} className="mr-1 inline" aria-hidden="true" />}{gwaMsg.text}</p>}
-          <p className="mt-2 text-[13.5px] text-slate-600">Now: Academic {formatPassingGwa(school.academicPassingGwa)} · Non-academic {formatPassingGwa(school.nonAcademicPassingGwa)}. A special program has its own passing GWA (higher or lower): tick it in the table below.</p>
+          <p className="mt-2 text-[13.5px] text-slate-600">Now: Academic {formatPassingGwa(school.academicPassingGwa)} · Non-academic {formatPassingGwa(school.nonAcademicPassingGwa)}. A scholar can have a custom passing GWA of their own (kept from the special programs).</p>
         </section>
       )}
 
