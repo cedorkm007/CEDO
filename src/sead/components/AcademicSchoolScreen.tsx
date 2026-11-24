@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, CheckCircle2, History, Loader2, Search, X } from "l
 import { EMPTY_FILTER, SCREEN_PAGE_SIZE, SCREEN_SQL, SCREEN_STATUS_LABEL, changeText, filterIsEmpty, howText, impactLines, type ScreenFilter, type ScreenImpact, type ScreenStatus } from "@/lib/academicScreen";
 import { applyChange, fetchImpact, fetchScholarHistory, fetchSchoolHistory, fetchScreenFacets, fetchScreenPage, type ChangeTarget, type HistoryRow, type ScreenFacets, type ScreenRow, type ScreenSort } from "../academicScreenApi";
 import { parsePassingGwa, passingGwaProblem, type GwaScale } from "@/lib/academicStatus";
+import { AcademicUploadPanel } from "./AcademicUploadPanel";
 
 const BTN = "inline-flex items-center gap-1.5 rounded-lg border border-[#062444]/30 bg-white px-3 py-1.5 text-[13.5px] font-semibold text-[#062444] hover:bg-[#f7f9fc] disabled:opacity-40";
 const BTN_DARK = "inline-flex items-center gap-1.5 rounded-lg bg-[#062444] px-4 py-2 text-[14px] font-bold text-white hover:bg-[#0a3a6e] disabled:opacity-40";
@@ -180,7 +181,7 @@ export function AcademicSchoolScreen({ schoolId, schoolName, scale, onChanged }:
     <section className="rounded-xl border border-[#e6ecf5] bg-white px-4 py-4" aria-label="Scholars of the school">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div><h2 className="text-[16px] font-bold text-[#062444]">Scholars of {schoolName}</h2>
-          <p className="mt-1 text-[14px] text-slate-700">Set the academic status of each scholar here. Change one scholar on its row, or tick several, or filter and use <strong>Select all matching</strong>. Every change shows what it will do before it is saved and is kept in the history.</p></div>
+          <p className="mt-1 text-[14px] text-slate-700">Set the academic status of each scholar here. Change one scholar on its row, or tick several, or filter and use <strong>Select all matching</strong>, or <strong>upload a file</strong> below. Every change shows what it will do before it is saved and is kept in the history.</p></div>
         <button type="button" className={BTN} onClick={() => setSchoolHistory(true)}><History size={14} /> History of this school</button>
       </div>
 
@@ -241,6 +242,8 @@ export function AcademicSchoolScreen({ schoolId, schoolName, scale, onChanged }:
         <span>Page {page} of {pages} · {n(total)} scholar{total === 1 ? "" : "s"}{filterIsEmpty(filter) ? "" : " match"}</span>
         <button type="button" className={BTN} disabled={page >= pages || loading} onClick={() => setPage(p => p + 1)}>Next</button>
       </div>
+
+      <div className="mt-4"><AcademicUploadPanel schoolId={schoolId} schoolName={schoolName} onSaved={() => { onChanged?.(); void load(); }} /></div>
 
       {dialog && <ChangeDialog target={dialog.target} count={dialog.count} label={dialog.label} initial={dialog.initial} scale={scale} onClose={() => setDialog(null)}
         onDone={(changed, rechecks, rechecked) => {
