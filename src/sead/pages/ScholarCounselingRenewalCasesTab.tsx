@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ChevronDown, ChevronRight, Clock, Loader2, Paperclip, RotateCcw, Search } from "lucide-react";
 import { useLiveReload } from "@/lib/liveUpdates";
-import { DOC_LABEL, formatDateTime, formatDay, formatSlot } from "@/lib/renewal";
+import { DOC_LABEL, docIndicatorText, formatDateTime, formatDay, formatSlot } from "@/lib/renewal";
 import { reviewDocument } from "../renewalApi";
 import {
   ENDORSE_STATUSES, ENDORSE_STATUS_INFO, allowResubmission, endorseStatus, fetchConsultCaseCounts, fetchConsultCaseDocs, fetchConsultCaseOne, fetchConsultCasesPage, fetchConsultCaseTerms,
@@ -296,6 +296,15 @@ export function ScholarCounselingRenewalCasesTab() {
                   {c.consultationDoneAt ? `attended on ${formatDay(c.consultationDoneAt)}` : c.nextConsultation ? `booked for ${formatSlot(c.nextConsultation.startsAt)} with ${c.nextConsultation.staff}` : "not booked yet"}
                 </p>
                 <p className="mt-1 text-slate-800"><strong>Documents:</strong> {docsSummary(c)}</p>
+                {c.documents.length > 0 && (
+                  <ol className="mt-1 list-decimal space-y-0.5 pl-5" aria-label={`Documents ${c.name} must send`}>
+                    {c.documents.map(d => (
+                      <li key={d.kind} className={d.state === "accepted" ? "text-green-900" : d.state === "submitted" ? "text-sky-900" : "text-amber-900"}>
+                        <span className="font-semibold">{docIndicatorText(d.kind, d.state)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
                 <button type="button" onClick={() => toggleOpen(c.recordId)} aria-expanded={isOpen}
                   className="mt-2 inline-flex items-center gap-1 text-[13.5px] font-semibold text-[#00709f] hover:underline">
                   {isOpen ? <ChevronDown size={15} aria-hidden="true" /> : <ChevronRight size={15} aria-hidden="true" />} {isOpen ? "Hide the documents" : "Show the documents"}
