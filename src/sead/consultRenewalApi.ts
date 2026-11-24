@@ -50,7 +50,8 @@ function rowToCase(r: Row): ConsultCase {
     docsSubmitted: Number(r.docs_submitted ?? 0), docsAccepted: Number(r.docs_accepted ?? 0), docsReturned: Number(r.docs_returned ?? 0), requiredCount: Number(r.required_count ?? 0),
     canEndorse: !!r.can_endorse, endorsedStatus: (strOrNull(r.endorsed_status) as EndorseStatus | null), endorsedAt: strOrNull(r.endorsed_at), endorsedNote: strOrNull(r.endorsed_note),
     endorsedBy: strOrNull(r.endorsed_by), legacy: !!r.legacy,
-    documents: ((r.documents ?? []) as Row[]).map(x => ({ kind: x.kind as DocKind, label: str(x.label), state: (str(x.state) || "missing") as DocIndicatorState })),
+    documents: ((r.documents ?? []) as Row[]).map(x => ({ kind: x.kind as DocKind, label: str(x.label), state: (str(x.state) || "missing") as DocIndicatorState }))
+      .sort((x, y) => DOC_ORDER.indexOf(x.kind) - DOC_ORDER.indexOf(y.kind)),      // study plan first, then the clearance, then the letter from the dean
   };
 }
 
@@ -84,6 +85,7 @@ export async function fetchConsultCaseDocs(recordId: string): Promise<{ ok: true
     },
   };
 }
+const DOC_ORDER: string[] = ["study_plan", "clearance", "inc_letter"];
 export const ALLOW_RESUBMISSION_SQL = "supabase_migration_renewal_allow_resubmission.sql";
 /** "Allow resubmission" on an APPROVED document: it counts as not approved and the scholar can upload a new file (the old one is deleted when they do). Consultation staff only. */
 export async function allowResubmission(documentId: string): Promise<Done> {
