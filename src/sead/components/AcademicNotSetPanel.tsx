@@ -36,7 +36,7 @@ export function AcademicNotSetPanel() {
   return (
     <section className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-4" aria-label="Scholars with no academic status">
       <h2 className="flex items-center gap-2 text-[16px] font-bold text-amber-950"><AlertTriangle size={16} aria-hidden="true" /> {n(matters + off)} scholar{matters + off === 1 ? " has" : "s have"} no academic status</h2>
-      <p className="mt-1 text-[14px] text-slate-800">A scholar with no status is checked as <strong>Academic</strong> in the renewal, as before. The status belongs to the scholar, so it has to be set for each scholar.</p>
+      <p className="mt-1 text-[14px] text-slate-800">A scholar with no status is checked as <strong>Academic</strong> in the renewal, as before. The status belongs to the scholar, so it has to be set for each scholar. Test scholars (the school named “test”, and names like test1) are not counted.</p>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-[14px] text-slate-800">
         <li><strong>{n(matters)}</strong> {matters === 1 ? "is" : "are"} in schools with a passing GWA set: for them the status <strong>changes the result</strong> of the renewal (the Academic and Non-academic numbers differ).</li>
         <li><strong>{n(off)}</strong> {off === 1 ? "is" : "are"} in schools with no passing GWA set: the GWA rule is <strong>off</strong> there for now, so the status changes nothing until a passing GWA is set.</li>
