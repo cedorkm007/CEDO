@@ -21,6 +21,10 @@ export interface DailyRecord {
   staffRecommendations: string;
   visitType: VisitType;
   createdAt: string;
+  /** how many times the findings / recommendations were edited after the visit (0 = never) — supabase_migration_daily_records_edit.sql */
+  editCount: number;
+  lastEditedAt: string | null;
+  editedByName: string;
 }
 
 function rowToDailyRecord(r: Record<string, unknown>): DailyRecord {
@@ -40,6 +44,9 @@ function rowToDailyRecord(r: Record<string, unknown>): DailyRecord {
     staffRecommendations: String(r.staff_recommendations ?? ""),
     visitType: (r.visit_type as VisitType) ?? "Office",
     createdAt: String(r.created_at ?? ""),
+    editCount: Number(r.edit_count ?? 0),
+    lastEditedAt: r.last_edited_at == null ? null : String(r.last_edited_at),
+    editedByName: String(r.edited_by_name ?? ""),
   };
 }
 
@@ -125,6 +132,59 @@ export async function createDailyRecord(input: NewDailyRecordInput): Promise<{ o
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+// ── Editing the findings and the staff recommendations after the visit (supabase_migration_daily_records_edit.sql) ──
+
+export type UpdateRecordResult =
+  | { ok: true; changed: boolean; editCount: number; lastEditedAt: string | null; editedByName: string }
+  | { ok: false; conflict: true; editCount: number }
+  | { ok: false; conflict?: false; error: string; missing: boolean };
+
+/** Saves the new findings and recommendations of ONE record (only its writer; the database refuses anybody else). `expectedEditCount` is the version that was open: if the record was changed since, nothing is saved (`conflict`). */
+export async function updateDailyRecord(id: string, findings: string, staffRecommendations: string, reason: string, expectedEditCount: number): Promise<UpdateRecordResult> {
+  const { data, error } = await supabase.rpc("counseling_update_daily_record", {
+    p_id: id, p_findings: findings.trim(), p_staff_recommendations: staffRecommendations.trim(), p_reason: reason.trim(), p_expected_edit_count: expectedEditCount,
+  });
+  if (error) return { ok: false, error: error.message, missing: isMissingFn(error) };
+  const r = (data ?? {}) as Record<string, unknown>;
+  if (r.conflict) return { ok: false, conflict: true, editCount: Number(r.edit_count ?? 0) };
+  return {
+    ok: true, changed: !!r.changed, editCount: Number(r.edit_count ?? 0),
+    lastEditedAt: r.last_edited_at == null ? null : String(r.last_edited_at), editedByName: r.edited_by_name == null ? "" : String(r.edited_by_name),
+  };
+}
+
+export interface RecordEdit {
+  editNo: number; editedAt: string; editedByName: string; reason: string;
+  oldFindings: string; newFindings: string; oldStaffRecommendations: string; newStaffRecommendations: string;
+}
+
+/** Every edit of one record, newest first. */
+export async function fetchRecordHistory(id: string): Promise<{ ok: true; edits: RecordEdit[] } | { ok: false; error: string; missing: boolean }> {
+  const { data, error } = await supabase.rpc("counseling_record_history", { p_id: id });
+  if (error) return { ok: false, error: error.message, missing: isMissingFn(error) };
+  return {
+    ok: true,
+    edits: ((data ?? []) as Record<string, unknown>[]).map(r => ({
+      editNo: Number(r.edit_no), editedAt: String(r.edited_at ?? ""), editedByName: String(r.edited_by_name ?? ""), reason: String(r.reason ?? ""),
+      oldFindings: String(r.old_findings ?? ""), newFindings: String(r.new_findings ?? ""),
+      oldStaffRecommendations: String(r.old_staff_recommendations ?? ""), newStaffRecommendations: String(r.new_staff_recommendations ?? ""),
+    })),
+  };
+}
+
+/** ONE record, as the list shows it (the latest saved text). */
+export async function fetchDailyRecordById(id: string): Promise<DailyRecord | null> {
+  const { data, error } = await supabase.rpc("counseling_daily_record_get", { p_id: id });
+  const row = ((data ?? []) as Record<string, unknown>[])[0];
+  return error || !row ? null : rowToDailyRecord(row);
+}
+
+/** The signed-in staff member's id (to show the Edit button only on their own records). */
+export async function fetchMyUserId(): Promise<string | null> {
+  const { data } = await supabase.auth.getUser();
+  return data.user?.id ?? null;
 }
 
 /**

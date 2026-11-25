@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, ClipboardPlus, FileSpreadsheet, Download, Eye, Loader2 } from "lucide-react";
 import {
-  DAILY_RECORDS_PAGE_SIZE, fetchAllDailyRecordsForExport, fetchDailyRecordConsultants, fetchDailyRecordsPage, VISIT_TYPES,
+  DAILY_RECORDS_PAGE_SIZE, fetchAllDailyRecordsForExport, fetchDailyRecordConsultants, fetchDailyRecordsPage, fetchMyUserId, VISIT_TYPES,
   type DailyRecord, type DailyRecordFilters,
 } from "../scholarCounselingApi";
 import { fetchScholarInformationByIdNumber, type ScholarInformationRow } from "../seadApi";
@@ -56,6 +56,8 @@ export function ScholarCounselingTab() {
   const [exporting, setExporting] = useState<{ done: number; total: number } | null>(null);
   const [exportMsg, setExportMsg] = useState("");
   const request = useRef(0);
+  const [meId, setMeId] = useState<string | null>(null);      // who is signed in: only the writer of a record sees its Edit button
+  useEffect(() => { void fetchMyUserId().then(setMeId); }, []);
 
   // remember the page, the filters, the search and the sort (also after another tool or a reload)
   useEffect(() => {
@@ -236,7 +238,7 @@ export function ScholarCounselingTab() {
 
       {showAdd && <AddDailyRecordModal onClose={() => setShowAdd(false)} onCreated={() => void load()} />}
       {showBulk && <BulkDailyRecordsModal onClose={() => setShowBulk(false)} onDone={() => void load()} />}
-      {viewing && <DailyRecordDetailModal record={viewing} onClose={() => setViewing(null)} profileLoading={profileLoading} onViewProfile={() => void openProfile(viewing.scholarIdNumber)} />}
+      {viewing && <DailyRecordDetailModal record={viewing} meId={meId} onChanged={r => { setViewing(r); setRows(list => (list ? list.map(x => (x.id === r.id ? r : x)) : list)); }} onClose={() => setViewing(null)} profileLoading={profileLoading} onViewProfile={() => void openProfile(viewing.scholarIdNumber)} />}
       {profile && <ScholarProfilePreviewModal scholar={profile} onClose={() => setProfile(null)} />}
     </div>
   );
