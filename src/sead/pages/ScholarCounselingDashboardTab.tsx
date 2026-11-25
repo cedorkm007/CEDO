@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Users, Home, AlertTriangle, Clock, CalendarDays, ChevronRight, CheckCircle2, Printer, Search } from "lucide-react";
 import { downloadRemovalForm, fetchConsultRemovalForms, type RemovalFormItem } from "@/lib/removalFormApi";
 import { TerminationFormsModal } from "../components/TerminationFormsModal";
@@ -10,6 +10,9 @@ import { ServerPagination } from "@/app/components/ServerPagination";
 import { pageCount } from "@/lib/dailyRecordsView";
 import { dashboardTarget, type DashboardKind, type DashboardTarget } from "@/lib/dashboardLinks";
 import { manilaToday } from "@/lib/renewal";
+import { useTabActive } from "@/lib/keepAlive";
+import { dashboardFromSearch, dashboardToParams } from "@/lib/consultUrl";
+import { ctReplace } from "../consultUrl";
 
 function SummaryCard({ icon, title, note, children }: { icon: React.ReactNode; title: string; note?: string; children: React.ReactNode }) {
   return (
@@ -47,10 +50,12 @@ export function ScholarCounselingDashboardTab({ onOpenTarget }: { onOpenTarget?:
   const [counts, setCounts] = useState<DashboardCounts | null>(null);
   const [countsFailed, setCountsFailed] = useState(false);
   const [queue, setQueue] = useState<ListPage>(EMPTY_PAGE);
-  const [queuePage, setQueuePage] = useState(1);
+  const active = useTabActive();
+  const fromAddress = useMemo(() => dashboardFromSearch(window.location.search), []);      // the page of each list, as the address says
+  const [queuePage, setQueuePage] = useState(fromAddress.queue);
   const [queueLoading, setQueueLoading] = useState(true);
   const [approved, setApproved] = useState<ListPage>(EMPTY_PAGE);
-  const [approvedPage, setApprovedPage] = useState(1);
+  const [approvedPage, setApprovedPage] = useState(fromAddress.approved);
   const [approvedLoading, setApprovedLoading] = useState(true);
   const [typed, setTyped] = useState("");
   const [approvedSearch, setApprovedSearch] = useState("");
@@ -107,6 +112,9 @@ export function ScholarCounselingDashboardTab({ onOpenTarget }: { onOpenTarget?:
     const t = window.setTimeout(() => { setApprovedSearch(typed); setApprovedPage(1); }, 300);
     return () => window.clearTimeout(t);
   }, [typed, approvedSearch]);
+
+  // the address says which page of each list is shown (it only REPLACES the current step of the history)
+  useEffect(() => { if (active) ctReplace(dashboardToParams({ queue: queuePage, approved: approvedPage })); }, [active, queuePage, approvedPage]);
 
   const reloadAll = () => { void loadCounts(); void loadQueue(); void loadApproved(); void loadOthers(); };
 

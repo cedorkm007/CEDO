@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, ClipboardPlus, FileSpreadsheet, Download, Eye, Loader2 } from "lucide-react";
 import {
-  DAILY_RECORDS_PAGE_SIZE, fetchAllDailyRecordsForExport, fetchDailyRecordConsultants, fetchDailyRecordsPage, fetchMyUserId, VISIT_TYPES,
+  DAILY_RECORDS_PAGE_SIZE, fetchAllDailyRecordsForExport, fetchDailyRecordById, fetchDailyRecordConsultants, fetchDailyRecordsPage, fetchMyUserId, VISIT_TYPES,
   type DailyRecord, type DailyRecordFilters,
 } from "../scholarCounselingApi";
 import { fetchScholarInformationByIdNumber, type ScholarInformationRow } from "../seadApi";
@@ -16,6 +16,9 @@ import { SortableTh, useSortState } from "@/app/components/SortableTable";
 import { buildXlsx } from "@/lib/xlsxLite";
 import { supabase } from "@/lib/supabase";
 import { manilaToday } from "@/lib/renewal";
+import { useTabActive } from "@/lib/keepAlive";
+import { dailyFromSearch, dailyToParams, recordFromSearch } from "@/lib/consultUrl";
+import { ctPush, ctReplace, isToolShown } from "../consultUrl";
 import {
   EMPTY_DAILY_FILTERS, EXPORT_HEADERS, exportFileName, exportRow, filtersActive, pageCount, QUICK_RANGES, quickRange, readRemembered, REMEMBER_KEY, type QuickRange,
 } from "@/lib/dailyRecordsView";
@@ -35,7 +38,8 @@ function readStored(): ReturnType<typeof readRemembered> {
  * visit is in the record's detail window (the eye button). "Export" downloads ALL the records that match the filters and the search. The page, the filters and the search are remembered.
  */
 export function ScholarCounselingTab() {
-  const stored = useMemo(readStored, []);
+  const stored = useMemo(() => dailyFromSearch(window.location.search) ?? readStored(), []);      // the address first, the choices remembered in this browser tab second
+  const active = useTabActive();
   const [filters, setFilters] = useState<DailyRecordFilters>(stored?.filters ?? EMPTY_DAILY_FILTERS);
   const [typed, setTyped] = useState(stored?.filters.search ?? "");
   const { sortState, toggleSort } = useSortState({ key: stored?.sortKey ?? "date", direction: stored?.sortDir ?? "desc" });
@@ -63,6 +67,48 @@ export function ScholarCounselingTab() {
   useEffect(() => {
     try { window.sessionStorage.setItem(REMEMBER_KEY, JSON.stringify({ filters, sortKey: sort.key, sortDir: sort.dir, page })); } catch { /* private window: it just is not remembered */ }
   }, [filters, sort, page]);
+
+  // the address says the same (it only REPLACES the current step of the history, so the Back button is not flooded)
+  useEffect(() => {
+    if (active) ctReplace(dailyToParams({ filters, sortKey: sort.key, sortDir: sort.dir, page }));
+  }, [active, filters, sort, page]);
+
+  // ── the open record is part of the address too: ?ctRecord=<id> (&ctMode=edit while it is being edited) ──
+  const [initialEditing, setInitialEditing] = useState(false);
+  const [recordNote, setRecordNote] = useState("");
+  const viewingRef = useRef<DailyRecord | null>(null);
+  viewingRef.current = viewing;
+  /** Opens the record the address names (a refresh, a link, Back or Forward). A record that is gone, or that the person may not see, gives a short message and leaves the address clean. */
+  const openFromAddress = useCallback(async (id: string, edit: boolean) => {
+    setRecordNote("");
+    const rec = await fetchDailyRecordById(id);
+    if (!rec) { setViewing(null); setRecordNote("That record could not be opened. It may have been removed, or you may not be allowed to see it."); ctReplace({ ctRecord: null, ctMode: null }); return; }
+    setInitialEditing(edit); setViewing(rec);
+  }, []);
+  useEffect(() => { const r = recordFromSearch(window.location.search); if (r) void openFromAddress(r.id, r.edit); }, [openFromAddress]);
+  useEffect(() => {
+    const onPop = () => {
+      if (!isToolShown()) return;
+      const r = recordFromSearch(window.location.search);
+      if (!r) { setViewing(null); setInitialEditing(false); return; }
+      if (viewingRef.current?.id !== r.id) void openFromAddress(r.id, r.edit);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [openFromAddress]);
+  // coming back to this tab by pressing its name: the address has no record, so none is open
+  useEffect(() => { if (active && !recordFromSearch(window.location.search)) setViewing(null); }, [active]);
+  /** Opening a record is ONE step of the history; closing it goes Back to the step before (or, when the record was opened from a link, just takes it out of the address). */
+  function openRecord(r: DailyRecord) {
+    setRecordNote(""); setInitialEditing(false); setViewing(r);
+    ctPush({ ctRecord: r.id, ctMode: null }, { state: { ctRecord: r.id } });
+  }
+  function closeRecord() {
+    const st = window.history.state as { ctRecord?: string } | null;
+    if (viewing && st?.ctRecord === viewing.id) { window.history.back(); return; }      // the popstate above closes it
+    setViewing(null); setInitialEditing(false);
+    ctReplace({ ctRecord: null, ctMode: null });
+  }
 
   // a new sort starts again from page 1 (not on the first run, so a remembered page is kept)
   const firstSort = useRef(true);
@@ -176,6 +222,7 @@ export function ScholarCounselingTab() {
 
       {missing && <p role="status" className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[14px] text-amber-950">The Daily Records list needs the latest database update (supabase_migration_consultation_daily_records_paging.sql). Ask the IT admin to run it.</p>}
       {error && <p role="alert" className="mb-3 text-[14px] text-red-700">Couldn't load the records: {error}</p>}
+      {recordNote && <p role="alert" className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[14px] text-amber-950">{recordNote} <button type="button" onClick={() => setRecordNote("")} className="font-semibold text-[#00709f] hover:underline">OK</button></p>}
       {exporting && (
         <div className="mb-3" role="status">
           <p className="mb-1 text-[13.5px] text-slate-800">Preparing the export… {exporting.done.toLocaleString("en-US")} of {exporting.total.toLocaleString("en-US")} records</p>
@@ -225,7 +272,7 @@ export function ScholarCounselingTab() {
                   <td className="px-3 py-2.5 whitespace-nowrap text-slate-700">{r.visitType}</td>
                   <td className="px-3 py-2.5 text-slate-700"><span className="block truncate" title={r.consultedByName || undefined}>{r.consultedByName || "—"}</span></td>
                   <td className="px-3 py-2.5 text-center">
-                    <button type="button" onClick={() => setViewing(r)} title="View record" aria-label={`View record of ${r.name}`}
+                    <button type="button" onClick={() => openRecord(r)} title="View record" aria-label={`View record of ${r.name}`}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#0077b6] hover:bg-[#e8f3fa] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0077b6]"><Eye size={17} aria-hidden="true" /></button>
                   </td>
                 </tr>
@@ -238,7 +285,8 @@ export function ScholarCounselingTab() {
 
       {showAdd && <AddDailyRecordModal onClose={() => setShowAdd(false)} onCreated={() => void load()} />}
       {showBulk && <BulkDailyRecordsModal onClose={() => setShowBulk(false)} onDone={() => void load()} />}
-      {viewing && <DailyRecordDetailModal record={viewing} meId={meId} onChanged={r => { setViewing(r); setRows(list => (list ? list.map(x => (x.id === r.id ? r : x)) : list)); }} onClose={() => setViewing(null)} profileLoading={profileLoading} onViewProfile={() => void openProfile(viewing.scholarIdNumber)} />}
+      {viewing && <DailyRecordDetailModal record={viewing} meId={meId} onChanged={r => { setViewing(r); setRows(list => (list ? list.map(x => (x.id === r.id ? r : x)) : list)); }} onClose={closeRecord}
+        initialEditing={initialEditing} onEditingChange={editing => { ctReplace({ ctMode: editing ? "edit" : null }); }} profileLoading={profileLoading} onViewProfile={() => void openProfile(viewing.scholarIdNumber)} />}
       {profile && <ScholarProfilePreviewModal scholar={profile} onClose={() => setProfile(null)} />}
     </div>
   );

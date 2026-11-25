@@ -38,6 +38,8 @@ import { ResearchProjectMonitoringTab } from "@/sead/pages/ResearchProjectMonito
 import { FinancialAssistanceToolsPage } from "@/sead/FinancialAssistanceToolsPage";
 import { KeepAlivePane, TOOL_STALE_MS } from "@/lib/keepAlive";
 import { ScholarCounselingToolPage } from "@/sead/ScholarCounselingToolPage";
+import { requestConsultTab } from "@/sead/consultUrl";
+import { CT_PARAMS } from "@/lib/consultUrl";
 import { ScholarsGradesMonitoringPage } from "@/sead/ScholarsGradesMonitoringPage";
 import { ScholarRenewalPage } from "@/sead/ScholarRenewalPage";
 import { MyResearchPage } from "@/sead/pages/MyResearchPage";
@@ -202,6 +204,8 @@ type NotifType = "submission" | "leave_request" | "referral_approval" | "renewal
 function renewalNotifPage(n: { title: string }): "scholarRenewal" | "scholarCounseling" {
   return /^A consultation was/.test(n.title) ? "scholarCounseling" : "scholarRenewal";
 }
+/** A consultation notice ("A consultation was booked / changed / cancelled") opens the Consultation Tool on its Appointments tab, where the booking is. */
+function openNoticePage(open: (p: Page) => void, p: "scholarRenewal" | "scholarCounseling") { if (p === "scholarCounseling") requestConsultTab("appointments"); open(p); }
 const RENEWAL_PAGE_LABEL: Record<"scholarRenewal" | "scholarCounseling", string> = { scholarRenewal: "Open Scholar Renewal", scholarCounseling: "Open the Consultation Tool" };
 interface AppNotification {
   id: string; type: NotifType; userId: string; userName: string;
@@ -1934,7 +1938,7 @@ function AdminNotificationsPage({ notifications, submissions, leaveRequests, all
               <div className="space-y-3">
                 <p className="text-sm text-foreground">{selected.message}</p>
                 {canOpen(renewalNotifPage(selected))&&(
-                  <button onClick={()=>{ onOpenPage(renewalNotifPage(selected)); setSelected(null); }} className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">{RENEWAL_PAGE_LABEL[renewalNotifPage(selected)]}</button>
+                  <button onClick={()=>{ openNoticePage(onOpenPage, renewalNotifPage(selected)); setSelected(null); }} className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">{RENEWAL_PAGE_LABEL[renewalNotifPage(selected)]}</button>
                 )}
               </div>
             )}
@@ -2051,7 +2055,7 @@ function StaffNotificationsPage({ userId, notifications, submissions, onMarkRead
                     <p className="text-sm text-slate-700">{n.message}</p>
                     <p className="text-xs text-muted-foreground mt-1.5">{formatTimestamp(n.timestamp)}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {page && canOpen(page) && <button onClick={e => { e.stopPropagation(); onMarkRead(n.id); onOpenPage(page); }} className="px-3.5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">{RENEWAL_PAGE_LABEL[page]}</button>}
+                      {page && canOpen(page) && <button onClick={e => { e.stopPropagation(); onMarkRead(n.id); openNoticePage(onOpenPage, page); }} className="px-3.5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">{RENEWAL_PAGE_LABEL[page]}</button>}
                       {n.type === "storage" && canOpen("storageTool") && <button onClick={e => { e.stopPropagation(); onMarkRead(n.id); onOpenPage("storageTool"); }} className="px-3.5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">Open Storage Tool</button>}
                       {n.type === "referral_approval" && <button onClick={e => { e.stopPropagation(); onMarkRead(n.id); setReferralFor(n); }} className="px-3.5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">Review and decide</button>}
                     </div>
@@ -3008,6 +3012,8 @@ export default function App() {
     const url = new URL(window.location.href);
     if (page === "home") url.searchParams.delete("page");
     else url.searchParams.set("page", page);
+    // the Consultation Tool's own parameters (tab, list, open record: src/lib/consultUrl.ts) belong to that page only
+    if (page !== "scholarCounseling") for (const k of CT_PARAMS) url.searchParams.delete(k);
     const next = url.toString();
     if (next !== window.location.href) window.history.replaceState(window.history.state, "", next);
   }, [page]);

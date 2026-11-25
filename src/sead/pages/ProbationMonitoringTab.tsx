@@ -12,6 +12,9 @@ import { ServerPagination } from "@/app/components/ServerPagination";
 import { SortableTh, useSortState } from "@/app/components/SortableTable";
 import { daysLeftText, formatDay, manilaToday } from "@/lib/renewal";
 import { pageCount } from "@/lib/dailyRecordsView";
+import { useTabActive } from "@/lib/keepAlive";
+import { probationFromSearch, probationToParams } from "@/lib/consultUrl";
+import { ctReplace } from "../consultUrl";
 import {
   ATTENTION_OPTIONS, EMPTY_PROBATION_FILTERS, incSummary, KIND_OPTIONS, PROBATION_PAGE_SIZE, PROBATION_REMEMBER_KEY, probationFiltersActive, readRememberedProbation,
   type ProbationFilters, type ProbationKind,
@@ -68,7 +71,8 @@ type Detail = { state: "loading" } | { state: "error"; message: string } | { sta
  * the INC items and the uploaded study plans are read when the row is opened. The page, filters, search and sort are remembered.
  */
 export function ProbationMonitoringTab() {
-  const stored = useMemo(readStored, []);
+  const stored = useMemo(() => probationFromSearch(window.location.search) ?? readStored(), []);      // the address first, the choices remembered in this browser tab second
+  const active = useTabActive();
   const [filters, setFilters] = useState<ProbationFilters>(stored?.filters ?? EMPTY_PROBATION_FILTERS);
   const [typed, setTyped] = useState(stored?.filters.search ?? "");
   const { sortState, toggleSort } = useSortState({ key: stored?.sortKey ?? "name", direction: stored?.sortDir ?? "asc" });
@@ -93,6 +97,8 @@ export function ProbationMonitoringTab() {
   useEffect(() => {
     try { window.sessionStorage.setItem(PROBATION_REMEMBER_KEY, JSON.stringify({ filters, sortKey: sort.key, sortDir: sort.dir, page })); } catch { /* private window: it just is not remembered */ }
   }, [filters, sort, page]);
+  // the address says the same (it only REPLACES the current step of the history)
+  useEffect(() => { if (active) ctReplace(probationToParams({ filters, sortKey: sort.key, sortDir: sort.dir, page })); }, [active, filters, sort, page]);
 
   // a new sort starts again from page 1 (not on the first run, so a remembered page is kept)
   const firstSort = useRef(true);
