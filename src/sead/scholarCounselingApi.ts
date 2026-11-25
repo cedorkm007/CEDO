@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import type { ScholarshipStatus } from "./types";
 import type { BulkRowInput, BulkRowResult } from "@/lib/bulkDailyRecords";
+import type { DraftValues, StoredDraft } from "@/lib/recordPopup";
 
 export type VisitType = "Office" | "KSB Client" | "Home Visit";
 export const VISIT_TYPES: VisitType[] = ["Office", "KSB Client", "Home Visit"];
@@ -185,6 +186,79 @@ export async function fetchDailyRecordById(id: string): Promise<DailyRecord | nu
 export async function fetchMyUserId(): Promise<string | null> {
   const { data } = await supabase.auth.getUser();
   return data.user?.id ?? null;
+}
+
+// ── The larger record pop-up: saved drafts, quick phrases, the scholar summary (supabase_migration_daily_records_popup.sql) ──
+
+/** What the database kept as a draft of this staff member (null: none, or the database update has not been run yet). */
+export async function fetchServerDraft(key: string): Promise<StoredDraft | null> {
+  const { data, error } = await supabase.rpc("counseling_draft_get", { p_key: key });
+  const row = ((data ?? []) as Record<string, unknown>[])[0];
+  if (error || !row) return null;
+  const payload = row.payload && typeof row.payload === "object" && !Array.isArray(row.payload) ? (row.payload as Record<string, unknown>) : {};
+  const values: DraftValues = {};
+  for (const [k, v] of Object.entries(payload)) if (typeof v === "string" || typeof v === "boolean") values[k] = v;
+  return { values, savedAt: String(row.saved_at ?? ""), base: row.base_edit_count == null ? null : Number(row.base_edit_count) };
+}
+
+export async function saveServerDraft(key: string, values: DraftValues, base: number | null): Promise<{ ok: true; savedAt: string } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("counseling_draft_save", { p_key: key, p_payload: values, p_base: base });
+  return error ? { ok: false, error: error.message } : { ok: true, savedAt: String(data ?? new Date().toISOString()) };
+}
+
+export async function discardServerDraft(key: string): Promise<void> {
+  await supabase.rpc("counseling_draft_discard", { p_key: key });
+}
+
+export interface QuickPhrase { id: string; phrase: string }
+/** The shared quick phrases (null: not available — the database update has not been run yet). */
+export async function fetchQuickPhrases(): Promise<QuickPhrase[] | null> {
+  const { data, error } = await supabase.rpc("counseling_phrases_list");
+  if (error || !data) return null;
+  return (data as Record<string, unknown>[]).map(r => ({ id: String(r.id), phrase: String(r.phrase ?? "") }));
+}
+export async function saveQuickPhrase(id: string | null, phrase: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.rpc("counseling_phrase_save", { p_id: id, p_phrase: phrase });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+export async function deleteQuickPhrase(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.rpc("counseling_phrase_delete", { p_id: id });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export interface ContextVisit { id: string; dateVisited: string; visitType: string; consultant: string; findings: string; staffRecommendations: string; editCount: number }
+export interface RecordContext {
+  scholar: { name: string; scholarIdNumber: string; school: string; program: string; yearLevel: string; status: string };
+  renewal: { stage: string; term: string; schoolYear: string } | null;
+  failedSubjects: { subject: string; grade: string }[];
+  incSubjects: { subject: string; grade: string }[];
+  openInc: { subject: string; deadline: string | null }[];
+  visits: ContextVisit[];
+  visitsTotal: number;
+}
+
+const subjectList = (v: unknown): { subject: string; grade: string }[] =>
+  (Array.isArray(v) ? v : []).map(x => { const o = (x ?? {}) as Record<string, unknown>; return { subject: String(o.subject ?? o.subject_code ?? o.code ?? ""), grade: o.grade == null ? "" : String(o.grade) }; }).filter(x => x.subject !== "");
+
+/** The scholar's summary for the left side of the pop-up: details, renewal stage, failed / INC subjects and the previous visits (20 at a time; `excludeId` leaves out the record that is open). */
+export async function fetchRecordContext(scholarIdNumber: string, excludeId: string | null, offset = 0): Promise<{ ok: true; ctx: RecordContext } | { ok: false; error: string; missing: boolean }> {
+  const { data, error } = await supabase.rpc("counseling_record_context", { p_scholar_id: scholarIdNumber, p_exclude: excludeId, p_limit: 20, p_offset: offset });
+  if (error) return { ok: false, error: error.message, missing: isMissingFn(error) };
+  const d = (data ?? {}) as Record<string, unknown>, s = (d.scholar ?? {}) as Record<string, unknown>, rn = d.renewal as Record<string, unknown> | null;
+  return {
+    ok: true,
+    ctx: {
+      scholar: { name: String(s.name ?? ""), scholarIdNumber: String(s.scholar_id_number ?? scholarIdNumber), school: String(s.school ?? ""), program: String(s.program ?? ""), yearLevel: String(s.year_level ?? ""), status: String(s.status ?? "") },
+      renewal: rn ? { stage: String(rn.stage ?? ""), term: String(rn.term ?? ""), schoolYear: String(rn.school_year ?? "") } : null,
+      failedSubjects: subjectList(d.failed_subjects), incSubjects: subjectList(d.inc_subjects),
+      openInc: ((d.open_inc ?? []) as Record<string, unknown>[]).map(i => ({ subject: String(i.subject ?? ""), deadline: i.deadline == null ? null : String(i.deadline).slice(0, 10) })),
+      visits: ((d.visits ?? []) as Record<string, unknown>[]).map(v => ({
+        id: String(v.id), dateVisited: String(v.date_visited ?? "").slice(0, 10), visitType: String(v.visit_type ?? ""), consultant: String(v.consultant ?? ""),
+        findings: String(v.findings ?? ""), staffRecommendations: String(v.staff_recommendations ?? ""), editCount: Number(v.edit_count ?? 0),
+      })),
+      visitsTotal: Number(d.visits_total ?? 0),
+    },
+  };
 }
 
 /**

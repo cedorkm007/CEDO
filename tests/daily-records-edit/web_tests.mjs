@@ -39,8 +39,9 @@ test("the pop-up opens read-only with an Edit button (writer only), saves throug
   const modal = src("src/sead/components/DailyRecordDetailModal.tsx"), tab = src("src/sead/pages/ScholarCounselingTab.tsx"), api = src("src/sead/scholarCounselingApi.ts"), hist = src("src/sead/components/DailyRecordHistoryModal.tsx");
   assert.ok(modal.includes("const mine = canEditRecord(record.consultedById, meId)") && modal.includes("{mine && <button type=\"button\" onClick={startEdit}"));
   assert.ok(modal.includes("updateDailyRecord(record.id, findings, recs, reason, record.editCount)") && api.includes('rpc("counseling_update_daily_record"') && api.includes("p_expected_edit_count: expectedEditCount"));
-  assert.ok(modal.includes("Your text is still in the boxes") && modal.includes("Load the latest text") && modal.includes("Discard your changes to this record?"));
-  assert.ok(modal.includes("rows={8}") && modal.includes("maxLength={EDIT_TEXT_LIMIT}") && modal.includes("(optional)") && modal.includes("View history"));
+  assert.ok(modal.includes("Your text is still in the boxes") && modal.includes("Load the latest text") && modal.includes("Discard changes?"));
+  const area = src("src/sead/components/RecordTextArea.tsx");
+  assert.ok(area.includes("minRows = 8") && area.includes("maxLength={EDIT_TEXT_LIMIT}") && modal.includes("(optional)") && modal.includes("View history"));
   assert.ok(tab.includes("onChanged={r => { setViewing(r); setRows(list => (list ? list.map(x => (x.id === r.id ? r : x)) : list)); }}") && tab.includes("meId={meId}"));
   assert.ok(hist.includes("can only grow") && hist.includes("Before") && hist.includes("After") && api.includes('rpc("counseling_record_history"'));
 });
