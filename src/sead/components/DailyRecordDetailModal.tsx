@@ -34,8 +34,10 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
  * What is typed and not yet saved is kept as a DRAFT (this tab at once, the database after a few seconds) and offered back after a refresh. Ctrl+S (Cmd+S) saves; closing with unsaved changes asks first.
  * `onChanged` hands the saved record back so the list row updates without reloading the list.
  */
-export function DailyRecordDetailModal({ record, meId, onClose, onViewProfile, profileLoading, onChanged }: {
+export function DailyRecordDetailModal({ record, meId, onClose, onViewProfile, profileLoading, onChanged, initialEditing = false, onEditingChange }: {
   record: DailyRecord; meId?: string | null; onClose: () => void; onViewProfile: () => void; profileLoading: boolean; onChanged?: (r: DailyRecord) => void;
+  /** Opened from an address that says "edit" (a refresh while editing): it starts in edit mode, but only for the writer. */
+  initialEditing?: boolean; onEditingChange?: (editing: boolean) => void;
 }) {
   const mine = canEditRecord(record.consultedById, meId);
   const [editing, setEditing] = useState(false);
@@ -87,6 +89,21 @@ export function DailyRecordDetailModal({ record, meId, onClose, onViewProfile, p
     if (r.conflict) { setConflict(true); setError("This record was changed in another window after you opened it, so nothing was saved. Your text is still in the boxes."); return; }
     setError(r.missing ? "Editing needs the latest database update (supabase_migration_daily_records_edit.sql). Ask the IT admin to run it." : r.error || "The record could not be saved. Your text is still in the boxes (and kept as a draft): try again.");
   }
+  // the address says "edit": start editing once we know this is the writer (anybody else stays read-only and the address is cleaned)
+  const startedFromAddress = useRef(false);
+  useEffect(() => {
+    if (!initialEditing || startedFromAddress.current || !meId) return;
+    startedFromAddress.current = true;
+    if (mine) startEdit(); else onEditingChange?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEditing, meId, mine]);
+  // tell the address when editing starts or ends
+  const lastEditing = useRef(editing);
+  useEffect(() => {
+    if (lastEditing.current === editing) return;
+    lastEditing.current = editing;
+    onEditingChange?.(editing);
+  }, [editing, onEditingChange]);
   // Ctrl+S (Cmd+S on a Mac) saves while editing
   const saveRef = useRef(save);
   saveRef.current = save;

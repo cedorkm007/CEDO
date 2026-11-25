@@ -10,6 +10,9 @@ import { addDays, CALENDAR_REMEMBER_KEY, EMPTY_HALF, halfKey, indexSummary, isDa
 import { ModalShell } from "../components/SeadUiShell";
 import { SlotDetailModal } from "./SlotDetailModal";
 import { BookingListModal, PagedBookingListModal } from "./BookingListModal";
+import { useTabActive } from "@/lib/keepAlive";
+import { calendarFromSearch, calendarToParams } from "@/lib/consultUrl";
+import { ctReplace } from "../consultUrl";
 
 type View = CalendarView;
 function readStored(): ReturnType<typeof readRememberedCalendar> {
@@ -25,8 +28,10 @@ const dayLabel = (ymd: string) => new Date(`${ymd}T00:00:00Z`).toLocaleDateStrin
  * The all-staff (read-only) calendar of the evaluator reads only the NUMBERS of each morning and afternoon (so a busy day or week is never cut off) and the booking list of one morning or afternoon
  * PAGE BY PAGE when it is opened; it has a date picker, Previous / Next and Today, and remembers the view, the day and the staff member. A staff member's own calendar reads their own bookings, as before.
  */
-export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?: boolean; onOpenRecord?: (recordId: string) => void } = {}) {
-  const stored = useMemo(() => (readOnly ? readStored() : null), [readOnly]);
+/** `urlState`: inside the Consultation Tool, the view, the day and the staff member are part of the address (?ctView=day&ctDate=2026-11-25&ctStaff=…), so a refresh or a link comes back to the same calendar. */
+export function AppointmentsTab({ readOnly = false, onOpenRecord, urlState = false }: { readOnly?: boolean; onOpenRecord?: (recordId: string) => void; urlState?: boolean } = {}) {
+  const stored = useMemo(() => (urlState ? calendarFromSearch(window.location.search) : null) ?? (readOnly ? readStored() : null), [readOnly, urlState]);
+  const active = useTabActive();
   const [view, setView] = useState<View>(stored?.view ?? "week");
   const [staffList, setStaffList] = useState<CalendarStaff[]>([]);
   const [staffFilter, setStaffFilter] = useState<string>(stored?.staff ?? "");
@@ -54,6 +59,8 @@ export function AppointmentsTab({ readOnly = false, onOpenRecord }: { readOnly?:
     if (!readOnly) return;
     try { window.sessionStorage.setItem(CALENDAR_REMEMBER_KEY, JSON.stringify({ view, anchor, staff: staffFilter })); } catch { /* private window: it just is not remembered */ }
   }, [readOnly, view, anchor, staffFilter]);
+  // the address says the same (it only REPLACES the current step of the history)
+  useEffect(() => { if (urlState && active) ctReplace(calendarToParams({ view, anchor, staff: staffFilter }, manilaToday())); }, [urlState, active, view, anchor, staffFilter]);
 
   const load = useCallback(async () => {
     const mine = ++request.current;

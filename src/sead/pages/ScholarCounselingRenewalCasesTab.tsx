@@ -12,6 +12,9 @@ import { RenewalDocumentViewer } from "../renewal/RenewalDocumentViewer";
 import { ModalShell } from "../components/SeadUiShell";
 import { ServerPagination } from "@/app/components/ServerPagination";
 import { pageCount } from "@/lib/dailyRecordsView";
+import { useTabActive } from "@/lib/keepAlive";
+import { casesFromSearch, casesToParams } from "@/lib/consultUrl";
+import { ctReplace } from "../consultUrl";
 import {
   ALL_TERMS, CASE_GROUPS, CASE_GROUP_LABEL, CASES_PAGE_SIZE, CASES_REMEMBER_KEY, casesFiltersActive, docsSummary, EMPTY_CASES_FILTERS, mergeLive, otherTermsOpen, pickTerm, readRememberedCases, splitTermKey,
   termKey, type CaseGroup, type CasesFilters, type CaseTermInfo,
@@ -87,7 +90,8 @@ type DocsState = { state: "loading" } | { state: "error"; message: string } | { 
  * is offered as "Refresh" instead of moving the list under your hand). The page, the term, the group and the search are remembered.
  */
 export function ScholarCounselingRenewalCasesTab() {
-  const stored = useMemo(readStored, []);
+  const stored = useMemo(() => casesFromSearch(window.location.search) ?? readStored(), []);      // the address first, the choices remembered in this browser tab second
+  const active = useTabActive();
   const [filters, setFilters] = useState<CasesFilters>(stored?.filters ?? EMPTY_CASES_FILTERS);
   const [typed, setTyped] = useState(stored?.filters.search ?? "");
   const [page, setPage] = useState(stored?.page ?? 1);
@@ -116,6 +120,8 @@ export function ScholarCounselingRenewalCasesTab() {
   useEffect(() => {
     try { window.sessionStorage.setItem(CASES_REMEMBER_KEY, JSON.stringify({ filters: { ...filters, term: termValue }, page })); } catch { /* private window: it just is not remembered */ }
   }, [filters, termValue, page]);
+  // the address says the same (it only REPLACES the current step of the history)
+  useEffect(() => { if (active) ctReplace(casesToParams({ filters: { ...filters, term: termValue }, page })); }, [active, filters, termValue, page]);
 
   // the search waits until the person stops typing (300 ms), then starts again from page 1
   useEffect(() => {
