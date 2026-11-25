@@ -5,6 +5,7 @@
 // See supabase_migration_scholars_grades_monitoring.sql for the RPCs.
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
+import { parseProgramMarks } from "@/lib/gwa";
 
 export interface GradingPeriod {
   schoolYear: string;
@@ -99,11 +100,14 @@ export async function fetchScholarGradingConfigForStaff(scholarIdNumber: string)
   const { data, error } = await supabase.rpc("get_scholar_grading_config_for_staff", { p_scholar_id_number: scholarIdNumber }).maybeSingle();
   if (error || !data) return null;
   const row = data as Record<string, unknown>;
+  const extra = await supabase.rpc("get_scholar_grading_program_marks_for_staff", { p_scholar_id_number: scholarIdNumber }).maybeSingle();      // empty until the database update that adds it has been run
+  const x = (extra.error || !extra.data ? null : extra.data) as Record<string, unknown> | null;
   return {
     scaleMin: Number(row.scale_min ?? 1), scaleMax: Number(row.scale_max ?? 5),
     direction: (row.direction as GradingConfig["direction"]) ?? "lower_is_better",
     usesLetterGrades: !!row.uses_letter_grades,
     passingMark: row.passing_mark == null ? null : Number(row.passing_mark),
+    ...(x ? { setByStaff: !!x.set_by_staff, programMarks: parseProgramMarks(x.program_marks) } : {}),
   };
 }
 

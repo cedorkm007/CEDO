@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
 import { fetchGradesForScholars } from "@/school/schoolApi";
-import type { GradingConfig, LetterGrade } from "@/lib/gwa";
+import { parseProgramMarks, type GradingConfig, type LetterGrade } from "@/lib/gwa";
 import { classifyGrade, countOutcomes, isFailed, type OutcomeCounts } from "@/lib/subjectOutcome";
 import type { StandingResult } from "@/lib/standing";
 import { periodGwa, rulesAt, standingFor, type GwaInputRow, type RuleVersion } from "@/lib/rulesRuntime";
@@ -90,12 +90,14 @@ export interface SchoolSetup {
 
 /** Every school's grading scale, letters and retention requirement, keyed by school id (staff can read them all). */
 export async function fetchSchoolSetups(): Promise<Map<string, SchoolSetup>> {
-  const [cfg, lets, marksRes, timeline] = await Promise.all([
-    supabase.from("school_grading_configs").select("school_id, scale_min, scale_max, direction, uses_letter_grades, retention_threshold, passing_mark"),
+  const [cfgWithMarks, lets, marksRes, timeline] = await Promise.all([
+    supabase.from("school_grading_configs").select("school_id, scale_min, scale_max, direction, uses_letter_grades, retention_threshold, passing_mark, set_by_staff, staff_program_marks"),
     supabase.from("school_letter_grades").select("school_id, letter, numeric_value"),
     supabase.from("school_marks").select("school_id, mark, meaning, outcome"),   // empty until the "other marks" database update has been run
     fetchRulesTimeline(),                                                         // empty until the grading rules database update has been run
   ]);
+  // before the database update that adds the program marks has been run, the two new columns do not exist: read the setups without them
+  const cfg = cfgWithMarks.error ? await supabase.from("school_grading_configs").select("school_id, scale_min, scale_max, direction, uses_letter_grades, retention_threshold, passing_mark") : cfgWithMarks;
   const marks = new Map<string, LetterGrade[]>();
   for (const r of marksRes.data ?? []) {
     const id = String(r.school_id);
@@ -119,6 +121,8 @@ export async function fetchSchoolSetups(): Promise<Map<string, SchoolSetup>> {
         scaleMin: Number(r.scale_min), scaleMax: Number(r.scale_max), direction: r.direction as GradingConfig["direction"], usesLetterGrades,
         retentionThreshold: r.retention_threshold == null ? null : Number(r.retention_threshold),
         passingMark: r.passing_mark == null ? null : Number(r.passing_mark),
+        setByStaff: !!(r as { set_by_staff?: boolean }).set_by_staff,
+        programMarks: parseProgramMarks((r as { staff_program_marks?: unknown }).staff_program_marks),
       },
       letters: [...(usesLetterGrades ? letters.get(id) ?? [] : []), ...(marks.get(id) ?? [])],
       rules: timeline[id] ?? [],

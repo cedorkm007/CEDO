@@ -89,10 +89,16 @@ export async function getEnteredGradeImageUrl(path: string): Promise<string | nu
 // ── the temporary grading setup of a school ──────────────────────────────
 export type MarkOutcome = "passed" | "failed" | "incomplete" | "review";
 export const MARK_OUTCOME_LABEL: Record<MarkOutcome, string> = { passed: "Passed", failed: "Failed", incomplete: "Incomplete (like INC)", review: "Needs the evaluator's review" };
-export interface GradingSetupSchool { schoolId: string; name: string; scholars: number; hasSetup: boolean; passingMark: number | null; setByStaff: boolean; letters: number; marks: number }
+export interface GradingSetupSchool { schoolId: string; name: string; scholars: number; hasSetup: boolean; passingMark: number | null; setByStaff: boolean; letters: number; marks: number; /** programs of this school that have their own passing mark (set by staff) */ programMarks: number }
 export interface GradingSetup {
   school: string;
   config: { scaleMin: number; scaleMax: number; direction: "lower_is_better" | "higher_is_better"; usesLetterGrades: boolean; passingMark: number | null; setByStaff: boolean; staffNote: string; staffSetAt: string | null } | null;
+  /** The passing marks CEDO staff gave to single programs of the school (the mark as text, for the form). */
+  programMarks: { program: string; passingMark: string }[];
+  /** The programs of the school's scholars, to pick from, with how many scholars each. */
+  programs: { program: string; scholars: number }[];
+  /** False until the database update that adds the program marks has been run (the section is then not offered). */
+  programMarksAvailable: boolean;
   letters: { letter: string; numericValue: string }[];
   marks: { mark: string; meaning: string; outcome: MarkOutcome }[];
 }
@@ -100,7 +106,7 @@ export interface GradingSetup {
 export async function fetchGradingSetupSchools(): Promise<{ ok: true; schools: GradingSetupSchool[] } | Failed> {
   const { data, error } = await supabase.rpc("grading_setup_schools");
   if (error) return failed(error);
-  return { ok: true, schools: ((data ?? []) as Row[]).map(r => ({ schoolId: str(r.school_id), name: str(r.name), scholars: num(r.scholars), hasSetup: !!r.has_setup, passingMark: r.passing_mark == null ? null : Number(r.passing_mark), setByStaff: !!r.set_by_staff, letters: num(r.letters), marks: num(r.marks) })) };
+  return { ok: true, schools: ((data ?? []) as Row[]).map(r => ({ schoolId: str(r.school_id), name: str(r.name), scholars: num(r.scholars), hasSetup: !!r.has_setup, passingMark: r.passing_mark == null ? null : Number(r.passing_mark), setByStaff: !!r.set_by_staff, letters: num(r.letters), marks: num(r.marks), programMarks: num(r.program_marks) })) };
 }
 
 export async function fetchGradingSetup(schoolId: string): Promise<{ ok: true; setup: GradingSetup } | Failed> {
@@ -112,16 +118,20 @@ export async function fetchGradingSetup(schoolId: string): Promise<{ ok: true; s
     setup: {
       school: str(d.school),
       config: c ? { scaleMin: num(c.scale_min), scaleMax: num(c.scale_max), direction: str(c.direction) as "lower_is_better" | "higher_is_better", usesLetterGrades: !!c.uses_letter_grades, passingMark: c.passing_mark == null ? null : Number(c.passing_mark), setByStaff: !!c.set_by_staff, staffNote: str(c.staff_note), staffSetAt: strOrNull(c.staff_set_at) } : null,
+      programMarks: ((c?.program_marks ?? []) as Row[]).map(p => ({ program: str(p.program), passingMark: p.passing_mark == null ? "" : String(p.passing_mark) })),
+      programs: ((d.programs ?? []) as Row[]).map(p => ({ program: str(p.program), scholars: num(p.scholars) })),
+      programMarksAvailable: Array.isArray(d.programs),
       letters: ((d.letters ?? []) as Row[]).map(l => ({ letter: str(l.letter), numericValue: l.numeric_value == null ? "" : String(l.numeric_value) })),
       marks: ((d.marks ?? []) as Row[]).map(m => ({ mark: str(m.mark), meaning: str(m.meaning), outcome: str(m.outcome) as MarkOutcome })),
     },
   };
 }
 
-export async function saveGradingSetup(schoolId: string, setup: { scaleMin: string; scaleMax: string; direction: "lower_is_better" | "higher_is_better"; passingMark: string; usesLetterGrades: boolean; letters: { letter: string; numericValue: string }[]; marks: { mark: string; meaning: string; outcome: MarkOutcome }[]; note: string }): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function saveGradingSetup(schoolId: string, setup: { scaleMin: string; scaleMax: string; direction: "lower_is_better" | "higher_is_better"; passingMark: string; usesLetterGrades: boolean; letters: { letter: string; numericValue: string }[]; marks: { mark: string; meaning: string; outcome: MarkOutcome }[]; programMarks?: { program: string; passingMark: string }[]; note: string }): Promise<{ ok: true } | { ok: false; error: string }> {
   const { error } = await supabase.rpc("grading_setup_save", {
     p_school_id: schoolId,
-    p_config: { scale_min: setup.scaleMin.trim(), scale_max: setup.scaleMax.trim(), passing_mark: setup.passingMark.trim(), direction: setup.direction, uses_letter_grades: setup.usesLetterGrades },
+    p_config: { scale_min: setup.scaleMin.trim(), scale_max: setup.scaleMax.trim(), passing_mark: setup.passingMark.trim(), direction: setup.direction, uses_letter_grades: setup.usesLetterGrades,
+      program_marks: (setup.programMarks ?? []).filter(p => p.program.trim()).map(p => ({ program: p.program.trim(), passing_mark: p.passingMark.trim() })) },
     p_letters: setup.letters.filter(l => l.letter.trim()).map(l => ({ letter: l.letter.trim(), numeric_value: l.numericValue.trim() || null })),
     p_marks: setup.marks.filter(m => m.mark.trim()).map(m => ({ mark: m.mark.trim(), meaning: m.meaning.trim(), outcome: m.outcome })),
     p_note: setup.note,

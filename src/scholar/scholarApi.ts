@@ -7,6 +7,7 @@
 
 import { supabase } from "@/lib/supabase";
 import { validateNewPassword } from "@/lib/passwordPolicy";
+import { parseProgramMarks } from "@/lib/gwa";
 import type { ScholarProfile, SubjectGrade, QuestScore } from "./types";
 
 export interface ExistingScholarLoginInput {
@@ -118,11 +119,19 @@ export async function fetchSubjectsAndGrades(scholarIdNumber: string): Promise<S
 }
 
 /** This scholar's school's grading config/letter table, for computing GWA on the Grades tab. Both null/empty when no school_id is set on this scholar's row yet. */
-export async function fetchMyGradingConfig(): Promise<{ scaleMin: number; scaleMax: number; direction: "lower_is_better" | "higher_is_better"; usesLetterGrades: boolean; passingMark: number | null } | null> {
+export async function fetchMyGradingConfig(): Promise<{
+  scaleMin: number; scaleMax: number; direction: "lower_is_better" | "higher_is_better"; usesLetterGrades: boolean; passingMark: number | null;
+  /** While the setup is the one CEDO staff made for the time being: the passing marks of single programs, and the passing mark that applies to THIS scholar (the program's own, else the school's). */
+  setByStaff?: boolean; programMarks?: { program: string; passingMark: number }[]; effectivePassingMark?: number | null;
+} | null> {
   const { data, error } = await supabase.rpc("get_scholar_grading_config").maybeSingle();
   if (error || !data) return null;
   const row = data as Record<string, unknown>;
+  // the program marks come from their own small function (nothing changes for the scholar until the database update that adds it has been run)
+  const extra = await supabase.rpc("get_scholar_grading_program_marks").maybeSingle();
+  const x = (extra.error || !extra.data ? null : extra.data) as Record<string, unknown> | null;
   return {
+    ...(x ? { setByStaff: !!x.set_by_staff, programMarks: parseProgramMarks(x.program_marks), effectivePassingMark: x.passing_mark == null ? null : Number(x.passing_mark) } : {}),
     scaleMin: Number(row.scale_min ?? 1), scaleMax: Number(row.scale_max ?? 5),
     direction: (row.direction as "lower_is_better" | "higher_is_better") ?? "lower_is_better",
     usesLetterGrades: !!row.uses_letter_grades,

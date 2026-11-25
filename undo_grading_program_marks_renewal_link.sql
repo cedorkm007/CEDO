@@ -1,0 +1,39 @@
+-- undo_grading_program_marks_renewal_link.sql: the three renewal functions judge grades with the school's passing mark only again (the way they were before part 2).
+-- Same safety as the update: each change is an exact find-and-replace inside the live function; if one differs the whole file stops and nothing changes. No table and no grade is touched.
+begin;
+
+do $patch$
+declare
+  e record; v_def text; n int;
+begin
+  for e in select * from (values
+    ('public._renewal_evaluate(text,text,text)'::regprocedure,
+      $o$select r.id, r.subject_code, r.subject, r.grade, r.recorded_by_school_id, r.percentage$o$,
+      $o$select r.id, r.subject_code, r.subject, r.grade, r.recorded_by_school_id$o$),
+    ('public._renewal_evaluate(text,text,text)'::regprocedure,
+      $o$select l.id, l.subject_code, l.subject, l.grade, null::uuid, null::numeric$o$,
+      $o$select l.id, l.subject_code, l.subject, l.grade, null::uuid$o$),
+    ('public._renewal_evaluate(text,text,text)'::regprocedure,
+      $o$v_outcome := public._grade_outcome_at(v_school, g.grade, g.percentage, v_b_year, v_b_term, v_scholar.course);$o$,
+      $o$v_outcome := public._grade_outcome(v_school, g.grade);$o$),
+    ('public._renewal_recheck(uuid)'::regprocedure,
+      $o$select public._grade_outcome_at(coalesce(g.recorded_by_school_id, v_scholar.school_id), g.grade, g.percentage, g.school_year, g.semester, v_scholar.course) into v_outcome$o$,
+      $o$select public._grade_outcome(coalesce(g.recorded_by_school_id, v_scholar.school_id), g.grade) into v_outcome$o$),
+    ('public._school_renewal_rows(text,text)'::regprocedure,
+      $o$select public._grade_outcome_at(s.school_id, g.grade, g.percentage, v_by, v_bt, s.course) as o from public.scholar_subjects_grades g$o$,
+      $o$select public._grade_outcome(s.school_id, g.grade) as o from public.scholar_subjects_grades g$o$)
+  ) as t(fn, current_text, restore_text)
+  loop
+    v_def := pg_get_functiondef(e.fn);
+    if position(e.current_text in v_def) = 0 then continue; end if;      -- already as before
+    n := (length(v_def) - length(replace(v_def, e.current_text, ''))) / length(e.current_text);
+    if n <> 1 then
+      raise exception 'STOPPED, nothing changed: the live function % is not the version this file expects (found % matches). Tell CEDO''s developer.', e.fn, n;
+    end if;
+    execute replace(v_def, e.current_text, e.restore_text);
+  end loop;
+end
+$patch$;
+
+notify pgrst, 'reload schema';
+commit;

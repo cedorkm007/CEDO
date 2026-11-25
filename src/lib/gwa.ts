@@ -17,6 +17,26 @@ export interface GradingConfig {
   retentionThreshold?: number | null;
   /** The school's passing mark on its own scale; a grade worse than this is failed. null/undefined = not set yet. */
   passingMark?: number | null;
+  /** True while the grading setup is the one CEDO staff made for the time being (the school has not saved its own). Program marks below count only then. */
+  setByStaff?: boolean;
+  /** Staff-set passing marks of single programs of the school (same scale as passingMark): that program's grades are judged by its own mark. */
+  programMarks?: ProgramMark[];
+}
+
+/** The passing mark CEDO staff gave to one program of a school while the school has no grading system of its own. */
+export interface ProgramMark { program: string; passingMark: number }
+
+/** Reads the list of program marks the database gives ([{program, passing_mark}]); anything that does not look right is left out. */
+export function parseProgramMarks(v: unknown): ProgramMark[] {
+  if (!Array.isArray(v)) return [];
+  const out: ProgramMark[] = [];
+  for (const x of v) {
+    const o = (x ?? {}) as Record<string, unknown>;
+    const program = typeof o.program === "string" ? o.program.trim() : "";
+    const mark = o.passing_mark == null ? NaN : Number(o.passing_mark);
+    if (program && Number.isFinite(mark)) out.push({ program, passingMark: mark });
+  }
+  return out;
 }
 
 /** What a school's own non-numeric mark (F, D/F, W...) means for renewal. */

@@ -18,6 +18,10 @@ export interface GradingConfig {
   retentionThreshold?: number | null;
   /** The passing mark on the school's own scale (a grade worse than it is failed); null/undefined = not set. */
   passingMark?: number | null;
+  /** True while the grading setup is the one CEDO staff made for the time being; the program marks below count only then. */
+  setByStaff?: boolean;
+  /** Passing marks CEDO staff gave to single programs of the school (same scale as passingMark). */
+  programMarks?: { program: string; passingMark: number }[];
 }
 
 export interface LetterGrade {

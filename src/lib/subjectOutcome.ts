@@ -15,6 +15,7 @@
 //   * a school with a conversion table for the semester (Phase 2): a percentage or a grade the table covers is judged by the table and the school's passing mark in percent
 //                                     (the programme's own when it has one); a grade the table does not cover falls to the rules below
 //   * no passing mark set           -> no_passing_mark (nothing is guessed)
+//   * a program with its own mark   -> while the setup is the one CEDO staff made for the time being (set by staff), a scholar of that program is judged by the program's passing mark instead of the school's
 //   * a grade or letter value worse than the passing mark -> failed; equal to it passes
 //   * a mark that cannot be read (e.g. "W") -> review (the evaluator looks at it)
 // "Exclude from GWA" is deliberately ignored: those subjects still count for pass/fail.
@@ -43,6 +44,13 @@ export function reservedMark(grade: string): "INC" | "DRP" | null {
 
 const NUMBER = /^\d+(\.\d+)?$/;
 
+/** The passing mark that applies to a scholar of `program`: the program's own mark when staff gave it one (only while the setup is the staff's, as in the database), else the school's. */
+export function passingMarkFor(config: GradingConfig | null | undefined, program?: string | null): number | null {
+  if (!config) return null;
+  const own = config.setByStaff && program && program.trim() ? config.programMarks?.find(p => p.program.trim().toLowerCase() === program.trim().toLowerCase()) : undefined;
+  return own ? own.passingMark : config.passingMark ?? null;
+}
+
 export function classifyGrade(grade: string, config: GradingConfig | null | undefined, letters: LetterGrade[], rules?: GradingRules | null, program?: string | null, percentage?: number | null): SubjectOutcome {
   const g = grade.trim();
   if (!g && (percentage == null || !rules)) return "ungraded";
@@ -54,7 +62,8 @@ export function classifyGrade(grade: string, config: GradingConfig | null | unde
   const byTable = tableResult({ grade: g, percentage }, rules, program);
   if (byTable) return byTable;
   if (!g) return "ungraded";
-  if (!config || config.passingMark == null) return "no_passing_mark";
+  const passing = passingMarkFor(config, program);
+  if (!config || passing == null) return "no_passing_mark";
 
   let value: number | null = null;
   if (NUMBER.test(g)) value = Number(g);
@@ -64,8 +73,8 @@ export function classifyGrade(grade: string, config: GradingConfig | null | unde
   }
   if (value === null) return "review";
 
-  if (config.direction === "lower_is_better") return value > config.passingMark ? "failed" : "passed";
-  return value < config.passingMark ? "failed" : "passed";
+  if (config.direction === "lower_is_better") return value > passing ? "failed" : "passed";
+  return value < passing ? "failed" : "passed";
 }
 
 /** A subject that counts as failed for renewal: a grade worse than the passing mark, or DRP. */
