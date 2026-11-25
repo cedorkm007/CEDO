@@ -6,7 +6,7 @@ import {
 import { Modal } from "../components/Modal";
 
 const inputCls = "w-full rounded-lg border border-[#062444]/25 px-2.5 py-2 text-[14px] outline-none focus:border-[#062444] bg-white";
-interface Form { scaleMin: string; scaleMax: string; direction: "lower_is_better" | "higher_is_better"; passingMark: string; usesLetterGrades: boolean; letters: { letter: string; numericValue: string }[]; marks: { mark: string; meaning: string; outcome: MarkOutcome }[]; note: string }
+interface Form { scaleMin: string; scaleMax: string; direction: "lower_is_better" | "higher_is_better"; passingMark: string; usesLetterGrades: boolean; letters: { letter: string; numericValue: string }[]; marks: { mark: string; meaning: string; outcome: MarkOutcome }[]; programMarks: { program: string; passingMark: string }[]; note: string }
 const OUTCOMES = Object.keys(MARK_OUTCOME_LABEL) as MarkOutcome[];
 
 function statusOf(s: GradingSetupSchool): { text: string; tone: string } {
@@ -19,6 +19,7 @@ function statusOf(s: GradingSetupSchool): { text: string; tone: string } {
  * Scholars' Grades Monitoring > Grading setup. Until a school sets up its own grading system in the School Portal, staff can set it up for the time being (the scale, the passing mark,
  * the letter grades and the non-numeric marks with what they mean) so that grades entered by scholars can be judged as passed or failed. A setup made here is marked "set by staff
  * (temporary)"; when the school saves its own, the mark goes away.
+ * A single PROGRAM of a school can also be given its own passing mark (same scale as the school's): the grades of that program's scholars are then judged by it, while the setup is the one staff made.
  */
 export function ScholarsGradesMonitoringSetupTab() {
   const [schools, setSchools] = useState<GradingSetupSchool[] | null>(null);
@@ -47,7 +48,7 @@ export function ScholarsGradesMonitoringSetupTab() {
               <li key={s.schoolId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e6ecf5] bg-white px-4 py-3 text-[14px]">
                 <div>
                   <p className="font-bold text-[#062444]">{s.name}</p>
-                  <p className="text-slate-800">{s.scholars} active scholar{s.scholars === 1 ? "" : "s"} · passing mark {s.passingMark ?? "not set"} · {s.letters} letter grade{s.letters === 1 ? "" : "s"} · {s.marks} other mark{s.marks === 1 ? "" : "s"}</p>
+                  <p className="text-slate-800">{s.scholars} active scholar{s.scholars === 1 ? "" : "s"} · passing mark {s.passingMark ?? "not set"} · {s.letters} letter grade{s.letters === 1 ? "" : "s"} · {s.marks} other mark{s.marks === 1 ? "" : "s"}{s.programMarks > 0 ? ` · ${s.programMarks} program${s.programMarks === 1 ? "" : "s"} with their own passing mark` : ""}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`rounded-full border px-2.5 py-0.5 text-[13px] font-semibold ${st.tone}`}>{st.text}</span>
@@ -66,6 +67,8 @@ export function ScholarsGradesMonitoringSetupTab() {
 
 function SetupModal({ school, onClose, onSaved }: { school: GradingSetupSchool; onClose: () => void; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState<Form | null>(null);
+  const [programs, setPrograms] = useState<{ program: string; scholars: number }[]>([]);
+  const [programMarksAvailable, setProgramMarksAvailable] = useState(true);
   const [own, setOwn] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -80,8 +83,9 @@ function SetupModal({ school, onClose, onSaved }: { school: GradingSetupSchool; 
       setOwn(!!c && !c.setByStaff && c.passingMark != null);
       setForm({
         scaleMin: String(c?.scaleMin ?? 1), scaleMax: String(c?.scaleMax ?? 5), direction: c?.direction ?? "lower_is_better", passingMark: c?.passingMark == null ? "" : String(c.passingMark),
-        usesLetterGrades: c?.usesLetterGrades ?? false, letters: r.setup.letters, marks: r.setup.marks, note: c?.staffNote ?? "",
+        usesLetterGrades: c?.usesLetterGrades ?? false, letters: r.setup.letters, marks: r.setup.marks, programMarks: r.setup.programMarks, note: c?.staffNote ?? "",
       });
+      setPrograms(r.setup.programs); setProgramMarksAvailable(r.setup.programMarksAvailable);
     });
     return () => { live = false; };
   }, [school.schoolId]);
@@ -111,6 +115,34 @@ function SetupModal({ school, onClose, onSaved }: { school: GradingSetupSchool; 
               </select>
             </label>
           </div>
+          {programMarksAvailable && (
+            <div>
+              <p className="font-bold text-[#062444]">Programs with their own passing mark <span className="font-normal text-slate-700">(optional)</span></p>
+              <p className="text-[13.5px] text-slate-700">A program listed here is judged by its own passing mark instead of the school's ({form.passingMark.trim() || "not set"}). Use the same scale as the school ({form.scaleMin || "?"} to {form.scaleMax || "?"}). Only while this setup is the one staff made: when the school saves its own, its own rules apply again.</p>
+              <div className="mt-1 space-y-1.5">
+                {form.programMarks.map((p, i) => {
+                  const taken = new Set(form.programMarks.filter((_, j) => j !== i).map(x => x.program.trim().toLowerCase()));
+                  const options = programs.filter(x => !taken.has(x.program.toLowerCase()) || x.program.toLowerCase() === p.program.trim().toLowerCase());
+                  const known = options.some(x => x.program.toLowerCase() === p.program.trim().toLowerCase());
+                  return (
+                    <div key={i} className="grid grid-cols-[1fr_8rem_auto] gap-2">
+                      <select value={p.program} onChange={e => set({ programMarks: form.programMarks.map((x, j) => (j === i ? { ...x, program: e.target.value } : x)) })} aria-label={`Program ${i + 1}`} className={inputCls}>
+                        <option value="">Choose the program…</option>
+                        {p.program && !known && <option value={p.program}>{p.program} (no scholar now)</option>}
+                        {options.map(x => <option key={x.program} value={x.program}>{x.program} ({x.scholars} scholar{x.scholars === 1 ? "" : "s"})</option>)}
+                      </select>
+                      <input value={p.passingMark} onChange={e => set({ programMarks: form.programMarks.map((x, j) => (j === i ? { ...x, passingMark: e.target.value } : x)) })} placeholder="Passing mark" aria-label={`Passing mark of program ${i + 1}`} inputMode="decimal" className={inputCls} />
+                      <button onClick={() => set({ programMarks: form.programMarks.filter((_, j) => j !== i) })} aria-label={`Remove program ${i + 1}`} className="rounded-lg border border-[#062444]/25 px-2 text-[#062444] hover:bg-[#f7f9fc]"><Trash2 size={15} aria-hidden="true" /></button>
+                    </div>
+                  );
+                })}
+              </div>
+              {programs.length === 0 && form.programMarks.length === 0 ? <p className="mt-1 text-[13.5px] text-slate-700">This school has no scholars with a program yet.</p> : (
+                <button onClick={() => set({ programMarks: [...form.programMarks, { program: "", passingMark: "" }] })} disabled={form.programMarks.length >= programs.length + form.programMarks.filter(p => !programs.some(x => x.program.toLowerCase() === p.program.trim().toLowerCase())).length} className="mt-1.5 inline-flex items-center gap-1.5 font-semibold text-[#00709f] hover:underline disabled:opacity-50"><Plus size={14} aria-hidden="true" /> Add a program</button>
+              )}
+            </div>
+          )}
+
           <label className="flex items-center gap-2 font-semibold text-[#062444]"><input type="checkbox" checked={form.usesLetterGrades} onChange={e => set({ usesLetterGrades: e.target.checked })} className="h-4 w-4" /> This school also uses letter grades (A, B, C…)</label>
 
           {form.usesLetterGrades && (

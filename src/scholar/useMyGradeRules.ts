@@ -12,7 +12,7 @@ export function loadMyGradeRules(): Promise<GradeRules | null> {
       const [cfg, letters, marks] = await Promise.all([fetchMyGradingConfig(), fetchMyLetterGrades(), fetchMySchoolMarks()]);
       cached = cfg ? {
         scaleMin: cfg.scaleMin, scaleMax: cfg.scaleMax, usesLetterGrades: cfg.usesLetterGrades, letters: letters.map(l => l.letter), marks: marks.map(m => m.letter),
-        direction: cfg.direction, passingMark: cfg.passingMark,
+        direction: cfg.direction, passingMark: cfg.effectivePassingMark !== undefined ? cfg.effectivePassingMark : cfg.passingMark,
         letterValues: Object.fromEntries(letters.map(l => [l.letter.trim().toLowerCase(), l.numericValue])),
         markOutcomes: Object.fromEntries(marks.map(m => [m.letter.trim().toLowerCase(), m.outcome])),
       } : null;

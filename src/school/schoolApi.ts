@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 import { supabase } from "@/lib/supabase";
 import { validateNewPassword } from "@/lib/passwordPolicy";
+import { parseProgramMarks } from "@/lib/gwa";
 import type { SchoolProfile, GradingConfig, LetterGrade, SchoolMark, MarkOutcome, SchoolScholarRow, SchoolSubjectGrade } from "./types";
 import { markAsLetter } from "./types";
 import type { GradingPeriod } from "@/sead/scholarsGradesMonitoringApi";
@@ -55,6 +56,8 @@ export async function fetchGradingConfig(): Promise<GradingConfig | null> {
     usesLetterGrades: !!data.uses_letter_grades,
     retentionThreshold: data.retention_threshold == null ? null : Number(data.retention_threshold),
     passingMark: data.passing_mark == null ? null : Number(data.passing_mark),
+    setByStaff: !!data.set_by_staff,
+    programMarks: parseProgramMarks(data.staff_program_marks),
   };
 }
 
