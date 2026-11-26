@@ -89,6 +89,8 @@ export function SurveyEditorModal({
 
         {error && <p className="text-[13px] text-red-600">{error}</p>}
 
+        {!existing && <p className="text-[12px] text-slate-500">The survey is saved as a draft. Add its questions, then press Activate.</p>}
+
         <div className="flex justify-end">
           <button type="submit" disabled={busy}
             className="bg-gradient-to-br from-[#062444] to-[#0a3a6b] disabled:opacity-60 text-white text-[13px] font-semibold rounded-lg px-5 py-2.5">

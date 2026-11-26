@@ -1,24 +1,26 @@
 import { useRef, useState } from "react";
 import { X, Upload, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { bulkCreateSurveyQuestions, type BulkSurveyQuestionInput } from "../seadApi";
+import { importQuestions } from "../surveyEditorApi";
 import { parseCsv, toCsv, downloadCsv, normalizeHeader, findColumn, cell } from "../csvUtils";
-import type { SurveyChoiceDraft, SurveyQuestionType } from "../types";
+import type { OutlineChoice, OutlineSection, SurveyQType } from "@/lib/surveyBuilder";
 import { ExportButton } from "@/app/components/ExportButtons";
 
 const TEMPLATE_HEADERS = [
-  "Question Type", "Question", "Choice 1", "Choice 2", "Choice 3", "Choice 4", "Scale Min", "Scale Max", "Min Label", "Max Label",
+  "Question Type", "Question", "Choice 1", "Choice 2", "Choice 3", "Choice 4", "Scale Min", "Scale Max", "Min Label", "Max Label", "Section",
 ];
 
 const TEMPLATE_SAMPLE_ROWS = [
-  ["Multiple Choice", "How would you rate the venue?", "Excellent", "Good", "Fair", "Poor", "", "", "", ""],
-  ["Likert", "The activity met its objectives.", "", "", "", "", "1", "5", "Strongly Disagree", "Strongly Agree"],
+  ["Multiple Choice", "How would you rate the venue?", "Excellent", "Good", "Fair", "Poor", "", "", "", "", ""],
+  ["Likert", "The activity met its objectives.", "", "", "", "", "1", "5", "Strongly Disagree", "Strongly Agree", "About the activity"],
 ];
+
+type ImportQuestion = Parameters<typeof importQuestions>[1][number];
 
 interface ParsedRow {
   rowNumber: number; // 1-based, matches spreadsheet row (header = row 1)
   ok: boolean;
   error?: string;
-  question?: BulkSurveyQuestionInput;
+  question?: ImportQuestion;
   preview: string;
 }
 
@@ -26,7 +28,7 @@ function downloadTemplate() {
   downloadCsv("survey-questions-template.csv", toCsv(TEMPLATE_HEADERS, TEMPLATE_SAMPLE_ROWS));
 }
 
-function parseQuestionType(raw: string): SurveyQuestionType | null {
+function parseQuestionType(raw: string): SurveyQType | null {
   const v = raw.trim().toLowerCase();
   if (v === "multiple_choice" || v === "multiple choice" || v === "mc" || v === "choice") return "multiple_choice";
   if (v === "likert" || v === "likert scale" || v === "scale") return "likert";
@@ -45,6 +47,7 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
     scaleMax: findColumn(headers, ["scale max", "max scale"]),
     minLabel: findColumn(headers, ["min label", "label min"]),
     maxLabel: findColumn(headers, ["max label", "label max"]),
+    section: findColumn(headers, ["section", "section title"]),
   };
   // Unlimited choices: scan for every "Choice N" column present, in order,
   // rather than a fixed list of aliases — this is what lets the template
@@ -62,7 +65,8 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
   const parsed: ParsedRow[] = dataRows.map((r, i) => {
     const rowNumber = i + 2; // account for header row
     const questionText = cell(r, idx.question);
-    const preview = questionText || `(row ${rowNumber})`;
+    const section = idx.section === -1 ? "" : cell(r, idx.section);
+    const preview = (section ? `[${section}] ` : "") + (questionText || `(row ${rowNumber})`);
 
     if (!questionText) return { rowNumber, ok: false, error: "Question text is empty.", preview };
 
@@ -72,8 +76,8 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
     if (questionType === "multiple_choice") {
       const choiceTexts = choiceIndices.map(ci => cell(r, ci)).filter(t => t !== "");
       if (choiceTexts.length < 2) return { rowNumber, ok: false, error: "Needs at least two non-empty choices.", preview };
-      const choices: SurveyChoiceDraft[] = choiceTexts.map(choiceText => ({ choiceText }));
-      return { rowNumber, ok: true, preview, question: { questionType, questionText, choices } };
+      const choices: OutlineChoice[] = choiceTexts.map(choiceText => ({ choiceText }));
+      return { rowNumber, ok: true, preview, question: { questionType, questionText, choices, section } };
     }
 
     const scaleMinRaw = cell(r, idx.scaleMin), scaleMaxRaw = cell(r, idx.scaleMax);
@@ -84,21 +88,22 @@ function parseAndValidate(text: string): { rows: ParsedRow[]; headerError?: stri
     const minLabel = cell(r, idx.minLabel), maxLabel = cell(r, idx.maxLabel);
     if (!minLabel || !maxLabel) return { rowNumber, ok: false, error: "Both Min Label and Max Label are required for a Likert question.", preview };
 
-    return { rowNumber, ok: true, preview, question: { questionType, questionText, choices: [], likertScaleMin: scaleMin, likertScaleMax: scaleMax, likertMinLabel: minLabel, likertMaxLabel: maxLabel } };
+    return { rowNumber, ok: true, preview, question: { questionType, questionText, choices: [], likertScaleMin: scaleMin, likertScaleMax: scaleMax, likertMinLabel: minLabel, likertMaxLabel: maxLabel, section } };
   });
 
   return { rows: parsed };
 }
 
 export function BulkSurveyQuestionUploadModal({
-  surveyId, surveyTitle, onClose, onDone,
-}: { surveyId: string; surveyTitle: string; onClose: () => void; onDone: () => void }) {
+  surveyId, surveyTitle, sections, onClose, onDone,
+}: { surveyId: string; surveyTitle: string; sections: OutlineSection[]; onClose: () => void; onDone: () => void }) {
+  const [intoSection, setIntoSection] = useState(sections.at(-1)?.id ?? "");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [headerError, setHeaderError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadErrors, setUploadErrors] = useState<{ rowNumber: number; error: string }[]>([]);
+  const [uploadError, setUploadError] = useState("");
   const [createdCount, setCreatedCount] = useState<number | null>(null);
 
   const validRows = rows.filter(r => r.ok);
@@ -107,7 +112,7 @@ export function BulkSurveyQuestionUploadModal({
   function handleFile(file: File) {
     setFileName(file.name);
     setCreatedCount(null);
-    setUploadErrors([]);
+    setUploadError("");
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result ?? "");
@@ -121,24 +126,13 @@ export function BulkSurveyQuestionUploadModal({
   async function handleUpload() {
     if (validRows.length === 0) return;
     setUploading(true);
-    const inputs = validRows.map(r => r.question!);
-    const { created, results } = await bulkCreateSurveyQuestions(surveyId, inputs);
+    setUploadError("");
+    // all or nothing: they are added after the existing questions, in the order of the file
+    const result = await importQuestions(surveyId, validRows.map(r => r.question!), intoSection || null);
     setUploading(false);
-    setCreatedCount(created);
-    const errs = results
-      .filter(r => !r.ok)
-      .map(r => ({ rowNumber: validRows[r.index].rowNumber, error: r.error || "Failed to create." }));
-    setUploadErrors(errs);
-    if (errs.length === 0) onDone();
-  }
-
-  function reset() {
-    setFileName(null);
-    setRows([]);
-    setHeaderError(null);
-    setCreatedCount(null);
-    setUploadErrors([]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (result.ok === false) { setUploadError(result.error); return; }
+    setCreatedCount(validRows.length);
+    onDone();
   }
 
   return (
@@ -156,18 +150,7 @@ export function BulkSurveyQuestionUploadModal({
               <p className="text-sm font-semibold text-[#062444] mb-1">
                 {createdCount} question{createdCount === 1 ? "" : "s"} added to {surveyTitle}.
               </p>
-              {uploadErrors.length > 0 && (
-                <div className="text-left mt-4 bg-red-50 border border-red-100 rounded-lg p-3 max-h-40 overflow-y-auto">
-                  <p className="text-[12.5px] font-semibold text-red-600 mb-1.5">{uploadErrors.length} row(s) failed to save:</p>
-                  {uploadErrors.map((e, i) => (
-                    <p key={i} className="text-[12px] text-red-600">Row {e.rowNumber}: {e.error}</p>
-                  ))}
-                </div>
-              )}
               <div className="flex justify-center gap-3 mt-5">
-                {uploadErrors.length > 0 && (
-                  <button onClick={reset} className="text-[13px] font-semibold text-[#0088cc] cursor-pointer hover:opacity-80 transition-opacity">Upload another file</button>
-                )}
                 <button onClick={onClose} className="bg-[#062444] text-white text-sm font-semibold rounded-lg px-5 py-2.5">Done</button>
               </div>
             </div>
@@ -176,6 +159,16 @@ export function BulkSurveyQuestionUploadModal({
               <p className="text-[13px] text-slate-500 mb-3">
                 Every question here will be added to <strong>{surveyTitle}</strong>. Download the template, fill it in, then upload it below. Add as many "Choice N" columns as you need for Multiple Choice rows — there's no fixed limit.
               </p>
+
+              {sections.length > 0 && (
+                <label className="mb-4 block text-[12.5px] font-semibold text-slate-500">
+                  Rows with an empty "Section" cell go into
+                  <select value={intoSection} onChange={e => setIntoSection(e.target.value)} className="mt-1 block w-full rounded-lg border border-[#062444]/15 bg-white px-3 py-2 text-sm font-normal text-[#062444]">
+                    {sections.map((s, i) => <option key={s.id} value={s.id}>{i + 1}. {s.title}</option>)}
+                  </select>
+                </label>
+              )}
+              <p className="mb-3 text-[12.5px] text-slate-500">The optional "Section" column takes a section title; a new title creates that section. Questions are added after the ones already there.</p>
 
               <div className="mb-4">
                 <ExportButton format="csv" onClick={downloadTemplate} label="Download CSV Template" />
@@ -218,6 +211,8 @@ export function BulkSurveyQuestionUploadModal({
                   </div>
                 </div>
               )}
+
+              {uploadError && <p role="alert" className="mb-3 text-[12.5px] text-red-600">Nothing was added. {uploadError}</p>}
 
               <div className="flex justify-end">
                 <button onClick={handleUpload} disabled={validRows.length === 0 || uploading}

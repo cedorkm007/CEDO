@@ -2,56 +2,9 @@ import { useEffect, useState } from "react";
 import { X, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   startOrResumeSurveyResponse, submitSurveyAnswer, submitSurveyResponse, submitSurveyConsent,
-  type SurveyResponseQuestion, type SurveyResponseAnswer,
+  type SurveyResponseQuestion, type SurveyResponseAnswer, type SurveyResponseSection,
 } from "../../scholarApi";
-
-type Answer = { choiceId?: string; likertValue?: number; textValue?: string };
-
-function isAnswered(question: SurveyResponseQuestion | undefined, answer: Answer | undefined): boolean {
-  if (!question || !answer) return false;
-  if (question.questionType === "multiple_choice") return !!answer.choiceId;
-  if (question.questionType === "likert") return answer.likertValue !== undefined;
-  return !!answer.textValue?.trim();
-}
-
-/**
- * Resolves what comes after `currentIndex`, given the answer just given for
- * it — a multiple_choice answer whose choice carries skip logic overrides
- * the default "next question in array order" (the array is already
- * sort_order-sorted, so +1 IS the default). "end" means nothing more is
- * required; the survey can be submitted from here. Pure/module-level so the
- * exact same rule drives both initial path reconstruction (on resume) and
- * live navigation (Next) — they must never disagree.
- */
-function resolveNextIndex(questions: SurveyResponseQuestion[], currentIndex: number, question: SurveyResponseQuestion, answer: Answer | undefined): number | "end" {
-  if (question.questionType === "multiple_choice" && answer?.choiceId) {
-    const choice = question.choices.find(c => c.id === answer.choiceId);
-    if (choice?.endsSurvey) return "end";
-    if (choice?.skipToQuestionId) {
-      const targetIndex = questions.findIndex(q => q.id === choice.skipToQuestionId);
-      if (targetIndex !== -1) return targetIndex;
-    }
-  }
-  const next = currentIndex + 1;
-  return next < questions.length ? next : "end";
-}
-
-/** Replays the walk from question 0 using already-saved answers, landing on the first unanswered question on that path — or the last one reached if every question on the path is answered (mirrors the server-side required-question walk, so resuming never disagrees with what submit_survey_response will actually require). */
-function buildInitialPath(questions: SurveyResponseQuestion[], answers: Record<string, Answer>): number[] {
-  if (questions.length === 0) return [];
-  const path = [0];
-  let currentIndex = 0;
-  for (;;) {
-    const question = questions[currentIndex];
-    const answer = answers[question.id];
-    if (!isAnswered(question, answer)) break;
-    const next = resolveNextIndex(questions, currentIndex, question, answer);
-    if (next === "end") break;
-    path.push(next);
-    currentIndex = next;
-  }
-  return path;
-}
+import { buildInitialPath, canContinue, introSectionId, isAnswered, progressLabel, resolveNextIndex, type TakeAnswer as Answer } from "@/lib/surveyBuilder";
 
 /**
  * One question at a time, shown right after a gated time-out/voucher scan
@@ -75,6 +28,8 @@ export function SurveyResponseModal({
   const [error, setError] = useState("");
   const [responseId, setResponseId] = useState<string | null>(null);
   const [questions, setQuestions] = useState<SurveyResponseQuestion[]>([]);
+  const [sections, setSections] = useState<SurveyResponseSection[]>([]);
+  const [introsSeen, setIntrosSeen] = useState<string[]>([]);
   const [answersByQuestion, setAnswersByQuestion] = useState<Record<string, Answer>>({});
   const [path, setPath] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
@@ -97,6 +52,7 @@ export function SurveyResponseModal({
       setResponseId(result.responseId);
       const loadedQuestions = result.questions ?? [];
       setQuestions(loadedQuestions);
+      setSections(result.sections ?? []);
       setRequiresConsent(result.requiresConsent ?? false);
       setConsentText(result.consentText ?? "This survey is voluntary. Do you agree to participate?");
       setConsented(result.consented ?? null);
@@ -127,9 +83,12 @@ export function SurveyResponseModal({
   const currentIndex = path[path.length - 1];
   const current = questions[currentIndex];
   const currentAnswer = current ? answersByQuestion[current.id] : undefined;
-  const currentIsAnswered = isAnswered(current, currentAnswer);
-  const isLast = current ? resolveNextIndex(questions, currentIndex, current, currentAnswer) === "end" : true;
-  const allAnswered = path.length > 0 && path.every(i => isAnswered(questions[i], answersByQuestion[questions[i].id]));
+  const mayContinue = canContinue(current, currentAnswer);
+  const isLast = current ? resolveNextIndex(questions, currentIndex, currentAnswer) === "end" : true;
+  const allDone = path.length > 0 && path.every(i => canContinue(questions[i], answersByQuestion[questions[i].id]));
+  // the section's title and description, once, before its first question
+  const introId = current ? introSectionId(questions, path) : null;
+  const intro = introId && !introsSeen.includes(introId) ? sections.find(s => s.id === introId) ?? null : null;
 
   function setChoiceAnswer(choiceId: string) {
     if (!current) return;
@@ -145,12 +104,16 @@ export function SurveyResponseModal({
   }
 
   async function saveCurrentAnswer(): Promise<boolean> {
-    if (!current || !responseId || !currentIsAnswered) return false;
+    if (!current || !responseId || !mayContinue) return false;
     setSaving(true);
     setError("");
+    // an optional question left blank is saved as "no answer"
+    const answered = isAnswered(current, currentAnswer);
     const result = await submitSurveyAnswer({
       responseId, questionId: current.id,
-      choiceId: currentAnswer?.choiceId, likertValue: currentAnswer?.likertValue, textValue: currentAnswer?.textValue,
+      choiceId: answered ? currentAnswer?.choiceId : undefined,
+      likertValue: answered ? currentAnswer?.likertValue : undefined,
+      textValue: answered ? currentAnswer?.textValue : undefined,
     });
     setSaving(false);
     if (!result.ok) { setError(result.error || "Couldn't save your answer."); return false; }
@@ -161,7 +124,7 @@ export function SurveyResponseModal({
     if (!current) return;
     const saved = await saveCurrentAnswer();
     if (!saved) return;
-    const next = resolveNextIndex(questions, currentIndex, current, currentAnswer);
+    const next = resolveNextIndex(questions, currentIndex, currentAnswer);
     if (next === "end") return;
     setPath(p => [...p, next]);
   }
@@ -188,7 +151,7 @@ export function SurveyResponseModal({
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4 py-8">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl">
+      <div className="w-full max-w-md max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between bg-gradient-to-br from-[#062444] to-[#0a3a6b] px-6 py-4 rounded-t-2xl">
           <h3 className="text-white font-bold text-[15px]">Quick Survey</h3>
           {!finalized && <button onClick={onClose} className="text-white/70 hover:text-white"><X size={18} /></button>}
@@ -223,10 +186,25 @@ export function SurveyResponseModal({
             </div>
           ) : !current ? (
             <p className="text-[13px] text-red-600 text-center py-6">{error || "This survey has no questions."}</p>
+          ) : intro ? (
+            <div className="py-2">
+              <p className="text-[11px] font-semibold text-slate-400 mb-2">Section {sections.findIndex(s => s.id === intro.id) + 1} of {sections.length}</p>
+              <p className="text-[17px] font-bold text-[#062444] break-words">{intro.title}</p>
+              {intro.description && <p className="mt-2 text-[13.5px] leading-relaxed text-slate-600 whitespace-pre-line break-words">{intro.description}</p>}
+              <div className="mt-6 flex items-center justify-between gap-3">
+                <button onClick={handleBack} disabled={path.length <= 1}
+                  className="flex items-center gap-1 text-[13px] font-semibold text-slate-400 disabled:opacity-40 hover:text-slate-600">
+                  <ChevronLeft size={15} /> Back
+                </button>
+                <button onClick={() => setIntrosSeen(s => [...s, intro.id])} className="flex items-center gap-1 bg-[#062444] text-white text-[13px] font-semibold rounded-lg px-5 py-2.5">
+                  Continue <ChevronRight size={15} />
+                </button>
+              </div>
+            </div>
           ) : (
             <>
-              <p className="text-[11px] font-semibold text-slate-400 mb-3">Question {path.length}</p>
-              <p className="text-[15px] font-semibold text-[#062444] leading-relaxed mb-5">{current.questionText}</p>
+              <p className="text-[11px] font-semibold text-slate-400 mb-3">{progressLabel(sections, questions, currentIndex)}</p>
+              <p className="text-[15px] font-semibold text-[#062444] leading-relaxed mb-5">{current.questionText}{current.isOptional && <span className="ml-1.5 text-[12px] font-medium text-slate-500">(optional)</span>}</p>
 
               {current.questionType === "multiple_choice" ? (
                 <div className="space-y-2 mb-5">
@@ -277,12 +255,12 @@ export function SurveyResponseModal({
                   <ChevronLeft size={15} /> Back
                 </button>
                 {isLast ? (
-                  <button onClick={handleSubmit} disabled={!allAnswered || !currentIsAnswered || saving || submitting}
+                  <button onClick={handleSubmit} disabled={!allDone || !mayContinue || saving || submitting}
                     className="bg-gradient-to-br from-[#062444] to-[#0a3a6b] disabled:opacity-50 text-white text-[13px] font-semibold rounded-lg px-5 py-2.5">
                     {submitting ? "Submitting…" : "Submit Survey"}
                   </button>
                 ) : (
-                  <button onClick={handleNext} disabled={!currentIsAnswered || saving}
+                  <button onClick={handleNext} disabled={!mayContinue || saving}
                     className="flex items-center gap-1 bg-[#062444] disabled:opacity-50 text-white text-[13px] font-semibold rounded-lg px-5 py-2.5">
                     {saving ? "Saving…" : "Next"} <ChevronRight size={15} />
                   </button>

@@ -662,7 +662,7 @@ export async function fetchSurveys(): Promise<Survey[]> {
     const activityName = nameMap.get(activityId) ?? (activityType === "quest" ? "(deleted subject)" : "(deleted activity)");
     return {
       id: s.id, title: s.title, description: s.description ?? "", activityType, activityId, activityName,
-      isActive: s.is_active, createdAt: s.created_at,
+      isActive: s.is_active, activatedAt: s.activated_at, createdAt: s.created_at,
       requiresConsent: s.requires_consent, consentText: s.consent_text,
     };
   });
@@ -769,135 +769,6 @@ export async function fetchSurveyQuestions(survey: Survey): Promise<SurveyQuesti
   }));
 }
 
-/** Creates (or fully replaces the choices of) a survey question in one call — mirrors saveQuestion's create-or-update-then-reinsert-choices pattern, minus the correct-answer machinery. */
-export async function saveSurveyQuestion(input: {
-  id?: string;
-  surveyId: string;
-  questionType: SurveyQuestionType;
-  questionText: string;
-  sortOrder: number;
-  likertScaleMin?: number;
-  likertScaleMax?: number;
-  likertMinLabel?: string;
-  likertMaxLabel?: string;
-  openEndedFormat?: SurveyOpenEndedFormat;
-  choices: SurveyChoiceDraft[];
-}): Promise<{ ok: boolean; error?: string }> {
-  if (input.questionType === "multiple_choice" && input.choices.filter(c => c.choiceText.trim()).length < 2) {
-    return { ok: false, error: "Add at least two choices." };
-  }
-  if (input.questionType === "likert") {
-    if (input.likertScaleMin === undefined || input.likertScaleMax === undefined || input.likertScaleMin >= input.likertScaleMax) {
-      return { ok: false, error: "Set a valid scale range (max must be greater than min)." };
-    }
-    if (!input.likertMinLabel?.trim() || !input.likertMaxLabel?.trim()) {
-      return { ok: false, error: "Label both ends of the scale." };
-    }
-  }
-  if (input.questionType === "open_ended" && !input.openEndedFormat) {
-    return { ok: false, error: "Choose Short Answer or Paragraph." };
-  }
-
-  const row = {
-    survey_id: input.surveyId,
-    question_type: input.questionType,
-    question_text: input.questionText,
-    sort_order: input.sortOrder,
-    likert_scale_min: input.questionType === "likert" ? input.likertScaleMin : null,
-    likert_scale_max: input.questionType === "likert" ? input.likertScaleMax : null,
-    likert_min_label: input.questionType === "likert" ? input.likertMinLabel : null,
-    likert_max_label: input.questionType === "likert" ? input.likertMaxLabel : null,
-    open_ended_format: input.questionType === "open_ended" ? input.openEndedFormat : null,
-  };
-
-  let questionId = input.id;
-  if (questionId) {
-    const { error } = await supabase.from("research_survey_questions").update({ ...row, updated_at: new Date().toISOString() }).eq("id", questionId);
-    if (error) return { ok: false, error: error.message };
-    await supabase.from("research_survey_choices").delete().eq("question_id", questionId);
-  } else {
-    const { data, error } = await supabase.from("research_survey_questions").insert(row).select("id").single();
-    if (error || !data) return { ok: false, error: error?.message ?? "Failed to create question." };
-    questionId = data.id;
-  }
-
-  if (input.questionType === "multiple_choice") {
-    const validChoices = input.choices.filter(c => c.choiceText.trim());
-    const { error: choicesError } = await supabase.from("research_survey_choices").insert(
-      validChoices.map((c, i) => ({
-        question_id: questionId, choice_text: c.choiceText.trim(), sort_order: i,
-        skip_to_question_id: c.endsSurvey ? null : (c.skipToQuestionId || null),
-        ends_survey: Boolean(c.endsSurvey),
-      }))
-    );
-    if (choicesError) return { ok: false, error: choicesError.message };
-  }
-  return { ok: true };
-}
-
-export interface BulkSurveyQuestionInput {
-  questionType: SurveyQuestionType;
-  questionText: string;
-  choices: SurveyChoiceDraft[]; // only used for multiple_choice rows
-  likertScaleMin?: number;
-  likertScaleMax?: number;
-  likertMinLabel?: string;
-  likertMaxLabel?: string;
-}
-
-export interface BulkSurveyQuestionRowResult {
-  index: number; // 0-based, matches the CSV row order
-  ok: boolean;
-  error?: string;
-}
-
-/** Mirrors bulkCreateQuestions: sequential inserts (not a single batch) so one bad row doesn't sink the whole file, with an orphaned-question rollback if a multiple_choice row's choices fail to insert. */
-export async function bulkCreateSurveyQuestions(
-  surveyId: string,
-  questions: BulkSurveyQuestionInput[]
-): Promise<{ created: number; results: BulkSurveyQuestionRowResult[] }> {
-  const results: BulkSurveyQuestionRowResult[] = [];
-  let created = 0;
-
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i];
-    const { data, error } = await supabase.from("research_survey_questions").insert({
-      survey_id: surveyId,
-      question_type: q.questionType,
-      question_text: q.questionText,
-      sort_order: i,
-      likert_scale_min: q.questionType === "likert" ? q.likertScaleMin : null,
-      likert_scale_max: q.questionType === "likert" ? q.likertScaleMax : null,
-      likert_min_label: q.questionType === "likert" ? q.likertMinLabel : null,
-      likert_max_label: q.questionType === "likert" ? q.likertMaxLabel : null,
-    }).select("id").single();
-    if (error || !data) {
-      results.push({ index: i, ok: false, error: error?.message ?? "Failed to create question." });
-      continue;
-    }
-
-    if (q.questionType === "multiple_choice") {
-      const { error: choicesError } = await supabase.from("research_survey_choices").insert(
-        q.choices.map((c, ci) => ({ question_id: data.id, choice_text: c.choiceText, sort_order: ci }))
-      );
-      if (choicesError) {
-        await supabase.from("research_survey_questions").delete().eq("id", data.id);
-        results.push({ index: i, ok: false, error: choicesError.message });
-        continue;
-      }
-    }
-
-    created++;
-    results.push({ index: i, ok: true });
-  }
-
-  return { created, results };
-}
-
-export async function deleteSurveyQuestion(id: string): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("research_survey_questions").delete().eq("id", id);
-  return error ? { ok: false, error: error.message } : { ok: true };
-}
 
 // ── Research Project Monitoring: Survey Results ──────────────
 

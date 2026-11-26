@@ -261,6 +261,14 @@ export interface SurveyResponseQuestion {
   likertMaxLabel: string | null;
   openEndedFormat: "short" | "long" | null;
   choices: SurveyResponseChoice[];
+  // Sections and optional questions (missing before the database update).
+  sectionId?: string | null;
+  isOptional?: boolean;
+}
+export interface SurveyResponseSection {
+  id: string;
+  title: string;
+  description: string;
 }
 export interface SurveyResponseAnswer {
   questionId: string;
@@ -272,13 +280,13 @@ export interface SurveyResponseAnswer {
 /** Starts a new survey response, or resumes an in-progress one — idempotent, safe to call both right after a gated scan and from the "resume your survey" dashboard banner. `requiresConsent`/`consentText`/`consented` describe a voluntary (client-satisfaction-style) survey's opt-in step — see submitSurveyConsent. */
 export async function startOrResumeSurveyResponse(surveyId: string): Promise<{
   ok: boolean; error?: string; responseId?: string; questions?: SurveyResponseQuestion[]; answers?: SurveyResponseAnswer[];
-  requiresConsent?: boolean; consentText?: string; consented?: boolean | null;
+  requiresConsent?: boolean; consentText?: string; consented?: boolean | null; sections?: SurveyResponseSection[];
 }> {
   const { data, error } = await supabase.rpc("start_or_resume_survey_response", { p_survey_id: surveyId });
   if (error) return { ok: false, error: error.message };
   return {
     ok: true, responseId: data?.responseId, questions: data?.questions ?? [], answers: data?.answers ?? [],
-    requiresConsent: data?.requiresConsent, consentText: data?.consentText, consented: data?.consented,
+    requiresConsent: data?.requiresConsent, consentText: data?.consentText, consented: data?.consented, sections: data?.sections ?? [],
   };
 }
 
