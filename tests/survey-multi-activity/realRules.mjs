@@ -3,7 +3,7 @@
 export async function realSurveyRules(db) {
   const q = async (sql, p = []) => (await db.query(sql, p)).rows;
   // The demo copy's links between the survey tables lack the real "on delete" rules; give them the ones the project's SQL files define.
-  for (const r of await q("select c.conname, c.conrelid::regclass::text t from pg_constraint c where c.contype = 'f' and c.conrelid::regclass::text like 'research_survey%' and c.conrelid::regclass::text not in ('research_survey_sections', 'research_survey_activities')")) {
+  for (const r of await q("select c.conname, c.conrelid::regclass::text t from pg_constraint c where c.contype = 'f' and c.conrelid::regclass::text like 'research_survey%' and c.conrelid::regclass::text not in ('research_survey_sections', 'research_survey_activities', 'research_survey_asks')")) {
     await db.exec(`alter table public.${r.t} drop constraint "${r.conname}"`);
   }
   for (const [table, column, target, onDelete] of [

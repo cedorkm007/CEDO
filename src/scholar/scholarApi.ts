@@ -319,6 +319,9 @@ export async function submitSurveyResponse(responseId: string): Promise<{ ok: bo
 }
 
 export interface PendingSurvey {
+  /** true: attendance waits for it. false: asked after something already happened (manual credit, picture, reconsideration). */
+  holdsCredit: boolean;
+  trigger: string;
   /** The activity whose attendance is waiting: a survey on several activities is asked once for each. */
   activityId: string | null;
   surveyId: string;
@@ -328,6 +331,10 @@ export interface PendingSurvey {
 
 /** Every survey this scholar has an attendance/voucher scan held open on (status='pending_survey') — powers the dashboard's "resume your survey" banner. Permitted by the scholar's own existing RLS read access to attendance_records, so no new RPC is needed for this read. */
 export async function fetchMyPendingSurveys(): Promise<PendingSurvey[]> {
+  // every waiting survey, including the ones asked afterwards (Phase 4 database update)
+  const all = await supabase.rpc("my_pending_surveys");
+  if (!all.error && all.data) return all.data as PendingSurvey[];
+  // before that update: only the attendance that is waiting
   const { data, error } = await supabase
     .from("attendance_records")
     .select("pending_survey_id, session_id, attendance_sessions(sdp_activities(name), formation_activities(name), sdp_activity_id, formation_activity_id)")
@@ -347,7 +354,7 @@ export async function fetchMyPendingSurveys(): Promise<PendingSurvey[]> {
       const session = r.attendance_sessions as unknown as { sdp_activity_id?: string | null; formation_activity_id?: string | null; sdp_activities?: { name: string } | null; formation_activities?: { name: string } | null } | null;
       const activityId = session?.sdp_activity_id ?? session?.formation_activity_id ?? null;
       const activityName = session?.sdp_activities?.name ?? session?.formation_activities?.name ?? "the activity";
-      return { surveyId: r.pending_survey_id as string, activityId, surveyTitle: titleMap.get(r.pending_survey_id as string) ?? "Survey", activityName };
+      return { surveyId: r.pending_survey_id as string, activityId, surveyTitle: titleMap.get(r.pending_survey_id as string) ?? "Survey", activityName, holdsCredit: true, trigger: "qr" };
     });
   // one line for each survey and activity
   return [...new Map(pending.map(p => [`${p.surveyId}:${p.activityId}`, p])).values()];

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { LogOut, ClipboardList, CheckCircle2, X as XIcon } from "lucide-react";
 import {
   fetchCurrentScholarProfile, fetchSubjectsAndGrades, fetchQuestScores, scholarSignOut,
@@ -11,7 +11,7 @@ import { DashboardHome } from "../components/dashboard/DashboardHome";
 import { CompactNav } from "../components/dashboard/CompactNav";
 import { BottomNav } from "../components/dashboard/BottomNav";
 import { MobilePortalHeader } from "../components/dashboard/MobilePortalHeader";
-import { NotificationBell } from "../components/dashboard/NotificationBell";
+import { NotificationBell, NOTIFICATIONS_CHANGED } from "../components/dashboard/NotificationBell";
 import { RenewalHomeBanner } from "../components/dashboard/RenewalHomeBanner";
 import { ProfilePopupModal } from "../components/dashboard/ProfilePopupModal";
 import { ProfilePanel } from "../components/dashboard/ProfilePanel";
@@ -71,6 +71,23 @@ function ScholarPortalPageInner({ onSignOut }: ScholarPortalPageProps) {
   const [pendingSurveys, setPendingSurveys] = useState<PendingSurvey[]>([]);
   const [finalizedNotifications, setFinalizedNotifications] = useState<AttendanceFinalizedNotification[]>([]);
   const [openSurvey, setOpenSurvey] = useState<{ surveyId: string; activityId: string | null } | null>(null);
+  // the surveys already known to be waiting (null until the first load), to notice a new one
+  const knownSurveys = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    // something just happened (for example a reconsideration request was sent): look again, and open a newly asked reconsideration survey
+    const refresh = () => {
+      if (!knownSurveys.current) return;
+      void fetchMyPendingSurveys().then(next => {
+        const known = knownSurveys.current ?? new Set<string>();
+        const fresh = next.find(n => n.trigger === "reconsideration" && !known.has(`${n.surveyId}:${n.activityId}`));
+        knownSurveys.current = new Set(next.map(n => `${n.surveyId}:${n.activityId}`));
+        setPendingSurveys(next);
+        if (fresh) setOpenSurvey({ surveyId: fresh.surveyId, activityId: fresh.activityId });
+      });
+    };
+    window.addEventListener(NOTIFICATIONS_CHANGED, refresh);
+    return () => window.removeEventListener(NOTIFICATIONS_CHANGED, refresh);
+  }, []);
   const passwordGate = usePasswordChangeRequired(profile?.id);
 
   function goToForms() { setPanel("services"); }
@@ -111,6 +128,7 @@ function ScholarPortalPageInner({ onSignOut }: ScholarPortalPageProps) {
         setPositions(pos);
         setNewlyUnlocked(unread);
         setPendingSurveys(pendingSurveysResult);
+        knownSurveys.current = new Set(pendingSurveysResult.map(n => `${n.surveyId}:${n.activityId}`));
         setFinalizedNotifications(finalizedResult);
       }
       setLoading(false);
@@ -201,11 +219,13 @@ function ScholarPortalPageInner({ onSignOut }: ScholarPortalPageProps) {
                   <div className="flex items-center gap-2.5 min-w-0">
                     <ClipboardList size={18} className="text-[#062444] shrink-0" />
                     <p className="text-[13px] text-[#062444] min-w-0">
-                      Finish the survey for <span className="font-semibold">{s.activityName}</span> to finalize your attendance.
+                      {s.holdsCredit
+                        ? <>Finish the survey for <span className="font-semibold">{s.activityName}</span> to finalize your attendance.</>
+                        : <>Please answer the survey {s.trigger === "reconsideration" ? "about your" : "for"} <span className="font-semibold">{s.activityName}</span>.</>}
                     </p>
                   </div>
                   <button onClick={() => setOpenSurvey({ surveyId: s.surveyId, activityId: s.activityId })} className="shrink-0 bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-3.5 py-1.5">
-                    Resume
+                    {s.holdsCredit ? "Resume" : "Answer"}
                   </button>
                 </div>
               ))}

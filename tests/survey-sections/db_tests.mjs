@@ -23,6 +23,7 @@ async function as(uid, sql, p = []) {
 }
 const attempt = async (uid, sql, p = []) => { try { return { ok: true, rows: await as(uid, sql, p) }; } catch (e) { return { ok: false, msg: String(e.message) }; } };
 
+await file("undo_survey_triggers.sql");
 await file("undo_survey_multi_activity.sql");   // this test is about Phase 2: take Phase 3 out first
 await realSurveyRules(db);
 

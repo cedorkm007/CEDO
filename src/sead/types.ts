@@ -140,7 +140,11 @@ export interface SurveyActivityLink {
   detached: boolean;
 }
 
+export interface SurveyTriggers { qr: boolean; scanner: boolean; manual: boolean; picture: boolean; reconsideration: boolean }
+
 export interface Survey {
+  /** When the survey is asked. */
+  triggers: SurveyTriggers;
   /** The activities the survey is (or was) attached to; empty for quest surveys. */
   activities: SurveyActivityLink[];
   id: string;
@@ -201,4 +205,6 @@ export interface GatingRosterEntry {
   updatedAt: string;
   activityId?: string | null;
   activityName?: string;
+  activityType?: string | null;
+  trigger?: string | null;
 }

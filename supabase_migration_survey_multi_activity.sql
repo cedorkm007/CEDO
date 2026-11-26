@@ -19,6 +19,9 @@ do $$ begin
   if to_regprocedure('public.survey_outline(uuid,boolean)') is null or to_regprocedure('public._survey_missing_credits(text,uuid,timestamptz)') is null then
     raise exception 'STOPPED, nothing changed: run the Phase 1 and Phase 2 survey files first.';
   end if;
+  if to_regprocedure('public.survey_save(uuid,text,text,boolean,text,jsonb,jsonb)') is not null then
+    raise exception 'STOPPED, nothing changed: the Phase 4 update is already in place, so this older file must not be run again.';
+  end if;
 end $$;
 
 -- ── 1. Which activities a survey is attached to ──────────────
