@@ -86,6 +86,8 @@ const HISTORY_SOURCE_LABELS: Record<string, string> = {
   removed: "removed by staff",
   category_edit: "category edited",
   semester_move: "semester changed",
+  restore_survey_bug: "Restored – survey credit bug",
+  restore_survey_bug_undo: "Restore undone – survey credit bug",
   system: "by the system",
 };
 

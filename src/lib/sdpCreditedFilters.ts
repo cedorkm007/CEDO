@@ -36,7 +36,7 @@ export function dimsFor(kind: ListKind, recurring: boolean): ListDim[] {
 /** Does a list use the date-range filter? Only the credits have a date credited. */
 export const hasDateRange = (kind: ListKind): boolean => kind === "credited";
 
-export const HOW_LABELS: Record<string, string> = { scan: "QR scan", manual: "Added by hand", credit_attended: "“Credit these scholars”", import: "Import", picture: "Picture approved", other: "Other" };
+export const HOW_LABELS: Record<string, string> = { scan: "QR scan", manual: "Added by hand", credit_attended: "“Credit these scholars”", import: "Import", picture: "Picture approved", restored: "Restored – survey credit bug", other: "Other" };
 export const howText = (how: string | null | undefined): string => (how ? HOW_LABELS[how] ?? how : "—");
 export const REASON_LABELS: Record<string, string> = {
   survey: "Waiting for the survey", banked: "Credit saved for a later semester", missing: "Attended, no credit recorded", no_category: "Activity has no SDP category",
