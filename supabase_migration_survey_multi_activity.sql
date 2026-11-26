@@ -544,8 +544,9 @@ revoke all on function public.research_survey_question_results(uuid, uuid) from 
 grant execute on function public.research_survey_question_results(uuid, uuid) to authenticated;
 
 -- Who was asked, for which activity: pending (still waiting), completed, declined, or released (given their credit without answering).
+-- "released" is only sent when asked for: today's live results screen does not know that word, so it keeps getting the old ones.
 drop function if exists public.research_survey_gating_roster(uuid);
-create or replace function public.research_survey_gating_roster(p_survey_id uuid, p_activity_id uuid default null)
+create or replace function public.research_survey_gating_roster(p_survey_id uuid, p_activity_id uuid default null, p_with_released boolean default false)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_result jsonb;
 begin
@@ -558,7 +559,7 @@ begin
   ),
   everyone as (
     select r.scholar_id_number, r.activity_id, r.activity_name,
-           case when r.status in ('completed', 'declined') then r.status when h.scholar_id_number is not null then 'in_progress' else 'released' end as status,
+           case when r.status in ('completed', 'declined') then r.status when h.scholar_id_number is not null or not p_with_released then 'in_progress' else 'released' end as status,
            r.updated_at
     from public.research_survey_responses r
     left join held h on h.scholar_id_number = r.scholar_id_number and h.activity_id is not distinct from r.activity_id
@@ -579,8 +580,8 @@ begin
   where p_activity_id is null or e.activity_id = p_activity_id;
   return v_result;
 end; $$;
-revoke all on function public.research_survey_gating_roster(uuid, uuid) from public, anon;
-grant execute on function public.research_survey_gating_roster(uuid, uuid) to authenticated;
+revoke all on function public.research_survey_gating_roster(uuid, uuid, boolean) from public, anon;
+grant execute on function public.research_survey_gating_roster(uuid, uuid, boolean) to authenticated;
 
 notify pgrst, 'reload schema';
 commit;

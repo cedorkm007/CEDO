@@ -91,7 +91,8 @@ check("2 a survey on three activities: another survey cannot take one of them; a
 await scan(B, s3); await scan(C, s3);
 const beforeDetach = await credit(B, s3);
 await save(S, "Shared", [A, C]);
-const roster = (await as(STAFF, "select research_survey_gating_roster($1) r", [S]))[0].r;
+const roster = (await as(STAFF, "select research_survey_gating_roster($1, null, true) r", [S]))[0].r;
+const oldScreen = (await as(STAFF, "select research_survey_gating_roster($1) r", [S]))[0].r;   // as today's live screen calls it
 const rosterB = (await as(STAFF, "select research_survey_gating_roster($1, $2) r", [S, B.id]))[0].r;
 const qid = (await q("select id from research_survey_questions where survey_id = $1", [S]))[0].id;
 const textsAll = (await as(STAFF, "select research_survey_question_results($1) r", [qid]))[0].r.texts.length;
@@ -100,9 +101,9 @@ const afterDetachC = await credit(C, s3);
 await activate(S, false);
 const status = (list, s, a) => list.find(r => r.scholarIdNumber === s.n && r.activityId === a.id)?.status;
 check("3 detaching an activity gives its waiting credit (only that activity's), keeps its answers and lists the scholar as released; results and counts can be read per activity; deactivating releases the rest",
-  beforeDetach === 0 && await credit(B, s3) === 1 && afterDetachC === 0 && status(roster, s3, B) === "released" && status(roster, s3, C) === "in_progress" && status(roster, s1, B) === "completed"
+  beforeDetach === 0 && await credit(B, s3) === 1 && afterDetachC === 0 && status(roster, s3, B) === "released" && status(roster, s3, C) === "in_progress" && status(roster, s1, B) === "completed" && status(oldScreen, s3, B) === "in_progress" && !oldScreen.some(r => r.status === "released")
   && rosterB.length === 2 && textsAll === 4 && textsB.join() === "good" && await credit(C, s3) === 1,
-  `${beforeDetach} ${afterDetachC} ${status(roster, s3, B)} ${status(roster, s3, C)} ${rosterB.length} ${textsAll} ${textsB}`);
+  `${oldScreen.length} ${beforeDetach} ${afterDetachC} ${status(roster, s3, B)} ${status(roster, s3, C)} ${rosterB.length} ${textsAll} ${textsB}`);
 
 // 4. deleting an activity keeps the survey and its answers; the activity list and the SDP pop-up know the survey
 await q("delete from sdp_attendance where activity_id = $1", [A.id]);

@@ -272,7 +272,7 @@ begin
 end; $$;
 grant execute on function public.research_survey_question_results(uuid) to authenticated;
 
-drop function if exists public.research_survey_gating_roster(uuid, uuid);
+drop function if exists public.research_survey_gating_roster(uuid, uuid, boolean);
 create or replace function public.research_survey_gating_roster(p_survey_id uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_result jsonb;
