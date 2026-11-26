@@ -63,6 +63,7 @@ async function finish(a, s, { skip = true, agree = null } = {}) {
 const credits = async (a, s) => q("select attended_date, school_year, semester, activity_day, created_at from sdp_attendance where activity_id = $1 and scholar_id_number = $2 order by occurrence_number", [a.act, s.n]);
 
 // ── the bug as it is today (take the fix out), used for the restore checks ──
+await file("undo_survey_sections_safety.sql");   // Phase 2 makes new surveys drafts; this test is about Phase 1
 await file("undo_survey_credit_fix.sql");
 const B = await makeActivity(), R = await makeActivity({ days: 3 });
 const [s1, s2, s3, s4, s5, s6, s7, s8] = scholars;

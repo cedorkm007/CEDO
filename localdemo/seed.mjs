@@ -36,7 +36,7 @@ const SCHOOLS = [
 // ── Staff (one account per role) ──
 const STAFF = [
   { username: "demo.admin", first: "TEST", last: "Super Admin", role: "super_admin", sead: true, tags: ["scholar_management", "scholars_grades_monitoring", "sdp_monitoring", "scholar_counseling", "sead_division_head", "scholar_renewal_evaluator", "forms_management"], label: "Super admin (all SEAD tools)" },
-  { username: "demo.sead", first: "TEST", last: "SEAD Staff", role: "staff", sead: true, tags: ["scholar_management", "scholars_grades_monitoring", "sdp_monitoring"], label: "SEAD staff (Grades Monitoring, SDP, Scholars)" },
+  { username: "demo.sead", first: "TEST", last: "SEAD Staff", role: "staff", sead: true, tags: ["scholar_management", "scholars_grades_monitoring", "sdp_monitoring", "research_project_monitoring"], label: "SEAD staff (Grades Monitoring, SDP, Scholars, Research Monitoring)" },
   { username: "demo.counselor", first: "TEST", last: "Counselor", role: "staff", sead: true, tags: ["scholar_counseling"], label: "Scholar counselor" },
   { username: "demo.evaluator", first: "TEST", last: "Renewal Evaluator", role: "staff", sead: true, tags: ["scholar_renewal_evaluator"], label: "Scholar Renewal Evaluator" },
   { username: "demo.docs", first: "TEST", last: "Documents Approver", role: "staff", sead: true, tags: ["renewal_documents_approver"], label: "Renewal Documents Approver (INC letter, clearance, study plan)" },
@@ -150,6 +150,16 @@ export async function seedDb(db) {
   const hash = hashPassword(DEMO_PASSWORD);   // one shared throwaway password (hashing per account would only slow the build)
   const authUser = async (uid, email) => db.query(
     "insert into auth.users (id, email, encrypted_password) values ($1, $2, $3) on conflict (id) do nothing", [uid, email, hash]);
+
+  // The demo copy of the survey tables lacks the "only one" rules the real database has.
+  for (const rule of [
+    "demo_rsr on public.research_survey_responses (survey_id, scholar_id_number)",
+    "demo_rsa on public.research_survey_answers (response_id, question_id)",
+    "demo_safn on public.scholar_attendance_finalized_notifications (session_id, scholar_id_number)",
+  ]) {
+    const [name, on] = rule.split(" on ");
+    await db.query(`create unique index if not exists ${name} on ${on}`);
+  }
 
   // Periods
   const period = {};

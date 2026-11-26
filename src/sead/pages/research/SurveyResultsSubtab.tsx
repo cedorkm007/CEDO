@@ -5,6 +5,8 @@ import { SurveyResultsChart } from "../../components/SurveyResultsChart";
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
 import { fetchSurveyList, type SurveyListItem } from "@/mysurveys/mySurveysApi";
 import { SurveyResultsPanel } from "@/mysurveys/results/SurveyResultsPanel";
+import { fetchSurveyOutline } from "../../surveyEditorApi";
+import { groupBySection, type OutlineQuestion, type OutlineSection } from "@/lib/surveyBuilder";
 import type { Survey, SurveySource, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult, SurveyOpenEndedResult, GatingRosterEntry, GatingRosterStatus } from "../../types";
 
 export function SurveyResultsSubtab() {
@@ -71,23 +73,36 @@ export function SurveyResultsSubtab() {
   );
 }
 
+type ResultQuestion = SurveyQuestion & Partial<Pick<OutlineQuestion, "sectionId" | "removed" | "removedReason" | "version" | "isOptional">>;
+
 function SurveyResultsView({ survey }: { survey: Survey }) {
-  const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
+  const [questions, setQuestions] = useState<ResultQuestion[]>([]);
+  const [sections, setSections] = useState<OutlineSection[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // A quest-sourced survey isn't attendance-gated at all — a scholar just
+  // takes the Quest freely — so the gating roster concept doesn't apply.
+  const isQuestSourced = survey.activityType === "quest";
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      setQuestions(await fetchSurveyQuestions(survey));
+      // with sections and removed questions; before the database update, the plain list as before
+      const outline = isQuestSourced ? null : await fetchSurveyOutline(survey.id, true);
+      if (outline && outline.ok) {
+        setSections(outline.outline.sections);
+        setQuestions(outline.outline.questions as ResultQuestion[]);
+      } else {
+        setSections([]);
+        setQuestions(await fetchSurveyQuestions(survey));
+      }
       setLoading(false);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
   }, [survey.id]);
 
-  // A quest-sourced survey isn't attendance-gated at all — a scholar just
-  // takes the Quest freely — so the gating roster concept doesn't apply.
-  const isQuestSourced = survey.activityType === "quest";
   let lastTopicName: string | null = null;
+  const groups = groupBySection(sections, questions.map(q => ({ ...q, sectionId: q.sectionId ?? null })));
 
   return (
     <div className="space-y-4">
@@ -97,18 +112,33 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
       ) : questions.length === 0 ? (
         <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">This survey has no questions yet.</div>
       ) : (
-        questions.map(q => {
-          const showTopicHeading = isQuestSourced && q.topicName !== lastTopicName;
-          lastTopicName = q.topicName ?? lastTopicName;
-          return (
-            <div key={q.id}>
-              {showTopicHeading && (
-                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mt-5 mb-1.5 first:mt-0">{q.topicName}</p>
-              )}
-              <QuestionResultCard question={q} source={survey.activityType} />
-            </div>
-          );
-        })
+        groups.filter(g => g.questions.length > 0).map(g => (
+          <div key={g.section?.id ?? "none"} className="space-y-4">
+            {sections.length > 0 && (
+              <div className="pt-1">
+                <h2 className="text-[13.5px] font-bold text-[#062444]">{g.section ? `${g.section.title}${g.section.removed ? " (section removed)" : ""}` : "Not in a section"}</h2>
+                {g.section?.description && <p className="text-[12px] text-slate-500">{g.section.description}</p>}
+              </div>
+            )}
+            {g.questions.map(q => {
+              const showTopicHeading = isQuestSourced && q.topicName !== lastTopicName;
+              lastTopicName = q.topicName ?? lastTopicName;
+              return (
+                <div key={q.id}>
+                  {showTopicHeading && (
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mt-5 mb-1.5 first:mt-0">{q.topicName}</p>
+                  )}
+                  {(q.removed || (q.version ?? 1) > 1) && (
+                    <p className="mb-1 text-[11.5px] font-semibold text-amber-800">
+                      {q.removed ? (q.removedReason === "changed" ? `Earlier version (version ${q.version}) — the question was changed` : "Removed from the survey — its answers are kept") : `Version ${q.version} — answers to earlier versions are listed separately`}
+                    </p>
+                  )}
+                  <QuestionResultCard question={q} source={survey.activityType} />
+                </div>
+              );
+            })}
+          </div>
+        ))
       )}
     </div>
   );
@@ -269,7 +299,7 @@ function QuestionResultCard({ question, source }: { question: SurveyQuestion; so
         </ul>
       ) : question.questionType === "multiple_choice" ? (
         <div className="space-y-3">
-          <SurveyResultsChart bars={(choiceResults ?? []).map(c => ({ label: c.isOther ? `${c.choiceText} (write-in)` : c.choiceText, count: c.count }))} />
+          <SurveyResultsChart bars={(choiceResults ?? []).map(c => ({ label: c.isOther ? `${c.choiceText} (write-in)` : c.removed ? `${c.choiceText} (${c.removedReason === "changed" ? "earlier wording" : "removed"})` : c.choiceText, count: c.count }))} />
           {(choiceResults ?? []).filter(c => c.isOther && c.otherTexts && c.otherTexts.length > 0).map(c => (
             <div key={c.choiceId} className="bg-[#f8fafd] rounded-xl p-3">
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">"{c.choiceText}" write-in answers</p>

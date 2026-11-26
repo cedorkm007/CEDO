@@ -140,6 +140,8 @@ export interface Survey {
   activityId: string;
   activityName: string;
   isActive: boolean;
+  /** null = never activated (a draft). Missing before the database update. */
+  activatedAt?: string | null;
   createdAt: string;
   // Voluntary/client-satisfaction-style surveys: when true, the scholar is
   // asked consentText and can decline — declining skips the survey and
@@ -152,6 +154,9 @@ export interface SurveyChoiceResult {
   choiceId: string;
   choiceText: string;
   count: number;
+  /** research surveys: the choice was removed, or reworded with a new meaning; its answers are kept. */
+  removed?: boolean;
+  removedReason?: string | null;
   // Quest-sourced ("Survey Results" subject) questions only.
   isOther?: boolean;
   otherTexts?: string[];
