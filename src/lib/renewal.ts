@@ -427,7 +427,7 @@ export function scholarNextSteps(stage: RenewalStage, ev: RenewalEvaluation | nu
       upload();
       if ((ev?.required_documents ?? []).some(d => d.satisfied && !d.approved)) steps.push("The consultation staff will approve the documents you sent.");
       break;
-    case "endorsed_for_approval": steps.push("The consultation staff endorsed your new scholarship status. The Scholar Renewal evaluator will approve it, and then you are renewed. We will tell you the result."); steps.push("Nothing to do right now."); break;
+    case "endorsed_for_approval": steps.push("The consultation staff endorsed your new scholarship status. The Scholar Renewal evaluator will decide on it. We will tell you the result."); steps.push("Nothing to do right now."); break;
     case "endorsed_division_head": steps.push("The evaluator sent your case to the Division Head for approval. We will tell you the result."); steps.push("Nothing to do right now."); break;
     case "needs_study_plan_consultation":
       if (ev?.consult_route) { consult(); upload(); if ((ev?.required_documents ?? []).some(d => d.satisfied && !d.approved)) steps.push("The consultation staff will approve the documents you sent."); if ((ev?.required_documents ?? []).length === 0) steps.push(/^B(\+|$)/.test(ev?.rule_code ?? "") ? "No document is needed now. After your new status is approved, you will be asked for the study plan and the clearance (you can still be renewed with one failed subject)." : "No document is needed now. If you are approved as Reconsidered or Probationary, you will be asked for the study plan and the clearance."); } else { upload(); consult(); }
@@ -473,6 +473,10 @@ export interface ProgressStep { key: string; label: string; state: ProgressState
  * steps show; afterwards the steps this scholar's case really needs appear (documents, consultation, INC). The database decided the case;
  * this only draws it.
  */
+/** The button that approves a consultation endorsement: a removal is never called a renewal. */
+export const approveEndorsementLabel = (status: string, needsDocuments: boolean): string =>
+  status === "Removed" ? "Yes, remove the scholar" : needsDocuments ? "Yes, approve" : "Yes, approve and renew";
+
 export function renewalProgress(stage: RenewalStage, ev: RenewalEvaluation | null | undefined, ctx: { consultState?: ConsultState; hasBooking?: boolean; incOpen?: boolean } = {}): ProgressStep[] {
   const holds: RenewalStage[] = ["sdp_on_hold", "waiting_grades", "review_needed"];
   const beforeCheck: RenewalStage[] = ["submitted", "late_pending", "late_declined", ...holds];
@@ -542,7 +546,7 @@ export function renewalProgress(stage: RenewalStage, ev: RenewalEvaluation | nul
   steps.push(...middle);
   const allMiddleDone = middle.every(s => s.state === "done");
   steps.push({ key: "decision", label: decisionLabel, state: terminal ? "done" : allMiddleDone && stage !== "inc_waiting_compliance" && stage !== "inc_deadline_passed" ? "current" : "todo" });
-  steps.push({ key: "renewed", label: "Renewed", state: terminal ? "done" : "todo" });
+  steps.push({ key: "renewed", label: stage === "endorsed_for_approval" ? "Result" : "Renewed", state: terminal ? "done" : "todo" });
   return steps;
 }
 

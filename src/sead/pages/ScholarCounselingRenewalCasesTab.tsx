@@ -48,7 +48,7 @@ function EndorseDialog({ c, onCancel, onDone }: { c: ConsultCase; onCancel: () =
   }
   return (
     <ModalShell title={`Endorse the new status of ${c.name}`} onClose={onCancel} wide>
-      <p className="text-[14px] text-slate-700 mb-3">The consultation was attended and the three documents are approved. Choose the scholarship status you endorse for the renewal of {c.termLabel}. The Scholar Renewal evaluator approves it; only then is the scholar renewed.</p>
+      <p className="text-[14px] text-slate-700 mb-3">The consultation was attended and the three documents are approved. Choose the scholarship status you endorse for the renewal of {c.termLabel}. The Scholar Renewal evaluator approves it before anything changes. <strong>Removed</strong> ends the scholarship: the scholar is not renewed.</p>
       <fieldset className="space-y-2">
         <legend className="text-[14px] font-semibold text-[#062444] mb-1">New scholarship status</legend>
         {ENDORSE_STATUSES.map(s => (
