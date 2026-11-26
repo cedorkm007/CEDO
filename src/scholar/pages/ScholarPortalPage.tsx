@@ -70,7 +70,7 @@ function ScholarPortalPageInner({ onSignOut }: ScholarPortalPageProps) {
   const [newlyUnlocked, setNewlyUnlocked] = useState<FormUnlockNotification[]>([]);
   const [pendingSurveys, setPendingSurveys] = useState<PendingSurvey[]>([]);
   const [finalizedNotifications, setFinalizedNotifications] = useState<AttendanceFinalizedNotification[]>([]);
-  const [openSurveyId, setOpenSurveyId] = useState<string | null>(null);
+  const [openSurvey, setOpenSurvey] = useState<{ surveyId: string; activityId: string | null } | null>(null);
   const passwordGate = usePasswordChangeRequired(profile?.id);
 
   function goToForms() { setPanel("services"); }
@@ -132,9 +132,10 @@ function ScholarPortalPageInner({ onSignOut }: ScholarPortalPageProps) {
     if (ids.length > 0) void markFormUnlockNotificationsRead(ids);
   }
 
-  function handleSurveyFinalized(surveyId: string) {
-    setOpenSurveyId(null);
-    setPendingSurveys(prev => prev.filter(s => s.surveyId !== surveyId));
+  function handleSurveyFinalized(done: { surveyId: string; activityId: string | null }) {
+    setOpenSurvey(null);
+    // only the activity just answered leaves the banner (the same survey may be waiting for another one)
+    setPendingSurveys(prev => prev.filter(s => !(s.surveyId === done.surveyId && (!done.activityId || s.activityId === done.activityId))));
   }
 
   function dismissFinalizedNotification(notificationId: string) {
@@ -196,14 +197,14 @@ function ScholarPortalPageInner({ onSignOut }: ScholarPortalPageProps) {
           {(pendingSurveys.length > 0 || finalizedNotifications.length > 0) && (
             <div className="space-y-2 mb-4">
               {pendingSurveys.map(s => (
-                <div key={s.surveyId} className="flex items-center justify-between gap-3 rounded-xl border border-[#F3BC00]/40 bg-[#F3BC00]/10 px-4 py-3">
+                <div key={`${s.surveyId}:${s.activityId}`} className="flex items-center justify-between gap-3 rounded-xl border border-[#F3BC00]/40 bg-[#F3BC00]/10 px-4 py-3">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <ClipboardList size={18} className="text-[#062444] shrink-0" />
                     <p className="text-[13px] text-[#062444] min-w-0">
                       Finish the survey for <span className="font-semibold">{s.activityName}</span> to finalize your attendance.
                     </p>
                   </div>
-                  <button onClick={() => setOpenSurveyId(s.surveyId)} className="shrink-0 bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-3.5 py-1.5">
+                  <button onClick={() => setOpenSurvey({ surveyId: s.surveyId, activityId: s.activityId })} className="shrink-0 bg-[#062444] text-white text-[12.5px] font-semibold rounded-lg px-3.5 py-1.5">
                     Resume
                   </button>
                 </div>
@@ -277,11 +278,12 @@ function ScholarPortalPageInner({ onSignOut }: ScholarPortalPageProps) {
       )}
       <BottomNav active={panel} onSelect={setPanel} />
       <NewlyUnlockedModal notifications={newlyUnlocked} onGoToForms={goToForms} onClose={dismissNewlyUnlocked} />
-      {openSurveyId && (
+      {openSurvey && (
         <SurveyResponseModal
-          surveyId={openSurveyId}
-          onClose={() => setOpenSurveyId(null)}
-          onFinalized={() => handleSurveyFinalized(openSurveyId)}
+          surveyId={openSurvey.surveyId}
+          activityId={openSurvey.activityId}
+          onClose={() => setOpenSurvey(null)}
+          onFinalized={() => handleSurveyFinalized(openSurvey)}
         />
       )}
     </>

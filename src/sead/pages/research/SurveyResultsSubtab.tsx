@@ -7,6 +7,7 @@ import { fetchSurveyList, type SurveyListItem } from "@/mysurveys/mySurveysApi";
 import { SurveyResultsPanel } from "@/mysurveys/results/SurveyResultsPanel";
 import { fetchSurveyOutline } from "../../surveyEditorApi";
 import { groupBySection, type OutlineQuestion, type OutlineSection } from "@/lib/surveyBuilder";
+import { activityCounts } from "@/lib/surveyResults";
 import type { Survey, SurveySource, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult, SurveyOpenEndedResult, GatingRosterEntry, GatingRosterStatus } from "../../types";
 
 export function SurveyResultsSubtab() {
@@ -83,6 +84,17 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
   // A quest-sourced survey isn't attendance-gated at all — a scholar just
   // takes the Quest freely — so the gating roster concept doesn't apply.
   const isQuestSourced = survey.activityType === "quest";
+  // "" = all activities combined
+  const [activityId, setActivityId] = useState("");
+  const [roster, setRoster] = useState<GatingRosterEntry[] | null>(null);
+  useEffect(() => {
+    setActivityId("");
+    setRoster(null);
+    if (isQuestSourced) return;
+    let cancelled = false;
+    void fetchSurveyGatingRoster(survey.id).then(r => { if (!cancelled) setRoster(r); });
+    return () => { cancelled = true; };
+  }, [survey.id, isQuestSourced]);
 
   useEffect(() => {
     (async () => {
@@ -106,7 +118,12 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
 
   return (
     <div className="space-y-4">
-      {!isQuestSourced && <GatingRosterSection surveyId={survey.id} />}
+      {!isQuestSourced && (
+        <>
+          <ActivityFilter survey={survey} roster={roster ?? []} value={activityId} onChange={setActivityId} />
+          <GatingRosterSection key={`${survey.id}:${activityId}`} roster={roster === null ? null : roster.filter(r => !activityId || r.activityId === activityId)} showActivity={!activityId && survey.activities.length > 1} />
+        </>
+      )}
       {loading ? (
         <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">Loading questions…</div>
       ) : questions.length === 0 ? (
@@ -133,7 +150,7 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
                       {q.removed ? (q.removedReason === "changed" ? `Earlier version (version ${q.version}) — the question was changed` : "Removed from the survey — its answers are kept") : `Version ${q.version} — answers to earlier versions are listed separately`}
                     </p>
                   )}
-                  <QuestionResultCard question={q} source={survey.activityType} />
+                  <QuestionResultCard key={`${q.id}:${activityId}`} question={q} source={survey.activityType} activityId={activityId || null} />
                 </div>
               );
             })}
@@ -144,10 +161,43 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
   );
 }
 
+/** Choose one activity, or all combined; with the number of scholars completed / pending / declined / released in each. */
+function ActivityFilter({ survey, roster, value, onChange }: { survey: Survey; roster: GatingRosterEntry[]; value: string; onChange: (id: string) => void }) {
+  const rows = activityCounts(survey.activities, roster);
+  if (rows.length < 2) return null;
+  return (
+    <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4">
+      <p className="text-[12px] font-bold uppercase tracking-wide text-slate-500 mb-2">By activity</p>
+      <div className="max-h-64 overflow-auto rounded-lg border border-[#e6ecf5]">
+        <table className="w-full min-w-[420px] text-[12.5px]">
+          <thead>
+            <tr className="bg-[#f8fafd] text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">
+              <th className="px-3 py-2">Activity</th><th className="px-3 py-2 text-right">Completed</th><th className="px-3 py-2 text-right">Pending</th><th className="px-3 py-2 text-right">Declined</th><th className="px-3 py-2 text-right">Released</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[{ id: "", name: "All activities combined", detached: false, completed: roster.filter(r => r.status === "completed").length, in_progress: roster.filter(r => r.status === "in_progress").length, declined: roster.filter(r => r.status === "declined").length, released: roster.filter(r => r.status === "released").length }, ...rows].map(a => (
+              <tr key={a.id || "all"} className={`border-t border-[#f0f3f8] ${value === a.id ? "bg-[#eef3fb]" : ""}`}>
+                <td className="px-3 py-1.5">
+                  <button type="button" onClick={() => onChange(a.id)} aria-pressed={value === a.id} className="text-left font-semibold text-[#062444] hover:underline">{a.name}</button>
+                  {a.detached && <span className="ml-1.5 text-[11px] text-slate-500">(detached)</span>}
+                </td>
+                <td className="px-3 py-1.5 text-right">{a.completed}</td><td className="px-3 py-1.5 text-right">{a.in_progress}</td><td className="px-3 py-1.5 text-right">{a.declined}</td><td className="px-3 py-1.5 text-right">{a.released}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-[11.5px] text-slate-500">Choose an activity to see only its list and answers. "Released" = given their credit without answering (the survey was turned off or the activity detached).</p>
+    </div>
+  );
+}
+
 const STATUS_META: Record<GatingRosterStatus, { label: string; badgeClass: string; icon: React.ReactNode }> = {
   in_progress: { label: "Pending Survey", badgeClass: "text-amber-700 bg-amber-100", icon: <Clock size={11} /> },
   completed: { label: "Completed", badgeClass: "text-green-700 bg-green-100", icon: <CheckCircle2 size={11} /> },
   declined: { label: "Declined", badgeClass: "text-slate-500 bg-slate-100", icon: <XCircle size={11} /> },
+  released: { label: "Released", badgeClass: "text-blue-700 bg-blue-100", icon: <CheckCircle2 size={11} /> },
 };
 
 /**
@@ -157,24 +207,16 @@ const STATUS_META: Record<GatingRosterStatus, { label: string; badgeClass: strin
  * answer breakdowns below. Empty for a survey nothing has gated yet
  * (never attached to an activity with a live scan, or no scans so far).
  */
-function GatingRosterSection({ surveyId }: { surveyId: string }) {
-  const [roster, setRoster] = useState<GatingRosterEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+function GatingRosterSection({ roster: loaded, showActivity }: { roster: GatingRosterEntry[] | null; showActivity: boolean }) {
+  const roster = loaded ?? [];
+  const loading = loaded === null;
   const [statusFilter, setStatusFilter] = useState<GatingRosterStatus | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      setStatusFilter(null);
-      setRoster(await fetchSurveyGatingRoster(surveyId));
-      setLoading(false);
-    })();
-  }, [surveyId]);
 
   const counts = {
     in_progress: roster.filter(r => r.status === "in_progress").length,
     completed: roster.filter(r => r.status === "completed").length,
     declined: roster.filter(r => r.status === "declined").length,
+    released: roster.filter(r => r.status === "released").length,
   };
 
   const { paged, search, setSearch, page, setPage, totalPages, filteredCount, pageSize } = usePaginatedList(roster, {
@@ -195,7 +237,7 @@ function GatingRosterSection({ surveyId }: { surveyId: string }) {
   return (
     <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4">
       <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400 mb-3">Attendance Gating Status</p>
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
         {(Object.keys(STATUS_META) as GatingRosterStatus[]).map(s => (
           <button key={s} onClick={() => setStatusFilter(prev => prev === s ? null : s)}
             className={`rounded-xl p-3 text-center border transition ${statusFilter === s ? "border-[#062444] bg-[#eef3fb]" : "border-[#e6ecf5] hover:bg-[#f8fafd]"}`}>
@@ -213,17 +255,19 @@ function GatingRosterSection({ surveyId }: { surveyId: string }) {
             <tr className="bg-[#f8fafd] text-left text-slate-400 text-[11px] font-bold uppercase tracking-wide">
               <th className="px-3 py-2">Scholar ID</th>
               <th className="px-3 py-2">Name</th>
+              {showActivity && <th className="px-3 py-2">Activity</th>}
               <th className="px-3 py-2">Status</th>
             </tr>
           </thead>
           <tbody>
             {filteredCount === 0 ? (
-              <tr><td colSpan={3} className="px-3 py-6 text-center text-slate-400">No scholars match.</td></tr>
+              <tr><td colSpan={showActivity ? 4 : 3} className="px-3 py-6 text-center text-slate-400">No scholars match.</td></tr>
             ) : (
               paged.map(r => (
-                <tr key={r.scholarIdNumber} className="border-t border-[#f0f3f8]">
+                <tr key={`${r.scholarIdNumber}:${r.activityId ?? ""}`} className="border-t border-[#f0f3f8]">
                   <td className="px-3 py-2 text-[#062444] font-medium">{r.scholarIdNumber}</td>
                   <td className="px-3 py-2 text-slate-600">{r.scholarName}</td>
+                  {showActivity && <td className="px-3 py-2 text-slate-600">{r.activityName}</td>}
                   <td className="px-3 py-2">
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-bold ${STATUS_META[r.status].badgeClass}`}>
                       {STATUS_META[r.status].icon} {STATUS_META[r.status].label}
@@ -244,7 +288,7 @@ function GatingRosterSection({ surveyId }: { surveyId: string }) {
   );
 }
 
-function QuestionResultCard({ question, source }: { question: SurveyQuestion; source: SurveySource }) {
+function QuestionResultCard({ question, source, activityId }: { question: SurveyQuestion; source: SurveySource; activityId: string | null }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [choiceResults, setChoiceResults] = useState<SurveyChoiceResult[] | null>(null);
@@ -255,7 +299,7 @@ function QuestionResultCard({ question, source }: { question: SurveyQuestion; so
     (async () => {
       setLoading(true);
       setError("");
-      const result = await fetchSurveyQuestionResults(question.id, question.questionType, source);
+      const result = await fetchSurveyQuestionResults(question.id, question.questionType, source, activityId);
       if (!result.ok) {
         setError(result.error || "Failed to load results.");
       } else {
@@ -266,7 +310,7 @@ function QuestionResultCard({ question, source }: { question: SurveyQuestion; so
       setLoading(false);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
-  }, [question.id, source]);
+  }, [question.id, source, activityId]);
 
   const n = question.questionType === "multiple_choice"
     ? (choiceResults ?? []).reduce((sum, c) => sum + c.count, 0)

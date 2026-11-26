@@ -2,6 +2,7 @@
 // Run:  node tests/survey-sections/db_tests.mjs        (throwaway in-memory database; nothing real is touched)
 import { buildDb } from "../../localdemo/build.mjs";
 import { seedDb, seedId } from "../../localdemo/seed.mjs";
+import { realSurveyRules } from "../survey-multi-activity/realRules.mjs";
 import fs from "node:fs";
 
 let passed = 0, failed = 0;
@@ -12,23 +13,6 @@ await db.exec("create unique index if not exists t_sdpa on public.sdp_attendance
 
 const q = async (sql, p = []) => (await db.query(sql, p)).rows;
 
-// The demo copy's links between the survey tables lack the real "on delete" rules; give them the ones the project's SQL files define.
-for (const r of await q("select c.conname, c.conrelid::regclass::text t from pg_constraint c where c.contype = 'f' and c.conrelid::regclass::text like 'research_survey%' and c.conrelid::regclass::text <> 'research_survey_sections'")) {
-  await db.exec(`alter table public.${r.t} drop constraint "${r.conname}"`);
-}
-for (const [table, column, target, onDelete] of [
-  ["research_surveys", "sdp_activity_id", "sdp_activities", "cascade"], ["research_surveys", "formation_activity_id", "formation_activities", "cascade"], ["research_surveys", "quest_subject_id", "quest_subjects", "cascade"],
-  ["research_survey_questions", "survey_id", "research_surveys", "cascade"], ["research_survey_questions", "section_id", "research_survey_sections", "set null"], ["research_survey_questions", "previous_id", "research_survey_questions", "set null"],
-  ["research_survey_choices", "question_id", "research_survey_questions", "cascade"], ["research_survey_choices", "skip_to_question_id", "research_survey_questions", "set null"],
-  ["research_survey_choices", "skip_to_section_id", "research_survey_sections", "set null"], ["research_survey_choices", "previous_id", "research_survey_choices", "set null"],
-  ["research_survey_responses", "survey_id", "research_surveys", "cascade"],
-  ["research_survey_answers", "response_id", "research_survey_responses", "cascade"], ["research_survey_answers", "question_id", "research_survey_questions", "cascade"], ["research_survey_answers", "choice_id", "research_survey_choices", "cascade"],
-]) await db.exec(`alter table public.${table} add foreign key (${column}) references public.${target}(id) on delete ${onDelete}`);
-// attendance sessions go with their activity, and their rows with them (also as in the SQL files)
-for (const [table, column, target] of [["attendance_sessions", "sdp_activity_id", "sdp_activities"], ["attendance_records", "session_id", "attendance_sessions"], ["attendance_codes", "session_id", "attendance_sessions"], ["scholar_attendance_finalized_notifications", "session_id", "attendance_sessions"]]) {
-  for (const r of await q("select c.conname from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.contype = 'f' and c.conrelid = $1::regclass and a.attname = $2", ["public." + table, column])) await db.exec(`alter table public.${table} drop constraint "${r.conname}"`);
-  await db.exec(`alter table public.${table} add foreign key (${column}) references public.${target}(id) on delete cascade`);
-}
 const file = async f => { try { await db.exec(fs.readFileSync(f, "utf8")); return { ok: true }; } catch (e) { await db.exec("rollback").catch(() => {}); return { ok: false, msg: String(e.message) }; } };
 async function as(uid, sql, p = []) {
   return db.transaction(async tx => {
@@ -38,6 +22,9 @@ async function as(uid, sql, p = []) {
   });
 }
 const attempt = async (uid, sql, p = []) => { try { return { ok: true, rows: await as(uid, sql, p) }; } catch (e) { return { ok: false, msg: String(e.message) }; } };
+
+await file("undo_survey_multi_activity.sql");   // this test is about Phase 2: take Phase 3 out first
+await realSurveyRules(db);
 
 const STAFF = seedId("staff:demo.sead");
 const scholars = await q("select s.id, s.scholar_id_number n from scholars s where s.status = 'Regular' order by s.scholar_id_number limit 6");

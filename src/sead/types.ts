@@ -132,7 +132,17 @@ export type SurveyActivityType = "sdp" | "formation";
 // subject's id, and activityName is the subject's name.
 export type SurveySource = SurveyActivityType | "quest";
 
+export interface SurveyActivityLink {
+  type: SurveyActivityType;
+  id: string;
+  name: string;
+  /** No longer attached (detached, or the activity was deleted); its answers are kept. */
+  detached: boolean;
+}
+
 export interface Survey {
+  /** The activities the survey is (or was) attached to; empty for quest surveys. */
+  activities: SurveyActivityLink[];
   id: string;
   title: string;
   description: string;
@@ -182,11 +192,13 @@ export interface SurveyLikertResult {
 }
 
 /** A scholar's attendance-gating status for a survey — "in_progress" covers both an actual in-progress response AND a scholar whose attendance was gated but who hasn't opened the survey at all yet (see research_survey_gating_roster()'s union logic). */
-export type GatingRosterStatus = "in_progress" | "completed" | "declined";
+export type GatingRosterStatus = "in_progress" | "completed" | "declined" | "released";
 
 export interface GatingRosterEntry {
   scholarIdNumber: string;
   scholarName: string;
   status: GatingRosterStatus;
   updatedAt: string;
+  activityId?: string | null;
+  activityName?: string;
 }

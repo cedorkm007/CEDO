@@ -153,7 +153,6 @@ export async function seedDb(db) {
 
   // The demo copy of the survey tables lacks the "only one" rules the real database has.
   for (const rule of [
-    "demo_rsr on public.research_survey_responses (survey_id, scholar_id_number)",
     "demo_rsa on public.research_survey_answers (response_id, question_id)",
     "demo_safn on public.scholar_attendance_finalized_notifications (session_id, scholar_id_number)",
   ]) {
