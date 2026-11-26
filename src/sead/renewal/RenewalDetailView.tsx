@@ -3,7 +3,7 @@ import { EnteredGwaLine } from "@/app/components/EnteredGwaLine";
 import { useLiveReload } from "@/lib/liveUpdates";
 import { ArrowLeft, CheckCircle2, Loader2, Paperclip, ShieldCheck, XCircle } from "lucide-react";
 import { RenewalStageBadge } from "@/app/components/RenewalStageBadge";
-import { DIVISION_HEAD_DECISION_LABEL, DOC_LABEL, DOC_NEEDS_APPROVAL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, sdpLackingText, sdpReconsiderationStatusText, termLabelOf, type DivisionHeadDecision } from "@/lib/renewal";
+import { DIVISION_HEAD_DECISION_LABEL, DOC_LABEL, DOC_NEEDS_APPROVAL, daysLeftText, daysUntil, formatDateTime, formatDay, formatSlot, sdpLackingText, sdpReconsiderationStatusText, termLabelOf, type DivisionHeadDecision, approveEndorsementLabel } from "@/lib/renewal";
 import {
   confirmRenewal, decideLateApplication, endorseRenewal, fetchRenewalDetail, fetchRenewalSdpAfter, getStaffRenewalDocumentUrl, returnRenewal, revertRenewalApplication, reviewDocument, type DetailDocument, type RenewalDetail,
 } from "../renewalApi";
@@ -146,7 +146,9 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
       {(r.stage === "endorsed_for_approval" || r.stage === "ready_for_endorsement" || r.stage === "awaiting_documents" || r.endorsedStatus) && (
         <Section title="Consultation staff's endorsement">
           {r.stage === "endorsed_for_approval"
-            ? <p><strong className="text-sky-900">Endorsed: {(r.endorsedStatus ?? "")}.</strong> The consultation staff endorsed this status after the consultation. Approve it, or send it back. Removed ends the scholarship at once; Regular renews the scholar at once, except for a scholar with one failed subject (you can then choose Regular or Probationary). For Probationary, Reconsidered, or one failed subject, the scholar first sends the study plan and the clearance (and the letter from the dean when there is an INC) and is renewed when the consultation staff approve them.</p>
+            ? <p><strong className="text-sky-900">Endorsed: {(r.endorsedStatus ?? "")}.</strong> {endorsedRemoval
+                ? "The consultation staff endorsed removal after the consultation. Approving it ends the scholarship at once: the scholar is removed and is not renewed. Or send it back."
+                : "The consultation staff endorsed this status after the consultation. Approve it, or send it back. Regular renews the scholar at once, except for a scholar with one failed subject (you can then choose Regular or Probationary). For Probationary, Reconsidered, or one failed subject, the scholar first sends the study plan and the clearance (and the letter from the dean when there is an INC) and is renewed when the consultation staff approve them."}</p>
             : r.stage === "awaiting_documents" ? <p><strong className="text-sky-900">Approved: {(r.endorsedStatus ?? "")}.</strong> The scholar is sending the documents (see “Documents” below). When the consultation staff have approved them, the scholar is renewed with this status automatically.</p>
             : r.stage === "ready_for_endorsement" ? <p>The consultation is done. The consultation staff will endorse the new scholarship status; you approve it afterwards. No document is asked for before that.</p>
             : <p>Endorsed by the consultation staff: <strong>{(r.endorsedStatus ?? "")}</strong>.</p>}
@@ -324,10 +326,10 @@ export function RenewalDetailView({ recordId, canAct, canReviewDocuments = false
         const needsDocs = final === "Probationary" || final === "Reconsidered" || (final === "Regular" && oneFailure);
         return (
           <ReasonDialog title="Approve the endorsement" intro={<>The consultation staff endorsed <strong>{(r.endorsedStatus ?? "")}</strong> for {s.name}, for the renewal of {termLabelOf(r.schoolYear, r.term)}. Approving
-            {final === "Removed" ? <> <strong>ends the scholarship</strong>: the scholar is Removed and the login is switched off.</>
+            {final === "Removed" ? <> <strong>ends the scholarship</strong>: the scholar is Removed and the login is switched off. The scholar is <strong>not renewed</strong>.</>
               : needsDocs ? <> approves the status <strong>{final}</strong>, but the scholar is <strong>not renewed yet</strong>: the scholar first sends the <strong>study plan and the clearance</strong>{(ev?.open_inc ?? 0) > 0 ? <> (and the letter from the dean)</> : null}, and is renewed with this status when the consultation staff approve them.</>
               : <> makes the scholar <strong>Renewed</strong> with the status <strong>{final}</strong>, and the scholar is notified.</>}</>}
-            label="Note (kept in the history)" required={false} confirmLabel={needsDocs ? "Yes, approve" : "Yes, approve and renew"} danger={final === "Removed"} onCancel={() => setDialog(null)}
+            label="Note (kept in the history)" required={false} confirmLabel={approveEndorsementLabel(final, needsDocs)} danger={final === "Removed"} onCancel={() => setDialog(null)}
             extraValid={final !== "Removed" || !!chosenSignatory}
             onConfirm={async note => { const x = await approveEndorsement(r.id, note, canChoose && chosenStatus && chosenStatus !== r.endorsedStatus ? chosenStatus : undefined, final === "Removed" ? chosenSignatory : undefined); if (!x.ok) return x.error; setDialog(null); await after(); return null; }}>
             {final === "Removed" && (
