@@ -14,6 +14,7 @@ import { SDP_CATEGORIES, SDP_SUBCATEGORIES, subCategoryLabel, scheduleDays, dayS
 import { FORMATION_YEAR_LEVELS } from "@/scholar/formationActivitiesApi";
 import { uploadPubmat, pubmatUrl } from "../pubmatApi";
 import { CreditedScholarsPanel } from "../components/CreditedScholarsPanel";
+import { ActivitySurveyNote } from "../components/survey/ActivitySurveyNote";
 import type { CreditedFilters } from "@/lib/sdpCreditedFilters";
 import type { CreditedSide, NotCreditedFilter } from "@/lib/sdpCreditedView";
 import { SDPHistoryModal } from "../components/SDPHistoryModal";
@@ -885,6 +886,7 @@ function DetailModal({ activity, onClose, onChanged }: { activity: SDPActivity; 
               {subSupported ? ` · ${activity.category ? subCategoryLabel(activity.subCategory) : "No sub-category"}` : ""}
               <span className="text-white/50">{` · ${activity.submittedByScholarId ? `Submitted by Scholar ID ${activity.submittedByScholarId}` : "Staff-created (open to all)"}`}</span>
             </p>
+            <ActivitySurveyNote activityId={activity.id} />
           </div>
           <button onClick={onClose} aria-label="Close" className="shrink-0 rounded-lg p-1 text-white/80 hover:bg-white/10 hover:text-white"><X size={20} /></button>
         </div>

@@ -2,9 +2,10 @@ import { infoStatusText } from "@/lib/academicScreen";
 import { fetchStatusOf } from "./academicScreenApi";
 import { supabase } from "@/lib/supabase";
 import { isValidHttpsUrl } from "@/lib/urlValidation";
+import type { SurveyActivityOption } from "@/lib/surveyBuilder";
 import type {
   QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, QuestAnswerDestination, ScholarListItem, ScholarAccountLogEntry, ScoreRow, ScholarshipStatus,
-  Survey, SurveyActivityType, SurveySource, SurveyQuestion, SurveyQuestionType, SurveyOpenEndedFormat, SurveyChoiceDraft, SurveyChoiceResult, SurveyLikertResult,
+  Survey, SurveyActivityLink, SurveyActivityType, SurveySource, SurveyQuestion, SurveyQuestionType, SurveyOpenEndedFormat, SurveyChoiceDraft, SurveyChoiceResult, SurveyLikertResult,
   SurveyOpenEndedResult, GatingRosterEntry,
 } from "./types";
 
@@ -619,36 +620,18 @@ export async function toggleQuestionActive(id: string, isActive: boolean): Promi
 
 // ── Research Project Monitoring: Survey Tools ────────────────
 
-export interface ActivityOption { id: string; name: string; type: SurveyActivityType }
-
-/** Every SDP/Formation activity that doesn't already have a survey attached (one survey per activity — see the migration's unique indexes). `excludeSurveyId`, when editing an existing survey, keeps that survey's OWN current activity in the list even though it's technically "taken" by itself. */
-export async function fetchActivitiesWithoutSurvey(excludeSurveyId?: string): Promise<ActivityOption[]> {
-  const [sdpRes, formationRes, surveysRes] = await Promise.all([
-    supabase.from("sdp_activities").select("id, name").order("name"),
-    supabase.from("formation_activities").select("id, name").order("name"),
-    supabase.from("research_surveys").select("id, sdp_activity_id, formation_activity_id"),
-  ]);
-  const taken = new Set<string>();
-  for (const s of surveysRes.data ?? []) {
-    if (excludeSurveyId && s.id === excludeSurveyId) continue;
-    if (s.sdp_activity_id) taken.add(s.sdp_activity_id);
-    if (s.formation_activity_id) taken.add(s.formation_activity_id);
-  }
-  const sdpOptions: ActivityOption[] = (sdpRes.data ?? []).filter(a => !taken.has(a.id)).map(a => ({ id: a.id, name: a.name, type: "sdp" }));
-  const formationOptions: ActivityOption[] = (formationRes.data ?? []).filter(a => !taken.has(a.id)).map(a => ({ id: a.id, name: a.name, type: "formation" }));
-  return [...sdpOptions, ...formationOptions];
-}
-
 export async function fetchSurveys(): Promise<Survey[]> {
   const { data, error } = await supabase.from("research_surveys").select("*").order("created_at", { ascending: false });
   if (error || !data) return [];
 
+  // which activities each survey is attached to; before the Phase 3 database update, only the one in the survey's own columns
+  const links = await supabase.from("research_survey_activities").select("survey_id, activity_type, activity_id, activity_name, detached_at").order("attached_at");
   const sdpIds = data.filter(s => s.sdp_activity_id).map(s => s.sdp_activity_id as string);
   const formationIds = data.filter(s => s.formation_activity_id).map(s => s.formation_activity_id as string);
   const questIds = data.filter(s => s.quest_subject_id).map(s => s.quest_subject_id as string);
   const [sdpNames, formationNames, questNames] = await Promise.all([
-    sdpIds.length ? supabase.from("sdp_activities").select("id, name").in("id", sdpIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-    formationIds.length ? supabase.from("formation_activities").select("id, name").in("id", formationIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    links.error && sdpIds.length ? supabase.from("sdp_activities").select("id, name").in("id", sdpIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    links.error && formationIds.length ? supabase.from("formation_activities").select("id, name").in("id", formationIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
     questIds.length ? supabase.from("quest_subjects").select("id, name").in("id", questIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
   const sdpNameMap = new Map((sdpNames.data ?? []).map(a => [a.id, a.name]));
@@ -656,48 +639,54 @@ export async function fetchSurveys(): Promise<Survey[]> {
   const questNameMap = new Map((questNames.data ?? []).map(a => [a.id, a.name]));
 
   return data.map(s => {
-    const activityType: Survey["activityType"] = s.sdp_activity_id ? "sdp" : s.formation_activity_id ? "formation" : "quest";
-    const activityId = (s.sdp_activity_id ?? s.formation_activity_id ?? s.quest_subject_id) as string;
-    const nameMap = activityType === "sdp" ? sdpNameMap : activityType === "formation" ? formationNameMap : questNameMap;
-    const activityName = nameMap.get(activityId) ?? (activityType === "quest" ? "(deleted subject)" : "(deleted activity)");
+    const isQuest = !!s.quest_subject_id;
+    const activities: SurveyActivityLink[] = isQuest ? [] : links.error
+      ? (s.sdp_activity_id || s.formation_activity_id
+        ? [{ type: s.sdp_activity_id ? "sdp" as const : "formation" as const, id: (s.sdp_activity_id ?? s.formation_activity_id) as string, name: sdpNameMap.get(s.sdp_activity_id) ?? formationNameMap.get(s.formation_activity_id) ?? "(deleted activity)", detached: false }]
+        : [])
+      : (links.data ?? []).filter(l => l.survey_id === s.id).map(l => ({ type: l.activity_type as SurveyActivityType, id: l.activity_id as string, name: l.activity_name as string, detached: l.detached_at !== null }));
+    const attached = activities.filter(a => !a.detached);
+    const activityType: Survey["activityType"] = isQuest ? "quest" : attached[0]?.type ?? activities[0]?.type ?? "sdp";
+    const activityId = (isQuest ? s.quest_subject_id : attached[0]?.id ?? "") as string;
+    const activityName = isQuest ? questNameMap.get(activityId) ?? "(deleted subject)"
+      : attached.length === 1 ? attached[0].name : attached.length === 0 ? "No activity attached" : `${attached.length} activities`;
     return {
-      id: s.id, title: s.title, description: s.description ?? "", activityType, activityId, activityName,
+      id: s.id, title: s.title, description: s.description ?? "", activityType, activityId, activityName, activities,
       isActive: s.is_active, activatedAt: s.activated_at, createdAt: s.created_at,
       requiresConsent: s.requires_consent, consentText: s.consent_text,
     };
   });
 }
 
-export async function createSurvey(input: {
-  title: string; description: string; activityType: SurveyActivityType; activityId: string;
-  requiresConsent: boolean; consentText: string;
-}): Promise<{ ok: boolean; error?: string; id?: string }> {
-  const { data, error } = await supabase.from("research_surveys").insert({
-    title: input.title,
-    description: input.description,
-    sdp_activity_id: input.activityType === "sdp" ? input.activityId : null,
-    formation_activity_id: input.activityType === "formation" ? input.activityId : null,
-    requires_consent: input.requiresConsent,
-    consent_text: input.consentText,
-  }).select("id").single();
-  if (error || !data) return { ok: false, error: error?.message ?? "Failed to create survey." };
-  return { ok: true, id: data.id };
+/** Creates or changes a survey together with its activities (supabase_migration_survey_multi_activity.sql). */
+export async function saveSurvey(input: {
+  id: string | null; title: string; description: string; requiresConsent: boolean; consentText: string; activities: { type: SurveyActivityType; id: string }[];
+}): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc("survey_save", {
+    p_survey_id: input.id, p_title: input.title, p_description: input.description, p_requires_consent: input.requiresConsent,
+    p_consent_text: input.consentText, p_activities: input.activities.map(a => ({ type: a.type, id: a.id })),
+  });
+  return error ? { ok: false, error: surveyActivityError(error) } : { ok: true };
 }
 
-export async function updateSurvey(id: string, fields: {
-  title: string; description: string; isActive: boolean; activityType: SurveyActivityType; activityId: string;
-  requiresConsent: boolean; consentText: string;
-}): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("research_surveys").update({
-    title: fields.title,
-    description: fields.description,
-    is_active: fields.isActive,
-    sdp_activity_id: fields.activityType === "sdp" ? fields.activityId : null,
-    formation_activity_id: fields.activityType === "formation" ? fields.activityId : null,
-    requires_consent: fields.requiresConsent,
-    consent_text: fields.consentText,
-    updated_at: new Date().toISOString(),
-  }).eq("id", id);
+const surveyActivityError = (error: { code?: string; message: string }) => error.code === "PGRST202"
+  ? "This needs the database update supabase_migration_survey_multi_activity.sql. Ask the administrator to run it."
+  : error.message;
+
+/** Every SDP and Formation activity, with the survey it already has. */
+export async function fetchSurveyActivityOptions(): Promise<{ ok: true; options: SurveyActivityOption[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("survey_activity_options");
+  return error || !data ? { ok: false, error: error ? surveyActivityError(error) : "Couldn't load the activities." } : { ok: true, options: data as SurveyActivityOption[] };
+}
+
+/** The survey attached to one activity, for the SDP Monitoring pop-up (null when none, or before the database update). */
+export async function fetchSurveyForActivity(activityId: string): Promise<{ title: string; active: boolean } | null> {
+  const { data, error } = await supabase.rpc("survey_for_activity", { p_activity_id: activityId });
+  return error || !data ? null : (data as { title: string; active: boolean });
+}
+
+export async function setSurveyActive(id: string, isActive: boolean): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("research_surveys").update({ is_active: isActive, updated_at: new Date().toISOString() }).eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
@@ -772,11 +761,11 @@ export async function fetchSurveyQuestions(survey: Survey): Promise<SurveyQuesti
 
 // ── Research Project Monitoring: Survey Results ──────────────
 
-export async function fetchSurveyQuestionResults(questionId: string, questionType: SurveyQuestionType, source: SurveySource = "sdp"): Promise<{
+export async function fetchSurveyQuestionResults(questionId: string, questionType: SurveyQuestionType, source: SurveySource = "sdp", activityId: string | null = null): Promise<{
   ok: boolean; error?: string; choiceResults?: SurveyChoiceResult[]; likertResult?: SurveyLikertResult; openEndedResult?: SurveyOpenEndedResult;
 }> {
   const rpcName = source === "quest" ? "quest_survey_question_results" : "research_survey_question_results";
-  const { data, error } = await supabase.rpc(rpcName, { p_question_id: questionId });
+  const { data, error } = await supabase.rpc(rpcName, activityId && source !== "quest" ? { p_question_id: questionId, p_activity_id: activityId } : { p_question_id: questionId });
   if (error) return { ok: false, error: error.message };
   if (questionType === "multiple_choice") {
     return { ok: true, choiceResults: (data ?? []) as SurveyChoiceResult[] };

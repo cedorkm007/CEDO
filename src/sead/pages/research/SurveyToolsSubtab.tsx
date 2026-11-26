@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Pencil, Trash2, Power, PowerOff } from "lucide-react";
-import { fetchSurveys, deleteSurvey, updateSurvey } from "../../seadApi";
+import { fetchSurveys, deleteSurvey, setSurveyActive } from "../../seadApi";
 import { fetchDeleteImpact, type DeleteImpact } from "../../surveyEditorApi";
 import { SurveyEditorModal } from "../../components/SurveyEditorModal";
 import { SurveyOutlineEditor } from "../../components/survey/SurveyOutlineEditor";
 import { ConfirmDialog, type ConfirmAction } from "../../components/survey/ConfirmDialog";
 import { ColumnHeader, EmptyColumn } from "../../components/SeadUiShell";
-import type { Survey, SurveyActivityType } from "../../types";
+import type { Survey } from "../../types";
 
 const isDraft = (s: Survey) => !s.isActive && s.activatedAt === null;
 const people = (n: number) => `${n} scholar${n === 1 ? "" : "s"}`;
@@ -32,10 +32,7 @@ export function SurveyToolsSubtab() {
 
   const selected = surveys.find(s => s.id === selectedId) ?? null;
 
-  const setActive = (s: Survey, isActive: boolean) => updateSurvey(s.id, {
-    title: s.title, description: s.description, isActive, activityType: s.activityType as SurveyActivityType,
-    activityId: s.activityId, requiresConsent: s.requiresConsent, consentText: s.consentText,
-  });
+  const setActive = (s: Survey, isActive: boolean) => setSurveyActive(s.id, isActive);
 
   async function activate(s: Survey) {
     setError("");
@@ -100,7 +97,7 @@ export function SurveyToolsSubtab() {
                 <div className="min-w-0">
                   <p className="text-[13.5px] text-[#062444] font-medium truncate">{s.title}</p>
                   <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                    {s.activityName} <span className="text-slate-300">·</span> {s.activityType === "sdp" ? "SDP" : "Formation"}
+                    {s.activityName}{s.activities.filter(a => !a.detached).length === 1 && <> <span className="text-slate-300">·</span> {s.activityType === "sdp" ? "SDP" : "Formation"}</>}
                   </p>
                 </div>
                 <div className="shrink-0 flex items-center gap-1">

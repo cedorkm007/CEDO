@@ -19,6 +19,9 @@ do $$ begin
   if to_regprocedure('public._survey_missing_credits(text,uuid,timestamptz)') is null then
     raise exception 'STOPPED, nothing changed: run supabase_migration_survey_credit_fix.sql (Phase 1) first.';
   end if;
+  if to_regprocedure('public.start_or_resume_survey_response(uuid,uuid)') is not null then
+    raise exception 'STOPPED, nothing changed: the Phase 3 update is already in place, so this older file must not be run again.';
+  end if;
 end $$;
 
 -- ── 1. Tables and columns ────────────────────────────────────

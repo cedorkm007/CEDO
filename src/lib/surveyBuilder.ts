@@ -84,6 +84,36 @@ export function skipProblem(groups: SurveyGroup[], question: { id: string }, cho
   return null;
 }
 
+// ── Choosing the activities of a survey ──
+
+export interface SurveyActivityOption {
+  type: "sdp" | "formation"; id: string; name: string; category: string | null; subCategory: string | null; date: string | null;
+  /** The survey this activity already has (null = free). */
+  surveyId: string | null; surveyTitle: string | null;
+}
+export interface ActivityFilters { search: string; type: "" | "sdp" | "formation"; category: string; subCategory: string; from: string; to: string }
+export const NO_ACTIVITY_FILTERS: ActivityFilters = { search: "", type: "", category: "", subCategory: "", from: "", to: "" };
+
+/** Formation activities have no category: choosing one leaves SDP activities only. Dates are compared as calendar days in the Philippines. */
+export function filterActivities(options: SurveyActivityOption[], f: ActivityFilters): SurveyActivityOption[] {
+  const term = f.search.trim().toLowerCase();
+  // the Philippines is UTC+8 all year, so no time zone data is needed (and the order year-month-day is certain)
+  const day = (iso: string) => new Date(new Date(iso).getTime() + 8 * 3600e3).toISOString().slice(0, 10);
+  return options.filter(o =>
+    (!term || o.name.toLowerCase().includes(term))
+    && (!f.type || o.type === f.type)
+    && (!f.category || o.category === f.category)
+    && (!f.subCategory || o.subCategory === f.subCategory)
+    && (!f.from || (!!o.date && day(o.date) >= f.from))
+    && (!f.to || (!!o.date && day(o.date) <= f.to)));
+}
+
+/** An activity that has ANOTHER survey cannot be ticked. */
+export const takenBy = (o: SurveyActivityOption, surveyId: string | null): string | null => (o.surveyId && o.surveyId !== surveyId ? o.surveyTitle ?? "another survey" : null);
+
+/** The automatic "Section 1" with nothing written about it gets no intro screen. */
+export const hasIntro = (section: { title: string; description: string }): boolean => !!section.description.trim() || !/^section \d+$/i.test(section.title.trim());
+
 // ── The scholar's screen ──
 
 export interface TakeAnswer { choiceId?: string; likertValue?: number; textValue?: string }

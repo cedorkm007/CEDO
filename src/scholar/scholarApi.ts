@@ -278,11 +278,12 @@ export interface SurveyResponseAnswer {
 }
 
 /** Starts a new survey response, or resumes an in-progress one — idempotent, safe to call both right after a gated scan and from the "resume your survey" dashboard banner. `requiresConsent`/`consentText`/`consented` describe a voluntary (client-satisfaction-style) survey's opt-in step — see submitSurveyConsent. */
-export async function startOrResumeSurveyResponse(surveyId: string): Promise<{
+export async function startOrResumeSurveyResponse(surveyId: string, activityId: string | null = null): Promise<{
   ok: boolean; error?: string; responseId?: string; questions?: SurveyResponseQuestion[]; answers?: SurveyResponseAnswer[];
   requiresConsent?: boolean; consentText?: string; consented?: boolean | null; sections?: SurveyResponseSection[];
 }> {
-  const { data, error } = await supabase.rpc("start_or_resume_survey_response", { p_survey_id: surveyId });
+  // without an activity the database picks the one most recently scanned
+  const { data, error } = await supabase.rpc("start_or_resume_survey_response", activityId ? { p_survey_id: surveyId, p_activity_id: activityId } : { p_survey_id: surveyId });
   if (error) return { ok: false, error: error.message };
   return {
     ok: true, responseId: data?.responseId, questions: data?.questions ?? [], answers: data?.answers ?? [],
@@ -318,6 +319,8 @@ export async function submitSurveyResponse(responseId: string): Promise<{ ok: bo
 }
 
 export interface PendingSurvey {
+  /** The activity whose attendance is waiting: a survey on several activities is asked once for each. */
+  activityId: string | null;
   surveyId: string;
   surveyTitle: string;
   activityName: string;
@@ -336,15 +339,18 @@ export async function fetchMyPendingSurveys(): Promise<PendingSurvey[]> {
   const { data: surveys } = await supabase.from("research_surveys").select("id, title").in("id", surveyIds);
   const titleMap = new Map((surveys ?? []).map(s => [s.id, s.title]));
 
-  return data
+  const pending = data
     .filter(r => r.pending_survey_id)
     .map(r => {
       // Supabase's nested-relation typing can't express "one of these two
       // is present" precisely, so this is read defensively rather than typed strictly.
-      const session = r.attendance_sessions as unknown as { sdp_activities?: { name: string } | null; formation_activities?: { name: string } | null } | null;
+      const session = r.attendance_sessions as unknown as { sdp_activity_id?: string | null; formation_activity_id?: string | null; sdp_activities?: { name: string } | null; formation_activities?: { name: string } | null } | null;
+      const activityId = session?.sdp_activity_id ?? session?.formation_activity_id ?? null;
       const activityName = session?.sdp_activities?.name ?? session?.formation_activities?.name ?? "the activity";
-      return { surveyId: r.pending_survey_id as string, surveyTitle: titleMap.get(r.pending_survey_id as string) ?? "Survey", activityName };
+      return { surveyId: r.pending_survey_id as string, activityId, surveyTitle: titleMap.get(r.pending_survey_id as string) ?? "Survey", activityName };
     });
+  // one line for each survey and activity
+  return [...new Map(pending.map(p => [`${p.surveyId}:${p.activityId}`, p])).values()];
 }
 
 export interface AttendanceFinalizedNotification {

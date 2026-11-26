@@ -4,7 +4,7 @@ import {
   startOrResumeSurveyResponse, submitSurveyAnswer, submitSurveyResponse, submitSurveyConsent,
   type SurveyResponseQuestion, type SurveyResponseAnswer, type SurveyResponseSection,
 } from "../../scholarApi";
-import { buildInitialPath, canContinue, introSectionId, isAnswered, progressLabel, resolveNextIndex, type TakeAnswer as Answer } from "@/lib/surveyBuilder";
+import { buildInitialPath, canContinue, hasIntro, introSectionId, isAnswered, progressLabel, resolveNextIndex, type TakeAnswer as Answer } from "@/lib/surveyBuilder";
 
 /**
  * One question at a time, shown right after a gated time-out/voucher scan
@@ -22,8 +22,8 @@ import { buildInitialPath, canContinue, introSectionId, isAnswered, progressLabe
  * actual path taken instead of blindly decrementing.
  */
 export function SurveyResponseModal({
-  surveyId, onClose, onFinalized,
-}: { surveyId: string; onClose: () => void; onFinalized: (result: { finalizedCount: number; activityName: string }) => void }) {
+  surveyId, activityId = null, onClose, onFinalized,
+}: { surveyId: string; activityId?: string | null; onClose: () => void; onFinalized: (result: { finalizedCount: number; activityName: string }) => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [responseId, setResponseId] = useState<string | null>(null);
@@ -43,7 +43,7 @@ export function SurveyResponseModal({
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const result = await startOrResumeSurveyResponse(surveyId);
+      const result = await startOrResumeSurveyResponse(surveyId, activityId);
       if (!result.ok || !result.responseId) {
         setError(result.error || "Couldn't load the survey.");
         setLoading(false);
@@ -64,7 +64,7 @@ export function SurveyResponseModal({
       setPath(buildInitialPath(loadedQuestions, byQuestion));
       setLoading(false);
     })();
-  }, [surveyId]);
+  }, [surveyId, activityId]);
 
   async function handleConsent(agree: boolean) {
     if (!responseId) return;
@@ -88,7 +88,7 @@ export function SurveyResponseModal({
   const allDone = path.length > 0 && path.every(i => canContinue(questions[i], answersByQuestion[questions[i].id]));
   // the section's title and description, once, before its first question
   const introId = current ? introSectionId(questions, path) : null;
-  const intro = introId && !introsSeen.includes(introId) ? sections.find(s => s.id === introId) ?? null : null;
+  const intro = introId && !introsSeen.includes(introId) ? sections.find(s => s.id === introId && hasIntro(s)) ?? null : null;
 
   function setChoiceAnswer(choiceId: string) {
     if (!current) return;
