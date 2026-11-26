@@ -5,7 +5,7 @@ import { isValidHttpsUrl } from "@/lib/urlValidation";
 import type { SurveyActivityOption } from "@/lib/surveyBuilder";
 import type {
   QuestSubject, QuestTopic, QuestQuestion, QuestChoiceDraft, QuestAnswerDestination, ScholarListItem, ScholarAccountLogEntry, ScoreRow, ScholarshipStatus,
-  Survey, SurveyActivityLink, SurveyActivityType, SurveySource, SurveyQuestion, SurveyQuestionType, SurveyOpenEndedFormat, SurveyChoiceDraft, SurveyChoiceResult, SurveyLikertResult,
+  Survey, SurveyActivityLink, SurveyTriggers, SurveyActivityType, SurveySource, SurveyQuestion, SurveyQuestionType, SurveyOpenEndedFormat, SurveyChoiceDraft, SurveyChoiceResult, SurveyLikertResult,
   SurveyOpenEndedResult, GatingRosterEntry,
 } from "./types";
 
@@ -649,9 +649,11 @@ export async function fetchSurveys(): Promise<Survey[]> {
     const activityType: Survey["activityType"] = isQuest ? "quest" : attached[0]?.type ?? activities[0]?.type ?? "sdp";
     const activityId = (isQuest ? s.quest_subject_id : attached[0]?.id ?? "") as string;
     const activityName = isQuest ? questNameMap.get(activityId) ?? "(deleted subject)"
-      : attached.length === 1 ? attached[0].name : attached.length === 0 ? "No activity attached" : `${attached.length} activities`;
+      : attached.length === 1 ? attached[0].name : attached.length === 0 ? (s.ask_reconsideration ? "SDP reconsideration" : "No activity attached") : `${attached.length} activities`;
     return {
       id: s.id, title: s.title, description: s.description ?? "", activityType, activityId, activityName, activities,
+      // before the Phase 4 database update: QR scan and Scanning Tools, as always
+      triggers: { qr: s.ask_qr ?? true, scanner: s.ask_scanner ?? true, manual: !!s.ask_manual, picture: !!s.ask_picture, reconsideration: !!s.ask_reconsideration },
       isActive: s.is_active, activatedAt: s.activated_at, createdAt: s.created_at,
       requiresConsent: s.requires_consent, consentText: s.consent_text,
     };
@@ -660,12 +662,19 @@ export async function fetchSurveys(): Promise<Survey[]> {
 
 /** Creates or changes a survey together with its activities (supabase_migration_survey_multi_activity.sql). */
 export async function saveSurvey(input: {
-  id: string | null; title: string; description: string; requiresConsent: boolean; consentText: string; activities: { type: SurveyActivityType; id: string }[];
+  id: string | null; title: string; description: string; requiresConsent: boolean; consentText: string; activities: { type: SurveyActivityType; id: string }[]; triggers: SurveyTriggers;
 }): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.rpc("survey_save", {
+  const args = {
     p_survey_id: input.id, p_title: input.title, p_description: input.description, p_requires_consent: input.requiresConsent,
     p_consent_text: input.consentText, p_activities: input.activities.map(a => ({ type: a.type, id: a.id })),
-  });
+  };
+  let { error } = await supabase.rpc("survey_save", { ...args, p_triggers: input.triggers });
+  const t = input.triggers;
+  if (error?.code === "PGRST202") {
+    // before the Phase 4 database update the choice cannot be saved: save the rest only when nothing new was ticked
+    if (!t.qr || !t.scanner || t.manual || t.picture || t.reconsideration) return { ok: false, error: "Choosing when to ask needs the database update supabase_migration_survey_triggers.sql. Ask the administrator to run it." };
+    ({ error } = await supabase.rpc("survey_save", args));
+  }
   return error ? { ok: false, error: surveyActivityError(error) } : { ok: true };
 }
 
@@ -761,11 +770,12 @@ export async function fetchSurveyQuestions(survey: Survey): Promise<SurveyQuesti
 
 // ── Research Project Monitoring: Survey Results ──────────────
 
-export async function fetchSurveyQuestionResults(questionId: string, questionType: SurveyQuestionType, source: SurveySource = "sdp", activityId: string | null = null): Promise<{
+export async function fetchSurveyQuestionResults(questionId: string, questionType: SurveyQuestionType, source: SurveySource = "sdp", activityId: string | null = null, trigger: string | null = null): Promise<{
   ok: boolean; error?: string; choiceResults?: SurveyChoiceResult[]; likertResult?: SurveyLikertResult; openEndedResult?: SurveyOpenEndedResult;
 }> {
   const rpcName = source === "quest" ? "quest_survey_question_results" : "research_survey_question_results";
-  const { data, error } = await supabase.rpc(rpcName, activityId && source !== "quest" ? { p_question_id: questionId, p_activity_id: activityId } : { p_question_id: questionId });
+  const filters = source === "quest" ? {} : { ...(activityId ? { p_activity_id: activityId } : {}), ...(trigger ? { p_trigger: trigger } : {}) };
+  const { data, error } = await supabase.rpc(rpcName, { p_question_id: questionId, ...filters });
   if (error) return { ok: false, error: error.message };
   if (questionType === "multiple_choice") {
     return { ok: true, choiceResults: (data ?? []) as SurveyChoiceResult[] };

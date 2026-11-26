@@ -101,6 +101,7 @@ export function SurveyToolsSubtab() {
                   </p>
                 </div>
                 <div className="shrink-0 flex items-center gap-1">
+                  {s.triggers.reconsideration && <span className="text-[10px] font-bold rounded-full px-2 py-0.5 text-violet-700 bg-violet-100">Reconsideration</span>}
                   {s.requiresConsent && <span className="text-[10px] font-bold rounded-full px-2 py-0.5 text-amber-700 bg-amber-100">Voluntary</span>}
                   <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${s.isActive ? "text-green-700 bg-green-100" : isDraft(s) ? "text-blue-700 bg-blue-100" : "text-slate-500 bg-slate-100"}`}>
                     {s.isActive ? "Active" : isDraft(s) ? "Draft" : "Inactive"}
@@ -126,6 +127,7 @@ export function SurveyToolsSubtab() {
       {editingSurvey && (
         <SurveyEditorModal
           existing={editingSurvey === "new" ? null : editingSurvey}
+          reconsiderationHolder={surveys.find(s => s.triggers.reconsideration && (editingSurvey === "new" || s.id !== editingSurvey.id))?.title ?? null}
           onClose={() => setEditingSurvey(null)}
           onSaved={() => { setEditingSurvey(null); void loadSurveys(); }}
         />

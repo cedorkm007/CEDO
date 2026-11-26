@@ -22,6 +22,7 @@ async function as(uid, sql, p = []) {
 const attempt = async (uid, sql, p = []) => { try { return { ok: true, rows: await as(uid, sql, p) }; } catch (e) { return { ok: false, msg: String(e.message) }; } };
 
 // start from the state the real database is in today: the demo built with Phase 3 in it, so take it out
+await file("undo_survey_triggers.sql");               // this test is about Phase 3: take Phase 4 out first
 const undone = await file("undo_survey_multi_activity.sql");
 await realSurveyRules(db);
 

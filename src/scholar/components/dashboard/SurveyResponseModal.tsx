@@ -166,7 +166,9 @@ export function SurveyResponseModal({
               <p className="text-[14px] font-semibold text-[#062444] mb-1">
                 {finalized.declined ? "Thanks for letting us know!" : "Survey complete — thank you!"}
               </p>
-              <p className="text-[13px] text-slate-500 mb-5">Your attendance for "{finalized.activityName}" has been finalized.</p>
+              <p className="text-[13px] text-slate-500 mb-5">{finalized.finalizedCount > 0
+                ? `Your attendance for "${finalized.activityName}" has been finalized.`
+                : `Your response about "${finalized.activityName}" was saved.`}</p>
               <button onClick={handleDone} className="bg-[#062444] text-white text-sm font-semibold rounded-lg px-6 py-2.5">Done</button>
             </div>
           ) : requiresConsent && consented !== true ? (

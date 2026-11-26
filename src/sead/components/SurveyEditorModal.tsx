@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { saveSurvey, fetchSurveyActivityOptions } from "../seadApi";
-import type { Survey } from "../types";
+import type { Survey, SurveyTriggers } from "../types";
+import { TriggerChoices } from "./survey/TriggerChoices";
 import type { SurveyActivityOption } from "@/lib/surveyBuilder";
 import { ModalShell } from "./SeadUiShell";
 import { ActivityPicker } from "./survey/ActivityPicker";
 
 export function SurveyEditorModal({
-  existing, onClose, onSaved,
-}: { existing: Survey | null; onClose: () => void; onSaved: () => void }) {
+  existing, reconsiderationHolder = null, onClose, onSaved,
+}: { existing: Survey | null; /** the title of ANOTHER survey that is the reconsideration survey now */ reconsiderationHolder?: string | null; onClose: () => void; onSaved: () => void }) {
+  const [triggers, setTriggers] = useState<SurveyTriggers>(existing?.triggers ?? { qr: true, scanner: true, manual: false, picture: false, reconsideration: false });
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const attachedBefore = existing?.activities.filter(a => !a.detached).map(a => a.id) ?? [];
@@ -33,12 +35,13 @@ export function SurveyEditorModal({
     e.preventDefault();
     setError("");
     if (!title.trim()) { setError("Enter a survey title."); return; }
-    if (selected.length === 0) { setError("Tick at least one activity."); return; }
+    if (!Object.values(triggers).some(Boolean)) { setError("Tick at least one time to ask this survey."); return; }
+    if (selected.length === 0 && !triggers.reconsideration) { setError("Tick at least one activity."); return; }
     if (requiresConsent && !consentText.trim()) { setError("Enter the consent question text."); return; }
 
     setBusy(true);
     const result = await saveSurvey({
-      id: existing?.id ?? null, title: title.trim(), description: description.trim(), requiresConsent, consentText: consentText.trim(),
+      id: existing?.id ?? null, title: title.trim(), description: description.trim(), requiresConsent, consentText: consentText.trim(), triggers,
       activities: selected.map(id => ({ id, type: options.find(o => o.id === id)?.type ?? existing?.activities.find(a => a.id === id)?.type ?? "sdp" })),
     });
     setBusy(false);
@@ -71,6 +74,8 @@ export function SurveyEditorModal({
             </p>
           )}
         </div>
+
+        <TriggerChoices value={triggers} onChange={setTriggers} reconsiderationHolder={reconsiderationHolder} />
 
         <div className="border-t border-[#f0f3f8] pt-3">
           <label className="flex items-center gap-2 cursor-pointer">

@@ -7,7 +7,7 @@ import { fetchSurveyList, type SurveyListItem } from "@/mysurveys/mySurveysApi";
 import { SurveyResultsPanel } from "@/mysurveys/results/SurveyResultsPanel";
 import { fetchSurveyOutline } from "../../surveyEditorApi";
 import { groupBySection, type OutlineQuestion, type OutlineSection } from "@/lib/surveyBuilder";
-import { activityCounts } from "@/lib/surveyResults";
+import { activityCounts, filterRoster, triggerLabel, RECONSIDERATION, TRIGGER_LABELS } from "@/lib/surveyResults";
 import type { Survey, SurveySource, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult, SurveyOpenEndedResult, GatingRosterEntry, GatingRosterStatus } from "../../types";
 
 export function SurveyResultsSubtab() {
@@ -86,9 +86,14 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
   const isQuestSourced = survey.activityType === "quest";
   // "" = all activities combined
   const [activityId, setActivityId] = useState("");
+  const [trigger, setTrigger] = useState("");
+  // all reconsideration requests are one line: their answers are picked by how they were asked
+  const resultsActivity = activityId && activityId !== RECONSIDERATION ? activityId : null;
+  const resultsTrigger = activityId === RECONSIDERATION ? RECONSIDERATION : trigger || null;
   const [roster, setRoster] = useState<GatingRosterEntry[] | null>(null);
   useEffect(() => {
     setActivityId("");
+    setTrigger("");
     setRoster(null);
     if (isQuestSourced) return;
     let cancelled = false;
@@ -120,8 +125,15 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
     <div className="space-y-4">
       {!isQuestSourced && (
         <>
-          <ActivityFilter survey={survey} roster={roster ?? []} value={activityId} onChange={setActivityId} />
-          <GatingRosterSection key={`${survey.id}:${activityId}`} roster={roster === null ? null : roster.filter(r => !activityId || r.activityId === activityId)} showActivity={!activityId && survey.activities.length > 1} />
+          <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4">
+            <label className="block text-[12.5px] font-semibold text-slate-500 mb-1.5" htmlFor="survey-trigger">How it was asked</label>
+            <select id="survey-trigger" value={trigger} onChange={e => setTrigger(e.target.value)} className="w-full max-w-md border border-[#062444]/15 rounded-lg px-3 py-2 text-sm bg-white outline-none focus:border-[#0088cc]">
+              <option value="">Any way</option>
+              {Object.entries(TRIGGER_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </div>
+          <ActivityFilter survey={survey} roster={filterRoster(roster ?? [], "", trigger)} value={activityId} onChange={setActivityId} />
+          <GatingRosterSection key={`${survey.id}:${activityId}:${trigger}`} roster={roster === null ? null : filterRoster(roster, activityId, trigger)} showActivity={activityId === RECONSIDERATION || (!activityId && (survey.activities.length > 1 || survey.triggers?.reconsideration === true))} />
         </>
       )}
       {loading ? (
@@ -150,7 +162,7 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
                       {q.removed ? (q.removedReason === "changed" ? `Earlier version (version ${q.version}) — the question was changed` : "Removed from the survey — its answers are kept") : `Version ${q.version} — answers to earlier versions are listed separately`}
                     </p>
                   )}
-                  <QuestionResultCard key={`${q.id}:${activityId}`} question={q} source={survey.activityType} activityId={activityId || null} />
+                  <QuestionResultCard key={`${q.id}:${activityId}:${trigger}`} question={q} source={survey.activityType} activityId={resultsActivity} trigger={resultsTrigger} />
                 </div>
               );
             })}
@@ -224,19 +236,19 @@ function GatingRosterSection({ roster: loaded, showActivity }: { roster: GatingR
     filterFn: statusFilter ? r => r.status === statusFilter : undefined,
   });
 
-  if (loading) return <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">Loading gating status…</div>;
+  if (loading) return <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">Loading who was asked…</div>;
   if (roster.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4">
-        <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400 mb-1">Attendance Gating Status</p>
-        <p className="text-[13px] text-slate-400">No scholar has had a scan gated by this survey yet.</p>
+        <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400 mb-1">Who was asked</p>
+        <p className="text-[13px] text-slate-400">No scholar to show for this choice yet.</p>
       </div>
     );
   }
 
   return (
     <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4">
-      <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400 mb-3">Attendance Gating Status</p>
+      <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400 mb-3">Who was asked</p>
       <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
         {(Object.keys(STATUS_META) as GatingRosterStatus[]).map(s => (
           <button key={s} onClick={() => setStatusFilter(prev => prev === s ? null : s)}
@@ -256,18 +268,20 @@ function GatingRosterSection({ roster: loaded, showActivity }: { roster: GatingR
               <th className="px-3 py-2">Scholar ID</th>
               <th className="px-3 py-2">Name</th>
               {showActivity && <th className="px-3 py-2">Activity</th>}
+              <th className="px-3 py-2">Asked by</th>
               <th className="px-3 py-2">Status</th>
             </tr>
           </thead>
           <tbody>
             {filteredCount === 0 ? (
-              <tr><td colSpan={showActivity ? 4 : 3} className="px-3 py-6 text-center text-slate-400">No scholars match.</td></tr>
+              <tr><td colSpan={showActivity ? 5 : 4} className="px-3 py-6 text-center text-slate-400">No scholars match.</td></tr>
             ) : (
               paged.map(r => (
                 <tr key={`${r.scholarIdNumber}:${r.activityId ?? ""}`} className="border-t border-[#f0f3f8]">
                   <td className="px-3 py-2 text-[#062444] font-medium">{r.scholarIdNumber}</td>
                   <td className="px-3 py-2 text-slate-600">{r.scholarName}</td>
                   {showActivity && <td className="px-3 py-2 text-slate-600">{r.activityName}</td>}
+                  <td className="px-3 py-2 text-slate-600">{triggerLabel(r.trigger)}</td>
                   <td className="px-3 py-2">
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-bold ${STATUS_META[r.status].badgeClass}`}>
                       {STATUS_META[r.status].icon} {STATUS_META[r.status].label}
@@ -288,7 +302,7 @@ function GatingRosterSection({ roster: loaded, showActivity }: { roster: GatingR
   );
 }
 
-function QuestionResultCard({ question, source, activityId }: { question: SurveyQuestion; source: SurveySource; activityId: string | null }) {
+function QuestionResultCard({ question, source, activityId, trigger }: { question: SurveyQuestion; source: SurveySource; activityId: string | null; trigger: string | null }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [choiceResults, setChoiceResults] = useState<SurveyChoiceResult[] | null>(null);
@@ -299,7 +313,7 @@ function QuestionResultCard({ question, source, activityId }: { question: Survey
     (async () => {
       setLoading(true);
       setError("");
-      const result = await fetchSurveyQuestionResults(question.id, question.questionType, source, activityId);
+      const result = await fetchSurveyQuestionResults(question.id, question.questionType, source, activityId, trigger);
       if (!result.ok) {
         setError(result.error || "Failed to load results.");
       } else {
@@ -310,7 +324,7 @@ function QuestionResultCard({ question, source, activityId }: { question: Survey
       setLoading(false);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
-  }, [question.id, source, activityId]);
+  }, [question.id, source, activityId, trigger]);
 
   const n = question.questionType === "multiple_choice"
     ? (choiceResults ?? []).reduce((sum, c) => sum + c.count, 0)
