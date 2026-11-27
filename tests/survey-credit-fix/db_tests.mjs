@@ -8,6 +8,7 @@ let passed = 0, failed = 0;
 const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok   ${name}`); } else { failed++; console.log(`  FAIL ${name} ${extra}`); } };
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+await db.exec((await import("node:fs")).readFileSync("undo_survey_ask_once.sql", "utf8"));   // an earlier phase's test
 // the demo copy of these tables lacks rules the real database has
 for (const s of [
   "create unique index if not exists t_rsr on public.research_survey_responses (survey_id, scholar_id_number)",

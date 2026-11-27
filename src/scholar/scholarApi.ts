@@ -281,6 +281,8 @@ export interface SurveyResponseAnswer {
 export async function startOrResumeSurveyResponse(surveyId: string, activityId: string | null = null): Promise<{
   ok: boolean; error?: string; responseId?: string; questions?: SurveyResponseQuestion[]; answers?: SurveyResponseAnswer[];
   requiresConsent?: boolean; consentText?: string; consented?: boolean | null; sections?: SurveyResponseSection[];
+  /** The scholar already responded to this survey: nothing is asked (anything that was waiting has been given). */
+  alreadyAnswered?: boolean; finalizedCount?: number; activityName?: string;
 }> {
   // without an activity the database picks the one most recently scanned
   const { data, error } = await supabase.rpc("start_or_resume_survey_response", activityId ? { p_survey_id: surveyId, p_activity_id: activityId } : { p_survey_id: surveyId });
@@ -288,6 +290,7 @@ export async function startOrResumeSurveyResponse(surveyId: string, activityId: 
   return {
     ok: true, responseId: data?.responseId, questions: data?.questions ?? [], answers: data?.answers ?? [],
     requiresConsent: data?.requiresConsent, consentText: data?.consentText, consented: data?.consented, sections: data?.sections ?? [],
+    alreadyAnswered: !!data?.alreadyAnswered || data?.status === "completed" || data?.status === "declined", finalizedCount: data?.finalizedCount, activityName: data?.activityName,
   };
 }
 

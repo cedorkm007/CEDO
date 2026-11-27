@@ -34,7 +34,7 @@ export function SurveyResponseModal({
   const [path, setPath] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [finalized, setFinalized] = useState<{ finalizedCount: number; activityName: string; declined: boolean } | null>(null);
+  const [finalized, setFinalized] = useState<{ finalizedCount: number; activityName: string; declined: boolean; already?: boolean } | null>(null);
   const [requiresConsent, setRequiresConsent] = useState(false);
   const [consentText, setConsentText] = useState("");
   const [consented, setConsented] = useState<boolean | null>(null);
@@ -50,6 +50,11 @@ export function SurveyResponseModal({
         return;
       }
       setResponseId(result.responseId);
+      if (result.alreadyAnswered) {
+        setFinalized({ finalizedCount: result.finalizedCount ?? 0, activityName: result.activityName ?? "the activity", declined: false, already: true });
+        setLoading(false);
+        return;
+      }
       const loadedQuestions = result.questions ?? [];
       setQuestions(loadedQuestions);
       setSections(result.sections ?? []);
@@ -164,11 +169,11 @@ export function SurveyResponseModal({
             <div className="text-center py-4">
               <CheckCircle2 size={40} className="mx-auto text-green-600 mb-3" />
               <p className="text-[14px] font-semibold text-[#062444] mb-1">
-                {finalized.declined ? "Thanks for letting us know!" : "Survey complete — thank you!"}
+                {finalized.already ? "You have already answered this survey." : finalized.declined ? "Thanks for letting us know!" : "Survey complete — thank you!"}
               </p>
               <p className="text-[13px] text-slate-500 mb-5">{finalized.finalizedCount > 0
                 ? `Your attendance for "${finalized.activityName}" has been finalized.`
-                : `Your response about "${finalized.activityName}" was saved.`}</p>
+                : finalized.already ? "There is nothing more to do." : `Your response about "${finalized.activityName}" was saved.`}</p>
               <button onClick={handleDone} className="bg-[#062444] text-white text-sm font-semibold rounded-lg px-6 py-2.5">Done</button>
             </div>
           ) : requiresConsent && consented !== true ? (

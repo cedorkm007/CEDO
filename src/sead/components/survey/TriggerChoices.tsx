@@ -14,7 +14,7 @@ export function TriggerChoices({ value, onChange, reconsiderationHolder }: {
   return (
     <fieldset className="border-t border-[#f0f3f8] pt-3">
       <legend className="text-[12.5px] font-semibold text-slate-500">When to ask this survey</legend>
-      <p className="mb-2 text-[11.5px] text-slate-500">A scholar is asked only once for each activity. Time In and file import never ask. Changes count from now on.</p>
+      <p className="mb-2 text-[11.5px] text-slate-500">A scholar who has already responded is not asked again (a new reconsideration request still is). Time In and file import never ask. Changes count from now on.</p>
       <div className="space-y-2">
         {CHOICES.map(c => (
           <label key={c.key} className="flex cursor-pointer items-start gap-2.5">

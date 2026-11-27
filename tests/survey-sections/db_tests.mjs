@@ -9,6 +9,7 @@ let passed = 0, failed = 0;
 const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok   ${name}`); } else { failed++; console.log(`  FAIL ${name} ${extra}`); } };
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+await db.exec((await import("node:fs")).readFileSync("undo_survey_ask_once.sql", "utf8"));   // an earlier phase's test
 await db.exec("create unique index if not exists t_sdpa on public.sdp_attendance (activity_id, scholar_id_number, occurrence_number)");
 
 const q = async (sql, p = []) => (await db.query(sql, p)).rows;
