@@ -141,7 +141,8 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
             </select>
           </div>
           <ActivityFilter survey={survey} roster={filterRoster(roster ?? [], "", trigger)} value={activityId} onChange={setActivityId} />
-          <GatingRosterSection key={`${survey.id}:${activityId}:${trigger}`} surveyId={survey.id} version={version} onChanged={reload} roster={roster === null ? null : filterRoster(roster, activityId, trigger)} showActivity={activityId === RECONSIDERATION || (!activityId && (survey.activities.length > 1 || survey.triggers?.reconsideration === true))} />
+          <GatingRosterSection key={`${survey.id}:${activityId}:${trigger}`} surveyId={survey.id} onChanged={reload} roster={roster === null ? null : filterRoster(roster, activityId, trigger)} showActivity={activityId === RECONSIDERATION || (!activityId && (survey.activities.length > 1 || survey.triggers?.reconsideration === true))} />
+          <DeletedResponses key={survey.id} surveyId={survey.id} version={version} onRestored={reload} />
         </>
       )}
       {loading ? (
@@ -227,7 +228,7 @@ const STATUS_META: Record<GatingRosterStatus, { label: string; badgeClass: strin
  * answer breakdowns below. Empty for a survey nothing has gated yet
  * (never attached to an activity with a live scan, or no scans so far).
  */
-function GatingRosterSection({ roster: loaded, showActivity, surveyId, version, onChanged }: { roster: GatingRosterEntry[] | null; showActivity: boolean; surveyId: string; version: number; onChanged: () => void }) {
+function GatingRosterSection({ roster: loaded, showActivity, surveyId, onChanged }: { roster: GatingRosterEntry[] | null; showActivity: boolean; surveyId: string; onChanged: () => void }) {
   const [deleting, setDeleting] = useState<GatingRosterEntry | null>(null);
   const roster = loaded ?? [];
   const loading = loaded === null;
@@ -251,7 +252,6 @@ function GatingRosterSection({ roster: loaded, showActivity, surveyId, version, 
       <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4">
         <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400 mb-1">Who was asked</p>
         <p className="text-[13px] text-slate-400">No scholar to show for this choice yet.</p>
-        <DeletedResponses surveyId={surveyId} version={version} onRestored={onChanged} />
       </div>
     );
   }
@@ -315,7 +315,6 @@ function GatingRosterSection({ roster: loaded, showActivity, surveyId, version, 
           <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} filteredCount={filteredCount} pageSize={pageSize} />
         </div>
       )}
-      <DeletedResponses surveyId={surveyId} version={version} onRestored={onChanged} />
       {deleting && <DeleteResponseDialog surveyId={surveyId} row={deleting} onClose={() => setDeleting(null)} onDeleted={() => { setDeleting(null); onChanged(); }} />}
     </div>
   );

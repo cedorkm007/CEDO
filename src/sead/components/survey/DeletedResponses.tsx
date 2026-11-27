@@ -28,7 +28,7 @@ export function DeletedResponses({ surveyId, version, onRestored }: { surveyId: 
 
   if (rows.length === 0 && !note) return null;
   return (
-    <div className="mt-3 border-t border-[#f0f3f8] pt-3">
+    <div className="rounded-2xl border border-[#e6ecf5] bg-white p-4">
       <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} className="text-[12px] font-bold uppercase text-slate-600 hover:underline">
         {open ? "Hide" : "Show"} deleted responses ({rows.length})
       </button>
