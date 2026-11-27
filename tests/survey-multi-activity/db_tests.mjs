@@ -9,6 +9,7 @@ let passed = 0, failed = 0;
 const check = (name, ok, extra = "") => { if (ok) { passed++; console.log(`  ok   ${name}`); } else { failed++; console.log(`  FAIL ${name} ${extra}`); } };
 const { db } = await buildDb({ dataDir: "memory://", writeReport: false });
 await seedDb(db);
+await db.exec((await import("node:fs")).readFileSync("undo_survey_ask_once.sql", "utf8"));   // an earlier phase's test
 
 const q = async (sql, p = []) => (await db.query(sql, p)).rows;
 const file = async f => { try { await db.exec(fs.readFileSync(f, "utf8")); return { ok: true }; } catch (e) { await db.exec("rollback").catch(() => {}); return { ok: false, msg: String(e.message) }; } };

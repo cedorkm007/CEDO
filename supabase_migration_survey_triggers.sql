@@ -18,6 +18,9 @@ do $$ begin
   if to_regclass('public.research_survey_activities') is null or to_regprocedure('public._survey_release(uuid,uuid)') is null then
     raise exception 'STOPPED, nothing changed: run the Phase 1, 2 and 3 survey files first.';
   end if;
+  if to_regprocedure('public._survey_settle(uuid,text,uuid)') is not null then
+    raise exception 'STOPPED, nothing changed: the "ask only once" update is already in place, so this older file must not be run again.';
+  end if;
 end $$;
 
 -- ── 1. What each survey asks about ───────────────────────────

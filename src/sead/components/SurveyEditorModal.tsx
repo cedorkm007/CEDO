@@ -64,7 +64,7 @@ export function SurveyEditorModal({
         </div>
         <div>
           <p className="text-[12.5px] font-semibold text-slate-500 mb-1">Activities that ask this survey</p>
-          <p className="text-[11.5px] text-slate-500 mb-2">Scholars answer it once for each activity they attend. An activity can have only one survey.</p>
+          <p className="text-[11.5px] text-slate-500 mb-2">A scholar answers it only once, at whichever of these activities asks first. An activity can have only one survey.</p>
           {loadingActivities
             ? <p className="py-3 text-center text-[12.5px] text-slate-400">Loading activities…</p>
             : <ActivityPicker options={options} surveyId={existing?.id ?? null} selected={selected} onChange={setSelected} />}
