@@ -33,3 +33,20 @@ export function activityCounts(activities: { id: string; name: string; detached:
 /** The rows of the chosen activity ("" = all) that were asked the chosen way ("" = any). */
 export const filterRoster = <T extends RosterRow>(roster: T[], activity: string, trigger: string): T[] =>
   roster.filter(r => (!activity || activityKey(r) === activity) && (!trigger || (r.trigger || "none") === trigger));
+
+/** A short code of the "Who was asked" list: it changes when a response arrives, is answered further, finished, deleted or restored. */
+export const rosterSignature = (roster: (RosterRow & { scholarIdNumber: string; updatedAt?: string | null })[]): string =>
+  roster.map(r => [r.scholarIdNumber, r.activityId ?? "", r.status, r.trigger ?? "", r.updatedAt ?? ""].join("|")).sort().join(";");
+
+// Which sections have their results (charts and answers) hidden: remembered in this browser, per survey.
+type KeyStore = Pick<Storage, "getItem" | "setItem">;
+const hiddenKey = (surveyId: string) => `survey-results-hidden:${surveyId}`;
+export function readHiddenSections(surveyId: string, store?: KeyStore): string[] {
+  try {
+    const value: unknown = JSON.parse((store ?? localStorage).getItem(hiddenKey(surveyId)) ?? "[]");
+    return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+  } catch { return []; }
+}
+export function writeHiddenSections(surveyId: string, hidden: string[], store?: KeyStore): void {
+  try { (store ?? localStorage).setItem(hiddenKey(surveyId), JSON.stringify(hidden)); } catch { /* private window: the choice lasts until the page is closed */ }
+}
