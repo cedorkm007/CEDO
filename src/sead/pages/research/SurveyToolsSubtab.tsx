@@ -129,18 +129,18 @@ export function SurveyToolsSubtab() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] mt-2">
-                {s.isActive && (
-                  <button onClick={e => { e.stopPropagation(); setAnnouncing(s); }} disabled={waitFor(s.id) > 0}
-                    title={waitFor(s.id) > 0 ? "A survey can be announced once every 10 minutes" : "Notify all scholars to answer this survey"}
-                    className="flex items-center gap-1 text-[#062444] font-semibold hover:underline disabled:text-slate-400 disabled:no-underline disabled:cursor-not-allowed">
-                    <Megaphone size={12} /> {waitFor(s.id) > 0 ? `Announced · again in ${formatWait(waitFor(s.id))}` : "Announce"}
-                  </button>
-                )}
                 <button onClick={e => { e.stopPropagation(); setEditingSurvey(s); }} className="flex items-center gap-1 text-[#0088cc] font-semibold hover:underline"><Pencil size={12} /> Edit</button>
                 <button onClick={e => { e.stopPropagation(); if (s.isActive) void ask(s, "deactivate"); else void activate(s); }} className="flex items-center gap-1 text-slate-500 font-semibold hover:underline">
                   {s.isActive ? <><PowerOff size={12} /> Deactivate</> : <><Power size={12} /> Activate</>}
                 </button>
                 <button onClick={e => { e.stopPropagation(); void ask(s, "delete"); }} className="flex items-center gap-1 text-red-500 font-semibold hover:underline hover:text-red-600"><Trash2 size={12} /> Delete</button>
+                {s.isActive && (
+                  <button onClick={e => { e.stopPropagation(); setAnnouncing(s); }} disabled={waitFor(s.id) > 0}
+                    title={waitFor(s.id) > 0 ? "A survey can be announced once every 10 minutes" : "Notify all scholars to answer this survey"}
+                    className="flex w-full items-center gap-1 text-left text-[#062444] font-semibold hover:underline disabled:text-slate-400 disabled:no-underline disabled:cursor-not-allowed">
+                    <Megaphone size={12} /> {waitFor(s.id) > 0 ? `Announced · again in ${formatWait(waitFor(s.id))}` : "Announce"}
+                  </button>
+                )}
               </div>
             </div>
           ))}
