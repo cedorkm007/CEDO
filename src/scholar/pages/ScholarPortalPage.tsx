@@ -142,6 +142,10 @@ function ScholarPortalPageInner({ onSignOut }: ScholarPortalPageProps) {
     setProfile(prev => (prev && JSON.stringify(prev) === JSON.stringify(p) ? prev : p));
     const [g, s, status, pos] = await Promise.all([fetchSubjectsAndGrades(p.scholarIdNumber), fetchQuestScores(p.scholarIdNumber), fetchScholarSDPCategoryStatus(p.scholarIdNumber), fetchOwnPositionLabels(p.scholarIdNumber)]);
     setGrades(g); setScores(s); setSdpStatus(status); setPositions(pos);
+    // a survey announced (or turned off) while the portal is open: the banner follows
+    const surveys = await fetchMyPendingSurveys();
+    knownSurveys.current = new Set(surveys.map(n => `${n.surveyId}:${n.activityId}`));
+    setPendingSurveys(surveys);
   });
 
   function dismissNewlyUnlocked() {
@@ -219,7 +223,9 @@ function ScholarPortalPageInner({ onSignOut }: ScholarPortalPageProps) {
                   <div className="flex items-center gap-2.5 min-w-0">
                     <ClipboardList size={18} className="text-[#062444] shrink-0" />
                     <p className="text-[13px] text-[#062444] min-w-0">
-                      {s.holdsCredit
+                      {s.trigger === "announcement"
+                        ? <>Please answer the survey <span className="font-semibold">{s.surveyTitle}</span>.</>
+                        : s.holdsCredit
                         ? <>Finish the survey for <span className="font-semibold">{s.activityName}</span> to finalize your attendance.</>
                         : <>Please answer the survey {s.trigger === "reconsideration" ? "about your" : "for"} <span className="font-semibold">{s.activityName}</span>.</>}
                     </p>

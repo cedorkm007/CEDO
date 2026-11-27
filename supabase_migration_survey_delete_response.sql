@@ -12,6 +12,9 @@
 begin;
 
 do $$ begin
+  if to_regprocedure('public.survey_announce(uuid)') is not null then
+    raise exception 'STOPPED, nothing changed: the survey announcement update is already in place, so this older file must not be run again.';
+  end if;
   if to_regprocedure('public._survey_settle(uuid,text,uuid)') is null then
     raise exception 'STOPPED, nothing changed: run supabase_migration_survey_ask_once.sql first.';
   end if;

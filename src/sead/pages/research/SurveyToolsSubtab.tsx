@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { Pencil, Trash2, Power, PowerOff } from "lucide-react";
+import { Pencil, Trash2, Power, PowerOff, Megaphone } from "lucide-react";
+import { AnnounceDialog } from "../../components/survey/AnnounceDialog";
+import { formatWait } from "@/lib/surveyResults";
 import { fetchSurveys, deleteSurvey, setSurveyActive } from "../../seadApi";
-import { fetchDeleteImpact, type DeleteImpact } from "../../surveyEditorApi";
+import { fetchDeleteImpact, fetchAnnouncementWaits, type DeleteImpact } from "../../surveyEditorApi";
 import { SurveyEditorModal } from "../../components/SurveyEditorModal";
 import { SurveyOutlineEditor } from "../../components/survey/SurveyOutlineEditor";
 import { ConfirmDialog, type ConfirmAction } from "../../components/survey/ConfirmDialog";
@@ -21,7 +23,25 @@ export function SurveyToolsSubtab() {
   const [askError, setAskError] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => { void loadSurveys(); }, []);
+  useEffect(() => { void loadSurveys(); void loadWaits(); }, []);
+
+  // ── Announcing: once every 10 minutes per survey. The database enforces it; here the button counts the wait down. ──
+  const [announcing, setAnnouncing] = useState<Survey | null>(null);
+  const [waitUntil, setWaitUntil] = useState<Record<string, number>>({});
+  const [now, setNow] = useState(() => Date.now());
+  async function loadWaits() {
+    const left = await fetchAnnouncementWaits();
+    const from = Date.now();
+    setNow(from);
+    setWaitUntil(Object.fromEntries(Object.entries(left).map(([id, seconds]) => [id, from + seconds * 1000])));
+  }
+  const counting = Object.values(waitUntil).some(until => until > now);
+  useEffect(() => {
+    if (!counting) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [counting]);
+  const waitFor = (id: string) => Math.max(0, ((waitUntil[id] ?? 0) - now) / 1000);
 
   async function loadSurveys() {
     // Quest-sourced surveys (a Question Bank subject flagged "Survey
@@ -108,7 +128,14 @@ export function SurveyToolsSubtab() {
                   </span>
                 </div>
               </div>
-              <div className="flex items-center gap-3 text-[12px] mt-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] mt-2">
+                {s.isActive && (
+                  <button onClick={e => { e.stopPropagation(); setAnnouncing(s); }} disabled={waitFor(s.id) > 0}
+                    title={waitFor(s.id) > 0 ? "A survey can be announced once every 10 minutes" : "Notify all scholars to answer this survey"}
+                    className="flex items-center gap-1 text-[#062444] font-semibold hover:underline disabled:text-slate-400 disabled:no-underline disabled:cursor-not-allowed">
+                    <Megaphone size={12} /> {waitFor(s.id) > 0 ? `Announced · again in ${formatWait(waitFor(s.id))}` : "Announce"}
+                  </button>
+                )}
                 <button onClick={e => { e.stopPropagation(); setEditingSurvey(s); }} className="flex items-center gap-1 text-[#0088cc] font-semibold hover:underline"><Pencil size={12} /> Edit</button>
                 <button onClick={e => { e.stopPropagation(); if (s.isActive) void ask(s, "deactivate"); else void activate(s); }} className="flex items-center gap-1 text-slate-500 font-semibold hover:underline">
                   {s.isActive ? <><PowerOff size={12} /> Deactivate</> : <><Power size={12} /> Activate</>}
@@ -133,6 +160,7 @@ export function SurveyToolsSubtab() {
         />
       )}
       {asking && dialog(asking)}
+      {announcing && <AnnounceDialog surveyId={announcing.id} title={announcing.title} onClose={() => { setAnnouncing(null); void loadWaits(); }} onSent={() => void loadWaits()} />}
     </div>
   );
 }
