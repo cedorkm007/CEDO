@@ -53,7 +53,7 @@ function sessionFor(u, aal = "aal1") {
   };
 }
 
-export async function startServer({ db, port = 54321, log = () => {} }) {
+export async function startServer({ db, port = 54321, log = () => {}, openFunctions = {} }) {
   const rest = new RestApi(db);
   await rest.loadMeta();
   const phase6 = makePhase6Functions({ db, hasVerifiedFactor, sessionLevel: who => who.claims.aal });   // stand-ins for the account functions Phase 6 changed (random temporary passwords, scholar self-reset)
@@ -152,6 +152,11 @@ export async function startServer({ db, port = 54321, log = () => {} }) {
   async function handleFunction(req, res, url, body) {
     const name = url.pathname.replace(/^\/functions\/v1\//, "");
     const who = caller(req);
+    // functions another demo brings with it, callable without signing in (the Bridging registration)
+    if (openFunctions[name]) {
+      try { const out = await openFunctions[name](body, String(req.socket.remoteAddress ?? "unknown")); return json(res, out.status, out.json); }
+      catch (e) { return json(res, 500, { error: String(e.message ?? e) }); }
+    }
     if (name === "storage-tool-public") return await storageToolPublic(req, res, body);   // no sign-in: the public upload page
     if (name === "scholar-self-reset-password") {   // no sign-in: reaching someone who cannot sign in is the point
       try { const out = await phase6[name](body, String(req.socket.remoteAddress ?? "unknown")); return json(res, out.status, out.json); }

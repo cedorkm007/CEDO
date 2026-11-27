@@ -87,6 +87,8 @@ function surveyPageDevRewrite() {
     configureServer(server: { middlewares: { use: (fn: (req: { url?: string }, res: unknown, next: () => void) => void) => void } }) {
       server.middlewares.use((req, _res, next) => {
         if (req.url && /^\/s\/[^/?#]+/.test(req.url)) req.url = '/survey.html';
+        // the Kagay-anon Bridging Application (/bridging/...) is its own entry too, see bridging.html
+        if (req.url && /^\/bridging(?=[/?#]|$)/i.test(req.url)) req.url = '/bridging.html';
         next();
       });
     },
@@ -109,6 +111,7 @@ export default defineConfig({
       input: {
         index: path.resolve(__dirname, 'index.html'),
         survey: path.resolve(__dirname, 'survey.html'),
+        bridging: path.resolve(__dirname, 'bridging.html'),
       },
     },
   },

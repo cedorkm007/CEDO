@@ -1,0 +1,6 @@
+/* Styles for /bridging only: just the classes these screens use. */
+@import 'tailwindcss' source(none);
+@source './**/*.{ts,tsx}';
+
+html, body { margin: 0; background: #1e3a5f; }
+body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }

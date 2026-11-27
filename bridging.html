@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Kagay-anon Bridging Application</title>
+    <meta name="description" content="A learning application for Cagayan de Oro students." />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#1e3a5f" />
+    <link rel="icon" type="image/jpeg" href="/src/bridging/assets/logo.jpg" />
+    <!--
+      Entry page for the Kagay-anon Bridging Application (/bridging, see vercel.json and vite.config.ts). A SEPARATE entry from index.html:
+      students on phones download only the Bridging code, and the other portals do not get any bigger.
+    -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript><p style="color: white; font-family: system-ui, sans-serif; padding: 24px;">Please turn on JavaScript to use the application.</p></noscript>
+    <script type="module" src="/src/bridging/main.tsx"></script>
+  </body>
+</html>
