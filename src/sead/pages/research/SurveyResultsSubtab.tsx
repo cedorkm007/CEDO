@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { ListChecks, SlidersHorizontal, MessageSquareText, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { ListChecks, SlidersHorizontal, MessageSquareText, Clock, CheckCircle2, XCircle, Trash2 } from "lucide-react";
 import { fetchSurveys, fetchSurveyQuestions, fetchSurveyQuestionResults, fetchSurveyGatingRoster } from "../../seadApi";
 import { SurveyResultsChart } from "../../components/SurveyResultsChart";
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
 import { fetchSurveyList, type SurveyListItem } from "@/mysurveys/mySurveysApi";
 import { SurveyResultsPanel } from "@/mysurveys/results/SurveyResultsPanel";
 import { fetchSurveyOutline } from "../../surveyEditorApi";
+import { DeleteResponseDialog } from "../../components/survey/DeleteResponseDialog";
+import { DeletedResponses } from "../../components/survey/DeletedResponses";
 import { groupBySection, type OutlineQuestion, type OutlineSection } from "@/lib/surveyBuilder";
 import { activityCounts, filterRoster, triggerLabel, RECONSIDERATION, TRIGGER_LABELS } from "@/lib/surveyResults";
 import type { Survey, SurveySource, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult, SurveyOpenEndedResult, GatingRosterEntry, GatingRosterStatus } from "../../types";
@@ -91,6 +93,12 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
   const resultsActivity = activityId && activityId !== RECONSIDERATION ? activityId : null;
   const resultsTrigger = activityId === RECONSIDERATION ? RECONSIDERATION : trigger || null;
   const [roster, setRoster] = useState<GatingRosterEntry[] | null>(null);
+  // goes up after a delete or a restore: the list, the counts and the charts are read again
+  const [version, setVersion] = useState(0);
+  const reload = () => {
+    setVersion(v => v + 1);
+    void fetchSurveyGatingRoster(survey.id).then(setRoster);
+  };
   useEffect(() => {
     setActivityId("");
     setTrigger("");
@@ -133,7 +141,8 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
             </select>
           </div>
           <ActivityFilter survey={survey} roster={filterRoster(roster ?? [], "", trigger)} value={activityId} onChange={setActivityId} />
-          <GatingRosterSection key={`${survey.id}:${activityId}:${trigger}`} roster={roster === null ? null : filterRoster(roster, activityId, trigger)} showActivity={activityId === RECONSIDERATION || (!activityId && (survey.activities.length > 1 || survey.triggers?.reconsideration === true))} />
+          <GatingRosterSection key={`${survey.id}:${activityId}:${trigger}`} surveyId={survey.id} onChanged={reload} roster={roster === null ? null : filterRoster(roster, activityId, trigger)} showActivity={activityId === RECONSIDERATION || (!activityId && (survey.activities.length > 1 || survey.triggers?.reconsideration === true))} />
+          <DeletedResponses key={survey.id} surveyId={survey.id} version={version} onRestored={reload} />
         </>
       )}
       {loading ? (
@@ -162,7 +171,7 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
                       {q.removed ? (q.removedReason === "changed" ? `Earlier version (version ${q.version}) — the question was changed` : "Removed from the survey — its answers are kept") : `Version ${q.version} — answers to earlier versions are listed separately`}
                     </p>
                   )}
-                  <QuestionResultCard key={`${q.id}:${activityId}:${trigger}`} question={q} source={survey.activityType} activityId={resultsActivity} trigger={resultsTrigger} />
+                  <QuestionResultCard key={`${q.id}:${activityId}:${trigger}:${version}`} question={q} source={survey.activityType} activityId={resultsActivity} trigger={resultsTrigger} />
                 </div>
               );
             })}
@@ -219,7 +228,8 @@ const STATUS_META: Record<GatingRosterStatus, { label: string; badgeClass: strin
  * answer breakdowns below. Empty for a survey nothing has gated yet
  * (never attached to an activity with a live scan, or no scans so far).
  */
-function GatingRosterSection({ roster: loaded, showActivity }: { roster: GatingRosterEntry[] | null; showActivity: boolean }) {
+function GatingRosterSection({ roster: loaded, showActivity, surveyId, onChanged }: { roster: GatingRosterEntry[] | null; showActivity: boolean; surveyId: string; onChanged: () => void }) {
+  const [deleting, setDeleting] = useState<GatingRosterEntry | null>(null);
   const roster = loaded ?? [];
   const loading = loaded === null;
   const [statusFilter, setStatusFilter] = useState<GatingRosterStatus | null>(null);
@@ -270,11 +280,12 @@ function GatingRosterSection({ roster: loaded, showActivity }: { roster: GatingR
               {showActivity && <th className="px-3 py-2">Activity</th>}
               <th className="px-3 py-2">Asked by</th>
               <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2 text-right">Delete</th>
             </tr>
           </thead>
           <tbody>
             {filteredCount === 0 ? (
-              <tr><td colSpan={showActivity ? 5 : 4} className="px-3 py-6 text-center text-slate-400">No scholars match.</td></tr>
+              <tr><td colSpan={showActivity ? 6 : 5} className="px-3 py-6 text-center text-slate-400">No scholars match.</td></tr>
             ) : (
               paged.map(r => (
                 <tr key={`${r.scholarIdNumber}:${r.activityId ?? ""}`} className="border-t border-[#f0f3f8]">
@@ -287,6 +298,12 @@ function GatingRosterSection({ roster: loaded, showActivity }: { roster: GatingR
                       {STATUS_META[r.status].icon} {STATUS_META[r.status].label}
                     </span>
                   </td>
+                  <td className="px-3 py-2 text-right">
+                    <button type="button" onClick={() => setDeleting(r)} aria-label={`Delete the response of ${r.scholarName}`} title="Delete response"
+                      className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600">
+                      <Trash2 size={14} aria-hidden="true" />
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
@@ -298,6 +315,7 @@ function GatingRosterSection({ roster: loaded, showActivity }: { roster: GatingR
           <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} filteredCount={filteredCount} pageSize={pageSize} />
         </div>
       )}
+      {deleting && <DeleteResponseDialog surveyId={surveyId} row={deleting} onClose={() => setDeleting(null)} onDeleted={() => { setDeleting(null); onChanged(); }} />}
     </div>
   );
 }
