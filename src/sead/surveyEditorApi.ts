@@ -7,7 +7,7 @@ export type Result = { ok: true } | { ok: false; error: string };
 
 const message = (error: { code?: string; message: string }) =>
   error.code === "PGRST202" || /could not find the function/i.test(error.message)
-    ? `This needs the database update ${SURVEY_SQL}. Ask the administrator to run it.`
+    ? `This needs a newer database update (${SURVEY_SQL} or supabase_migration_survey_delete_response.sql). Ask the administrator to run it.`
     : error.message;
 
 async function call(fn: string, args: Record<string, unknown>): Promise<Result> {
@@ -51,4 +51,22 @@ export interface DeleteImpact { answers: number; finished: number; waiting: numb
 export async function fetchDeleteImpact(surveyId: string): Promise<DeleteImpact | null> {
   const { data, error } = await supabase.rpc("survey_delete_impact", { p_survey_id: surveyId });
   return error || !data ? null : (data as DeleteImpact);
+}
+
+// ── Deleting a response (supabase_migration_survey_delete_response.sql). A copy is kept and can be restored. ──
+export const deleteSurveyResponse = (surveyId: string, scholarIdNumber: string, activityId: string | null, reason: string) =>
+  call("survey_delete_response", { p_survey_id: surveyId, p_scholar_id_number: scholarIdNumber, p_activity_id: activityId, p_reason: reason || null });
+
+export interface DeletedResponse {
+  id: string; scholarIdNumber: string; scholarName: string; activityName: string; answerCount: number; reason: string | null; deletedBy: string; deletedAt: string;
+}
+/** Empty before the database update. */
+export async function fetchDeletedResponses(surveyId: string): Promise<DeletedResponse[]> {
+  const { data, error } = await supabase.rpc("survey_deleted_list", { p_survey_id: surveyId });
+  return error || !data ? [] : (data as DeletedResponse[]);
+}
+/** lost: answers that could not come back because their question or choice no longer exists. */
+export async function restoreSurveyResponse(deletedId: string): Promise<{ ok: true; lost: number } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("survey_restore_response", { p_deleted_id: deletedId });
+  return error ? { ok: false, error: message(error) } : { ok: true, lost: Number(data ?? 0) };
 }
