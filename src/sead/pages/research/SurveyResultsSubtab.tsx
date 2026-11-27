@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
-import { ListChecks, SlidersHorizontal, MessageSquareText, Clock, CheckCircle2, XCircle, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ListChecks, SlidersHorizontal, MessageSquareText, Clock, CheckCircle2, XCircle, Trash2, Eye, EyeOff } from "lucide-react";
+import { createLivePoller, createTickGate, LIVE_INTERVAL_MS, LIVE_MIN_RELOAD_GAP_MS } from "@/lib/liveUpdates";
+import { useTabActive } from "@/lib/keepAlive";
 import { fetchSurveys, fetchSurveyQuestions, fetchSurveyQuestionResults, fetchSurveyGatingRoster } from "../../seadApi";
 import { SurveyResultsChart } from "../../components/SurveyResultsChart";
 import { usePaginatedList, ListSearchBox, ListPagination } from "@/app/components/PaginatedList";
@@ -9,7 +11,7 @@ import { fetchSurveyOutline } from "../../surveyEditorApi";
 import { DeleteResponseDialog } from "../../components/survey/DeleteResponseDialog";
 import { DeletedResponses } from "../../components/survey/DeletedResponses";
 import { groupBySection, type OutlineQuestion, type OutlineSection } from "@/lib/surveyBuilder";
-import { activityCounts, filterRoster, triggerLabel, RECONSIDERATION, TRIGGER_LABELS } from "@/lib/surveyResults";
+import { activityCounts, filterRoster, triggerLabel, rosterSignature, readHiddenSections, writeHiddenSections, RECONSIDERATION, TRIGGER_LABELS } from "@/lib/surveyResults";
 import type { Survey, SurveySource, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult, SurveyOpenEndedResult, GatingRosterEntry, GatingRosterStatus } from "../../types";
 
 export function SurveyResultsSubtab() {
@@ -63,7 +65,7 @@ export function SurveyResultsSubtab() {
         </select>
       </div>
 
-      {selectedSurvey && <SurveyResultsView survey={selectedSurvey} />}
+      {selectedSurvey && <SurveyResultsView key={selectedSurvey.id} survey={selectedSurvey} />}
       {selectedMySurvey && (
         <div className="space-y-3">
           <p className="text-[12px] text-slate-500">
@@ -93,44 +95,100 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
   const resultsActivity = activityId && activityId !== RECONSIDERATION ? activityId : null;
   const resultsTrigger = activityId === RECONSIDERATION ? RECONSIDERATION : trigger || null;
   const [roster, setRoster] = useState<GatingRosterEntry[] | null>(null);
-  // goes up after a delete or a restore: the list, the counts and the charts are read again
-  const [version, setVersion] = useState(0);
-  const reload = () => {
-    setVersion(v => v + 1);
-    void fetchSurveyGatingRoster(survey.id).then(setRoster);
-  };
-  useEffect(() => {
-    setActivityId("");
-    setTrigger("");
-    setRoster(null);
-    if (isQuestSourced) return;
-    let cancelled = false;
-    void fetchSurveyGatingRoster(survey.id).then(r => { if (!cancelled) setRoster(r); });
-    return () => { cancelled = true; };
-  }, [survey.id, isQuestSourced]);
+
+  // ── Live results ──
+  // While this screen is being looked at, the list is asked for every ~10 seconds. When it changed, the charts are read
+  // again where they are (at most every 15 seconds while answers keep coming), without clearing the screen.
+  const tabActive = useTabActive();
+  const [version, setVersion] = useState(0);        // goes up when something changed: charts, questions and deleted list are read again
+  const [nudge, setNudge] = useState(0);            // goes up after a delete or a restore: ask for the list right away
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
+  const [offline, setOffline] = useState(false);
+  const signature = useRef<string | null>(null);
+  const gate = useRef<ReturnType<typeof createTickGate> | null>(null);
+  if (!gate.current) gate.current = createTickGate({ gapMs: LIVE_MIN_RELOAD_GAP_MS.staff, fire: () => setVersion(v => v + 1) });
+  useEffect(() => () => gate.current?.cancel(), []);
+  const reload = () => { setVersion(v => v + 1); setNudge(n => n + 1); };
 
   useEffect(() => {
+    if (!tabActive) return;
+    let stopped = false;
+    const poller = createLivePoller({
+      // a Question Bank survey has no list to watch, so its charts are simply read again every 30 seconds
+      baseMs: isQuestSourced ? 30_000 : LIVE_INTERVAL_MS.staff,
+      initialStamp: signature.current,
+      isHidden: () => document.hidden,
+      onChange: () => gate.current!.trigger(),
+      fetchStamp: async () => {
+        if (isQuestSourced) { setCheckedAt(new Date()); return { ok: true, stamp: String(Date.now()) }; }
+        const rows = await fetchSurveyGatingRoster(survey.id);
+        if (stopped) return { ok: false, fatal: false };
+        if (!rows) { setOffline(true); setRoster(r => r ?? []); return { ok: false, fatal: false }; }
+        const stamp = rosterSignature(rows);
+        const changed = stamp !== signature.current;
+        setRoster(r => (changed || r === null ? rows : r));
+        signature.current = stamp;
+        setOffline(false);
+        setCheckedAt(new Date());
+        return { ok: true, stamp };
+      },
+    });
+    const wake = () => { if (!document.hidden) poller.pollNow(); };
+    poller.start();
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
+    window.addEventListener("online", wake);
+    return () => { stopped = true; poller.stop(); document.removeEventListener("visibilitychange", wake); window.removeEventListener("focus", wake); window.removeEventListener("online", wake); };
+  }, [survey.id, isQuestSourced, tabActive, nudge]);
+
+  const loadedOnce = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
     (async () => {
-      setLoading(true);
+      if (loadedOnce.current && isQuestSourced) return;
       // with sections and removed questions; before the database update, the plain list as before
       const outline = isQuestSourced ? null : await fetchSurveyOutline(survey.id, true);
+      if (cancelled) return;
       if (outline && outline.ok) {
         setSections(outline.outline.sections);
         setQuestions(outline.outline.questions as ResultQuestion[]);
-      } else {
-        setSections([]);
-        setQuestions(await fetchSurveyQuestions(survey));
+      } else if (!loadedOnce.current) {
+        const plain = await fetchSurveyQuestions(survey);
+        if (cancelled) return;
+        setQuestions(plain);
       }
+      loadedOnce.current = true;
       setLoading(false);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
-  }, [survey.id]);
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [survey.id, version]);
 
-  let lastTopicName: string | null = null;
-  const groups = groupBySection(sections, questions.map(q => ({ ...q, sectionId: q.sectionId ?? null })));
+  // ── Show / hide the results, per section (per topic for a Question Bank survey) ──
+  const [hidden, setHidden] = useState<string[]>(() => readHiddenSections(survey.id));
+  const changeHidden = (next: string[]) => { setHidden(next); writeHiddenSections(survey.id, next); };
+  const groups = useMemo(() => {
+    if (isQuestSourced) {
+      const topics = [...new Set(questions.map(q => q.topicName ?? ""))];
+      return topics.map(name => ({ key: `topic:${name}`, title: name || "Results", description: "", questions: questions.filter(q => (q.topicName ?? "") === name) }));
+    }
+    return groupBySection(sections, questions.map(q => ({ ...q, sectionId: q.sectionId ?? null })))
+      .filter(g => g.questions.length > 0)
+      .map(g => ({
+        key: g.section?.id ?? "none",
+        title: g.section ? `${g.section.title}${g.section.removed ? " (section removed)" : ""}` : sections.length > 0 ? "Not in a section" : "Results",
+        description: g.section?.description ?? "",
+        questions: g.questions as ResultQuestion[],
+      }));
+  }, [sections, questions, isQuestSourced]);
 
   return (
     <div className="space-y-4">
+      <p className="flex items-center gap-2 text-[12px] text-slate-500">
+        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${offline ? "bg-amber-500" : "bg-green-500"}`} />
+        {offline ? <span role="status">Couldn't refresh just now — trying again. What you see may be a little old.</span>
+          : <span>Live: new responses appear by themselves{checkedAt ? ` · checked ${checkedAt.toLocaleTimeString("en-PH", { timeZone: "Asia/Manila" })}` : ""}</span>}
+      </p>
       {!isQuestSourced && (
         <>
           <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4">
@@ -150,37 +208,47 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
       ) : questions.length === 0 ? (
         <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">This survey has no questions yet.</div>
       ) : (
-        groups.filter(g => g.questions.length > 0).map(g => (
-          <div key={g.section?.id ?? "none"} className="space-y-4">
-            {sections.length > 0 && (
-              <div className="pt-1">
-                <h2 className="text-[13.5px] font-bold text-[#062444]">{g.section ? `${g.section.title}${g.section.removed ? " (section removed)" : ""}` : "Not in a section"}</h2>
-                {g.section?.description && <p className="text-[12px] text-slate-500">{g.section.description}</p>}
-              </div>
-            )}
-            {g.questions.map(q => {
-              const showTopicHeading = isQuestSourced && q.topicName !== lastTopicName;
-              lastTopicName = q.topicName ?? lastTopicName;
-              return (
-                <div key={q.id}>
-                  {showTopicHeading && (
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mt-5 mb-1.5 first:mt-0">{q.topicName}</p>
-                  )}
-                  {(q.removed || (q.version ?? 1) > 1) && (
-                    <p className="mb-1 text-[11.5px] font-semibold text-amber-800">
-                      {q.removed ? (q.removedReason === "changed" ? `Earlier version (version ${q.version}) — the question was changed` : "Removed from the survey — its answers are kept") : `Version ${q.version} — answers to earlier versions are listed separately`}
-                    </p>
-                  )}
-                  <QuestionResultCard key={`${q.id}:${activityId}:${trigger}:${version}`} question={q} source={survey.activityType} activityId={resultsActivity} trigger={resultsTrigger} />
+        <>
+          {groups.length > 1 && (
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={() => changeHidden([])} className={TOGGLE_CLASS}><Eye size={13} aria-hidden="true" /> Show all results</button>
+              <button type="button" onClick={() => changeHidden(groups.map(g => g.key))} className={TOGGLE_CLASS}><EyeOff size={13} aria-hidden="true" /> Hide all results</button>
+            </div>
+          )}
+          {groups.map(g => {
+            const isHidden = hidden.includes(g.key);
+            return (
+              <section key={g.key} aria-label={g.title} className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <div className="min-w-0">
+                    <h2 className="text-[13.5px] font-bold text-[#062444]">{g.title}</h2>
+                    {g.description && <p className="text-[12px] text-slate-500">{g.description}</p>}
+                    {isHidden && <p className="text-[12px] text-slate-500">Results hidden ({g.questions.length} question{g.questions.length === 1 ? "" : "s"}).</p>}
+                  </div>
+                  <button type="button" onClick={() => changeHidden(isHidden ? hidden.filter(k => k !== g.key) : [...hidden, g.key])} aria-expanded={!isHidden} className={TOGGLE_CLASS}>
+                    {isHidden ? <><Eye size={13} aria-hidden="true" /> Show results</> : <><EyeOff size={13} aria-hidden="true" /> Hide results</>}
+                  </button>
                 </div>
-              );
-            })}
-          </div>
-        ))
+                {!isHidden && g.questions.map(q => (
+                  <div key={q.id}>
+                    {(q.removed || (q.version ?? 1) > 1) && (
+                      <p className="mb-1 text-[11.5px] font-semibold text-amber-800">
+                        {q.removed ? (q.removedReason === "changed" ? `Earlier version (version ${q.version}) — the question was changed` : "Removed from the survey — its answers are kept") : `Version ${q.version} — answers to earlier versions are listed separately`}
+                      </p>
+                    )}
+                    <QuestionResultCard key={`${q.id}:${activityId}:${trigger}`} version={version} question={q} source={survey.activityType} activityId={resultsActivity} trigger={resultsTrigger} />
+                  </div>
+                ))}
+              </section>
+            );
+          })}
+        </>
       )}
     </div>
   );
 }
+
+const TOGGLE_CLASS = "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#062444]/20 bg-white px-3 py-1.5 text-[12px] font-semibold text-[#062444] hover:bg-[#f7f9fc]";
 
 /** Choose one activity, or all combined; with the number of scholars completed / pending / declined / released in each. */
 function ActivityFilter({ survey, roster, value, onChange }: { survey: Survey; roster: GatingRosterEntry[]; value: string; onChange: (id: string) => void }) {
@@ -320,29 +388,38 @@ function GatingRosterSection({ roster: loaded, showActivity, surveyId, onChanged
   );
 }
 
-function QuestionResultCard({ question, source, activityId, trigger }: { question: SurveyQuestion; source: SurveySource; activityId: string | null; trigger: string | null }) {
+function QuestionResultCard({ question, source, activityId, trigger, version }: { question: SurveyQuestion; source: SurveySource; activityId: string | null; trigger: string | null; version: number }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [choiceResults, setChoiceResults] = useState<SurveyChoiceResult[] | null>(null);
   const [likertResult, setLikertResult] = useState<SurveyLikertResult | null>(null);
   const [openEndedResult, setOpenEndedResult] = useState<SurveyOpenEndedResult | null>(null);
 
+  const shown = useRef<string | null>(null);
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      setLoading(true);
-      setError("");
       const result = await fetchSurveyQuestionResults(question.id, question.questionType, source, activityId, trigger);
+      if (cancelled) return;
       if (!result.ok) {
-        setError(result.error || "Failed to load results.");
+        if (shown.current === null) setError(result.error || "Failed to load results.");   // a failed refresh keeps the chart on screen
       } else {
-        setChoiceResults(result.choiceResults ?? null);
-        setLikertResult(result.likertResult ?? null);
-        setOpenEndedResult(result.openEndedResult ?? null);
+        const next = JSON.stringify(result);
+        if (next !== shown.current) {                      // unchanged results do not redraw the chart
+          shown.current = next;
+          setChoiceResults(result.choiceResults ?? null);
+          setLikertResult(result.likertResult ?? null);
+          setOpenEndedResult(result.openEndedResult ?? null);
+        }
+        setError("");
       }
       setLoading(false);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
-  }, [question.id, source, activityId, trigger]);
+    return () => { cancelled = true; };
+  }, [question.id, question.questionType, source, activityId, trigger, version]);
+
+  const choiceBars = useMemo(() => (choiceResults ?? []).map(c => ({ label: c.isOther ? `${c.choiceText} (write-in)` : c.removed ? `${c.choiceText} (${c.removedReason === "changed" ? "earlier wording" : "removed"})` : c.choiceText, count: c.count })), [choiceResults]);
+  const likertBars = useMemo(() => (likertResult?.distribution ?? []).map(d => ({ label: `${d.value} (${d.percentage}%)`, count: d.count })), [likertResult]);
 
   const n = question.questionType === "multiple_choice"
     ? (choiceResults ?? []).reduce((sum, c) => sum + c.count, 0)
@@ -375,7 +452,7 @@ function QuestionResultCard({ question, source, activityId, trigger }: { questio
         </ul>
       ) : question.questionType === "multiple_choice" ? (
         <div className="space-y-3">
-          <SurveyResultsChart bars={(choiceResults ?? []).map(c => ({ label: c.isOther ? `${c.choiceText} (write-in)` : c.removed ? `${c.choiceText} (${c.removedReason === "changed" ? "earlier wording" : "removed"})` : c.choiceText, count: c.count }))} />
+          <SurveyResultsChart bars={choiceBars} />
           {(choiceResults ?? []).filter(c => c.isOther && c.otherTexts && c.otherTexts.length > 0).map(c => (
             <div key={c.choiceId} className="bg-[#f8fafd] rounded-xl p-3">
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">"{c.choiceText}" write-in answers</p>
@@ -398,7 +475,7 @@ function QuestionResultCard({ question, source, activityId, trigger }: { questio
           <p className="text-[11px] text-slate-400">
             Scale {question.likertScaleMin}–{question.likertScaleMax}: "{question.likertMinLabel}" to "{question.likertMaxLabel}"
           </p>
-          <SurveyResultsChart bars={likertResult.distribution.map(d => ({ label: `${d.value} (${d.percentage}%)`, count: d.count }))} />
+          <SurveyResultsChart bars={likertBars} />
         </div>
       ) : null}
     </div>

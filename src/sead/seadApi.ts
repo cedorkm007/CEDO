@@ -787,11 +787,12 @@ export async function fetchSurveyQuestionResults(questionId: string, questionTyp
 }
 
 /** Every scholar whose attendance/voucher has ever been gated by this survey, with their current status — powers the "who hasn't finished yet" roster in Survey Results. */
-export async function fetchSurveyGatingRoster(surveyId: string): Promise<GatingRosterEntry[]> {
+export async function fetchSurveyGatingRoster(surveyId: string): Promise<GatingRosterEntry[] | null> {
   let { data, error } = await supabase.rpc("research_survey_gating_roster", { p_survey_id: surveyId, p_with_released: true });
   // before the Phase 3 database update the function does not take that choice
-  if (error) ({ data, error } = await supabase.rpc("research_survey_gating_roster", { p_survey_id: surveyId }));
-  if (error || !data) return [];
+  if (error?.code === "PGRST202") ({ data, error } = await supabase.rpc("research_survey_gating_roster", { p_survey_id: surveyId }));
+  // null = the list could not be read, so a live refresh keeps what is on screen
+  if (error || !data) return null;
   return data as GatingRosterEntry[];
 }
 

@@ -12,7 +12,7 @@ export function DeletedResponses({ surveyId, version, onRestored }: { surveyId: 
 
   useEffect(() => {
     let cancelled = false;
-    void fetchDeletedResponses(surveyId).then(r => { if (!cancelled) setRows(r); });
+    void fetchDeletedResponses(surveyId).then(r => { if (!cancelled && r) setRows(r); });
     return () => { cancelled = true; };
   }, [surveyId, version]);
 

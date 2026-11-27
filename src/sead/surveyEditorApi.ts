@@ -60,10 +60,10 @@ export const deleteSurveyResponse = (surveyId: string, scholarIdNumber: string, 
 export interface DeletedResponse {
   id: string; scholarIdNumber: string; scholarName: string; activityName: string; answerCount: number; reason: string | null; deletedBy: string; deletedAt: string;
 }
-/** Empty before the database update. */
-export async function fetchDeletedResponses(surveyId: string): Promise<DeletedResponse[]> {
+/** null when it could not be read (also before the database update). */
+export async function fetchDeletedResponses(surveyId: string): Promise<DeletedResponse[] | null> {
   const { data, error } = await supabase.rpc("survey_deleted_list", { p_survey_id: surveyId });
-  return error || !data ? [] : (data as DeletedResponse[]);
+  return error || !data ? null : (data as DeletedResponse[]);
 }
 /** lost: answers that could not come back because their question or choice no longer exists. */
 export async function restoreSurveyResponse(deletedId: string): Promise<{ ok: true; lost: number } | { ok: false; error: string }> {
