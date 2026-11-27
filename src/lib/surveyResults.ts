@@ -1,7 +1,7 @@
 // Survey Results: how a survey was asked, and how many scholars completed / are pending / declined / were released for each activity.
 
 export const TRIGGER_LABELS: Record<string, string> = {
-  qr: "QR scan or code", scanner: "Scanning Tools", manual: "Manual credit", picture: "Picture approval", reconsideration: "SDP reconsideration", none: "Not recorded",
+  qr: "QR scan or code", scanner: "Scanning Tools", manual: "Manual credit", picture: "Picture approval", reconsideration: "SDP reconsideration", announcement: "Announcement", none: "Not recorded",
 };
 export const triggerLabel = (trigger: string | null | undefined): string => TRIGGER_LABELS[trigger || "none"] ?? trigger ?? "";
 
@@ -25,7 +25,8 @@ export function activityCounts(activities: { id: string; name: string; detached:
   for (const r of roster) {
     const key = activityKey(r);
     if (!key) continue;
-    row(key, key === RECONSIDERATION ? "SDP reconsideration" : r.activityName ?? "Activity", key !== RECONSIDERATION)[r.status] += 1;
+    // announced answers are not an activity that was detached
+    row(key, key === RECONSIDERATION ? "SDP reconsideration" : r.activityName ?? "Activity", key !== RECONSIDERATION && r.activityType !== "announcement")[r.status] += 1;
   }
   return [...rows.values()];
 }
@@ -58,3 +59,9 @@ export function bySection<T>(items: T[], sections: { id: string; title: string; 
   const filled = sections.map(s => ({ key: s.id, title: s.title, description: s.description, items: items.filter(i => sectionOf(i) === s.id) })).filter(g => g.items.length > 0);
   return loose.length > 0 ? [{ key: "none", title: filled.length > 0 ? "Not in a section" : "Results", description: "", items: loose }, ...filled] : filled;
 }
+
+/** "9:05" — what is left of the 10 minutes between two announcements of a survey. */
+export const formatWait = (seconds: number): string => {
+  const s = Math.max(0, Math.ceil(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};

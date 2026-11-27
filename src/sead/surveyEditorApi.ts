@@ -70,3 +70,24 @@ export async function restoreSurveyResponse(deletedId: string): Promise<{ ok: tr
   const { data, error } = await supabase.rpc("survey_restore_response", { p_deleted_id: deletedId });
   return error ? { ok: false, error: message(error) } : { ok: true, lost: Number(data ?? 0) };
 }
+
+// ── Announcing a survey to all scholars (supabase_migration_survey_announcement.sql). Once every 10 minutes per survey. ──
+const announceMessage = (error: { code?: string; message: string }) =>
+  error.code === "PGRST202" || /could not find the function/i.test(error.message)
+    ? "This needs the database update supabase_migration_survey_announcement.sql. Ask the administrator to run it."
+    : error.message;
+
+export interface AnnouncementStatus { toNotify: number; lastAt: string | null; lastBy: string | null; lastCount: number | null; secondsLeft: number }
+export async function fetchAnnouncementStatus(surveyId: string): Promise<{ ok: true; status: AnnouncementStatus } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("survey_announcement_status", { p_survey_id: surveyId });
+  return error || !data ? { ok: false, error: error ? announceMessage(error) : "Couldn't check the announcement." } : { ok: true, status: data as AnnouncementStatus };
+}
+export async function announceSurvey(surveyId: string): Promise<{ ok: true; notified: number } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("survey_announce", { p_survey_id: surveyId });
+  return error ? { ok: false, error: announceMessage(error) } : { ok: true, notified: Number(data ?? 0) };
+}
+/** Survey id → seconds until it may be announced again. Empty when none, or before the database update. */
+export async function fetchAnnouncementWaits(): Promise<Record<string, number>> {
+  const { data, error } = await supabase.rpc("survey_announcement_waits");
+  return error || !data ? {} : (data as Record<string, number>);
+}

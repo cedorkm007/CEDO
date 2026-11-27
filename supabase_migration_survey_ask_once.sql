@@ -13,6 +13,9 @@
 begin;
 
 do $$ begin
+  if to_regprocedure('public.survey_announce(uuid)') is not null then
+    raise exception 'STOPPED, nothing changed: the survey announcement update is already in place, so this older file must not be run again.';
+  end if;
   if to_regprocedure('public.my_pending_surveys()') is null or to_regclass('public.research_survey_asks') is null then
     raise exception 'STOPPED, nothing changed: run the Phase 4 survey file (supabase_migration_survey_triggers.sql) first.';
   end if;
