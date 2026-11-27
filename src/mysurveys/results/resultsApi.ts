@@ -59,6 +59,25 @@ export async function fetchSurveyResults(surveyId: string): Promise<{ ok: true; 
   return { ok: true, results: data as SurveyResults };
 }
 
+export interface ResultSections {
+  /** In survey order. */
+  sections: { id: string; title: string; description: string }[];
+  /** question id -> its section id */
+  sectionOf: Record<string, string | null>;
+}
+/** The survey's section headings and which question sits under which (members of the survey may read both). null if they could not be read. */
+export async function fetchResultSections(surveyId: string): Promise<ResultSections | null> {
+  const [sections, questions] = await Promise.all([
+    supabase.from("my_survey_sections").select("id, title, description").eq("survey_id", surveyId).order("order_index"),
+    supabase.from("my_survey_questions").select("id, section_id").eq("survey_id", surveyId),
+  ]);
+  if (sections.error || questions.error || !sections.data || !questions.data) return null;
+  return {
+    sections: sections.data.map(s => ({ id: s.id as string, title: (s.title as string) || "Untitled section", description: (s.description as string | null) ?? "" })),
+    sectionOf: Object.fromEntries(questions.data.map(q => [q.id as string, q.section_id as string | null])),
+  };
+}
+
 export const percent = (n: number, total: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
 
 // ── Grouping versions of the same question ──────────────────

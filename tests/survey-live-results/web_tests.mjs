@@ -1,4 +1,4 @@
-// tests/survey-live-results/web_tests.mjs — Survey Results update by themselves, and results can be hidden per section (3 checks, short on purpose)
+// tests/survey-live-results/web_tests.mjs — Survey Results update by themselves, and results can be hidden per section (4 checks, short on purpose)
 // Run:  node tests/survey-live-results/web_tests.mjs
 // No database or browser needed.
 import { build } from "esbuild";
@@ -49,8 +49,26 @@ test("the screen watches only while it is looked at, refreshes charts in place, 
   assert.match(s, /if \(!tabActive\) return;/);
   assert.match(s, /isHidden: \(\) => document\.hidden/);
   assert.match(s, /key=\{`\$\{q\.id\}:\$\{activityId\}:\$\{trigger\}`\} version=\{version\}/);      // not rebuilt on a refresh, so no "Loading results…" flash
-  for (const words of [/Hide results/, /Show results/, /Show all results/, /Hide all results/, /new responses appear by themselves/]) assert.match(s, words);
+  assert.match(s, /new responses appear by themselves/);
+  const t = src("src/app/components/ResultsToggles.tsx");
+  for (const words of [/Hide results/, /Show results/, /Show all results/, /Hide all results/]) assert.match(t, words);
   assert.match(src("src/sead/seadApi.ts"), /if \(error \|\| !data\) return null;\s*return data as GatingRosterEntry\[\];/);   // a failed read never empties the list
+});
+
+test("hiding keeps the question and hides only its results, on both results screens; My Surveys questions sit under their sections", () => {
+  const sections = [{ id: "A", title: "First", description: "" }, { id: "B", title: "Second", description: "" }, { id: "C", title: "Empty", description: "" }];
+  const of = { q1: null, q2: "B", q3: "A", q4: "gone" };
+  const grouped = R.bySection(["q1", "q2", "q3", "q4"], sections, q => of[q]);
+  assert.deepEqual(grouped.map(g => [g.title, g.items]), [["Not in a section", ["q1", "q4"]], ["First", ["q3"]], ["Second", ["q2"]]]);
+  assert.deepEqual(R.bySection(["q1"], [], () => null).map(g => g.title), ["Results"]);
+
+  const activity = src("src/sead/pages/research/SurveyResultsSubtab.tsx");
+  assert.match(activity, /\{g\.questions\.map\(q => \(/);                          // the questions are listed whether hidden or not
+  assert.match(activity, /\{hidden \? null : loading \?/);
+  const mine = src("src/mysurveys/results/QuestionResultCard.tsx");
+  assert.match(mine, /\{hidden \? null : group\.sameType/);
+  assert.match(mine, /\{!hidden && group\.multiVersion/);
+  assert.match(src("src/mysurveys/results/SurveyResultsPanel.tsx"), /<SectionHeading/);
 });
 
 console.log(`${passed} passed`);

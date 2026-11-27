@@ -50,3 +50,11 @@ export function readHiddenSections(surveyId: string, store?: KeyStore): string[]
 export function writeHiddenSections(surveyId: string, hidden: string[], store?: KeyStore): void {
   try { (store ?? localStorage).setItem(hiddenKey(surveyId), JSON.stringify(hidden)); } catch { /* private window: the choice lasts until the page is closed */ }
 }
+
+/** Items under their section headings, sections in survey order; items without a section come first. Empty sections are left out. */
+export function bySection<T>(items: T[], sections: { id: string; title: string; description: string }[], sectionOf: (item: T) => string | null | undefined) {
+  const known = new Set(sections.map(s => s.id));
+  const loose = items.filter(i => !known.has(sectionOf(i) ?? ""));
+  const filled = sections.map(s => ({ key: s.id, title: s.title, description: s.description, items: items.filter(i => sectionOf(i) === s.id) })).filter(g => g.items.length > 0);
+  return loose.length > 0 ? [{ key: "none", title: filled.length > 0 ? "Not in a section" : "Results", description: "", items: loose }, ...filled] : filled;
+}

@@ -141,7 +141,7 @@ function QuestionBody({ versions }: { versions: ResultQuestion[] }) {
  * question) or a single version, so it is always clear which wording an answer
  * belongs to.
  */
-export function QuestionResultCard({ group, number }: { group: QuestionGroup; number: number }) {
+export function QuestionResultCard({ group, number, hidden = false }: { group: QuestionGroup; number: number; hidden?: boolean }) {
   const [view, setView] = useState<"all" | number>("all");
   const { latest } = group;
   const TypeIcon = TYPE_ICONS[latest.type];
@@ -150,7 +150,7 @@ export function QuestionResultCard({ group, number }: { group: QuestionGroup; nu
 
   return (
     <section className="rounded-2xl border border-[#e6ecf5] bg-white p-4" aria-label={`Question ${number}`}>
-      <div className="mb-3 flex items-start justify-between gap-3">
+      <div className={`flex items-start justify-between gap-3 ${hidden ? "" : "mb-3"}`}>
         <div className="min-w-0">
           <h3 className="break-words text-[14.5px] font-semibold leading-relaxed text-[#062444]">
             <span className="mr-1.5 text-slate-500">{number}.</span>{latest.text.trim() || "Untitled question"}
@@ -164,7 +164,8 @@ export function QuestionResultCard({ group, number }: { group: QuestionGroup; nu
         </div>
       </div>
 
-      {group.multiVersion && (
+      {/* hidden: the question stays, its charts and answers are not shown */}
+      {!hidden && group.multiVersion && (
         <div className="mb-3 rounded-xl bg-[#f8fafd] p-3">
           <p className="mb-2 text-[11.5px] text-slate-500">
             This question was reworded after people had answered it. Each version keeps the responses it received.
@@ -190,7 +191,7 @@ export function QuestionResultCard({ group, number }: { group: QuestionGroup; nu
         </div>
       )}
 
-      {group.sameType || !group.multiVersion ? (
+      {hidden ? null : group.sameType || !group.multiVersion ? (
         <QuestionBody versions={selected} />
       ) : (
         // The versions are different kinds of question, so their answers can't share a chart: one section each.

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ListChecks, SlidersHorizontal, MessageSquareText, Clock, CheckCircle2, XCircle, Trash2, Eye, EyeOff } from "lucide-react";
+import { ListChecks, SlidersHorizontal, MessageSquareText, Clock, CheckCircle2, XCircle, Trash2 } from "lucide-react";
+import { useHiddenSections, ShowHideAll, SectionHeading } from "@/app/components/ResultsToggles";
 import { createLivePoller, createTickGate, LIVE_INTERVAL_MS, LIVE_MIN_RELOAD_GAP_MS } from "@/lib/liveUpdates";
 import { useTabActive } from "@/lib/keepAlive";
 import { fetchSurveys, fetchSurveyQuestions, fetchSurveyQuestionResults, fetchSurveyGatingRoster } from "../../seadApi";
@@ -11,7 +12,7 @@ import { fetchSurveyOutline } from "../../surveyEditorApi";
 import { DeleteResponseDialog } from "../../components/survey/DeleteResponseDialog";
 import { DeletedResponses } from "../../components/survey/DeletedResponses";
 import { groupBySection, type OutlineQuestion, type OutlineSection } from "@/lib/surveyBuilder";
-import { activityCounts, filterRoster, triggerLabel, rosterSignature, readHiddenSections, writeHiddenSections, RECONSIDERATION, TRIGGER_LABELS } from "@/lib/surveyResults";
+import { activityCounts, filterRoster, triggerLabel, rosterSignature, RECONSIDERATION, TRIGGER_LABELS } from "@/lib/surveyResults";
 import type { Survey, SurveySource, SurveyQuestion, SurveyChoiceResult, SurveyLikertResult, SurveyOpenEndedResult, GatingRosterEntry, GatingRosterStatus } from "../../types";
 
 export function SurveyResultsSubtab() {
@@ -165,8 +166,7 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
   }, [survey.id, version]);
 
   // ── Show / hide the results, per section (per topic for a Question Bank survey) ──
-  const [hidden, setHidden] = useState<string[]>(() => readHiddenSections(survey.id));
-  const changeHidden = (next: string[]) => { setHidden(next); writeHiddenSections(survey.id, next); };
+  const [hidden, changeHidden] = useHiddenSections(survey.id);
   const groups = useMemo(() => {
     if (isQuestSourced) {
       const topics = [...new Set(questions.map(q => q.topicName ?? ""))];
@@ -209,34 +209,20 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
         <div className="bg-white rounded-2xl border border-[#e6ecf5] p-6 text-center text-[13px] text-slate-400">This survey has no questions yet.</div>
       ) : (
         <>
-          {groups.length > 1 && (
-            <div className="flex flex-wrap justify-end gap-2">
-              <button type="button" onClick={() => changeHidden([])} className={TOGGLE_CLASS}><Eye size={13} aria-hidden="true" /> Show all results</button>
-              <button type="button" onClick={() => changeHidden(groups.map(g => g.key))} className={TOGGLE_CLASS}><EyeOff size={13} aria-hidden="true" /> Hide all results</button>
-            </div>
-          )}
+          <ShowHideAll keys={groups.map(g => g.key)} onChange={changeHidden} />
           {groups.map(g => {
             const isHidden = hidden.includes(g.key);
             return (
               <section key={g.key} aria-label={g.title} className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                  <div className="min-w-0">
-                    <h2 className="text-[13.5px] font-bold text-[#062444]">{g.title}</h2>
-                    {g.description && <p className="text-[12px] text-slate-500">{g.description}</p>}
-                    {isHidden && <p className="text-[12px] text-slate-500">Results hidden ({g.questions.length} question{g.questions.length === 1 ? "" : "s"}).</p>}
-                  </div>
-                  <button type="button" onClick={() => changeHidden(isHidden ? hidden.filter(k => k !== g.key) : [...hidden, g.key])} aria-expanded={!isHidden} className={TOGGLE_CLASS}>
-                    {isHidden ? <><Eye size={13} aria-hidden="true" /> Show results</> : <><EyeOff size={13} aria-hidden="true" /> Hide results</>}
-                  </button>
-                </div>
-                {!isHidden && g.questions.map(q => (
+                <SectionHeading sectionKey={g.key} title={g.title} description={g.description} hidden={hidden} onChange={changeHidden} />
+                {g.questions.map(q => (
                   <div key={q.id}>
                     {(q.removed || (q.version ?? 1) > 1) && (
                       <p className="mb-1 text-[11.5px] font-semibold text-amber-800">
                         {q.removed ? (q.removedReason === "changed" ? `Earlier version (version ${q.version}) — the question was changed` : "Removed from the survey — its answers are kept") : `Version ${q.version} — answers to earlier versions are listed separately`}
                       </p>
                     )}
-                    <QuestionResultCard key={`${q.id}:${activityId}:${trigger}`} version={version} question={q} source={survey.activityType} activityId={resultsActivity} trigger={resultsTrigger} />
+                    <QuestionResultCard key={`${q.id}:${activityId}:${trigger}`} version={version} hidden={isHidden} question={q} source={survey.activityType} activityId={resultsActivity} trigger={resultsTrigger} />
                   </div>
                 ))}
               </section>
@@ -247,8 +233,6 @@ function SurveyResultsView({ survey }: { survey: Survey }) {
     </div>
   );
 }
-
-const TOGGLE_CLASS = "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#062444]/20 bg-white px-3 py-1.5 text-[12px] font-semibold text-[#062444] hover:bg-[#f7f9fc]";
 
 /** Choose one activity, or all combined; with the number of scholars completed / pending / declined / released in each. */
 function ActivityFilter({ survey, roster, value, onChange }: { survey: Survey; roster: GatingRosterEntry[]; value: string; onChange: (id: string) => void }) {
@@ -388,7 +372,8 @@ function GatingRosterSection({ roster: loaded, showActivity, surveyId, onChanged
   );
 }
 
-function QuestionResultCard({ question, source, activityId, trigger, version }: { question: SurveyQuestion; source: SurveySource; activityId: string | null; trigger: string | null; version: number }) {
+/** hidden: the question stays, its results (charts and answers) are not shown or read. */
+function QuestionResultCard({ question, source, activityId, trigger, version, hidden }: { question: SurveyQuestion; source: SurveySource; activityId: string | null; trigger: string | null; version: number; hidden: boolean }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [choiceResults, setChoiceResults] = useState<SurveyChoiceResult[] | null>(null);
@@ -397,6 +382,7 @@ function QuestionResultCard({ question, source, activityId, trigger, version }: 
 
   const shown = useRef<string | null>(null);
   useEffect(() => {
+    if (hidden) return;
     let cancelled = false;
     (async () => {
       const result = await fetchSurveyQuestionResults(question.id, question.questionType, source, activityId, trigger);
@@ -416,7 +402,7 @@ function QuestionResultCard({ question, source, activityId, trigger, version }: 
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [question.id, question.questionType, source, activityId, trigger, version]);
+  }, [question.id, question.questionType, source, activityId, trigger, version, hidden]);
 
   const choiceBars = useMemo(() => (choiceResults ?? []).map(c => ({ label: c.isOther ? `${c.choiceText} (write-in)` : c.removed ? `${c.choiceText} (${c.removedReason === "changed" ? "earlier wording" : "removed"})` : c.choiceText, count: c.count })), [choiceResults]);
   const likertBars = useMemo(() => (likertResult?.distribution ?? []).map(d => ({ label: `${d.value} (${d.percentage}%)`, count: d.count })), [likertResult]);
@@ -429,7 +415,7 @@ function QuestionResultCard({ question, source, activityId, trigger, version }: 
 
   return (
     <div className="bg-white rounded-2xl border border-[#e6ecf5] p-4">
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className={`flex items-start justify-between gap-3 ${hidden ? "" : "mb-3"}`}>
         <p className="text-[14.5px] font-semibold text-[#062444] leading-relaxed">{question.questionText}</p>
         <span className="shrink-0 flex items-center gap-1 text-[11px] font-semibold text-[#0088cc] bg-[#0088cc]/10 rounded-full px-2.5 py-1">
           {question.questionType === "likert" ? <><SlidersHorizontal size={11} /> Likert</>
@@ -438,7 +424,7 @@ function QuestionResultCard({ question, source, activityId, trigger, version }: 
         </span>
       </div>
 
-      {loading ? (
+      {hidden ? null : loading ? (
         <p className="text-[13px] text-slate-400">Loading results…</p>
       ) : error ? (
         <p className="text-[13px] text-red-600">{error}</p>

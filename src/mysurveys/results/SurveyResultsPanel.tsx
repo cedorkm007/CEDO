@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useRealtimeRefresh } from "@/app/useRealtimeRefresh";
 import { SurveyStatusBadge } from "../components/SurveyStatusBadge";
-import { fetchSurveyResults, groupQuestions, type SurveyResults } from "./resultsApi";
+import { fetchSurveyResults, fetchResultSections, groupQuestions, type SurveyResults, type ResultSections } from "./resultsApi";
+import { useHiddenSections, ShowHideAll, SectionHeading } from "@/app/components/ResultsToggles";
+import { bySection } from "@/lib/surveyResults";
 import { CountColumns, StatTile } from "./resultCharts";
 import { QuestionResultCard } from "./QuestionResultCard";
 import { ExportMenu } from "./ExportMenu";
@@ -30,6 +32,8 @@ function formatWhen(iso: string | null): string {
  */
 export function SurveyResultsPanel({ surveyId, showTitle = false }: { surveyId: string; showTitle?: boolean }) {
   const [results, setResults] = useState<SurveyResults | null>(null);
+  const [layout, setLayout] = useState<ResultSections>({ sections: [], sectionOf: {} });
+  const [hidden, changeHidden] = useHiddenSections(surveyId);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -38,7 +42,8 @@ export function SurveyResultsPanel({ surveyId, showTitle = false }: { surveyId: 
 
   const load = useCallback(async () => {
     setRefreshing(true);
-    const res = await fetchSurveyResults(surveyId);
+    const [res, sections] = await Promise.all([fetchSurveyResults(surveyId), fetchResultSections(surveyId)]);
+    if (sections) setLayout(sections);      // if they cannot be read, what was there stays
     if (res.ok) {
       hasData.current = true;
       setResults(res.results);
@@ -53,7 +58,7 @@ export function SurveyResultsPanel({ surveyId, showTitle = false }: { surveyId: 
 
   useEffect(() => {
     hasData.current = false;
-    setResults(null); setError(""); setLoading(true);
+    setResults(null); setLayout({ sections: [], sectionOf: {} }); setError(""); setLoading(true);
     void load();
   }, [load]);
 
@@ -63,7 +68,12 @@ export function SurveyResultsPanel({ surveyId, showTitle = false }: { surveyId: 
     return () => window.clearInterval(id);
   }, [load]);
 
-  const groups = useMemo(() => groupQuestions(results?.questions ?? []), [results]);
+  // the questions under their section headings, numbered in the order shown
+  const sections = useMemo(() => {
+    const grouped = bySection(groupQuestions(results?.questions ?? []), layout.sections, g => layout.sectionOf[g.latest.questionId]);
+    let number = 0;
+    return grouped.map(s => ({ ...s, items: s.items.map(group => ({ group, number: ++number })) }));
+  }, [results, layout]);
 
   if (loading) return <div className="rounded-2xl border border-[#e6ecf5] bg-white p-6 text-center text-[13px] text-slate-500"><Loader2 size={16} className="mx-auto mb-2 animate-spin" />Loading results…</div>;
   if (error || !results) return <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-5 text-[13px] text-red-700">{error || "Couldn't load the results."}</div>;
@@ -116,7 +126,13 @@ export function SurveyResultsPanel({ surveyId, showTitle = false }: { surveyId: 
             <p className="mt-1 text-[10.5px] text-slate-500">Days are in your time zone ({results.timezone}).</p>
           </section>
 
-          {groups.map((g, i) => <QuestionResultCard key={g.key} group={g} number={i + 1} />)}
+          <ShowHideAll keys={sections.map(s => s.key)} onChange={changeHidden} />
+          {sections.map(s => (
+            <section key={s.key} aria-label={s.title} className="space-y-4">
+              <SectionHeading sectionKey={s.key} title={s.title} description={s.description} hidden={hidden} onChange={changeHidden} />
+              {s.items.map(({ group, number }) => <QuestionResultCard key={group.key} group={group} number={number} hidden={hidden.includes(s.key)} />)}
+            </section>
+          ))}
         </>
       )}
     </div>
